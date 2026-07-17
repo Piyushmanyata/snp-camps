@@ -142,7 +142,7 @@ export default async function DoctorPage() {
               <SectionTitle
                 hint={
                   isDoc
-                    ? "Self-assign · once only"
+                    ? "No print needed · once only"
                     : "Pick doctor · once only"
                 }
               >
@@ -154,7 +154,7 @@ export default async function DoctorPage() {
 
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="Printed · waiting for doctor">
+              <SectionTitle hint="Printed / waiting · optional queue">
                 Live queue
               </SectionTitle>
             </div>
@@ -205,8 +205,8 @@ export default async function DoctorPage() {
             </ul>
           ) : (
             <EmptyState>
-              No patients assigned to you yet. Scan a waiting patient when they
-              arrive at your station.
+              No patients assigned to you yet. Scan a registered patient when
+              they arrive — no print required.
             </EmptyState>
           )}
         </Card>

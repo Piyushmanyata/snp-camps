@@ -90,10 +90,6 @@ export function LiveQueue({
       doctor_name?: string | null;
     } | null;
 
-    if (row?.error_code === "must_print_first") {
-      setError("Print the prescription first, then assign a doctor.");
-      return;
-    }
     if (row?.error_code === "doctor_required") {
       setError("Select a doctor.");
       return;
@@ -244,8 +240,8 @@ export function LiveQueue({
         {!rows.length ? (
           <li className="px-1 py-2">
             <EmptyState>
-              Queue is empty. Print a patient prescription to add them here.
-              Assign a doctor (or doctor self-scan) to mark seen.
+              Queue is empty. Print puts patients here for FCFS. Doctors can
+              also scan registered patients directly (no print).
             </EmptyState>
           </li>
         ) : null}

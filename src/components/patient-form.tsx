@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   aadhaarLast4,
@@ -11,6 +12,7 @@ import {
   isValidAadhaarNumber,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
+import { patientAuthEmail } from "@/lib/patient-auth";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
@@ -22,6 +24,7 @@ import {
 } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { ChangeDay } from "@/components/change-day";
+
 type Props = {
   campId: string;
   days: CampDayStats[];
@@ -38,9 +41,14 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
+  /** Shown once after self-reg (and on logout re-issue) */
+  password?: string;
+  loggedIn?: boolean;
+  notifyNote?: string;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
+type VerifyState = "idle" | "loading" | "ok" | "fail";
 
 export function PatientForm({
   campId,
@@ -50,12 +58,16 @@ export function PatientForm({
   createdBy = null,
   isStaff = false,
 }: Props) {
+  const router = useRouter();
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
   const firstOpen = openDays[0]?.id || "";
   const lookupEnabled = isAadhaarLookupEnabledClient();
 
   const [campDayId, setCampDayId] = useState(firstOpen);
   const [aadhaar, setAadhaar] = useState("");
+  const [aadhaarVerified, setAadhaarVerified] = useState(false);
+  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
@@ -123,7 +135,9 @@ export function PatientForm({
         if (json.profile) {
           applyProfile(json.profile);
           setLookupState("ok");
-          setLookupMsg("Details filled from Aadhaar — edit if anything is wrong.");
+          setLookupMsg(
+            "Details filled from Aadhaar — edit if anything is wrong.",
+          );
         } else {
           setLookupState("fail");
           setLookupMsg("No details returned. Fill the form manually.");
@@ -140,10 +154,57 @@ export function PatientForm({
     [applyProfile],
   );
 
+  async function verifyAadhaar() {
+    const d = digitsOnly(aadhaar);
+    setError(null);
+    setAadhaarVerified(false);
+    if (!isValidAadhaarNumber(d)) {
+      setVerifyState("fail");
+      setVerifyMsg("Enter a valid 12-digit Aadhaar number.");
+      return;
+    }
+
+    setVerifyState("loading");
+    setVerifyMsg("Verifying Aadhaar…");
+    try {
+      const res = await fetch("/api/aadhaar-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aadhaar: d }),
+      });
+      const json = (await res.json()) as {
+        verified?: boolean;
+        error?: string;
+        message?: string;
+        mode?: string;
+      };
+      if (!res.ok || !json.verified) {
+        setVerifyState("fail");
+        setVerifyMsg(json.error || "Aadhaar verification failed.");
+        return;
+      }
+      setAadhaarVerified(true);
+      setVerifyState("ok");
+      setVerifyMsg(
+        json.message ||
+          (json.mode === "checksum"
+            ? "Aadhaar number validated. Full eKYC provider can be plugged in later."
+            : "Aadhaar verified."),
+      );
+      if (lookupEnabled) void runAadhaarLookup(d);
+    } catch {
+      setVerifyState("fail");
+      setVerifyMsg("Verification request failed. Try again.");
+    }
+  }
+
   function onAadhaarChange(value: string) {
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
     setFilledFromAadhaar(false);
+    setAadhaarVerified(false);
+    setVerifyState("idle");
+    setVerifyMsg(null);
     lastLookedUp.current = "";
 
     const d = digitsOnly(formatted);
@@ -153,7 +214,9 @@ export function PatientForm({
       setLookupState("skipped");
       setLookupMsg(
         d.length >= 4
-          ? "Only last 4 digits are stored. Enter other details below."
+          ? isStaff
+            ? "Only last 4 digits are stored. Enter other details below."
+            : "Self-registration requires full Aadhaar verification."
           : null,
       );
       return;
@@ -169,15 +232,20 @@ export function PatientForm({
 
     if (!isValidAadhaarNumber(d)) {
       setLookupState("fail");
-      setLookupMsg("Invalid Aadhaar number. Check digits or enter details manually.");
+      setLookupMsg(
+        "Invalid Aadhaar number. Check digits or enter details manually.",
+      );
       return;
     }
 
-    setLookupState("loading");
-    setLookupMsg("Fetching details…");
-    lookupTimer.current = setTimeout(() => {
-      void runAadhaarLookup(d);
-    }, 450);
+    // Self-reg waits for explicit verify; staff can auto-lookup
+    if (isStaff) {
+      setLookupState("loading");
+      setLookupMsg("Fetching details…");
+      lookupTimer.current = setTimeout(() => {
+        void runAadhaarLookup(d);
+      }, 450);
+    }
   }
 
   useEffect(() => {
@@ -205,25 +273,22 @@ export function PatientForm({
       return;
     }
 
-    if (!fullName.trim()) {
-      setError("Full name is required.");
-      setLoading(false);
-      return;
-    }
-
-    const phoneDigits = phone.replace(/\D/g, "");
-    const phone10 = phoneDigits.slice(-10);
-    if (phone10.length !== 10) {
-      setError(
-        "Phone is required (10-digit mobile) to prevent duplicate registration.",
-      );
-      setLoading(false);
-      return;
-    }
-
     const aDigits = digitsOnly(aadhaar);
     const last4 = aadhaarLast4(aadhaar);
-    if (aadhaar.trim()) {
+
+    // Self-registration: Aadhaar only (must verify)
+    if (!isStaff) {
+      if (!isValidAadhaarNumber(aDigits)) {
+        setError("Self-registration requires a valid 12-digit Aadhaar.");
+        setLoading(false);
+        return;
+      }
+      if (!aadhaarVerified) {
+        setError("Verify your Aadhaar first, then complete registration.");
+        setLoading(false);
+        return;
+      }
+    } else if (aadhaar.trim()) {
       if (aDigits.length === 12 && !isValidAadhaarNumber(aDigits)) {
         setError("Aadhaar number looks invalid. Correct it or clear the field.");
         setLoading(false);
@@ -235,10 +300,30 @@ export function PatientForm({
         return;
       }
       if (last4.length !== 4 && aDigits.length > 0) {
-        setError("Aadhaar: enter full number or last 4 digits (only last 4 is stored).");
+        setError(
+          "Aadhaar: enter full number or last 4 digits (only last 4 is stored).",
+        );
         setLoading(false);
         return;
       }
+    }
+
+    if (!fullName.trim()) {
+      setError("Full name is required.");
+      setLoading(false);
+      return;
+    }
+
+    const phoneDigits = phone.replace(/\D/g, "");
+    const phone10 = phoneDigits.slice(-10);
+    if (phone10.length !== 10) {
+      setError(
+        isStaff
+          ? "Phone is required (10-digit mobile) to prevent duplicate registration."
+          : "Phone is required — we send your reg no and password by SMS/WhatsApp.",
+      );
+      setLoading(false);
+      return;
     }
 
     const supabase = createClient();
@@ -269,14 +354,87 @@ export function PatientForm({
       return;
     }
 
-    // Stay registered until print. No auth account / no on-screen desk QR.
-    // Paper form QR (after print) is for staff scan only.
-    setCreated(row as Created);
-    setQueueNote(
-      isStaff
-        ? "Registered only. Print prescription to put them in the queue."
-        : null,
-    );
+    const base = row as Created;
+
+    // Staff: registered only until print
+    if (isStaff) {
+      setCreated(base);
+      setQueueNote(
+        "Registered only. Print prescription to put them in the queue (optional if doctor will scan).",
+      );
+      setLoading(false);
+      return;
+    }
+
+    // Self-reg: create account → notify SMS/WA → sign in → show credentials
+    try {
+      const accRes = await fetch("/api/patient-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: base.id,
+          regNo: base.reg_no,
+          fullName: base.full_name,
+          returnCredentials: true,
+          notify: true,
+        }),
+      });
+      const acc = (await accRes.json()) as {
+        error?: string;
+        password?: string;
+        notify?: { sms?: string; whatsapp?: string };
+        notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
+        message?: string;
+      };
+
+      if (!accRes.ok) {
+        setCreated(base);
+        setError(
+          acc.error ||
+            "Registered, but login account failed. Ask the desk for help.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      let loggedIn = false;
+      if (acc.password) {
+        const { error: signErr } = await supabase.auth.signInWithPassword({
+          email: patientAuthEmail(base.reg_no),
+          password: acc.password,
+        });
+        loggedIn = !signErr;
+      }
+
+      const smsOn = acc.notifyConfigured?.sms;
+      const waOn = acc.notifyConfigured?.whatsapp;
+      let notifyNote =
+        "Save your reg number and password. They are also sent by SMS/WhatsApp when those services are configured.";
+      if (acc.notify) {
+        const parts: string[] = [];
+        if (acc.notify.sms === "sent") parts.push("SMS sent");
+        else if (smsOn && acc.notify.sms === "failed") parts.push("SMS failed");
+        else if (!smsOn) parts.push("SMS not configured yet");
+        if (acc.notify.whatsapp === "sent") parts.push("WhatsApp sent");
+        else if (waOn && acc.notify.whatsapp === "failed")
+          parts.push("WhatsApp failed");
+        else if (!waOn) parts.push("WhatsApp not configured yet");
+        if (parts.length) notifyNote = parts.join(" · ");
+      }
+
+      setCreated({
+        ...base,
+        password: acc.password,
+        loggedIn,
+        notifyNote,
+      });
+      if (loggedIn) router.refresh();
+    } catch {
+      setCreated(base);
+      setError(
+        "Registered, but could not finish login setup. Use reg no at the desk.",
+      );
+    }
     setLoading(false);
   }
 
@@ -291,6 +449,9 @@ export function PatientForm({
     setPhone(defaultPhone);
     setEmail("");
     setAadhaar("");
+    setAadhaarVerified(false);
+    setVerifyState("idle");
+    setVerifyMsg(null);
     setLookupState("idle");
     setLookupMsg(null);
     setFilledFromAadhaar(false);
@@ -301,7 +462,9 @@ export function PatientForm({
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
-          <p className="text-sm font-semibold text-brand">Registered</p>
+          <p className="text-sm font-semibold text-brand">
+            {created.loggedIn ? "Registered & signed in" : "Registered"}
+          </p>
           <p
             className="tabular mt-1 text-4xl font-bold tracking-tight text-brand"
             translate="no"
@@ -316,22 +479,79 @@ export function PatientForm({
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
             {isStaff
-              ? "Registered at desk — print to join queue"
-              : "Not in queue until desk prints your form"}
+              ? "Registered at desk — print to join queue, or doctor can scan directly"
+              : created.loggedIn
+                ? "You are logged in — save your password below"
+                : "Save your login details"}
           </p>
         </div>
+
+        {!isStaff && created.password ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="text-sm font-bold text-amber-950">
+              Your login (save now)
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Reg number
+                </p>
+                <p className="tabular text-2xl font-bold text-brand" translate="no">
+                  #{created.reg_no}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Password
+                </p>
+                <p
+                  className="font-mono text-2xl font-bold tracking-wider text-foreground"
+                  translate="no"
+                >
+                  {created.password}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-amber-900/90">
+              {created.notifyNote ||
+                "These are also sent by SMS/WhatsApp when configured."}
+            </p>
+            <p className="text-xs text-muted">
+              If you sign out, we show your reg no and a new password again (and
+              re-send by SMS/WhatsApp when configured).
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                href="/patient"
+                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
+              >
+                Go to my profile
+              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(
+                    `Reg #${created.reg_no}\nPassword: ${created.password}`,
+                  );
+                }}
+              >
+                Copy login
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {isStaff ? (
           <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
             {queueNote ? <SuccessBox message={queueNote} /> : null}
             <div>
               <p className="text-sm font-semibold text-foreground">
-                Print prescription
+                Print prescription (optional)
               </p>
               <p className="prose-help mt-0.5 text-xs text-muted">
-                Paper form only — no on-screen QR. Print puts them{" "}
-                <strong className="text-foreground">in the queue</strong>. The
-                QR is on the printed sheet for later doctor/volunteer scan.
+                Print puts them in the live queue. Doctors can also scan a
+                registered patient directly without printing.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -344,18 +564,15 @@ export function PatientForm({
             </div>
             <ErrorBox message={error} />
           </div>
-        ) : (
+        ) : !created.password ? (
           <div className="space-y-2">
+            <ErrorBox message={error} />
             <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
-              Show this at the desk
+              Show this at the desk if needed
             </p>
             <QrCard regNo={created.reg_no} patientId={created.id} />
-            <p className="text-center text-xs text-muted">
-              Keep reg #{created.reg_no}. Desk prints your form (queue), then
-              scans when a doctor sees you.
-            </p>
           </div>
-        )}
+        ) : null}
 
         <div className="rounded-xl border border-border p-4">
           <p className="mb-2 text-sm font-medium">Need a different day?</p>
@@ -368,17 +585,26 @@ export function PatientForm({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" variant="secondary" onClick={resetForm}>
-            Register another
-          </Button>
           {isStaff ? (
+            <>
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Register another
+              </Button>
+              <Link
+                href="/volunteer"
+                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
+              >
+                Back to volunteer desk
+              </Link>
+            </>
+          ) : (
             <Link
-              href="/volunteer"
+              href="/patient"
               className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
             >
-              Back to volunteer desk
+              My profile
             </Link>
-          ) : null}
+          )}
         </div>
       </div>
     );
@@ -418,45 +644,79 @@ export function PatientForm({
         ))}
       </Select>
 
-      {/* Aadhaar first — auto-fill when lookup is enabled */}
       <div
         className={`space-y-2 rounded-2xl border p-4 ${
-          filledFromAadhaar
+          aadhaarVerified || filledFromAadhaar
             ? "border-brand/30 bg-brand-soft/40"
             : "border-border bg-background/80"
         }`}
       >
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-foreground">Aadhaar</p>
+            <p className="text-sm font-semibold text-foreground">
+              Aadhaar{!isStaff ? " *" : ""}
+            </p>
             <p className="text-xs text-muted">
-              {lookupEnabled
-                ? "Enter 12 digits — details fill automatically when the service is available."
-                : "Optional. Enter full number or last 4. Only last 4 is stored."}
+              {!isStaff
+                ? "Self-registration is Aadhaar-only. Verify, then complete details."
+                : lookupEnabled
+                  ? "Enter 12 digits — details fill when the service is available."
+                  : "Optional at desk. Full number or last 4. Only last 4 is stored."}
             </p>
           </div>
-          {lookupEnabled ? (
+          {!isStaff ? (
+            <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand ring-1 ring-brand/15">
+              Required
+            </span>
+          ) : lookupEnabled ? (
             <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand ring-1 ring-brand/15">
               Auto-fill on
             </span>
           ) : (
             <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200">
-              Manual form
+              Optional
             </span>
           )}
         </div>
 
         <Input
-          label={lookupEnabled ? "Aadhaar number" : "Aadhaar (optional)"}
+          label={
+            !isStaff
+              ? "Aadhaar number *"
+              : lookupEnabled
+                ? "Aadhaar number"
+                : "Aadhaar (optional)"
+          }
           inputMode="numeric"
           autoComplete="off"
           placeholder="XXXX XXXX 1234"
           hint="Never stored in full — last 4 only"
+          required={!isStaff}
           value={aadhaar}
           onChange={(e) => onAadhaarChange(e.target.value)}
         />
 
-        {lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
+        {!isStaff ? (
+          <Button
+            type="button"
+            variant={aadhaarVerified ? "secondary" : "primary"}
+            size="sm"
+            disabled={
+              verifyState === "loading" ||
+              digitsOnly(aadhaar).length !== 12
+            }
+            loading={verifyState === "loading"}
+            onClick={() => void verifyAadhaar()}
+          >
+            {aadhaarVerified
+              ? "Verified ✓"
+              : verifyState === "loading"
+                ? "Verifying…"
+                : "Verify Aadhaar"}
+          </Button>
+        ) : null}
+
+        {isStaff && lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
           <Button
             type="button"
             variant="secondary"
@@ -471,16 +731,28 @@ export function PatientForm({
           </Button>
         ) : null}
 
-        {lookupMsg ? (
+        {verifyMsg ? (
+          <p
+            className={`rounded-xl px-3 py-2 text-xs ${
+              verifyState === "ok"
+                ? "bg-brand-soft text-brand"
+                : verifyState === "fail"
+                  ? "border border-amber-200 bg-amber-50 text-amber-950"
+                  : "bg-background text-muted"
+            }`}
+          >
+            {verifyMsg}
+          </p>
+        ) : null}
+
+        {lookupMsg && isStaff ? (
           <p
             className={`rounded-xl px-3 py-2 text-xs ${
               lookupState === "ok"
                 ? "bg-brand-soft text-brand"
                 : lookupState === "fail"
                   ? "border border-amber-200 bg-amber-50 text-amber-950"
-                  : lookupState === "loading"
-                    ? "bg-background text-muted"
-                    : "bg-background text-muted"
+                  : "bg-background text-muted"
             }`}
           >
             {lookupMsg}
@@ -492,78 +764,101 @@ export function PatientForm({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">
           {filledFromAadhaar
             ? "Review & edit details"
-            : "Patient details (fill manually if Aadhaar not available)"}
+            : !isStaff && !aadhaarVerified
+              ? "Verify Aadhaar above first"
+              : "Patient details"}
         </p>
       </div>
 
-      <Input
-        label="Full name *"
-        required
-        autoComplete="name"
-        value={fullName}
-        onChange={(e) => setFullName(e.target.value)}
-        placeholder="As on ID card"
-      />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Select
-          label="Gender"
-          value={gender}
-          onChange={(e) => setGender(e.target.value)}
-        >
-          <option value="">—</option>
-          <option value="M">Male</option>
-          <option value="F">Female</option>
-          <option value="O">Other</option>
-        </Select>
+      <fieldset
+        disabled={!isStaff && !aadhaarVerified}
+        className="space-y-4 disabled:opacity-60"
+      >
         <Input
-          label="Age"
-          type="number"
-          min={0}
-          max={149}
-          inputMode="numeric"
-          value={age}
-          onChange={(e) => setAge(e.target.value)}
-          placeholder="Years"
-        />
-      </div>
-      <Input
-        label="Address"
-        value={address}
-        onChange={(e) => setAddress(e.target.value)}
-        placeholder="Locality / area"
-      />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input
-          label="Phone *"
-          inputMode="tel"
-          autoComplete="tel"
+          label="Full name *"
           required
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="10-digit mobile"
-          hint="One registration per phone"
+          autoComplete="name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder="As on Aadhaar / ID"
         />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select
+            label="Gender"
+            value={gender}
+            onChange={(e) => setGender(e.target.value)}
+          >
+            <option value="">—</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+            <option value="O">Other</option>
+          </Select>
+          <Input
+            label="Age"
+            type="number"
+            min={0}
+            max={149}
+            inputMode="numeric"
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            placeholder="Years"
+          />
+        </div>
         <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Optional"
+          label="Address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Locality / area"
         />
-      </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label="Phone *"
+            inputMode="tel"
+            autoComplete="tel"
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="10-digit mobile"
+            hint={
+              isStaff
+                ? "One registration per phone"
+                : "Reg no + password sent here (SMS/WhatsApp when configured)"
+            }
+          />
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Optional"
+          />
+        </div>
+      </fieldset>
+
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
-          ? "After save they stay registered. Print the paper form to put them in the queue (QR is on the printout only). Later scan assigns a doctor (seen)."
-          : "After save you are registered only. Show your reg number or QR at the desk for print (queue), then doctor scan (seen)."}
+          ? "After save they stay registered. Print to join the queue, or a doctor can scan them directly (seen)."
+          : "After verify + save you are logged in. Keep your reg number and password. Doctor can scan without a print."}
       </p>
       <ErrorBox message={error} />
       <Button
         type="submit"
-        disabled={loading || lookupState === "loading"}
+        disabled={
+          loading ||
+          lookupState === "loading" ||
+          verifyState === "loading" ||
+          (!isStaff && !aadhaarVerified)
+        }
         loading={loading}
       >
-        {loading ? "Saving…" : "Register for selected day"}
+        {loading
+          ? isStaff
+            ? "Saving…"
+            : "Registering & signing you in…"
+          : isStaff
+            ? "Register for selected day"
+            : "Verify done · Register & sign in"}
       </Button>
     </form>
   );

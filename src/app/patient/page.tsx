@@ -52,7 +52,7 @@ export default async function PatientHomePage() {
 
   const statusHint =
     patient?.queue_status === "registered"
-      ? "Not in queue until staff prints your prescription."
+      ? "Registered. Desk may print for the live queue, or a doctor can scan you directly."
       : patient?.queue_status === "waiting"
         ? "In queue — waiting for doctor scan."
         : patient?.queue_status === "seen"
@@ -153,7 +153,7 @@ export default async function PatientHomePage() {
             </div>
           </div>
         )}
-        <SignOutButton />
+        <SignOutButton patientMode />
       </div>
     </Shell>
   );

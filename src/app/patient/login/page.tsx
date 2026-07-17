@@ -164,8 +164,9 @@ export default function PatientLoginPage() {
     >
       <Card>
         <InfoBox>
-          QR codes are for <strong className="text-foreground">camp staff only</strong>{" "}
-          (print &amp; doctor assign). Sign in here with reg no + password.
+          Use the <strong className="text-foreground">reg number and password</strong>{" "}
+          from registration (also sent by SMS/WhatsApp when configured). On sign
+          out we show them again. QR codes are for camp staff only.
         </InfoBox>
 
         <div className="mt-4 mb-4">

@@ -100,20 +100,6 @@ export function QrScanner({
         return null;
       }
 
-      if (row.error_code === "must_print_first") {
-        setLookup({
-          id: row.id,
-          reg_no: row.reg_no,
-          full_name: row.full_name,
-          queue_status: "registered",
-          phone: null,
-          doctor_id: null,
-          doctor_name: null,
-        });
-        setAssigned(null);
-        return row;
-      }
-
       if (row.error_code === "doctor_required") {
         setError("Select which doctor is seeing this patient.");
         return row;
@@ -156,24 +142,19 @@ export function QrScanner({
 
       await stopScanner();
 
-      if (row.queue_status === "registered") {
-        setLookup(row);
-        handledRef.current = true;
-        return row;
-      }
-
       if (row.queue_status === "seen") {
         setLookup(row);
         handledRef.current = true;
         return row;
       }
 
-      // waiting
+      // Doctor: scan = mark seen (no print required), even if only "registered"
       if (mode === "doctor") {
         await assignDoctor(row.id, null);
         return row;
       }
 
+      // Volunteer/admin: registered → offer print (queue) or assign doctor
       setLookup(row);
       handledRef.current = true;
       return row;
@@ -290,10 +271,20 @@ export function QrScanner({
   return (
     <div className="space-y-3">
       <p className="prose-help text-sm text-muted">
-        <strong className="text-foreground">Print first</strong> (puts them in
-        queue). Then <strong className="text-foreground">scan</strong> to assign
-        a doctor and mark <strong className="text-foreground">seen</strong>.
-        Re-scan is blocked.
+        {mode === "doctor" ? (
+          <>
+            <strong className="text-foreground">Scan</strong> any registered
+            patient to mark{" "}
+            <strong className="text-foreground">seen</strong> (no print needed).
+            Re-scan is blocked.
+          </>
+        ) : (
+          <>
+            <strong className="text-foreground">Scan</strong> to assign a doctor
+            (marks seen). Optional: print first to put them in the live queue.
+            Re-scan is blocked.
+          </>
+        )}
       </p>
 
       <div
@@ -355,28 +346,69 @@ export function QrScanner({
             <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
             {lookup.full_name}
           </p>
-          {lookup.queue_status === "registered" ? (
+          {lookup.queue_status === "registered" && mode !== "doctor" ? (
             <>
-              <p className="mt-1 text-sm text-amber-800">
-                Not printed yet — print prescription first (joins queue).
+              <p className="mt-1 text-sm text-muted">
+                Registered — print to join the live queue, or assign a doctor
+                now (no print required).
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href={`/print/${lookup.id}?auto=1`}
-                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
+                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
                 >
-                  Print now (join queue)
+                  Print (join queue)
                 </Link>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="w-auto"
-                  onClick={resetResult}
-                >
-                  Cancel
-                </Button>
               </div>
+              {doctors.length === 0 ? (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  No doctors yet. Admin must add doctors first — or a doctor can
+                  self-scan.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Or assign doctor now
+                  </p>
+                  <div
+                    className="grid gap-2 sm:grid-cols-2"
+                    role="group"
+                    aria-label="Select doctor"
+                  >
+                    {doctors.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setDoctorId(d.id)}
+                        className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                          doctorId === d.id
+                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+                            : "border-border bg-white text-foreground hover:border-brand/40"
+                        }`}
+                      >
+                        {d.full_name || "Doctor"}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={!doctorId || assigning}
+                    loading={assigning}
+                    onClick={() => void assignDoctor(lookup.id, doctorId)}
+                  >
+                    {assigning ? "Assigning…" : "Assign doctor · mark seen"}
+                  </Button>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2 w-auto"
+                onClick={resetResult}
+              >
+                Cancel
+              </Button>
             </>
           ) : null}
 

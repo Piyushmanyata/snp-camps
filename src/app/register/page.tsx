@@ -72,12 +72,12 @@ export default async function RegisterPage() {
                   staff
                     ? [
                         { title: "Save", detail: "Gets a reg number" },
-                        { title: "Print", detail: "Joins the queue" },
+                        { title: "Print", detail: "Optional · joins queue" },
                         { title: "Scan", detail: "Doctor marks seen" },
                       ]
                     : [
-                        { title: "Save", detail: "Keep your reg number" },
-                        { title: "Desk", detail: "Staff prints your form" },
+                        { title: "Aadhaar", detail: "Verify 12-digit number" },
+                        { title: "Sign in", detail: "Reg no + password shown" },
                         { title: "Doctor", detail: "Scan when you are seen" },
                       ]
                 }
@@ -88,8 +88,8 @@ export default async function RegisterPage() {
           <Card className="lg:col-span-3">
             <p className="prose-help mb-4 text-sm text-muted">
               {staff
-                ? "One person, one day. After save they are registered only — print the paper form to put them in the queue. Later scan assigns a doctor (seen)."
-                : "One person, one day. After save you are registered only. Show your reg number at the desk for print (joins queue), then doctor scan marks seen."}
+                ? "One person, one day. After save they are registered. Print joins the live queue (optional). Doctors can scan registered patients without printing."
+                : "Self-registration is Aadhaar-only. After verify you get a reg number and password, are signed in, and receive SMS/WhatsApp when those are configured."}
             </p>
             <PatientForm
               campId={camp.id}
