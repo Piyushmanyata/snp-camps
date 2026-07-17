@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SNP Camps
 
-## Getting Started
+Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-First, run the development server:
+- Patient registration → reg no + QR  
+- One active camp, FCFS queue  
+- Volunteer scan QR → print prescription form (marks **seen**)  
+- Admin: camps, search, counts  
+- Aadhaar: optional, **last 4 digits only**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Stack
+
+Next.js · Supabase · Vercel · GitHub: [Piyushmanyata/snp-camps](https://github.com/Piyushmanyata/snp-camps)
+
+## Setup
+
+### 1. Supabase SQL
+
+In Supabase Dashboard → SQL Editor, run:
+
+`supabase/schema.sql`
+
+### 2. Auth settings
+
+- **Email**: enable Email provider (staff). Prefer **disable email confirm** for camp day.  
+- **Phone**: enable Phone + SMS (Twilio/MessageBird) for patient OTP. Desk registration works without it.
+
+### 3. Env
+
+Copy `.env.example` → `.env.local` (already seeded for your project).
+
+```
+ADMIN_INVITE_CODE=...
+VOLUNTEER_INVITE_CODE=...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optional: `SUPABASE_SERVICE_ROLE_KEY` for stronger staff role assignment.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Local
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+1. Open `/staff/register` with **admin** invite code  
+2. Create a camp → set active  
+3. Register patients → scan/print from `/volunteer`
 
-To learn more about Next.js, take a look at the following resources:
+### 5. Deploy Vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx vercel
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Add the same env vars in Vercel project settings. Set `NEXT_PUBLIC_SITE_URL` to the production URL (for QR links).
 
-## Deploy on Vercel
+## Roles
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Role | Access |
+|------|--------|
+| Admin | Camps, search, counts, volunteer desk, print |
+| Volunteer | Register, queue, scan, print |
+| Patient | OTP login, own profile + QR |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Privacy
+
+Never store full Aadhaar. Only `aadhaar_last4`.
