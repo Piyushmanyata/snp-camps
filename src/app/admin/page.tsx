@@ -4,7 +4,7 @@ import { getSessionProfile } from "@/lib/auth";
 import { Card, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
-import { AdminSearch } from "@/components/admin-search";
+import { AdminPatients } from "@/components/admin-patients";
 import { AdminVolunteers } from "@/components/admin-volunteers";
 
 export default async function AdminPage() {
@@ -19,18 +19,40 @@ export default async function AdminPage() {
 
   const active = camps?.find((c) => c.is_active);
 
-  let waiting = 0;
-  let seen = 0;
-  let total = 0;
-  if (active) {
-    const { data: patients } = await supabase
-      .from("patients")
-      .select("queue_status")
-      .eq("camp_id", active.id);
-    total = patients?.length || 0;
-    waiting = patients?.filter((p) => p.queue_status === "waiting").length || 0;
-    seen = patients?.filter((p) => p.queue_status === "seen").length || 0;
-  }
+  const { data: allPatients } = await supabase
+    .from("patients")
+    .select(
+      "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camps(name)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  const patients = (allPatients || []).map((p) => {
+    const campRel = p.camps as { name: string } | { name: string }[] | null;
+    const campName = Array.isArray(campRel)
+      ? campRel[0]?.name ?? null
+      : campRel?.name ?? null;
+    return {
+      id: p.id as string,
+      reg_no: p.reg_no as number,
+      full_name: p.full_name as string,
+      phone: (p.phone as string | null) ?? null,
+      queue_status: p.queue_status as string,
+      gender: (p.gender as string | null) ?? null,
+      age: (p.age as number | null) ?? null,
+      created_at: p.created_at as string,
+      camp_id: p.camp_id as string,
+      camps: campName ? { name: campName } : null,
+    };
+  });
+
+  const activePatients = active
+    ? patients.filter((p) => p.camp_id === active.id)
+    : patients;
+  const total = activePatients.length;
+  const waiting = activePatients.filter((p) => p.queue_status === "waiting")
+    .length;
+  const seen = activePatients.filter((p) => p.queue_status === "seen").length;
 
   const { data: volunteers } = await supabase
     .from("profiles")
@@ -63,7 +85,8 @@ export default async function AdminPage() {
           ) : null}
           <p className="mt-2 text-xs text-muted">
             {volunteers?.length ?? 0} volunteer
-            {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff
+            {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff ·{" "}
+            {patients.length} patient{patients.length === 1 ? "" : "s"} total
           </p>
         </Card>
 
@@ -76,9 +99,10 @@ export default async function AdminPage() {
           </NavLink>
         </div>
 
+        <AdminPatients initial={patients} />
+
         <AdminCamps camps={camps || []} />
         <AdminVolunteers initial={volunteers || []} />
-        <AdminSearch />
 
         <SignOutButton />
       </div>

@@ -137,9 +137,14 @@ create policy "admin camps" on public.camps
   for all using (public.is_admin());
 
 -- patients
-create policy "staff all patients" on public.patients
-  for all using (public.is_staff())
-  with check (public.is_staff());
+create policy "staff select patients" on public.patients
+  for select using (public.is_staff());
+create policy "staff insert patients" on public.patients
+  for insert with check (public.is_staff());
+create policy "staff update patients" on public.patients
+  for update using (public.is_staff()) with check (public.is_staff());
+create policy "admin delete patients" on public.patients
+  for delete using (public.is_admin());
 create policy "patient read own" on public.patients
   for select to authenticated using (user_id = auth.uid());
 create policy "patient update own link" on public.patients
@@ -173,7 +178,7 @@ create policy "read unlinked on active camp" on public.patients
 
 grant usage on sequence public.patient_reg_no_seq to authenticated, anon;
 grant select, insert on public.patients to anon;
-grant select, insert, update on public.patients to authenticated;
+grant select, insert, update, delete on public.patients to authenticated;
 grant select on public.camps to anon, authenticated;
 grant select, update on public.profiles to authenticated;
 grant execute on function public.is_staff() to anon, authenticated;
