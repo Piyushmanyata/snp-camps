@@ -49,23 +49,19 @@ export function PatientForm({
     }
 
     const supabase = createClient();
-    const { data, error: err } = await supabase
-      .from("patients")
-      .insert({
-        camp_id: campId,
-        user_id: userId,
-        full_name: fullName.trim(),
-        gender: gender || null,
-        age: age ? Number(age) : null,
-        address: address.trim() || null,
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        aadhaar_last4: last4 || null,
-        created_by: createdBy,
-        queue_status: "waiting",
-      })
-      .select("id, reg_no, full_name")
-      .single();
+    // RPC is security definer — avoids RLS insert+select RETURNING failures for walk-up/anon
+    const { data, error: err } = await supabase.rpc("register_patient", {
+      p_camp_id: campId,
+      p_full_name: fullName.trim(),
+      p_gender: gender || null,
+      p_age: age ? Number(age) : null,
+      p_address: address.trim() || null,
+      p_phone: phone.trim() || null,
+      p_email: email.trim() || null,
+      p_aadhaar_last4: last4 || null,
+      p_user_id: userId,
+      p_created_by: createdBy,
+    });
 
     if (err) {
       setError(err.message);
@@ -73,7 +69,14 @@ export function PatientForm({
       return;
     }
 
-    setCreated(data as Created);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      setError("Registration failed — no row returned.");
+      setLoading(false);
+      return;
+    }
+
+    setCreated(row as Created);
     setLoading(false);
   }
 

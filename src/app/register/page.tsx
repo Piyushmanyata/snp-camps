@@ -38,7 +38,7 @@ export default async function RegisterPage() {
             <PatientForm
               campId={camp.id}
               userId={profile?.role === "patient" ? userId : null}
-              createdBy={isStaff(profile?.role) ? userId : userId}
+              createdBy={isStaff(profile?.role) ? userId : null}
               defaultPhone={profile?.phone || ""}
             />
           </Card>
