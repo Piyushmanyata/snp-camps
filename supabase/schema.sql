@@ -420,7 +420,7 @@ $$;
 
 grant execute on function public.join_queue(uuid, integer) to authenticated;
 
--- mark seen on print (staff only)
+-- mark seen on print (staff only). Ensures queued_at if they never checked in.
 create or replace function public.mark_patient_seen(p_id uuid)
 returns void
 language plpgsql
@@ -433,7 +433,8 @@ begin
   end if;
   update public.patients
   set queue_status = 'seen',
-      seen_at = coalesce(seen_at, now())
+      seen_at = coalesce(seen_at, now()),
+      queued_at = coalesce(queued_at, now())
   where id = p_id;
 end;
 $$;

@@ -46,7 +46,11 @@ export default async function VolunteerPage() {
   return (
     <Shell
       title="Volunteer desk"
-      subtitle={profile?.full_name || "Check-in · queue · print"}
+      subtitle={
+        profile?.full_name
+          ? `${profile.full_name} · Scan → queue · Print → seen`
+          : "Scan → queue · Print → seen"
+      }
       backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
     >
@@ -74,7 +78,7 @@ export default async function VolunteerPage() {
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="space-y-4">
             <Card>
-              <SectionTitle hint="Adds to queue">Check in patient</SectionTitle>
+              <SectionTitle hint="Scan = queue">Check in patient</SectionTitle>
               <QrScanner />
             </Card>
             <NavLink href="/register" variant="primary">

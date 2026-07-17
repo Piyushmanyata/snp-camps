@@ -2,9 +2,11 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-- Patient registration → reg no + QR  
+- Patient registration → reg no + QR (no password)  
+- Patient scans QR → instant login on their phone  
+- No phone? Staff print prescription from registration screen  
+- Desk **scan** → add to queue · **print** → mark seen  
 - One active camp, FCFS queue  
-- Volunteer scan QR → print prescription form (marks **seen**)  
 - Admin: camps, search, counts  
 - Aadhaar: optional, **last 4 digits only**
 
@@ -61,7 +63,7 @@ Add the same env vars in Vercel project settings. Set `NEXT_PUBLIC_SITE_URL` to 
 |------|--------|
 | Admin | Camps, search, counts, volunteer desk, print |
 | Volunteer | Register, queue, scan, print |
-| Patient | OTP login, own profile + QR |
+| Patient | Scan QR to login (or legacy reg+password / OTP), own profile + QR |
 
 ## Privacy
 

@@ -4,13 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { PrintActions } from "@/components/print-actions";
 import { PrintSheet } from "@/components/print-sheet";
+import { patientLoginUrl } from "@/lib/patient-qr";
 
 export default async function PrintPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ auto?: string }>;
 }) {
   const { id } = await params;
+  const { auto } = await searchParams;
   const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) redirect("/login");
 
@@ -53,7 +57,14 @@ export default async function PrintPage({
     );
   }
 
-  // Mark seen only after we know the patient exists
+  // Print path: ensure they entered the queue if still only registered,
+  // then mark seen (print = seen).
+  if (patient.queue_status === "registered") {
+    await supabase.rpc("join_queue", {
+      p_patient_id: id,
+      p_reg_no: null,
+    });
+  }
   await supabase.rpc("mark_patient_seen", { p_id: id });
 
   const h = await headers();
@@ -74,6 +85,7 @@ export default async function PrintPage({
         className="no-print mb-4"
         regNo={patient.reg_no}
         name={patient.full_name}
+        autoPrint={auto === "1" || auto === "true"}
       />
 
       <PrintSheet
@@ -90,11 +102,12 @@ export default async function PrintPage({
         camp={camp}
         origin={origin}
         today={today}
+        qrValue={patientLoginUrl(patient.id, origin)}
       />
 
       <p className="no-print mt-3 text-center text-xs text-muted">
         Fits one A4 page · Use browser Print → Portrait · Margins: Default or
-        Minimum
+        Minimum · This patient is now marked <strong>seen</strong>
       </p>
     </main>
   );

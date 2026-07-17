@@ -20,11 +20,15 @@ type Props = {
   } | null;
   origin: string;
   today: string;
+  /** Signed login QR when available; falls back to print URL. */
+  qrValue?: string;
 };
 
 /** Dense one-page A4 prescription matching SNP eye-clinic form. */
-export function PrintSheet({ patient, camp, origin, today }: Props) {
-  const qrValue = `${origin.replace(/\/$/, "")}/print/${patient.id}`;
+export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
+  const qr =
+    qrValue ||
+    `${origin.replace(/\/$/, "")}/print/${patient.id}`;
   const venue = camp?.venue || camp?.name || "SIKAR BHAWAN";
   const genderMark =
     patient.gender === "M" ? "M" : patient.gender === "F" ? "F" : "M / F";
@@ -78,7 +82,7 @@ export function PrintSheet({ patient, camp, origin, today }: Props) {
             </p>
             <div className="mt-0.5 rounded border border-[#1a3a8a]/bg-white p-0.5">
               <QRCodeSVG
-                value={qrValue}
+                value={qr}
                 size={64}
                 level="M"
                 includeMargin={false}

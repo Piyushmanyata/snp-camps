@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { Button, Card, ErrorBox, Input, Shell } from "@/components/ui";
+
+const QR_ERRORS: Record<string, string> = {
+  invalid_qr:
+    "That QR link is invalid or expired. Ask the desk to re-show your QR.",
+  not_found: "Patient not found for that QR.",
+  server: "Server is missing configuration. Ask staff to check setup.",
+  account: "Could not open your account from QR. Try again or ask the desk.",
+  session: "Could not start your session from QR. Try scanning again.",
+};
 
 function normalizePhone(raw: string) {
   const digits = raw.replace(/\D/g, "");
@@ -31,6 +40,11 @@ export default function PatientLoginPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code && QR_ERRORS[code]) setError(QR_ERRORS[code]);
+  }, []);
 
   async function loginWithPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -135,11 +149,15 @@ export default function PatientLoginPage() {
   return (
     <Shell
       title="Patient login"
-      subtitle="View QR, queue status, change day"
+      subtitle="Scan your registration QR, or use backup login"
       backHref="/"
       width="md"
     >
       <Card>
+        <p className="mb-4 rounded-xl border border-brand/20 bg-brand-soft px-3 py-2.5 text-sm text-brand">
+          Prefer your <strong>registration QR</strong> — open the camera on your
+          phone and scan it to sign in instantly. No password needed.
+        </p>
         <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-background p-1">
           <button
             type="button"

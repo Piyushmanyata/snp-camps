@@ -65,16 +65,16 @@ export default async function RegisterPage() {
 
           <Card className="lg:col-span-3">
             <p className="mb-4 text-sm text-muted">
-              One person can register for one day only. Full days stay listed
-              but closed. Set a password to log in later with your reg no. After
-              register, a volunteer must scan QR / reg no to add them to the live
-              queue.
+              One person, one day. After save: if they have a phone, show the QR
+              for login; if not, staff can print the prescription here. Desk
+              scan adds them to the queue; print marks them seen.
             </p>
             <PatientForm
               campId={camp.id}
               days={days}
               userId={profile?.role === "patient" ? userId : null}
               createdBy={isStaff(profile?.role) ? userId : null}
+              isStaff={isStaff(profile?.role)}
               defaultPhone={profile?.phone || ""}
             />
           </Card>

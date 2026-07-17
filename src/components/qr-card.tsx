@@ -8,13 +8,14 @@ export function QrCard({
   value,
   regNo,
   patientId,
+  staffHint = false,
 }: {
   value?: string;
   regNo: number;
   patientId?: string;
+  /** Desk registration: wording for volunteer/admin */
+  staffHint?: boolean;
 }) {
-  // Prefer explicit value (full URL from parent). Fall back to site URL + patientId.
-  // No useEffect/setState — avoids cascading renders and hydration flicker.
   const payload = useMemo(() => {
     if (value && value.length > 8) return value;
     if (patientId) return patientPrintUrl(patientId);
@@ -50,10 +51,23 @@ export function QrCard({
         />
       </div>
       <div className="text-center">
-        <p className="text-sm font-semibold text-brand">Show at volunteer desk</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Scan to join the queue · then print when called
-        </p>
+        {staffHint ? (
+          <>
+            <p className="text-sm font-semibold text-brand">
+              Patient phone login
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              They scan → instant login · desk scan → queue · print → seen
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-semibold text-brand">Scan to open profile</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Instant login · show same QR at desk for queue &amp; print
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

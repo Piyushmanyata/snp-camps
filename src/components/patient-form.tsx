@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select } from "@/components/ui";
@@ -13,6 +14,8 @@ type Props = {
   defaultPhone?: string;
   userId?: string | null;
   createdBy?: string | null;
+  /** Volunteer/admin desk registration — show print & queue actions */
+  isStaff?: boolean;
 };
 
 type Created = {
@@ -21,7 +24,8 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
-  passwordSet?: boolean;
+  loginUrl?: string;
+  accountReady?: boolean;
 };
 
 export function PatientForm({
@@ -30,6 +34,7 @@ export function PatientForm({
   defaultPhone = "",
   userId = null,
   createdBy = null,
+  isStaff = false,
 }: Props) {
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
   const firstOpen = openDays[0]?.id || "";
@@ -42,16 +47,17 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
   const [aadhaar, setAadhaar] = useState("");
-  const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
+  const [queueNote, setQueueNote] = useState<string | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setQueueNote(null);
 
     if (!campDayId) {
       setError("Select a camp day with open seats.");
@@ -66,21 +72,12 @@ export function PatientForm({
       return;
     }
 
-    if (password.length < 6) {
-      setError("Choose a password (min 6 characters) to log in later with your reg no.");
-      setLoading(false);
-      return;
-    }
-    if (password !== password2) {
-      setError("Passwords do not match.");
-      setLoading(false);
-      return;
-    }
-
     const phoneDigits = phone.replace(/\D/g, "");
     const phone10 = phoneDigits.slice(-10);
     if (phone10.length !== 10) {
-      setError("Phone is required (10-digit mobile) to prevent duplicate registration.");
+      setError(
+        "Phone is required (10-digit mobile) to prevent duplicate registration.",
+      );
       setLoading(false);
       return;
     }
@@ -88,7 +85,9 @@ export function PatientForm({
     const digits = aadhaar.replace(/\D/g, "");
     const last4 = digits.length >= 4 ? digits.slice(-4) : "";
     if (aadhaar.trim() && last4.length !== 4) {
-      setError("Aadhaar: enter full number or last 4 digits (only last 4 is stored).");
+      setError(
+        "Aadhaar: enter full number or last 4 digits (only last 4 is stored).",
+      );
       setLoading(false);
       return;
     }
@@ -122,7 +121,9 @@ export function PatientForm({
     }
 
     const createdRow = row as Created;
-    let passwordSet = false;
+    let loginUrl: string | undefined;
+    let accountReady = false;
+
     try {
       const res = await fetch("/api/patient-account", {
         method: "POST",
@@ -130,54 +131,137 @@ export function PatientForm({
         body: JSON.stringify({
           patientId: createdRow.id,
           regNo: createdRow.reg_no,
-          password,
           fullName: createdRow.full_name,
         }),
       });
-      const json = await res.json();
+      const json = (await res.json()) as {
+        error?: string;
+        loginUrl?: string;
+      };
       if (!res.ok) {
         setError(
-          `Registered (reg ${createdRow.reg_no}) but login setup failed: ${json.error || "unknown"}. Save your QR; admin can help set a password later.`,
+          `Registered (reg ${createdRow.reg_no}) but login QR setup failed: ${json.error || "unknown"}. Desk can still print by reg no.`,
         );
       } else {
-        passwordSet = true;
+        loginUrl = json.loginUrl;
+        accountReady = Boolean(json.loginUrl);
       }
     } catch {
       setError(
-        `Registered (reg ${createdRow.reg_no}) but login setup failed. Save your QR.`,
+        `Registered (reg ${createdRow.reg_no}) but login QR setup failed. Desk can still print.`,
       );
     }
 
-    setCreated({ ...createdRow, passwordSet });
+    if (!loginUrl && typeof window !== "undefined") {
+      loginUrl = `${window.location.origin}/print/${createdRow.id}`;
+    }
+
+    setCreated({ ...createdRow, loginUrl, accountReady });
     setLoading(false);
   }
 
+  async function addToQueue() {
+    if (!created) return;
+    setQueueBusy(true);
+    setQueueNote(null);
+    setError(null);
+    const supabase = createClient();
+    const { data, error: err } = await supabase.rpc("join_queue", {
+      p_patient_id: created.id,
+      p_reg_no: null,
+    });
+    setQueueBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    const row = (Array.isArray(data) ? data[0] : data) as {
+      already_in_queue?: boolean;
+      queue_status?: string;
+    } | null;
+    if (row?.queue_status === "seen") {
+      setQueueNote("Already marked seen (printed earlier).");
+    } else if (row?.already_in_queue) {
+      setQueueNote("Already in the live queue.");
+    } else {
+      setQueueNote("Added to live queue (waiting).");
+    }
+  }
+
   if (created) {
-    const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-    const origin =
-      site || (typeof window !== "undefined" ? window.location.origin : "");
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-center">
-          <p className="text-sm font-semibold text-brand">Registered successfully</p>
-          <p className="text-xs text-brand/80">
+          <p className="text-sm font-semibold text-brand">
+            Registered · #{created.reg_no}
+          </p>
+          <p className="text-lg font-bold text-foreground">
+            {created.full_name}
+          </p>
+          <p className="mt-0.5 text-xs text-brand/80">
             {created.day_date
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
-            Not in queue yet — show QR at the desk for check-in
+            Not in queue until check-in
           </p>
-          {created.passwordSet ? (
-            <p className="mt-1 text-xs text-brand/90">
-              Login later with reg no <strong>{created.reg_no}</strong> + your password
+        </div>
+
+        {isStaff ? (
+          <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                No smartphone?
+              </p>
+              <p className="text-xs text-muted">
+                Print the prescription on this desk now. Opening print marks the
+                patient as <strong>seen</strong>.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                href={`/print/${created.id}?auto=1`}
+                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              >
+                Print prescription now
+              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                className="sm:w-auto sm:min-w-[10rem]"
+                disabled={queueBusy}
+                onClick={() => void addToQueue()}
+              >
+                {queueBusy ? "Adding…" : "Add to queue only"}
+              </Button>
+            </div>
+            {queueNote ? (
+              <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
+                {queueNote}
+              </p>
+            ) : null}
+            <ErrorBox message={error} />
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
+            {isStaff
+              ? "Has a phone? Show this QR"
+              : "Your QR — scan to log in anytime"}
+          </p>
+          <QrCard
+            value={created.loginUrl}
+            regNo={created.reg_no}
+            patientId={created.id}
+            staffHint={isStaff}
+          />
+          {created.accountReady && !isStaff ? (
+            <p className="text-center text-xs text-muted">
+              No password — scan this QR to open your profile
             </p>
           ) : null}
         </div>
-        <QrCard
-          value={origin ? `${origin}/print/${created.id}` : undefined}
-          regNo={created.reg_no}
-          patientId={created.id}
-        />
-        <p className="text-center text-lg font-semibold">{created.full_name}</p>
+
         <div className="rounded-xl border border-border p-4">
           <p className="mb-2 text-sm font-medium">Need a different day?</p>
           <ChangeDay
@@ -186,9 +270,35 @@ export function PatientForm({
             days={days}
           />
         </div>
-        <Button type="button" variant="secondary" onClick={() => setCreated(null)}>
-          Register another
-        </Button>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setCreated(null);
+              setQueueNote(null);
+              setError(null);
+              setFullName("");
+              setGender("");
+              setAge("");
+              setAddress("");
+              setPhone(defaultPhone);
+              setEmail("");
+              setAadhaar("");
+            }}
+          >
+            Register another
+          </Button>
+          {isStaff ? (
+            <Link
+              href="/volunteer"
+              className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+            >
+              Back to volunteer desk
+            </Link>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -290,29 +400,11 @@ export function PatientForm({
         value={aadhaar}
         onChange={(e) => setAadhaar(e.target.value)}
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input
-          label="Login password *"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={6}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Min 6 characters"
-          hint="Use with your reg no to view QR later"
-        />
-        <Input
-          label="Confirm password *"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={6}
-          value={password2}
-          onChange={(e) => setPassword2(e.target.value)}
-          placeholder="Repeat password"
-        />
-      </div>
+      <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
+        {isStaff
+          ? "No password. After save: print here if they have no phone, or show the QR so they can log in on their phone. Desk scan adds them to the queue; print marks them seen."
+          : "No password. After save, scan the QR on your phone to open your profile anytime."}
+      </p>
       <ErrorBox message={error} />
       <Button type="submit" disabled={loading}>
         {loading ? "Saving…" : "Register for selected day"}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -24,50 +24,13 @@ export function QrScanner() {
   const [looking, setLooking] = useState(false);
   const [joined, setJoined] = useState<Joined | null>(null);
   const handledRef = useRef(false);
+  const autoCheckinDone = useRef(false);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
   } | null>(null);
 
-  useEffect(() => {
-    return () => {
-      const s = scannerRef.current;
-      if (s) {
-        s.stop().catch(() => undefined);
-        try {
-          s.clear();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-  }, []);
-
-  async function checkIn(opts: { id?: string; regNo?: number }) {
-    setError(null);
-    setJoined(null);
-
-    const supabase = createClient();
-    const { data, error: err } = await supabase.rpc("join_queue", {
-      p_patient_id: opts.id ?? null,
-      p_reg_no: opts.regNo ?? null,
-    });
-
-    if (err) {
-      handledRef.current = false;
-      setError(err.message);
-      return;
-    }
-
-    const row = (Array.isArray(data) ? data[0] : data) as Joined | null;
-    if (!row) {
-      handledRef.current = false;
-      setError("Could not add to queue.");
-      return;
-    }
-
-    setJoined(row);
-    handledRef.current = true;
+  const stopScanner = useCallback(async () => {
     try {
       await scannerRef.current?.stop();
       scannerRef.current?.clear();
@@ -76,8 +39,65 @@ export function QrScanner() {
     }
     scannerRef.current = null;
     setActive(false);
-    router.refresh();
-  }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      void stopScanner();
+    };
+  }, [stopScanner]);
+
+  const checkIn = useCallback(
+    async (opts: { id?: string; regNo?: number }) => {
+      setError(null);
+      setJoined(null);
+
+      const supabase = createClient();
+      const { data, error: err } = await supabase.rpc("join_queue", {
+        p_patient_id: opts.id ?? null,
+        p_reg_no: opts.regNo ?? null,
+      });
+
+      if (err) {
+        handledRef.current = false;
+        setError(err.message);
+        return null;
+      }
+
+      const row = (Array.isArray(data) ? data[0] : data) as Joined | null;
+      if (!row) {
+        handledRef.current = false;
+        setError("Could not add to queue.");
+        return null;
+      }
+
+      setJoined(row);
+      handledRef.current = true;
+      await stopScanner();
+      router.refresh();
+      return row;
+    },
+    [router, stopScanner],
+  );
+
+  // Deep-link from QR open while staff is logged in: ?checkin=<uuid>
+  useEffect(() => {
+    if (autoCheckinDone.current || typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("checkin");
+    if (!id) return;
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      )
+    ) {
+      return;
+    }
+    autoCheckinDone.current = true;
+    void checkIn({ id }).then(() => {
+      // Drop query so refresh does not re-fire
+      router.replace("/volunteer", { scroll: false });
+    });
+  }, [checkIn, router]);
 
   async function start() {
     setError(null);
@@ -88,12 +108,9 @@ export function QrScanner() {
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
       if (scannerRef.current) {
-        try {
-          await scannerRef.current.stop();
-          scannerRef.current.clear();
-        } catch {
-          /* ignore */
-        }
+        await stopScanner();
+        setActive(true);
+        await new Promise((r) => setTimeout(r, 50));
       }
       const scanner = new Html5Qrcode(regionId, { verbose: false });
       scannerRef.current = scanner;
@@ -131,17 +148,6 @@ export function QrScanner() {
     }
   }
 
-  async function stop() {
-    try {
-      await scannerRef.current?.stop();
-      scannerRef.current?.clear();
-    } catch {
-      /* ignore */
-    }
-    scannerRef.current = null;
-    setActive(false);
-  }
-
   async function openManual(e: React.FormEvent) {
     e.preventDefault();
     setLooking(true);
@@ -171,8 +177,9 @@ export function QrScanner() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Scan QR or enter reg no to <strong>add the patient to the queue</strong>
-        . They are not queued at registration.
+        <strong>Scan</strong> adds the patient to the live queue.{" "}
+        <strong>Print</strong> marks them as seen. They are not queued at
+        registration.
       </p>
 
       <div
@@ -201,22 +208,26 @@ export function QrScanner() {
           <p className="mt-0.5 font-bold text-foreground">
             #{joined.reg_no} · {joined.full_name}
           </p>
+          <p className="mt-1 text-xs text-brand/80">
+            Status:{" "}
+            {joined.queue_status === "seen"
+              ? "seen"
+              : joined.queue_status === "waiting"
+                ? "waiting in queue"
+                : joined.queue_status}
+            {joined.queue_status !== "seen"
+              ? " · Print when they reach the doctor"
+              : ""}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {joined.queue_status !== "seen" ? (
-              <Link
-                href={`/print/${joined.id}`}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white"
-              >
-                Print prescription
-              </Link>
-            ) : (
-              <Link
-                href={`/print/${joined.id}`}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
-              >
-                Open print again
-              </Link>
-            )}
+            <Link
+              href={`/print/${joined.id}`}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm"
+            >
+              {joined.queue_status === "seen"
+                ? "Open print again"
+                : "Print prescription (marks seen)"}
+            </Link>
             <Button
               type="button"
               variant="secondary"
@@ -225,6 +236,7 @@ export function QrScanner() {
               onClick={() => {
                 setJoined(null);
                 setManual("");
+                setError(null);
                 handledRef.current = false;
               }}
             >
@@ -235,17 +247,17 @@ export function QrScanner() {
       ) : null}
 
       {!active ? (
-        <Button type="button" onClick={start}>
+        <Button type="button" onClick={() => void start()}>
           Open camera scanner
         </Button>
       ) : (
-        <Button type="button" variant="secondary" onClick={stop}>
+        <Button type="button" variant="secondary" onClick={() => void stopScanner()}>
           Stop camera
         </Button>
       )}
 
       <form
-        onSubmit={openManual}
+        onSubmit={(e) => void openManual(e)}
         className="space-y-2 border-t border-border pt-3"
       >
         <p className="text-sm font-medium text-foreground/80">

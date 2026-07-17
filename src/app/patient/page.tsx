@@ -13,6 +13,7 @@ import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
 import { ChangeDay } from "@/components/change-day";
 import { SeatBoard } from "@/components/seat-board";
+import { patientLoginUrl } from "@/lib/patient-qr";
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -102,7 +103,7 @@ export default async function PatientHomePage() {
                 </div>
               </Card>
               <QrCard
-                value={`${origin}/print/${patient.id}`}
+                value={patientLoginUrl(patient.id, origin)}
                 regNo={patient.reg_no}
                 patientId={patient.id}
               />
