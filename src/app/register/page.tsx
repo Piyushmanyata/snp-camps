@@ -18,8 +18,9 @@ export default async function RegisterPage() {
 
   const { data: dayStats } = camp
     ? await supabase.rpc("camp_day_stats", { p_camp_id: camp.id })
-    : { data: [] };
+    : { data: [] as CampDayStats[] };
   const days = (dayStats as CampDayStats[]) || [];
+  const staff = isStaff(profile?.role);
 
   return (
     <Shell
@@ -28,7 +29,7 @@ export default async function RegisterPage() {
       backHref={
         profile?.role === "admin"
           ? "/admin"
-          : isStaff(profile?.role)
+          : staff
             ? "/volunteer"
             : "/"
       }
@@ -65,16 +66,16 @@ export default async function RegisterPage() {
 
           <Card className="lg:col-span-3">
             <p className="mb-4 text-sm text-muted">
-              {isStaff(profile?.role)
-                ? "One person, one day. Desk registration adds them to the live queue immediately. No phone? Print here (print marks seen). Has a phone? Show the login QR."
+              {staff
+                ? "One person, one day. Desk registration adds them to the live queue immediately. No phone? Print here (print marks seen and removes from queue). Has a phone? Show the login QR."
                 : "One person, one day. After save you are registered only — not in the queue yet. Scan your QR at the desk to join the queue, or keep it for login anytime."}
             </p>
             <PatientForm
               campId={camp.id}
               days={days}
               userId={profile?.role === "patient" ? userId : null}
-              createdBy={isStaff(profile?.role) ? userId : null}
-              isStaff={isStaff(profile?.role)}
+              createdBy={staff ? userId : null}
+              isStaff={staff}
               defaultPhone={profile?.phone || ""}
             />
           </Card>

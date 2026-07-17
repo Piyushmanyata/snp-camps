@@ -15,27 +15,36 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") redirect("/login");
 
   const supabase = await createClient();
+
+  // Camps first (need active id); then fan out independent reads
   const { data: camps } = await supabase
     .from("camps")
-    .select("*")
+    .select("id, name, venue, camp_date, is_active, created_at")
     .order("created_at", { ascending: false });
 
   const active = camps?.find((c) => c.is_active);
 
-  const { data: dayStats } = active
-    ? await supabase.rpc("camp_day_stats", { p_camp_id: active.id })
-    : { data: [] };
-  const days = (dayStats as CampDayStats[]) || [];
+  const [dayStatsRes, patientsRes, volunteersRes] = await Promise.all([
+    active
+      ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
+      : Promise.resolve({ data: [] as CampDayStats[] }),
+    supabase
+      .from("patients")
+      .select(
+        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at")
+      .eq("role", "volunteer")
+      .order("created_at", { ascending: false }),
+  ]);
 
-  const { data: allPatients } = await supabase
-    .from("patients")
-    .select(
-      "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
-    )
-    .order("created_at", { ascending: false })
-    .limit(500);
+  const days = (dayStatsRes.data as CampDayStats[]) || [];
 
-  const patients = (allPatients || []).map((p) => {
+  const patients = (patientsRes.data || []).map((p) => {
     const campRel = p.camps as { name: string } | { name: string }[] | null;
     const campName = Array.isArray(campRel)
       ? campRel[0]?.name ?? null
@@ -65,18 +74,16 @@ export default async function AdminPage() {
   const activePatients = active
     ? patients.filter((p) => p.camp_id === active.id)
     : patients;
-  const notQueued = activePatients.filter(
-    (p) => p.queue_status === "registered" || !p.queue_status,
-  ).length;
-  const waiting = activePatients.filter((p) => p.queue_status === "waiting")
-    .length;
-  const seen = activePatients.filter((p) => p.queue_status === "seen").length;
+  let notQueued = 0;
+  let waiting = 0;
+  let seen = 0;
+  for (const p of activePatients) {
+    if (p.queue_status === "waiting") waiting += 1;
+    else if (p.queue_status === "seen") seen += 1;
+    else notQueued += 1;
+  }
 
-  const { data: volunteers } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, phone, role, created_at")
-    .eq("role", "volunteer")
-    .order("created_at", { ascending: false });
+  const volunteers = volunteersRes.data || [];
 
   return (
     <Shell
@@ -86,7 +93,7 @@ export default async function AdminPage() {
       width="xl"
     >
       <div className="space-y-4 lg:space-y-6">
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-3 lg:max-w-xl">
+        <div className="grid max-w-xl grid-cols-3 gap-2.5 sm:gap-3">
           <Stat label="Not queued" value={notQueued} />
           <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Seen" value={seen} tone="ok" />
@@ -104,9 +111,9 @@ export default async function AdminPage() {
               <p className="text-sm text-muted">{active.venue}</p>
             ) : null}
             <p className="mt-2 text-xs text-muted">
-              {volunteers?.length ?? 0} volunteer
-              {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff ·{" "}
-              {patients.length} patient{patients.length === 1 ? "" : "s"} total
+              {volunteers.length} volunteer
+              {volunteers.length === 1 ? "" : "s"} on staff · {patients.length}{" "}
+              patient{patients.length === 1 ? "" : "s"} loaded
             </p>
             <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
               <NavLink href="/register" variant="primary">
@@ -133,7 +140,7 @@ export default async function AdminPage() {
         </div>
 
         <AdminPatients initial={patients} />
-        <AdminVolunteers initial={volunteers || []} />
+        <AdminVolunteers initial={volunteers} />
 
         <SignOutButton />
       </div>

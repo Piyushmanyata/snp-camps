@@ -10,6 +10,18 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Skip Supabase round-trip when there is no session cookie (anonymous traffic)
+  const hasSessionCookie = request.cookies
+    .getAll()
+    .some(
+      (c) =>
+        c.name.includes("auth-token") ||
+        (c.name.startsWith("sb-") && c.name.includes("auth")),
+    );
+  if (!hasSessionCookie) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(url, anon, {
     cookies: {
       getAll() {
@@ -27,7 +39,7 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Refresh session cookie; do not gate routes here (pages handle redirects)
+  // Refresh session cookie; route guards live in pages
   await supabase.auth.getUser();
   return supabaseResponse;
 }

@@ -28,14 +28,14 @@ export function PrintActions({
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-          Ready to print · patient marked seen
+          Ready to print · seen · off live queue
         </p>
         <p className="truncate text-base font-semibold">
           {regNo != null ? `#${regNo}` : "Prescription"}
           {name ? ` · ${name}` : ""}
         </p>
         <p className="text-xs text-muted">
-          Scan = queue · Print = seen · One A4 page
+          Scan = queue · Print/Seen = leave queue · One A4 page
         </p>
       </div>
       <div className="flex flex-wrap gap-2">

@@ -20,7 +20,7 @@ export default async function HomePage() {
 
   const { data: dayStats } = camp
     ? await supabase.rpc("camp_day_stats", { p_camp_id: camp.id })
-    : { data: [] };
+    : { data: [] as CampDayStats[] };
 
   const days = (dayStats as CampDayStats[]) || [];
   const anyOpen = days.some((d) => !d.is_full);
@@ -58,7 +58,7 @@ export default async function HomePage() {
             </p>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-1">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <Link
               href="/register"
               className={`group flex min-h-[4.25rem] flex-col items-center justify-center rounded-2xl px-4 py-3 shadow-md transition active:scale-[0.99] sm:col-span-3 lg:col-span-1 ${

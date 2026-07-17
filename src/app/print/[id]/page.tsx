@@ -40,7 +40,9 @@ export default async function PrintPage({
 
   const { data: patient } = await supabase
     .from("patients")
-    .select("*, camps(name, venue, camp_date)")
+    .select(
+      "id, reg_no, full_name, gender, age, address, phone, email, queue_status, camps(name, venue, camp_date)",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -58,24 +60,26 @@ export default async function PrintPage({
   }
 
   // Print path: ensure they entered the queue if still only registered,
-  // then mark seen (print = seen).
+  // then mark seen (print = seen) → leaves live queue.
   if (patient.queue_status === "registered") {
     await supabase.rpc("join_queue", {
       p_patient_id: id,
       p_reg_no: null,
     });
   }
-  await supabase.rpc("mark_patient_seen", { p_id: id });
+  if (patient.queue_status !== "seen") {
+    await supabase.rpc("mark_patient_seen", { p_id: id });
+  }
 
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
   const proto = h.get("x-forwarded-proto") || "http";
   const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
-  const camp = patient.camps as {
-    name: string;
-    venue: string | null;
-    camp_date: string | null;
-  } | null;
+  const campRel = patient.camps as
+    | { name: string; venue: string | null; camp_date: string | null }
+    | { name: string; venue: string | null; camp_date: string | null }[]
+    | null;
+  const camp = Array.isArray(campRel) ? campRel[0] ?? null : campRel;
 
   const today = new Date().toLocaleDateString("en-IN");
 
@@ -107,7 +111,7 @@ export default async function PrintPage({
 
       <p className="no-print mt-3 text-center text-xs text-muted">
         Fits one A4 page · Use browser Print → Portrait · Margins: Default or
-        Minimum · This patient is now marked <strong>seen</strong>
+        Minimum · Patient is <strong>seen</strong> and off the live queue
       </p>
     </main>
   );

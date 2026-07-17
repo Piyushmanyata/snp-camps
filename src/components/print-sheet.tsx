@@ -1,6 +1,4 @@
-"use client";
-
-import { QRCodeSVG } from "qrcode.react";
+import { QrCode } from "@/components/qr-code";
 
 type Props = {
   patient: {
@@ -27,15 +25,13 @@ type Props = {
 /** Dense one-page A4 prescription matching SNP eye-clinic form. */
 export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
   const qr =
-    qrValue ||
-    `${origin.replace(/\/$/, "")}/print/${patient.id}`;
+    qrValue || `${origin.replace(/\/$/, "")}/print/${patient.id}`;
   const venue = camp?.venue || camp?.name || "SIKAR BHAWAN";
   const genderMark =
     patient.gender === "M" ? "M" : patient.gender === "F" ? "F" : "M / F";
 
   return (
     <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a]/bg-white text-[#1a3a8a]">
-      {/* Header */}
       <header className="border-b border-[#1a3a8a] px-3 pb-1.5 pt-2 text-center">
         <p className="text-[13px] font-extrabold leading-tight tracking-wide sm:text-[15px]">
           SIKAR NAGARIK PARISHAD (KOLKATA)
@@ -53,7 +49,6 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
       </header>
 
       <div className="px-3 py-2">
-        {/* Patient block */}
         <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0 text-[10px] sm:text-[11px]">
           <div className="min-w-0 space-y-1">
             <Line label="Venue" value={venue} />
@@ -81,19 +76,17 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
               <span className="ml-1 font-semibold">{genderMark}</span>
             </p>
             <div className="mt-0.5 rounded border border-[#1a3a8a]/bg-white p-0.5">
-              <QRCodeSVG
+              <QrCode
                 value={qr}
                 size={64}
                 level="M"
                 includeMargin={false}
-                bgColor="#ffffff"
                 fgColor="#1a3a8a"
               />
             </div>
           </div>
         </div>
 
-        {/* Diagnosis */}
         <div className="mt-2 border-t border-dotted border-[#1a3a8a]/pt-1.5">
           <p className="mb-1 text-[10px] font-bold">Diagnosis:</p>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] sm:text-[10px]">
@@ -104,7 +97,6 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
           </div>
         </div>
 
-        {/* Vitals + medicines — two columns */}
         <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[9.5px] sm:text-[10px]">
           <div className="space-y-1">
             <Line label="Blood Sugar (R)" value="" />
@@ -122,7 +114,6 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
           <Line label="Operation will be done at" value="" />
         </div>
 
-        {/* Glasses prescription */}
         <div className="mt-2">
           <p className="mb-0.5 text-center text-[9px] font-extrabold uppercase tracking-wider">
             — Prescription for glasses —
@@ -130,7 +121,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
           <table className="w-full border-collapse border border-[#1a3a8a] text-center text-[8px] sm:text-[9px]">
             <thead>
               <tr>
-                <th className="border border-[#1a3a8a] p-0.5 w-[14%]" rowSpan={2} />
+                <th className="w-[14%] border border-[#1a3a8a] p-0.5" rowSpan={2} />
                 <th className="border border-[#1a3a8a] p-0.5 font-bold" colSpan={4}>
                   RE
                 </th>
@@ -171,7 +162,6 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
           </p>
         </div>
 
-        {/* Footer */}
         <footer className="mt-2 flex items-end justify-between gap-3 border-t border-[#1a3a8a] pt-1.5 text-[9px]">
           <div>
             <p className="font-extrabold">Sponsorer:</p>

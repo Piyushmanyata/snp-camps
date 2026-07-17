@@ -1,12 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import { queueLabel, queueTone } from "@/lib/types";
 import {
-  Badge,
   Card,
-  EmptyState,
   NavLink,
   SectionTitle,
   Shell,
@@ -14,6 +10,7 @@ import {
 } from "@/components/ui";
 import { QrScanner } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
+import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
 
 export default async function VolunteerPage() {
   const { profile } = await getSessionProfile();
@@ -26,30 +23,34 @@ export default async function VolunteerPage() {
     .eq("is_active", true)
     .maybeSingle();
 
-  // Only people who checked in (waiting) or were served (seen) — not mere registrations
-  const { data: queue } = camp
-    ? await supabase
-        .from("patients")
-        .select("id, reg_no, full_name, queue_status, created_at, queued_at, phone")
-        .eq("camp_id", camp.id)
-        .in("queue_status", ["waiting", "seen"])
-        .order("queued_at", { ascending: true, nullsFirst: false })
-        .limit(150)
-    : { data: [] };
+  // Live queue = waiting only. Seen patients are removed immediately.
+  const [waitingRes, seenCountRes] = camp
+    ? await Promise.all([
+        supabase
+          .from("patients")
+          .select("id, reg_no, full_name, phone, queued_at")
+          .eq("camp_id", camp.id)
+          .eq("queue_status", "waiting")
+          .order("queued_at", { ascending: true, nullsFirst: false })
+          .limit(100),
+        supabase
+          .from("patients")
+          .select("id", { count: "exact", head: true })
+          .eq("camp_id", camp.id)
+          .eq("queue_status", "seen"),
+      ])
+    : [{ data: [] as LiveQueuePatient[] }, { count: 0 }];
 
-  const waiting = (queue || []).filter((p) => p.queue_status === "waiting");
-  const seen = (queue || []).filter((p) => p.queue_status === "seen");
-
-  // FCFS: waiting first (by queued_at), then seen
-  const ordered = [...waiting, ...seen];
+  const waiting = (waitingRes.data || []) as LiveQueuePatient[];
+  const seenCount = seenCountRes.count ?? 0;
 
   return (
     <Shell
       title="Volunteer desk"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · Scan → queue · Print → seen`
-          : "Scan → queue · Print → seen"
+          ? `${profile.full_name} · Scan → queue · Print/Seen → leave queue`
+          : "Scan → queue · Print/Seen → leave queue"
       }
       backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
@@ -70,7 +71,7 @@ export default async function VolunteerPage() {
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
               <Stat label="In queue" value={waiting.length} tone="wait" />
-              <Stat label="Seen" value={seen.length} tone="ok" />
+              <Stat label="Seen today" value={seenCount} tone="ok" />
             </div>
           </div>
         </Card>
@@ -88,45 +89,11 @@ export default async function VolunteerPage() {
 
           <Card padding="sm">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS after check-in">Live queue</SectionTitle>
+              <SectionTitle hint="FCFS · seen leave automatically">
+                Live queue
+              </SectionTitle>
             </div>
-            <ul className="divide-y divide-border lg:max-h-[70vh] lg:overflow-y-auto">
-              {ordered.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 px-1 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">
-                      <span className="tabular-nums text-brand">#{p.reg_no}</span>{" "}
-                      {p.full_name}
-                    </p>
-                    {p.phone ? (
-                      <p className="truncate text-xs text-muted">{p.phone}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge tone={queueTone(p.queue_status)}>
-                      {queueLabel(p.queue_status)}
-                    </Badge>
-                    <Link
-                      href={`/print/${p.id}`}
-                      className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-semibold text-brand shadow-sm transition hover:bg-brand-soft"
-                    >
-                      Print
-                    </Link>
-                  </div>
-                </li>
-              ))}
-              {!ordered.length ? (
-                <li className="px-1 py-2">
-                  <EmptyState>
-                    Queue is empty. Scan a patient QR or enter reg no to check
-                    them in.
-                  </EmptyState>
-                </li>
-              ) : null}
-            </ul>
+            <LiveQueue initial={waiting} />
           </Card>
         </div>
 

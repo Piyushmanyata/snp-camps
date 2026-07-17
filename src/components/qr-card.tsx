@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QrCode } from "@/components/qr-code";
 import { patientPrintUrl } from "@/lib/qr";
 
 export function QrCard({
@@ -41,12 +41,11 @@ export function QrCard({
         </p>
       </div>
       <div className="rounded-2xl border border-border bg-white p-4 shadow-inner">
-        <QRCodeSVG
+        <QrCode
           value={payload}
           size={200}
           level="H"
           includeMargin
-          bgColor="#ffffff"
           fgColor="#0a5c3a"
         />
       </div>

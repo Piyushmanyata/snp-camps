@@ -30,32 +30,37 @@
   --color-border: var(--border);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
   --shadow-card: var(--shadow);
 }
 
 body {
-  background:
-    radial-gradient(1200px 500px at 10% -10%, #d8efe4 0%, transparent 55%),
-    radial-gradient(900px 400px at 100% 0%, #e8f0ea 0%, transparent 50%),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Focus rings for keyboard users */
+/* Soft brand wash without multi-layer radial paint cost on low-end phones */
+@supports (background: color-mix(in srgb, white, black)) {
+  body {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-soft) 70%, transparent) 0%,
+        var(--background) 28rem
+      );
+  }
+}
+
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* Screen polish for print preview */
 .print-preview {
   box-shadow: var(--shadow);
 }
 
-/* ─── One-page A4 prescription ─── */
 @page {
   size: A4 portrait;
   margin: 8mm;
@@ -103,7 +108,6 @@ body {
     display: none !important;
   }
 
-  /* Keep everything on a single page */
   .print-sheet,
   .print-sheet * {
     page-break-inside: avoid !important;

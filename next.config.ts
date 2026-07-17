@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
     root: path.join(__dirname),
   },
   poweredByHeader: false,
+  compress: true,
+  reactStrictMode: true,
+  // Tree-shake heavy client packages into smaller chunks
+  experimental: {
+    optimizePackageImports: ["qrcode.react", "@supabase/supabase-js"],
+  },
   async headers() {
     return [
       {
@@ -17,6 +23,16 @@ const nextConfig: NextConfig = {
           {
             key: "Permissions-Policy",
             value: "camera=(self), microphone=(), geolocation=()",
+          },
+        ],
+      },
+      {
+        // Long-cache static assets (hashed Next chunks already immutable)
+        source: "/favicon.ico",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
           },
         ],
       },

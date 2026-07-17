@@ -177,9 +177,9 @@ export function QrScanner() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        <strong>Scan</strong> adds the patient to the live queue.{" "}
-        <strong>Print</strong> marks them as seen. They are not queued at
-        registration.
+        <strong>Scan</strong> adds them to the live queue.{" "}
+        <strong>Print</strong> or <strong>Seen</strong> marks them seen and
+        removes them from the queue.
       </p>
 
       <div

@@ -30,10 +30,10 @@ export default async function PatientHomePage() {
     .limit(1)
     .maybeSingle();
 
-  const campId = patient?.camp_id as string | undefined;
+  const campId = (patient?.camp_id as string | undefined) || null;
   const { data: dayStats } = campId
     ? await supabase.rpc("camp_day_stats", { p_camp_id: campId })
-    : await supabase.rpc("camp_day_stats", { p_camp_id: null });
+    : { data: [] as CampDayStats[] };
   const days = (dayStats as CampDayStats[]) || [];
 
   const dayRel = patient?.camp_days as
