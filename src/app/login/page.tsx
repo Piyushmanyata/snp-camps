@@ -4,7 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Card, ErrorBox, Input, Shell } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorBox,
+  InfoBox,
+  Input,
+  Shell,
+} from "@/components/ui";
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -23,14 +30,19 @@ export default function StaffLoginPage() {
       password,
     });
     if (err) {
-      setError(err.message);
+      const msg = err.message.toLowerCase();
+      setError(
+        msg.includes("invalid") || msg.includes("credentials")
+          ? "Wrong email or password. Check and try again."
+          : err.message,
+      );
       setLoading(false);
       return;
     }
 
     const userId = signIn.user?.id;
     if (!userId) {
-      setError("Sign-in succeeded but no user session.");
+      setError("Sign-in succeeded but no user session. Try again.");
       setLoading(false);
       return;
     }
@@ -55,14 +67,17 @@ export default function StaffLoginPage() {
       subtitle="Admin, volunteer, and doctor access"
       backHref="/"
       width="md"
+      roleLabel="Staff"
     >
       <Card>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <Input
             label="Email"
             type="email"
+            name="email"
             required
             autoComplete="email"
+            spellCheck={false}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
@@ -70,24 +85,41 @@ export default function StaffLoginPage() {
           <Input
             label="Password"
             type="password"
+            name="password"
             required
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="Your password"
           />
           <ErrorBox message={error} />
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" loading={loading} disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
       </Card>
-      <p className="mt-4 text-center text-sm text-muted">
-        Need an account? Ask admin to add you, or{" "}
-        <Link href="/staff/register" className="font-medium text-brand underline">
-          use invite code
-        </Link>
-        .
-      </p>
+
+      <div className="mt-4 space-y-3">
+        <InfoBox>
+          Need an account? Ask admin to add you, or{" "}
+          <Link
+            href="/staff/register"
+            className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
+          >
+            use an invite code
+          </Link>
+          .
+        </InfoBox>
+        <p className="text-center text-sm text-muted">
+          Patient?{" "}
+          <Link
+            href="/patient/login"
+            className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
+          >
+            Patient login
+          </Link>
+        </p>
+      </div>
     </Shell>
   );
 }

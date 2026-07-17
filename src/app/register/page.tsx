@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
-import { Card, EmptyState, Shell } from "@/components/ui";
+import { Card, EmptyState, Shell, StepList } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SeatBoard } from "@/components/seat-board";
 
@@ -34,6 +34,7 @@ export default async function RegisterPage() {
             : "/"
       }
       width="lg"
+      roleLabel={staff ? "Staff" : undefined}
     >
       {!camp ? (
         <Card>
@@ -43,7 +44,7 @@ export default async function RegisterPage() {
           {profile?.role === "admin" ? (
             <Link
               href="/admin"
-              className="mt-3 inline-flex text-sm font-semibold text-brand underline"
+              className="mt-3 inline-flex text-sm font-semibold text-brand underline decoration-brand/30 underline-offset-2"
             >
               Go to admin
             </Link>
@@ -53,7 +54,7 @@ export default async function RegisterPage() {
         <div className="grid gap-4 lg:grid-cols-5 lg:items-start">
           <div className="space-y-4 lg:col-span-2">
             <Card className="bg-gradient-to-br from-brand-soft/60 to-card">
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-brand">
                 Active camp
               </p>
               <p className="text-lg font-bold tracking-tight">{camp.name}</p>
@@ -62,13 +63,33 @@ export default async function RegisterPage() {
               </p>
             </Card>
             <SeatBoard days={days} title="Seat availability" compact />
+            <Card padding="sm" className="hidden bg-background/50 sm:block">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+                After you register
+              </p>
+              <StepList
+                steps={
+                  staff
+                    ? [
+                        { title: "Save", detail: "Gets a reg number" },
+                        { title: "Print", detail: "Joins the queue" },
+                        { title: "Scan", detail: "Doctor marks seen" },
+                      ]
+                    : [
+                        { title: "Save", detail: "Keep your reg number" },
+                        { title: "Desk", detail: "Staff prints your form" },
+                        { title: "Doctor", detail: "Scan when you are seen" },
+                      ]
+                }
+              />
+            </Card>
           </div>
 
           <Card className="lg:col-span-3">
-            <p className="mb-4 text-sm text-muted">
+            <p className="prose-help mb-4 text-sm text-muted">
               {staff
-                ? "One person, one day. After save they are registered only — no on-screen QR. Print the paper form to put them in the queue. Later scan (paper QR or reg no) assigns a doctor (seen)."
-                : "One person, one day. After save you are registered only. Show your reg number at the desk for print (joins queue), then doctor/volunteer scan marks seen."}
+                ? "One person, one day. After save they are registered only — print the paper form to put them in the queue. Later scan assigns a doctor (seen)."
+                : "One person, one day. After save you are registered only. Show your reg number at the desk for print (joins queue), then doctor scan marks seen."}
             </p>
             <PatientForm
               campId={camp.id}

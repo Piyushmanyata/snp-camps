@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
-import { Card, NavLink, Shell, Stat } from "@/components/ui";
+import { Card, NavLink, Shell, Stat, StepList } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
@@ -17,7 +17,6 @@ export default async function AdminPage() {
 
   const supabase = await createClient();
 
-  // Camps first (need active id); then fan out independent reads
   const { data: camps } = await supabase
     .from("camps")
     .select("id, name, venue, camp_date, is_active, created_at")
@@ -27,27 +26,27 @@ export default async function AdminPage() {
 
   const [dayStatsRes, patientsRes, volunteersRes, doctorsRes] =
     await Promise.all([
-    active
-      ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
-      : Promise.resolve({ data: [] as CampDayStats[] }),
-    supabase
-      .from("patients")
-      .select(
-        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
-      )
-      .order("created_at", { ascending: false })
-      .limit(300),
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at")
-      .eq("role", "volunteer")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at")
-      .eq("role", "doctor")
-      .order("created_at", { ascending: false }),
-  ]);
+      active
+        ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
+        : Promise.resolve({ data: [] as CampDayStats[] }),
+      supabase
+        .from("patients")
+        .select(
+          "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(300),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at")
+        .eq("role", "volunteer")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at")
+        .eq("role", "doctor")
+        .order("created_at", { ascending: false }),
+    ]);
 
   const days = (dayStatsRes.data as CampDayStats[]) || [];
 
@@ -99,8 +98,14 @@ export default async function AdminPage() {
       subtitle={profile?.full_name || "Camp control"}
       backHref="/"
       width="xl"
+      roleLabel="Admin"
+      dock={[
+        { href: "/register", label: "Register", primary: true },
+        { href: "/volunteer", label: "Volunteer" },
+        { href: "/doctor", label: "Doctor" },
+      ]}
     >
-      <div className="space-y-4 lg:space-y-6">
+      <div className="space-y-5 lg:space-y-6">
         <div className="grid max-w-xl grid-cols-3 gap-2.5 sm:gap-3">
           <Stat label="Not printed" value={notQueued} />
           <Stat label="In queue" value={waiting} tone="wait" />
@@ -109,22 +114,22 @@ export default async function AdminPage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+            <p className="text-xs font-bold uppercase tracking-wide text-brand">
               Active camp
             </p>
-            <p className="mt-0.5 text-xl font-bold tracking-tight">
+            <p className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">
               {active?.name || "None set"}
             </p>
             {active?.venue ? (
-              <p className="text-sm text-muted">{active.venue}</p>
+              <p className="text-[0.9375rem] text-muted">{active.venue}</p>
             ) : null}
-            <p className="mt-2 text-xs text-muted">
+            <p className="mt-2 text-[0.8125rem] text-muted">
               {volunteers.length} volunteer
               {volunteers.length === 1 ? "" : "s"} · {doctors.length} doctor
               {doctors.length === 1 ? "" : "s"} · {patients.length} patient
               {patients.length === 1 ? "" : "s"} loaded
             </p>
-            <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+            <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
               <NavLink href="/register" variant="primary">
                 Register patient
               </NavLink>
@@ -139,6 +144,19 @@ export default async function AdminPage() {
 
           {active ? <SeatBoard days={days} title="Live seat board" /> : null}
         </div>
+
+        <Card padding="sm" className="bg-background/50">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Desk flow
+          </p>
+          <StepList
+            steps={[
+              { title: "Register", detail: "One patient, one day" },
+              { title: "Print", detail: "Joins live queue" },
+              { title: "Scan", detail: "Doctor marks seen" },
+            ]}
+          />
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">
           {active ? (

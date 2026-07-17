@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
 import { SeatBoard } from "@/components/seat-board";
+import { ActionCard, Card, StepList } from "@/components/ui";
 
 export default async function HomePage() {
   const { profile } = await getSessionProfile();
@@ -27,105 +28,137 @@ export default async function HomePage() {
   const anyOpen = days.some((d) => !d.is_full);
 
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6 px-4 py-10 sm:max-w-3xl sm:px-6 lg:max-w-5xl lg:px-8 lg:py-14">
+    <main
+      id="main"
+      className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-7 px-4 py-10 sm:max-w-3xl sm:px-6 lg:max-w-5xl lg:px-8 lg:py-14"
+      style={{
+        paddingBottom: "calc(2.5rem + var(--safe-bottom))",
+        paddingTop: "calc(2rem + var(--safe-top))",
+      }}
+    >
       <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className="space-y-3 text-center lg:text-left">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-xl font-bold text-white shadow-md lg:mx-0">
-            SNP
-          </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand">
-              Sikar Nagarik Parishad · Kolkata
-            </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
-              Medical Camp Desk
-            </h1>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted lg:mx-0">
-              Multi-day eye camp · limited seats per day · register, print at
-              desk, then doctor scan
-            </p>
+        <div className="space-y-5 text-center lg:text-left">
+          <div className="space-y-3">
+            <div
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-xl font-bold tracking-tight text-white shadow-md lg:mx-0"
+              aria-hidden="true"
+            >
+              SNP
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand">
+                Sikar Nagarik Parishad · Kolkata
+              </p>
+              <h1 className="mt-1 text-[2rem] font-bold tracking-tight text-foreground sm:text-4xl">
+                Medical Camp Desk
+              </h1>
+              <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
+                Multi-day eye camp with limited seats. Register, print at the
+                desk, then doctor scan.
+              </p>
+            </div>
           </div>
 
           {camp ? (
-            <p className="text-sm font-medium text-foreground">
-              {camp.name}
+            <Card
+              padding="sm"
+              className="bg-gradient-to-br from-brand-soft/80 to-card text-left"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wide text-brand">
+                Active camp
+              </p>
+              <p className="mt-0.5 text-lg font-bold tracking-tight text-foreground">
+                {camp.name}
+              </p>
               {camp.venue ? (
-                <span className="font-normal text-muted"> · {camp.venue}</span>
+                <p className="text-sm text-muted">{camp.venue}</p>
               ) : null}
-            </p>
+            </Card>
           ) : (
-            <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-muted">
-              No active camp right now. Check back later.
+            <p className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-5 text-sm text-muted">
+              No active camp right now. Check back later, or ask staff.
             </p>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <Link
-              href="/register"
-              className={`group flex min-h-[4.25rem] flex-col items-center justify-center rounded-2xl px-4 py-3 shadow-md transition active:scale-[0.99] sm:col-span-3 lg:col-span-1 ${
-                camp && anyOpen
-                  ? "bg-brand text-white hover:bg-brand-dark"
-                  : "pointer-events-none bg-gray-200 text-gray-500"
-              }`}
-              aria-disabled={!camp || !anyOpen}
-            >
-              <span className="text-lg font-bold">Patient registration</span>
-              <span
-                className={`text-xs font-medium ${
-                  camp && anyOpen ? "text-white/80" : "text-gray-500"
-                }`}
-              >
-                {!camp
-                  ? "No active camp"
-                  : anyOpen
-                    ? "Pick a day → get reg no → desk prints"
-                    : "All days full"}
-              </span>
-            </Link>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <ActionCard
+                href="/register"
+                title="Register for camp"
+                description={
+                  !camp
+                    ? "No active camp"
+                    : anyOpen
+                      ? "Pick a day → get reg no → desk prints"
+                      : "All days full"
+                }
+                variant="primary"
+                disabled={!camp || !anyOpen}
+                disabledReason={
+                  !camp
+                    ? "No active camp"
+                    : "All days are full — try again later"
+                }
+              />
+            </div>
 
-            <Link
+            <ActionCard
               href="/patient/login"
-              className="flex min-h-14 flex-col items-center justify-center rounded-2xl border border-border bg-card px-4 py-3 shadow-sm transition hover:border-brand/30 hover:bg-brand-soft sm:col-span-1"
-            >
-              <span className="text-base font-semibold">Patient login</span>
-              <span className="text-xs text-muted">
-                View reg no &amp; status
-              </span>
-            </Link>
+              title="Patient login"
+              description="View reg no & queue status"
+              variant="secondary"
+            />
 
-            <Link
+            <ActionCard
               href="/login"
-              className="flex min-h-14 flex-col items-center justify-center rounded-2xl border border-brand/20 bg-brand-soft px-4 py-3 transition hover:bg-white sm:col-span-1"
-            >
-              <span className="text-base font-semibold text-brand">
-                Staff login
-              </span>
-              <span className="text-xs text-brand/70">
-                Admin · volunteers · doctors
-              </span>
-            </Link>
-
-            <p className="text-center text-xs text-muted sm:col-span-1 lg:text-left">
-              First-time staff?{" "}
-              <Link
-                href="/staff/register"
-                className="font-medium text-brand underline"
-              >
-                Setup with invite code
-              </Link>
-            </p>
+              title="Staff login"
+              description="Admin · volunteers · doctors"
+              variant="soft"
+            />
           </div>
+
+          <p className="text-center text-xs text-muted lg:text-left">
+            First-time staff?{" "}
+            <Link
+              href="/staff/register"
+              className="font-semibold text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+            >
+              Set up with invite code
+            </Link>
+          </p>
 
           {isStaff(profile?.role) ? (
             <p className="text-sm text-muted">Signed in as staff.</p>
           ) : null}
+
+          <div className="pt-1 text-left">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+              How it works
+            </p>
+            <StepList
+              steps={[
+                {
+                  title: "Register",
+                  detail: "Pick a day with open seats",
+                },
+                {
+                  title: "Print at desk",
+                  detail: "Joins the live queue",
+                },
+                {
+                  title: "Doctor scan",
+                  detail: "Marked seen once only",
+                },
+              ]}
+            />
+          </div>
         </div>
 
         <div className="min-w-0">
           {camp ? (
             <SeatBoard days={days} title="Seats by day" compact />
           ) : (
-            <div className="hidden rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted lg:block">
+            <div className="hidden rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center text-sm text-muted lg:block">
               Seat board appears when a camp is active.
             </div>
           )}

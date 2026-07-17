@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin } from "@/lib/auth";
 import {
   Card,
+  EmptyState,
   NavLink,
   SectionTitle,
   Shell,
@@ -107,19 +108,25 @@ export default async function DoctorPage() {
       }
       backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
+      roleLabel={isDoc ? "Doctor" : "Admin"}
+      dock={[
+        { href: "#scan", label: "Scan", primary: true },
+        { href: "#queue", label: "Queue" },
+        { href: "#seen", label: "Seen" },
+      ]}
     >
       <div className="space-y-4">
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              <p className="text-xs font-bold uppercase tracking-wide text-brand">
                 Active camp
               </p>
-              <p className="text-xl font-bold tracking-tight">
+              <p className="text-xl font-bold tracking-tight sm:text-2xl">
                 {camp?.name || "None"}
               </p>
               {camp?.venue ? (
-                <p className="text-sm text-muted">{camp.venue}</p>
+                <p className="text-[0.9375rem] text-muted">{camp.venue}</p>
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
@@ -131,7 +138,7 @@ export default async function DoctorPage() {
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="space-y-4">
-            <Card>
+            <Card id="scan">
               <SectionTitle
                 hint={
                   isDoc
@@ -145,7 +152,7 @@ export default async function DoctorPage() {
             </Card>
           </div>
 
-          <Card padding="sm">
+          <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
               <SectionTitle hint="Printed · waiting for doctor">
                 Live queue
@@ -159,48 +166,49 @@ export default async function DoctorPage() {
           </Card>
         </div>
 
-        <Card>
+        <Card id="seen">
           <SectionTitle hint={`${mySeen.length} recent`}>
             Patients you saw
           </SectionTitle>
-          <ul className="divide-y divide-border">
-            {mySeen.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between gap-2 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">
-                    <span className="tabular-nums text-brand">#{p.reg_no}</span>{" "}
-                    {p.full_name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {p.seen_at
-                      ? new Date(p.seen_at).toLocaleString("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          day: "numeric",
-                          month: "short",
-                        })
-                      : "—"}
-                    {p.phone ? ` · ${p.phone}` : ""}
-                  </p>
-                </div>
-                <a
-                  href={`/print/${p.id}`}
-                  className="shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand"
+          {mySeen.length ? (
+            <ul className="divide-y divide-border">
+              {mySeen.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 py-2.5"
                 >
-                  Form
-                </a>
-              </li>
-            ))}
-            {!mySeen.length ? (
-              <li className="py-3 text-sm text-muted">
-                No patients assigned to you yet. Scan a waiting patient when
-                they arrive at your station.
-              </li>
-            ) : null}
-          </ul>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      <span className="tabular text-brand">#{p.reg_no}</span>{" "}
+                      {p.full_name}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {p.seen_at
+                        ? new Date(p.seen_at).toLocaleString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            day: "numeric",
+                            month: "short",
+                          })
+                        : "—"}
+                      {p.phone ? ` · ${p.phone}` : ""}
+                    </p>
+                  </div>
+                  <a
+                    href={`/print/${p.id}`}
+                    className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
+                  >
+                    Form
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState>
+              No patients assigned to you yet. Scan a waiting patient when they
+              arrive at your station.
+            </EmptyState>
+          )}
         </Card>
 
         {profile?.role === "admin" ? (

@@ -14,12 +14,17 @@ export const metadata: Metadata = {
   title: "SNP Camps · Medical Camp Desk",
   description:
     "Medical camp desk: register, print prescription (queue), staff-scan doctor assign — Sikar Nagarik Parishad (Kolkata)",
+  applicationName: "SNP Camps",
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#0a5c3a",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -30,6 +35,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background text-foreground">
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
         {children}
       </body>
     </html>

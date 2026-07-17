@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
-import { Button, ErrorBox, Select } from "@/components/ui";
+import { Button, ErrorBox, Select, SuccessBox } from "@/components/ui";
 
 export function ChangeDay({
   patientId,
@@ -103,12 +103,13 @@ export function ChangeDay({
         })}
       </Select>
       <ErrorBox message={error} />
-      {ok ? (
-        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-brand">
-          {ok}
-        </p>
-      ) : null}
-      <Button type="submit" variant="secondary" disabled={loading}>
+      <SuccessBox message={ok} />
+      <Button
+        type="submit"
+        variant="secondary"
+        disabled={loading}
+        loading={loading}
+      >
         {loading ? "Updating…" : "Change day"}
       </Button>
     </form>

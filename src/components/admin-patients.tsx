@@ -94,7 +94,11 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Name, phone, reg no, camp…"
         />
-        <div className="flex flex-wrap gap-2">
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label="Filter by status"
+        >
           {(
             [
               ["all", "All"],
@@ -106,11 +110,12 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
             <button
               key={key}
               type="button"
+              aria-pressed={filter === key}
               onClick={() => setFilter(key)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`pressable min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                 filter === key
-                  ? "bg-brand text-white"
-                  : "border border-border bg-white text-muted hover:bg-brand-soft"
+                  ? "bg-brand text-white shadow-sm"
+                  : "border border-border bg-white text-muted hover:bg-brand-soft hover:text-brand"
               }`}
             >
               {label}
@@ -136,7 +141,7 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
             >
               <div className="min-w-0">
                 <p className="truncate font-semibold">
-                  <span className="tabular-nums text-brand">#{r.reg_no}</span>{" "}
+                  <span className="tabular text-brand">#{r.reg_no}</span>{" "}
                   {r.full_name}
                 </p>
                 <p className="truncate text-xs text-muted">
@@ -157,7 +162,7 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
                 </Badge>
                 <Link
                   href={`/print/${r.id}`}
-                  className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
+                  className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
                 >
                   Print
                 </Link>
@@ -167,6 +172,7 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
                   size="sm"
                   className="w-auto"
                   disabled={deletingId === r.id}
+                  loading={deletingId === r.id}
                   onClick={() => removePatient(r)}
                 >
                   {deletingId === r.id ? "…" : "Remove"}

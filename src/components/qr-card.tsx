@@ -29,12 +29,15 @@ export function QrCard({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
       <div className="text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">
           Registration no.
         </p>
-        <p className="text-5xl font-bold tabular-nums tracking-tight text-brand">
+        <p
+          className="tabular mt-1 text-5xl font-bold tracking-tight text-brand sm:text-6xl"
+          translate="no"
+        >
           {regNo}
         </p>
       </div>
@@ -49,8 +52,8 @@ export function QrCard({
       </div>
       <div className="text-center">
         <p className="text-sm font-semibold text-brand">Show this at the desk</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Staff print → queue · doctor/volunteer scan → seen
+        <p className="prose-help mt-1 text-xs text-muted">
+          Staff print → queue · doctor or volunteer scan → seen
         </p>
       </div>
     </div>

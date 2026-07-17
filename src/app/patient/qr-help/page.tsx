@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, Shell } from "@/components/ui";
+import { Card, InfoBox, Shell } from "@/components/ui";
 
 export default async function QrHelpPage({
   searchParams,
@@ -15,15 +15,15 @@ export default async function QrHelpPage({
       backHref="/"
       width="md"
     >
-      <Card className="space-y-3 text-center">
-        <p className="text-base font-semibold">
+      <Card className="space-y-4 text-center">
+        <p className="text-base font-semibold tracking-tight">
           This QR does not log you in on your phone.
         </p>
-        <p className="text-sm text-muted">
+        <InfoBox>
           Please show your registration number or QR to desk staff. They will
           print your prescription (you join the queue) and later scan it when a
           doctor sees you.
-        </p>
+        </InfoBox>
         {id ? (
           <p className="rounded-xl bg-background px-3 py-2 font-mono text-xs text-muted break-all">
             Ref: {id}
@@ -32,13 +32,13 @@ export default async function QrHelpPage({
         <div className="flex flex-col gap-2 pt-1">
           <Link
             href="/patient/login"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+            className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
           >
             Patient login (reg no)
           </Link>
           <Link
             href="/register"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white"
+            className="pressable inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
           >
             Register for camp
           </Link>

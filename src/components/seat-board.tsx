@@ -23,7 +23,7 @@ export function SeatBoard({
 
   return (
     <Card padding={compact ? "sm" : "md"}>
-      <SectionTitle hint="All days stay listed">{title}</SectionTitle>
+      <SectionTitle hint="All days listed">{title}</SectionTitle>
       <ul
         className={
           compact
@@ -39,25 +39,42 @@ export function SeatBoard({
           return (
             <li
               key={d.id}
-              className="rounded-xl border border-border bg-background/50 p-3"
+              className={`rounded-xl border p-3 transition-colors ${
+                d.is_full
+                  ? "border-amber-200/80 bg-amber-50/40"
+                  : "border-border bg-background/50"
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold tracking-tight">
+                  <p className="font-semibold tracking-tight text-foreground">
                     {formatCampDay(d.day_date)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted">
-                    {d.seats_taken} taken · {d.seats_left} left · {d.seat_limit}{" "}
-                    total
+                    <span className="tabular font-medium text-foreground/80">
+                      {d.seats_taken}
+                    </span>{" "}
+                    taken ·{" "}
+                    <span className="tabular font-medium text-foreground/80">
+                      {d.seats_left}
+                    </span>{" "}
+                    left · {d.seat_limit} total
                   </p>
                 </div>
                 <Badge tone={d.is_full ? "wait" : "ok"}>
                   {d.is_full ? "Full" : "Open"}
                 </Badge>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-border/80">
+              <div
+                className="mt-2.5 h-2 overflow-hidden rounded-full bg-border/80"
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${pct}% of seats taken`}
+              >
                 <div
-                  className={`h-full rounded-full transition-all ${
+                  className={`h-full rounded-full transition-[width] duration-300 ${
                     d.is_full ? "bg-amber-500" : "bg-brand"
                   }`}
                   style={{ width: `${pct}%` }}

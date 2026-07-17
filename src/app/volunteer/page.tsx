@@ -54,6 +54,12 @@ export default async function VolunteerPage() {
   const seenCount = seenCountRes.count ?? 0;
   const doctors = (doctorsRes.data || []) as DoctorOption[];
 
+  const dock = [
+    { href: "/register", label: "Register", primary: true },
+    { href: "#scan", label: "Scan" },
+    { href: "#queue", label: "Queue" },
+  ];
+
   return (
     <Shell
       title="Volunteer desk"
@@ -64,19 +70,21 @@ export default async function VolunteerPage() {
       }
       backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
+      roleLabel="Volunteer"
+      dock={dock}
     >
       <div className="space-y-4">
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              <p className="text-xs font-bold uppercase tracking-wide text-brand">
                 Active camp
               </p>
-              <p className="text-xl font-bold tracking-tight">
+              <p className="text-xl font-bold tracking-tight sm:text-2xl">
                 {camp?.name || "None"}
               </p>
               {camp?.venue ? (
-                <p className="text-sm text-muted">{camp.venue}</p>
+                <p className="text-[0.9375rem] text-muted">{camp.venue}</p>
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
@@ -88,20 +96,22 @@ export default async function VolunteerPage() {
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="space-y-4">
-            <Card>
+            <Card id="scan">
               <SectionTitle hint="After print · pick doctor">
                 Scan / assign doctor
               </SectionTitle>
               <QrScanner mode="volunteer" doctors={doctors} />
             </Card>
-            <NavLink href="/register" variant="primary">
-              Register walk-in patient
-            </NavLink>
+            <div className="desk-inline-actions">
+              <NavLink href="/register" variant="primary">
+                Register walk-in patient
+              </NavLink>
+            </div>
           </div>
 
-          <Card padding="sm">
+          <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · assign doctor to mark seen">
+              <SectionTitle hint="First come, first served">
                 Live queue
               </SectionTitle>
             </div>
@@ -114,9 +124,11 @@ export default async function VolunteerPage() {
         </div>
 
         {profile?.role === "admin" ? (
-          <NavLink href="/admin" variant="secondary">
-            Admin dashboard
-          </NavLink>
+          <div className="desk-inline-actions">
+            <NavLink href="/admin" variant="secondary">
+              Admin dashboard
+            </NavLink>
+          </div>
         ) : null}
         <SignOutButton />
       </div>

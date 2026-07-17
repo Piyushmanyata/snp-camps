@@ -12,7 +12,14 @@ import {
   type AadhaarProfile,
 } from "@/lib/aadhaar";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
-import { Button, ErrorBox, Input, Select } from "@/components/ui";
+import {
+  Button,
+  ErrorBox,
+  Input,
+  Select,
+  SuccessBox,
+  WarningBox,
+} from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { ChangeDay } from "@/components/change-day";
 type Props = {
@@ -293,14 +300,18 @@ export function PatientForm({
   if (created) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-center">
-          <p className="text-sm font-semibold text-brand">
-            Registered · #{created.reg_no}
+        <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
+          <p className="text-sm font-semibold text-brand">Registered</p>
+          <p
+            className="tabular mt-1 text-4xl font-bold tracking-tight text-brand"
+            translate="no"
+          >
+            #{created.reg_no}
           </p>
-          <p className="text-lg font-bold text-foreground">
+          <p className="mt-1 text-lg font-bold text-foreground">
             {created.full_name}
           </p>
-          <p className="mt-0.5 text-xs text-brand/80">
+          <p className="mt-1 text-xs text-brand/80">
             {created.day_date
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
@@ -312,25 +323,21 @@ export function PatientForm({
 
         {isStaff ? (
           <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-            {queueNote ? (
-              <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
-                {queueNote}
-              </p>
-            ) : null}
+            {queueNote ? <SuccessBox message={queueNote} /> : null}
             <div>
               <p className="text-sm font-semibold text-foreground">
                 Print prescription
               </p>
-              <p className="text-xs text-muted">
+              <p className="prose-help mt-0.5 text-xs text-muted">
                 Paper form only — no on-screen QR. Print puts them{" "}
-                <strong>in the queue</strong>. The QR is on the printed sheet
-                for later doctor/volunteer scan.
+                <strong className="text-foreground">in the queue</strong>. The
+                QR is on the printed sheet for later doctor/volunteer scan.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Link
                 href={`/print/${created.id}?auto=1`}
-                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
               >
                 Print now (join queue)
               </Link>
@@ -367,7 +374,7 @@ export function PatientForm({
           {isStaff ? (
             <Link
               href="/volunteer"
-              className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+              className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
             >
               Back to volunteer desk
             </Link>
@@ -387,10 +394,10 @@ export function PatientForm({
 
   if (!openDays.length) {
     return (
-      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+      <WarningBox>
         All days are full. You can still view seat status on the home page —
         registration reopens if seats free up or admin raises limits.
-      </p>
+      </WarningBox>
     );
   }
 
@@ -551,7 +558,11 @@ export function PatientForm({
           : "After save you are registered only. Show your reg number or QR at the desk for print (queue), then doctor scan (seen)."}
       </p>
       <ErrorBox message={error} />
-      <Button type="submit" disabled={loading || lookupState === "loading"}>
+      <Button
+        type="submit"
+        disabled={loading || lookupState === "loading"}
+        loading={loading}
+      >
         {loading ? "Saving…" : "Register for selected day"}
       </Button>
     </form>

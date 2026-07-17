@@ -50,18 +50,30 @@ export default async function PatientHomePage() {
   const proto = h.get("x-forwarded-proto") || "http";
   const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
 
+  const statusHint =
+    patient?.queue_status === "registered"
+      ? "Not in queue until staff prints your prescription."
+      : patient?.queue_status === "waiting"
+        ? "In queue — waiting for doctor scan."
+        : patient?.queue_status === "seen"
+          ? "Seen by a doctor."
+          : null;
+
   return (
     <Shell
       title="My profile"
       subtitle="Your camp registration"
       backHref="/"
       width="lg"
+      roleLabel="Patient"
     >
       <div className="space-y-4">
         {!patient ? (
           <Card>
-            <p className="mb-1 font-semibold">No registration linked yet</p>
-            <p className="mb-4 text-sm text-muted">
+            <p className="mb-1 text-lg font-semibold tracking-tight">
+              No registration linked yet
+            </p>
+            <p className="prose-help mb-4 text-sm text-muted">
               Register for a camp day with open seats to get your reg number.
             </p>
             <NavLink href="/register">Register now</NavLink>
@@ -80,7 +92,10 @@ export default async function PatientHomePage() {
                     <p className="text-xl font-bold tracking-tight">
                       {patient.full_name}
                     </p>
-                    <p className="mt-0.5 text-sm text-muted">
+                    <p className="mt-1 tabular text-2xl font-bold text-brand">
+                      #{patient.reg_no}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
                       {[
                         dayDate ? formatCampDay(dayDate) : null,
                         patient.gender,
@@ -100,6 +115,11 @@ export default async function PatientHomePage() {
                     {queueLabel(patient.queue_status)}
                   </Badge>
                 </div>
+                {statusHint ? (
+                  <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-muted ring-1 ring-border/60">
+                    {statusHint}
+                  </p>
+                ) : null}
               </Card>
               {isStaff(profile?.role) ? (
                 <NavLink href={`/print/${patient.id}`} variant="soft">
@@ -112,18 +132,11 @@ export default async function PatientHomePage() {
                   patientId={patient.id}
                 />
               )}
-              <p className="text-center text-xs text-muted">
-                {patient.queue_status === "registered"
-                  ? "Not in queue until staff prints your prescription."
-                  : patient.queue_status === "waiting"
-                    ? "In queue — waiting for doctor scan."
-                    : "Seen by a doctor."}
-              </p>
             </div>
             <div className="space-y-4">
               <Card>
                 <p className="mb-2 text-sm font-semibold">Camp day</p>
-                <p className="mb-3 text-xs text-muted">
+                <p className="prose-help mb-3 text-xs text-muted">
                   {patient.queue_status === "waiting" ||
                   patient.queue_status === "seen"
                     ? "Your day is fixed once you are in the queue."

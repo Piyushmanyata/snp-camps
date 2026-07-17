@@ -1,10 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { patientAuthEmail } from "@/lib/patient-auth";
-import { Button, Card, ErrorBox, Input, Shell } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorBox,
+  InfoBox,
+  Input,
+  SegmentedControl,
+  Shell,
+  WarningBox,
+} from "@/components/ui";
 
 const LOGIN_ERRORS: Record<string, string> = {
   invalid_qr:
@@ -29,11 +39,9 @@ export default function PatientLoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("password");
 
-  // Reg no + password
   const [regNo, setRegNo] = useState("");
   const [password, setPassword] = useState("");
 
-  // Phone OTP (SMS provider later)
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpStep, setOtpStep] = useState<"phone" | "otp">("phone");
@@ -58,7 +66,7 @@ export default function PatientLoginPage() {
       return;
     }
     if (password.length < 6) {
-      setError("Enter your password.");
+      setError("Enter your password (at least 6 characters).");
       setLoading(false);
       return;
     }
@@ -95,7 +103,7 @@ export default function PatientLoginPage() {
     if (err) {
       setError(
         err.message +
-          " — Phone OTP needs SMS configured in Supabase (Authentication → Providers). Use reg no + password for now.",
+          " — Phone OTP needs SMS configured in Supabase. Use reg no + password for now.",
       );
       setLoading(false);
       return;
@@ -152,108 +160,105 @@ export default function PatientLoginPage() {
       subtitle="View your reg number and queue status"
       backHref="/"
       width="md"
+      roleLabel="Patient"
     >
       <Card>
-        <p className="mb-4 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted">
-          QR codes are for <strong>camp staff only</strong> (print &amp; doctor
-          assign). Sign in here with reg no + password, or phone OTP when SMS is
-          enabled.
-        </p>
-        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-background p-1">
-          <button
-            type="button"
-            className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
-              mode === "password"
-                ? "bg-card text-brand shadow-sm ring-1 ring-border"
-                : "text-muted hover:text-foreground"
-            }`}
-            onClick={() => {
-              setMode("password");
+        <InfoBox>
+          QR codes are for <strong className="text-foreground">camp staff only</strong>{" "}
+          (print &amp; doctor assign). Sign in here with reg no + password.
+        </InfoBox>
+
+        <div className="mt-4 mb-4">
+          <SegmentedControl
+            label="Sign-in method"
+            value={mode}
+            onChange={(v) => {
+              setMode(v);
               setError(null);
             }}
-          >
-            Reg no + password
-          </button>
-          <button
-            type="button"
-            className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
-              mode === "otp"
-                ? "bg-card text-brand shadow-sm ring-1 ring-border"
-                : "text-muted hover:text-foreground"
-            }`}
-            onClick={() => {
-              setMode("otp");
-              setError(null);
-            }}
-          >
-            Phone OTP
-          </button>
+            options={[
+              { value: "password", label: "Reg no + password" },
+              { value: "otp", label: "Phone OTP" },
+            ]}
+          />
         </div>
 
         {mode === "password" ? (
-          <form onSubmit={loginWithPassword} className="space-y-4">
+          <form onSubmit={loginWithPassword} className="space-y-4" noValidate>
             <Input
               label="Registration number"
+              name="reg_no"
               inputMode="numeric"
               required
               value={regNo}
               onChange={(e) => setRegNo(e.target.value)}
               placeholder="e.g. 1001"
               autoComplete="username"
+              spellCheck={false}
               hint="On your registration slip or confirmation screen"
             />
             <Input
               label="Password"
+              name="password"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="If set by desk/admin"
+              placeholder="If set by desk or admin"
               autoComplete="current-password"
             />
             <ErrorBox message={error} />
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" loading={loading} disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
         ) : (
           <div className="space-y-4">
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
-              Phone OTP will work after SMS is configured in Supabase. Prefer{" "}
+            <WarningBox>
+              Phone OTP works only after SMS is configured in Supabase. Prefer{" "}
               <strong>reg no + password</strong> for now.
-            </p>
+            </WarningBox>
             {otpStep === "phone" ? (
-              <form onSubmit={sendOtp} className="space-y-4">
+              <form onSubmit={sendOtp} className="space-y-4" noValidate>
                 <Input
                   label="Mobile number"
+                  name="phone"
                   inputMode="tel"
+                  autoComplete="tel"
                   placeholder="10-digit Indian mobile"
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  hint="We'll send a one-time code via SMS (when enabled)"
+                  hint="We'll send a one-time code via SMS when enabled"
                 />
                 <ErrorBox message={error} />
-                <Button type="submit" disabled={loading} variant="secondary">
-                  {loading ? "Sending…" : "Send OTP (if SMS enabled)"}
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  loading={loading}
+                  disabled={loading}
+                >
+                  {loading ? "Sending…" : "Send OTP"}
                 </Button>
               </form>
             ) : (
-              <form onSubmit={verifyOtp} className="space-y-4">
+              <form onSubmit={verifyOtp} className="space-y-4" noValidate>
                 <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
                   OTP sent to <strong>{normalizePhone(phone)}</strong>
                 </p>
                 <Input
                   label="OTP"
+                  name="otp"
                   inputMode="numeric"
                   required
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   placeholder="6-digit code"
                   autoComplete="one-time-code"
+                  spellCheck={false}
                 />
                 <ErrorBox message={error} />
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" loading={loading} disabled={loading}>
                   {loading ? "Verifying…" : "Verify & continue"}
                 </Button>
                 <Button
@@ -272,6 +277,16 @@ export default function PatientLoginPage() {
           </div>
         )}
       </Card>
+
+      <p className="mt-4 text-center text-sm text-muted">
+        New patient?{" "}
+        <Link
+          href="/register"
+          className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
+        >
+          Register for camp
+        </Link>
+      </p>
     </Shell>
   );
 }

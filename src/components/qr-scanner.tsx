@@ -289,10 +289,11 @@ export function QrScanner({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
-        <strong>Print first</strong> (puts them in queue). Then{" "}
-        <strong>scan</strong> to assign a doctor and mark{" "}
-        <strong>seen</strong>. Re-scan is blocked.
+      <p className="prose-help text-sm text-muted">
+        <strong className="text-foreground">Print first</strong> (puts them in
+        queue). Then <strong className="text-foreground">scan</strong> to assign
+        a doctor and mark <strong className="text-foreground">seen</strong>.
+        Re-scan is blocked.
       </p>
 
       <div
@@ -300,6 +301,7 @@ export function QrScanner({
         className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
           active ? "min-h-[280px]" : "min-h-[4.5rem]"
         }`}
+        aria-label={active ? "Camera scanner active" : "Camera preview area"}
       >
         {!active ? (
           <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
@@ -310,12 +312,17 @@ export function QrScanner({
       <ErrorBox message={error} />
 
       {assigned ? (
-        <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3">
+        <div
+          className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3"
+          role="status"
+          aria-live="polite"
+        >
           <p className="text-sm font-semibold text-brand">
             {assigned.already_seen ? "Already seen" : "Seen · doctor assigned"}
           </p>
           <p className="mt-0.5 font-bold text-foreground">
-            #{assigned.reg_no} · {assigned.full_name}
+            <span className="tabular">#{assigned.reg_no}</span> ·{" "}
+            {assigned.full_name}
           </p>
           <p className="mt-1 text-xs text-brand/80">
             {assigned.doctor_name
@@ -325,7 +332,7 @@ export function QrScanner({
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={`/print/${assigned.id}`}
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
+              className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-white/90"
             >
               Reprint form
             </Link>
@@ -345,7 +352,8 @@ export function QrScanner({
       {lookup && !assigned ? (
         <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
           <p className="font-bold text-foreground">
-            #{lookup.reg_no} · {lookup.full_name}
+            <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
+            {lookup.full_name}
           </p>
           {lookup.queue_status === "registered" ? (
             <>
@@ -355,7 +363,7 @@ export function QrScanner({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href={`/print/${lookup.id}?auto=1`}
-                  className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm"
+                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
                 >
                   Print now (join queue)
                 </Link>
@@ -384,7 +392,7 @@ export function QrScanner({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href={`/print/${lookup.id}`}
-                  className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
+                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
                 >
                   Reprint form
                 </Link>
@@ -415,15 +423,19 @@ export function QrScanner({
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted">
                     Doctor
                   </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div
+                    className="grid gap-2 sm:grid-cols-2"
+                    role="group"
+                    aria-label="Select doctor"
+                  >
                     {doctors.map((d) => (
                       <button
                         key={d.id}
                         type="button"
                         onClick={() => setDoctorId(d.id)}
-                        className={`min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition ${
+                        className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
                           doctorId === d.id
-                            ? "border-brand bg-brand-soft text-brand"
+                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
                             : "border-border bg-white text-foreground hover:border-brand/40"
                         }`}
                       >
@@ -434,6 +446,7 @@ export function QrScanner({
                   <Button
                     type="button"
                     disabled={!doctorId || assigning}
+                    loading={assigning}
                     onClick={() => void assignDoctor(lookup.id, doctorId)}
                   >
                     {assigning ? "Assigning…" : "Assign doctor · mark seen"}
