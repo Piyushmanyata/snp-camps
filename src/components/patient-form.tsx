@@ -1,8 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import {
+  aadhaarLast4,
+  digitsOnly,
+  formatAadhaarDisplay,
+  isAadhaarLookupEnabledClient,
+  isValidAadhaarNumber,
+  type AadhaarProfile,
+} from "@/lib/aadhaar";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
@@ -28,6 +36,8 @@ type Created = {
   accountReady?: boolean;
 };
 
+type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
+
 export function PatientForm({
   campId,
   days,
@@ -38,20 +48,140 @@ export function PatientForm({
 }: Props) {
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
   const firstOpen = openDays[0]?.id || "";
+  const lookupEnabled = isAadhaarLookupEnabledClient();
 
   const [campDayId, setCampDayId] = useState(firstOpen);
+  const [aadhaar, setAadhaar] = useState("");
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
-  const [aadhaar, setAadhaar] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
+
+  const [lookupState, setLookupState] = useState<LookupState>("idle");
+  const [lookupMsg, setLookupMsg] = useState<string | null>(null);
+  const [filledFromAadhaar, setFilledFromAadhaar] = useState(false);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLookedUp = useRef<string>("");
+
+  const applyProfile = useCallback((profile: AadhaarProfile) => {
+    if (profile.full_name) setFullName(profile.full_name);
+    if (profile.gender) setGender(profile.gender);
+    if (profile.age != null) setAge(String(profile.age));
+    if (profile.address) setAddress(profile.address);
+    if (profile.phone) setPhone(profile.phone);
+    if (profile.email) setEmail(profile.email);
+    setFilledFromAadhaar(true);
+  }, []);
+
+  const runAadhaarLookup = useCallback(
+    async (raw: string) => {
+      const d = digitsOnly(raw);
+      if (!isValidAadhaarNumber(d)) {
+        setLookupState("idle");
+        setLookupMsg(null);
+        return;
+      }
+      if (lastLookedUp.current === d) return;
+      lastLookedUp.current = d;
+
+      setLookupState("loading");
+      setLookupMsg("Fetching details from Aadhaar…");
+      setError(null);
+
+      try {
+        const res = await fetch("/api/aadhaar-lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aadhaar: d }),
+        });
+        const json = (await res.json()) as {
+          available?: boolean;
+          error?: string;
+          profile?: AadhaarProfile;
+        };
+
+        if (!res.ok) {
+          setLookupState(json.available === false ? "skipped" : "fail");
+          setLookupMsg(
+            json.error ||
+              "Could not fetch Aadhaar details. Fill the form manually.",
+          );
+          setFilledFromAadhaar(false);
+          return;
+        }
+
+        if (json.profile) {
+          applyProfile(json.profile);
+          setLookupState("ok");
+          setLookupMsg("Details filled from Aadhaar — edit if anything is wrong.");
+        } else {
+          setLookupState("fail");
+          setLookupMsg("No details returned. Fill the form manually.");
+          setFilledFromAadhaar(false);
+        }
+      } catch {
+        setLookupState("fail");
+        setLookupMsg(
+          "Aadhaar lookup failed. Fill name, age and address manually below.",
+        );
+        setFilledFromAadhaar(false);
+      }
+    },
+    [applyProfile],
+  );
+
+  function onAadhaarChange(value: string) {
+    const formatted = formatAadhaarDisplay(value);
+    setAadhaar(formatted);
+    setFilledFromAadhaar(false);
+    lastLookedUp.current = "";
+
+    const d = digitsOnly(formatted);
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+
+    if (!lookupEnabled) {
+      setLookupState("skipped");
+      setLookupMsg(
+        d.length >= 4
+          ? "Only last 4 digits are stored. Enter other details below."
+          : null,
+      );
+      return;
+    }
+
+    if (d.length < 12) {
+      setLookupState("idle");
+      setLookupMsg(
+        d.length > 0 ? "Enter full 12-digit Aadhaar to auto-fill." : null,
+      );
+      return;
+    }
+
+    if (!isValidAadhaarNumber(d)) {
+      setLookupState("fail");
+      setLookupMsg("Invalid Aadhaar number. Check digits or enter details manually.");
+      return;
+    }
+
+    setLookupState("loading");
+    setLookupMsg("Fetching details…");
+    lookupTimer.current = setTimeout(() => {
+      void runAadhaarLookup(d);
+    }, 450);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    };
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,6 +202,12 @@ export function PatientForm({
       return;
     }
 
+    if (!fullName.trim()) {
+      setError("Full name is required.");
+      setLoading(false);
+      return;
+    }
+
     const phoneDigits = phone.replace(/\D/g, "");
     const phone10 = phoneDigits.slice(-10);
     if (phone10.length !== 10) {
@@ -82,14 +218,24 @@ export function PatientForm({
       return;
     }
 
-    const digits = aadhaar.replace(/\D/g, "");
-    const last4 = digits.length >= 4 ? digits.slice(-4) : "";
-    if (aadhaar.trim() && last4.length !== 4) {
-      setError(
-        "Aadhaar: enter full number or last 4 digits (only last 4 is stored).",
-      );
-      setLoading(false);
-      return;
+    const aDigits = digitsOnly(aadhaar);
+    const last4 = aadhaarLast4(aadhaar);
+    if (aadhaar.trim()) {
+      if (aDigits.length === 12 && !isValidAadhaarNumber(aDigits)) {
+        setError("Aadhaar number looks invalid. Correct it or clear the field.");
+        setLoading(false);
+        return;
+      }
+      if (aDigits.length > 0 && aDigits.length < 4) {
+        setError("Aadhaar: enter full 12 digits or last 4 only.");
+        setLoading(false);
+        return;
+      }
+      if (last4.length !== 4 && aDigits.length > 0) {
+        setError("Aadhaar: enter full number or last 4 digits (only last 4 is stored).");
+        setLoading(false);
+        return;
+      }
     }
 
     const supabase = createClient();
@@ -188,6 +334,23 @@ export function PatientForm({
     }
   }
 
+  function resetForm() {
+    setCreated(null);
+    setQueueNote(null);
+    setError(null);
+    setFullName("");
+    setGender("");
+    setAge("");
+    setAddress("");
+    setPhone(defaultPhone);
+    setEmail("");
+    setAadhaar("");
+    setLookupState("idle");
+    setLookupMsg(null);
+    setFilledFromAadhaar(false);
+    lastLookedUp.current = "";
+  }
+
   if (created) {
     return (
       <div className="space-y-4">
@@ -272,22 +435,7 @@ export function PatientForm({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              setCreated(null);
-              setQueueNote(null);
-              setError(null);
-              setFullName("");
-              setGender("");
-              setAge("");
-              setAddress("");
-              setPhone(defaultPhone);
-              setEmail("");
-              setAadhaar("");
-            }}
-          >
+          <Button type="button" variant="secondary" onClick={resetForm}>
             Register another
           </Button>
           {isStaff ? (
@@ -336,6 +484,85 @@ export function PatientForm({
           </option>
         ))}
       </Select>
+
+      {/* Aadhaar first — auto-fill when lookup is enabled */}
+      <div
+        className={`space-y-2 rounded-2xl border p-4 ${
+          filledFromAadhaar
+            ? "border-brand/30 bg-brand-soft/40"
+            : "border-border bg-background/80"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Aadhaar</p>
+            <p className="text-xs text-muted">
+              {lookupEnabled
+                ? "Enter 12 digits — details fill automatically when the service is available."
+                : "Optional. Enter full number or last 4. Only last 4 is stored."}
+            </p>
+          </div>
+          {lookupEnabled ? (
+            <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand ring-1 ring-brand/15">
+              Auto-fill on
+            </span>
+          ) : (
+            <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200">
+              Manual form
+            </span>
+          )}
+        </div>
+
+        <Input
+          label={lookupEnabled ? "Aadhaar number" : "Aadhaar (optional)"}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="XXXX XXXX 1234"
+          hint="Never stored in full — last 4 only"
+          value={aadhaar}
+          onChange={(e) => onAadhaarChange(e.target.value)}
+        />
+
+        {lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={lookupState === "loading"}
+            onClick={() => {
+              lastLookedUp.current = "";
+              void runAadhaarLookup(aadhaar);
+            }}
+          >
+            {lookupState === "loading" ? "Fetching…" : "Fetch details again"}
+          </Button>
+        ) : null}
+
+        {lookupMsg ? (
+          <p
+            className={`rounded-xl px-3 py-2 text-xs ${
+              lookupState === "ok"
+                ? "bg-brand-soft text-brand"
+                : lookupState === "fail"
+                  ? "border border-amber-200 bg-amber-50 text-amber-950"
+                  : lookupState === "loading"
+                    ? "bg-background text-muted"
+                    : "bg-background text-muted"
+            }`}
+          >
+            {lookupMsg}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+          {filledFromAadhaar
+            ? "Review & edit details"
+            : "Patient details (fill manually if Aadhaar not available)"}
+        </p>
+      </div>
+
       <Input
         label="Full name *"
         required
@@ -392,21 +619,13 @@ export function PatientForm({
           placeholder="Optional"
         />
       </div>
-      <Input
-        label="Aadhaar (optional)"
-        inputMode="numeric"
-        placeholder="XXXX XXXX 1234 or last 4 only"
-        hint="Only last 4 digits are stored"
-        value={aadhaar}
-        onChange={(e) => setAadhaar(e.target.value)}
-      />
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
-          ? "No password. After save: print here if they have no phone, or show the QR so they can log in on their phone. Desk scan adds them to the queue; print marks them seen."
+          ? "No password. After save: print here if they have no phone, or show the QR. Desk scan → queue; print → seen."
           : "No password. After save, scan the QR on your phone to open your profile anytime."}
       </p>
       <ErrorBox message={error} />
-      <Button type="submit" disabled={loading}>
+      <Button type="submit" disabled={loading || lookupState === "loading"}>
         {loading ? "Saving…" : "Register for selected day"}
       </Button>
     </form>

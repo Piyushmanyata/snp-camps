@@ -8,7 +8,8 @@ Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 - Desk **scan** → add to queue · **print** → mark seen  
 - One active camp, FCFS queue  
 - Admin: camps, search, counts  
-- Aadhaar: optional, **last 4 digits only**
+- Aadhaar at top of registration; auto-fill when lookup is enabled  
+- Aadhaar: optional, **last 4 digits only** stored
 
 ## Stack
 
@@ -68,3 +69,12 @@ Add the same env vars in Vercel project settings. Set `NEXT_PUBLIC_SITE_URL` to 
 ## Privacy
 
 Never store full Aadhaar. Only `aadhaar_last4`.
+
+### Aadhaar auto-fill (optional)
+
+1. Set `NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true` so the form attempts fetch after 12 digits.  
+2. Set `AADHAAR_LOOKUP_URL` to your DigiLocker/KYC provider (POST `{ "aadhaar": "12digits" }`).  
+3. Optional `AADHAAR_LOOKUP_SECRET` as Bearer token.  
+
+Provider should return JSON: `full_name`, `gender`, `age` or `dob`, `address`, `phone`, `email`.  
+If lookup is off or fails, the same manual form fields remain available.

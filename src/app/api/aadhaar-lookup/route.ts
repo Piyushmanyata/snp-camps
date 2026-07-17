@@ -1,0 +1,129 @@
+import { NextResponse } from "next/server";
+import {
+  ageFromDob,
+  digitsOnly,
+  isAadhaarLookupEnabledServer,
+  isValidAadhaarNumber,
+  normalizeGender,
+  type AadhaarProfile,
+} from "@/lib/aadhaar";
+import { readJsonBody } from "@/lib/auth";
+
+type Body = { aadhaar?: string };
+
+type ProviderPayload = {
+  full_name?: string;
+  name?: string;
+  gender?: string;
+  age?: number | string;
+  dob?: string;
+  date_of_birth?: string;
+  address?: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
+};
+
+/**
+ * Fetch demographics from the configured Aadhaar / DigiLocker provider.
+ * Enable with AADHAAR_LOOKUP_URL (+ optional AADHAAR_LOOKUP_SECRET).
+ * Never persists the full Aadhaar number.
+ */
+export async function POST(req: Request) {
+  if (!isAadhaarLookupEnabledServer()) {
+    return NextResponse.json(
+      {
+        available: false,
+        error:
+          "Aadhaar auto-fill is not enabled. Enter details manually below.",
+      },
+      { status: 503 },
+    );
+  }
+
+  const body = await readJsonBody<Body>(req);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const aadhaar = digitsOnly(String(body.aadhaar || ""));
+  if (!isValidAadhaarNumber(aadhaar)) {
+    return NextResponse.json(
+      { error: "Enter a valid 12-digit Aadhaar number." },
+      { status: 400 },
+    );
+  }
+
+  const url = process.env.AADHAAR_LOOKUP_URL!.trim();
+  const secret = process.env.AADHAAR_LOOKUP_SECRET?.trim();
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+      },
+      body: JSON.stringify({ aadhaar }),
+      // Camp desk should fail fast if provider is down
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return NextResponse.json(
+        {
+          available: true,
+          error:
+            text.slice(0, 200) ||
+            "Aadhaar lookup failed. Fill the form manually.",
+        },
+        { status: 502 },
+      );
+    }
+
+    const raw = (await res.json()) as ProviderPayload;
+    const ageRaw =
+      raw.age != null && raw.age !== ""
+        ? Number(raw.age)
+        : ageFromDob(raw.dob || raw.date_of_birth);
+
+    const profile: AadhaarProfile = {
+      full_name: (raw.full_name || raw.name || "").trim() || null,
+      gender: normalizeGender(raw.gender),
+      age:
+        ageRaw != null && Number.isFinite(ageRaw) && ageRaw >= 0
+          ? Math.floor(ageRaw)
+          : null,
+      address: (raw.address || "").trim() || null,
+      phone: digitsOnly(raw.phone || raw.mobile || "").slice(-10) || null,
+      email: (raw.email || "").trim() || null,
+    };
+
+    if (!profile.full_name && !profile.address && !profile.phone) {
+      return NextResponse.json(
+        {
+          available: true,
+          error: "No details returned for this Aadhaar. Enter manually.",
+        },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({
+      available: true,
+      profile,
+      // Client may store last 4 only after success
+      last4: aadhaar.slice(-4),
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        available: true,
+        error:
+          "Aadhaar service timed out or is unreachable. Enter details manually.",
+      },
+      { status: 504 },
+    );
+  }
+}
