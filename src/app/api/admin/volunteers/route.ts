@@ -93,3 +93,62 @@ export async function POST(req: Request) {
     },
   });
 }
+
+export async function DELETE(req: Request) {
+  const auth = await requireAdmin();
+  if ("error" in auth && auth.error) return auth.error;
+
+  const url = new URL(req.url);
+  let id = url.searchParams.get("id")?.trim() || "";
+  if (!id) {
+    const body = await readJsonBody<{ id?: string }>(req);
+    id = String(body?.id || "").trim();
+  }
+
+  if (
+    !id ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id,
+    )
+  ) {
+    return NextResponse.json({ error: "Valid volunteer id required" }, { status: 400 });
+  }
+
+  if (id === auth.userId) {
+    return NextResponse.json(
+      { error: "You cannot delete your own account" },
+      { status: 400 },
+    );
+  }
+
+  const admin = createServiceRoleClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+      { status: 500 },
+    );
+  }
+
+  const { data: profile, error: pErr } = await admin
+    .from("profiles")
+    .select("id, role")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (pErr) {
+    return NextResponse.json({ error: pErr.message }, { status: 400 });
+  }
+  if (!profile || profile.role !== "volunteer") {
+    return NextResponse.json(
+      { error: "Volunteer not found" },
+      { status: 404 },
+    );
+  }
+
+  const { error: delErr } = await admin.auth.admin.deleteUser(id);
+  if (delErr) {
+    return NextResponse.json({ error: delErr.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true, id });
+}

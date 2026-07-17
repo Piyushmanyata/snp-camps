@@ -35,6 +35,7 @@ export function AdminDoctors({ initial }: { initial: Doctor[] }) {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,6 +73,33 @@ export function AdminDoctors({ initial }: { initial: Doctor[] }) {
     router.refresh();
   }
 
+  async function onDelete(d: Doctor) {
+    const label = d.full_name || d.email || "this doctor";
+    if (
+      !window.confirm(
+        `Delete ${label}? They will no longer be able to sign in. Patients they saw keep history (doctor name may show as blank).`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(d.id);
+    setError(null);
+    setOk(null);
+    const res = await fetch(
+      `/api/admin/doctors?id=${encodeURIComponent(d.id)}`,
+      { method: "DELETE" },
+    );
+    const json = await res.json().catch(() => ({}));
+    setDeletingId(null);
+    if (!res.ok) {
+      setError(json.error || "Failed to delete doctor");
+      return;
+    }
+    setList((prev) => prev.filter((x) => x.id !== d.id));
+    setOk(`Deleted ${label}.`);
+    router.refresh();
+  }
+
   return (
     <Card>
       <SectionTitle hint={`${list.length} total`}>Doctors</SectionTitle>
@@ -87,7 +115,17 @@ export function AdminDoctors({ initial }: { initial: Doctor[] }) {
                 {d.email || "no email"}
               </p>
             </div>
-            <Badge tone="ok">doctor</Badge>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Badge tone="ok">doctor</Badge>
+              <button
+                type="button"
+                disabled={deletingId === d.id}
+                onClick={() => void onDelete(d)}
+                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+              >
+                {deletingId === d.id ? "…" : "Delete"}
+              </button>
+            </div>
           </li>
         ))}
         {!list.length ? (
