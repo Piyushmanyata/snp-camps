@@ -72,6 +72,7 @@ export default async function PatientHomePage() {
             <QrCard
               value={`${origin}/print/${patient.id}`}
               regNo={patient.reg_no}
+              patientId={patient.id}
             />
             {isStaff(profile?.role) ? (
               <Link

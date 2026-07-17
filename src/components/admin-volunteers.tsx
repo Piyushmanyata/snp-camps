@@ -1,0 +1,122 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Badge, Button, Card, ErrorBox, Input } from "@/components/ui";
+
+type Volunteer = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string;
+  created_at?: string;
+};
+
+export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
+  const router = useRouter();
+  const [list, setList] = useState(initial);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setOk(null);
+
+    const res = await fetch("/api/admin/volunteers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName, email, password }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error || "Failed to create volunteer");
+      setLoading(false);
+      return;
+    }
+
+    setList((prev) => [
+      {
+        id: json.volunteer.id,
+        full_name: json.volunteer.full_name,
+        email: json.volunteer.email,
+        phone: null,
+        role: "volunteer",
+      },
+      ...prev,
+    ]);
+    setOk(
+      `Volunteer created. Share login: ${email} / (the password you set).`,
+    );
+    setFullName("");
+    setEmail("");
+    setPassword("");
+    setLoading(false);
+    router.refresh();
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-3 font-semibold">Volunteers</h2>
+      <ul className="mb-4 divide-y divide-border">
+        {list.map((v) => (
+          <li key={v.id} className="flex items-center justify-between gap-2 py-2">
+            <div className="min-w-0">
+              <p className="truncate font-medium">{v.full_name || "—"}</p>
+              <p className="truncate text-xs text-muted">{v.email || "no email"}</p>
+            </div>
+            <Badge tone="ok">volunteer</Badge>
+          </li>
+        ))}
+        {!list.length ? (
+          <li className="py-2 text-sm text-muted">No volunteers yet.</li>
+        ) : null}
+      </ul>
+
+      <form onSubmit={onSubmit} className="space-y-3">
+        <p className="text-sm text-muted">
+          Create a volunteer account. They sign in at Staff login with this email
+          and password.
+        </p>
+        <Input
+          label="Full name"
+          required
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+        />
+        <Input
+          label="Email"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Input
+          label="Temporary password"
+          type="text"
+          required
+          minLength={6}
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="min 6 characters"
+        />
+        <ErrorBox message={error} />
+        {ok ? (
+          <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-brand">
+            {ok}
+          </p>
+        ) : null}
+        <Button type="submit" disabled={loading}>
+          {loading ? "Creating…" : "Add volunteer"}
+        </Button>
+      </form>
+    </Card>
+  );
+}

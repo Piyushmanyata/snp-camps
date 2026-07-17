@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
-import { Badge, Card, Shell } from "@/components/ui";
+import { Card, Shell } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminSearch } from "@/components/admin-search";
+import { AdminVolunteers } from "@/components/admin-volunteers";
 
 export default async function AdminPage() {
   const { profile } = await getSessionProfile();
@@ -32,10 +33,11 @@ export default async function AdminPage() {
     seen = patients?.filter((p) => p.queue_status === "seen").length || 0;
   }
 
-  const { count: volunteerCount } = await supabase
+  const { data: volunteers } = await supabase
     .from("profiles")
-    .select("*", { count: "exact", head: true })
-    .eq("role", "volunteer");
+    .select("id, full_name, email, phone, role, created_at")
+    .eq("role", "volunteer")
+    .order("created_at", { ascending: false });
 
   return (
     <Shell title="Admin" backHref="/">
@@ -50,12 +52,13 @@ export default async function AdminPage() {
           <p className="text-sm text-muted">Active camp</p>
           <p className="text-lg font-semibold">{active?.name || "None set"}</p>
           <p className="text-sm text-muted">
-            Volunteers: {volunteerCount ?? 0} · Share invite code from env for new
-            staff
+            Volunteers: {volunteers?.length ?? 0}
           </p>
         </Card>
 
         <AdminCamps camps={camps || []} />
+
+        <AdminVolunteers initial={volunteers || []} />
 
         <AdminSearch />
 

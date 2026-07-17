@@ -92,8 +92,12 @@ export default async function PrintPage({
               </span>
             </p>
             <div className="flex justify-end pt-1">
-              <div className="scale-75 origin-top-right">
-                <QrCard value={`${origin}/print/${patient.id}`} regNo={patient.reg_no} />
+              <div className="origin-top-right scale-90 print:scale-100">
+                <QrCard
+                  value={`${origin}/print/${patient.id}`}
+                  regNo={patient.reg_no}
+                  patientId={patient.id}
+                />
               </div>
             </div>
           </div>

@@ -81,16 +81,18 @@ export function PatientForm({
   }
 
   if (created) {
+    const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
     const origin =
-      typeof window !== "undefined" ? window.location.origin : "";
+      site || (typeof window !== "undefined" ? window.location.origin : "");
     return (
       <div className="space-y-4">
         <p className="text-center text-sm font-medium text-brand">
           Registered — show QR at the desk
         </p>
         <QrCard
-          value={`${origin}/print/${created.id}`}
+          value={origin ? `${origin}/print/${created.id}` : undefined}
           regNo={created.reg_no}
+          patientId={created.id}
         />
         <p className="text-center text-lg font-semibold">{created.full_name}</p>
         <Button type="button" variant="secondary" onClick={() => setCreated(null)}>
