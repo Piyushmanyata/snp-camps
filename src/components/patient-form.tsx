@@ -101,7 +101,8 @@ export function PatientForm({
         <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-center">
           <p className="text-sm font-semibold text-brand">Registered successfully</p>
           <p className="text-xs text-brand/80">
-            Show this QR at the desk · keep the reg number
+            Not in queue yet — show this QR at the desk so a volunteer can check
+            you in
           </p>
         </div>
         <QrCard

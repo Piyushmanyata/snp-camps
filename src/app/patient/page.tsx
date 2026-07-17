@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
+import { queueLabel, queueTone } from "@/lib/types";
 import { Badge, Card, NavLink, Shell } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
@@ -61,8 +62,8 @@ export default async function PatientHomePage() {
                     </p>
                   ) : null}
                 </div>
-                <Badge tone={patient.queue_status === "seen" ? "ok" : "wait"}>
-                  {patient.queue_status === "seen" ? "Seen" : "Waiting"}
+                <Badge tone={queueTone(patient.queue_status)}>
+                  {queueLabel(patient.queue_status)}
                 </Badge>
               </div>
             </Card>

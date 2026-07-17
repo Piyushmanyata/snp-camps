@@ -1,5 +1,5 @@
 export type UserRole = "admin" | "volunteer" | "patient";
-export type QueueStatus = "waiting" | "seen";
+export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {
   id: string;
@@ -31,7 +31,20 @@ export type Patient = {
   email: string | null;
   aadhaar_last4: string | null;
   queue_status: QueueStatus;
+  queued_at: string | null;
   seen_at: string | null;
   created_by: string | null;
   created_at: string;
 };
+
+export function queueLabel(status: string) {
+  if (status === "seen") return "Seen";
+  if (status === "waiting") return "In queue";
+  return "Registered";
+}
+
+export function queueTone(status: string): "default" | "ok" | "wait" {
+  if (status === "seen") return "ok";
+  if (status === "waiting") return "wait";
+  return "default";
+}

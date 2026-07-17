@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
+import { queueLabel, queueTone } from "@/lib/types";
 import {
   Badge,
   Card,
@@ -25,22 +26,27 @@ export default async function VolunteerPage() {
     .eq("is_active", true)
     .maybeSingle();
 
+  // Only people who checked in (waiting) or were served (seen) — not mere registrations
   const { data: queue } = camp
     ? await supabase
         .from("patients")
-        .select("id, reg_no, full_name, queue_status, created_at, phone")
+        .select("id, reg_no, full_name, queue_status, created_at, queued_at, phone")
         .eq("camp_id", camp.id)
-        .order("created_at", { ascending: true })
-        .limit(100)
+        .in("queue_status", ["waiting", "seen"])
+        .order("queued_at", { ascending: true, nullsFirst: false })
+        .limit(150)
     : { data: [] };
 
   const waiting = (queue || []).filter((p) => p.queue_status === "waiting");
   const seen = (queue || []).filter((p) => p.queue_status === "seen");
 
+  // FCFS: waiting first (by queued_at), then seen
+  const ordered = [...waiting, ...seen];
+
   return (
     <Shell
       title="Volunteer desk"
-      subtitle={profile?.full_name || "Scan · print · queue"}
+      subtitle={profile?.full_name || "Check-in · queue · print"}
       backHref={profile?.role === "admin" ? "/admin" : "/"}
     >
       <div className="space-y-4">
@@ -55,13 +61,13 @@ export default async function VolunteerPage() {
             <p className="text-sm text-muted">{camp.venue}</p>
           ) : null}
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Stat label="Waiting" value={waiting.length} tone="wait" />
+            <Stat label="In queue" value={waiting.length} tone="wait" />
             <Stat label="Seen" value={seen.length} tone="ok" />
           </div>
         </Card>
 
         <Card>
-          <SectionTitle hint="Camera or reg no">Scan patient QR</SectionTitle>
+          <SectionTitle hint="Adds to queue">Check in patient</SectionTitle>
           <QrScanner />
         </Card>
 
@@ -71,10 +77,10 @@ export default async function VolunteerPage() {
 
         <Card padding="sm">
           <div className="px-1 pt-1">
-            <SectionTitle hint="FCFS order">Queue</SectionTitle>
+            <SectionTitle hint="FCFS after check-in">Live queue</SectionTitle>
           </div>
           <ul className="divide-y divide-border">
-            {(queue || []).map((p) => (
+            {ordered.map((p) => (
               <li
                 key={p.id}
                 className="flex items-center justify-between gap-2 px-1 py-3"
@@ -89,8 +95,8 @@ export default async function VolunteerPage() {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge tone={p.queue_status === "seen" ? "ok" : "wait"}>
-                    {p.queue_status}
+                  <Badge tone={queueTone(p.queue_status)}>
+                    {queueLabel(p.queue_status)}
                   </Badge>
                   <Link
                     href={`/print/${p.id}`}
@@ -101,9 +107,12 @@ export default async function VolunteerPage() {
                 </div>
               </li>
             ))}
-            {!queue?.length ? (
+            {!ordered.length ? (
               <li className="px-1 py-2">
-                <EmptyState>No patients yet — register a walk-in.</EmptyState>
+                <EmptyState>
+                  Queue is empty. Scan a patient QR or enter reg no to check them
+                  in.
+                </EmptyState>
               </li>
             ) : null}
           </ul>

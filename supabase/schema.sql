@@ -2,7 +2,7 @@
 create extension if not exists "pgcrypto";
 
 create type public.user_role as enum ('admin', 'volunteer', 'patient');
-create type public.queue_status as enum ('waiting', 'seen');
+create type public.queue_status as enum ('registered', 'waiting', 'seen');
 
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -39,7 +39,8 @@ create table public.patients (
   phone text,
   email text,
   aadhaar_last4 char(4) check (aadhaar_last4 is null or aadhaar_last4 ~ '^[0-9]{4}$'),
-  queue_status public.queue_status not null default 'waiting',
+  queue_status public.queue_status not null default 'registered',
+  queued_at timestamptz,
   seen_at timestamptz,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
@@ -304,7 +305,7 @@ begin
 
   return query
   insert into public.patients (
-    camp_id, user_id, full_name, gender, age, address, phone, email, aadhaar_last4, created_by, queue_status
+    camp_id, user_id, full_name, gender, age, address, phone, email, aadhaar_last4, created_by, queue_status, queued_at
   ) values (
     p_camp_id,
     v_user_id,
@@ -316,7 +317,8 @@ begin
     nullif(trim(coalesce(p_email, '')), ''),
     v_aadhaar,
     v_created_by,
-    'waiting'
+    'registered',
+    null
   )
   returning patients.id, patients.reg_no, patients.full_name;
 end;
@@ -357,6 +359,66 @@ grant execute on function public.claim_staff_role(text, text) to authenticated;
 grant execute on function public.set_active_camp(uuid) to authenticated;
 grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_admin() to authenticated;
+
+
+-- Volunteer check-in: scan QR or enter reg no → join FCFS queue
+create or replace function public.join_queue(
+  p_patient_id uuid default null,
+  p_reg_no integer default null
+)
+returns table (
+  id uuid,
+  reg_no integer,
+  full_name text,
+  queue_status public.queue_status,
+  already_in_queue boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  r public.patients%rowtype;
+  v_already boolean := false;
+begin
+  if not public.is_staff() then
+    raise exception 'staff only';
+  end if;
+
+  if p_patient_id is not null then
+    select * into r from public.patients where patients.id = p_patient_id;
+  elsif p_reg_no is not null then
+    select * into r from public.patients where patients.reg_no = p_reg_no;
+  else
+    raise exception 'Provide patient id or reg no';
+  end if;
+
+  if r.id is null then
+    raise exception 'Patient not found';
+  end if;
+
+  if r.queue_status = 'seen' then
+    return query
+    select r.id, r.reg_no, r.full_name, r.queue_status, true;
+    return;
+  end if;
+
+  if r.queue_status = 'waiting' then
+    v_already := true;
+  else
+    update public.patients
+    set queue_status = 'waiting',
+        queued_at = coalesce(queued_at, now())
+    where patients.id = r.id
+    returning * into r;
+  end if;
+
+  return query
+  select r.id, r.reg_no, r.full_name, r.queue_status, v_already;
+end;
+$;
+
+grant execute on function public.join_queue(uuid, integer) to authenticated;
 
 -- mark seen on print (staff only)
 create or replace function public.mark_patient_seen(p_id uuid)

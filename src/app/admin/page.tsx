@@ -49,7 +49,9 @@ export default async function AdminPage() {
   const activePatients = active
     ? patients.filter((p) => p.camp_id === active.id)
     : patients;
-  const total = activePatients.length;
+  const notQueued = activePatients.filter(
+    (p) => p.queue_status === "registered" || !p.queue_status,
+  ).length;
   const waiting = activePatients.filter((p) => p.queue_status === "waiting")
     .length;
   const seen = activePatients.filter((p) => p.queue_status === "seen").length;
@@ -68,8 +70,8 @@ export default async function AdminPage() {
     >
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-2.5">
-          <Stat label="Registered" value={total} />
-          <Stat label="Waiting" value={waiting} tone="wait" />
+          <Stat label="Not queued" value={notQueued} />
+          <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Seen" value={seen} tone="ok" />
         </div>
 

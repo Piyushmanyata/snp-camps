@@ -54,7 +54,8 @@ export default async function RegisterPage() {
           </Card>
           <Card>
             <p className="mb-4 text-sm text-muted">
-              Fill the form — only Aadhaar last 4 digits are stored if provided.
+              Fill the form to get a reg no + QR. A volunteer must scan the QR
+              (or enter the reg no) to add the patient to the live queue.
             </p>
             <PatientForm
               campId={camp.id}

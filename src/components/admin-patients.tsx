@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { queueLabel, queueTone } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -31,7 +32,9 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "waiting" | "seen">("all");
+  const [filter, setFilter] = useState<
+    "all" | "registered" | "waiting" | "seen"
+  >("all");
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -88,7 +91,8 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
           {(
             [
               ["all", "All"],
-              ["waiting", "Waiting"],
+              ["registered", "Not queued"],
+              ["waiting", "In queue"],
               ["seen", "Seen"],
             ] as const
           ).map(([key, label]) => (
@@ -140,8 +144,8 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Badge tone={r.queue_status === "seen" ? "ok" : "wait"}>
-                  {r.queue_status}
+                <Badge tone={queueTone(r.queue_status)}>
+                  {queueLabel(r.queue_status)}
                 </Badge>
                 <Link
                   href={`/print/${r.id}`}

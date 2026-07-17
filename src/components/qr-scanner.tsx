@@ -1,10 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr } from "@/lib/qr";
 import { Button, ErrorBox, Input } from "@/components/ui";
+
+type Joined = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+  queue_status: string;
+  already_in_queue: boolean;
+};
 
 export function QrScanner() {
   const router = useRouter();
@@ -13,6 +22,7 @@ export function QrScanner() {
   const [active, setActive] = useState(false);
   const [manual, setManual] = useState("");
   const [looking, setLooking] = useState(false);
+  const [joined, setJoined] = useState<Joined | null>(null);
   const handledRef = useRef(false);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
@@ -33,15 +43,46 @@ export function QrScanner() {
     };
   }, []);
 
-  function goToPatient(id: string) {
-    if (handledRef.current) return;
+  async function checkIn(opts: { id?: string; regNo?: number }) {
+    if (handledRef.current && opts.id) {
+      /* allow manual after scan reset */
+    }
+    setError(null);
+    setJoined(null);
+
+    const supabase = createClient();
+    const { data, error: err } = await supabase.rpc("join_queue", {
+      p_patient_id: opts.id ?? null,
+      p_reg_no: opts.regNo ?? null,
+    });
+
+    if (err) {
+      setError(err.message);
+      return;
+    }
+
+    const row = (Array.isArray(data) ? data[0] : data) as Joined | null;
+    if (!row) {
+      setError("Could not add to queue.");
+      return;
+    }
+
+    setJoined(row);
     handledRef.current = true;
-    scannerRef.current?.stop().catch(() => undefined);
-    router.push(`/print/${id}`);
+    try {
+      await scannerRef.current?.stop();
+      scannerRef.current?.clear();
+    } catch {
+      /* ignore */
+    }
+    scannerRef.current = null;
+    setActive(false);
+    router.refresh();
   }
 
   async function start() {
     setError(null);
+    setJoined(null);
     handledRef.current = false;
     setActive(true);
     await new Promise((r) => setTimeout(r, 50));
@@ -72,8 +113,12 @@ export function QrScanner() {
           aspectRatio: 1,
         },
         (decoded) => {
+          if (handledRef.current) return;
           const id = parsePatientIdFromQr(decoded);
-          if (id) goToPatient(id);
+          if (id) {
+            handledRef.current = true;
+            void checkIn({ id });
+          }
         },
         () => undefined,
       );
@@ -102,11 +147,13 @@ export function QrScanner() {
     e.preventDefault();
     setLooking(true);
     setError(null);
+    setJoined(null);
+    handledRef.current = false;
     const raw = manual.trim();
 
     const asId = parsePatientIdFromQr(raw);
     if (asId) {
-      goToPatient(asId);
+      await checkIn({ id: asId });
       setLooking(false);
       return;
     }
@@ -118,29 +165,17 @@ export function QrScanner() {
       return;
     }
 
-    const supabase = createClient();
-    const { data, error: err } = await supabase
-      .from("patients")
-      .select("id")
-      .eq("reg_no", reg)
-      .maybeSingle();
-
-    if (err) {
-      setError(err.message);
-      setLooking(false);
-      return;
-    }
-    if (!data) {
-      setError(`No patient with reg no ${reg}`);
-      setLooking(false);
-      return;
-    }
-    goToPatient(data.id);
+    await checkIn({ regNo: reg });
     setLooking(false);
   }
 
   return (
     <div className="space-y-3">
+      <p className="text-sm text-muted">
+        Scan QR or enter reg no to <strong>add the patient to the queue</strong>
+        . They are not queued at registration.
+      </p>
+
       <div
         id={regionId}
         className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
@@ -154,6 +189,52 @@ export function QrScanner() {
         ) : null}
       </div>
       <ErrorBox message={error} />
+
+      {joined ? (
+        <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3">
+          <p className="text-sm font-semibold text-brand">
+            {joined.queue_status === "seen"
+              ? "Already seen"
+              : joined.already_in_queue
+                ? "Already in queue"
+                : "Added to queue"}
+          </p>
+          <p className="mt-0.5 font-bold text-foreground">
+            #{joined.reg_no} · {joined.full_name}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {joined.queue_status !== "seen" ? (
+              <Link
+                href={`/print/${joined.id}`}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white"
+              >
+                Print prescription
+              </Link>
+            ) : (
+              <Link
+                href={`/print/${joined.id}`}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+              >
+                Open print again
+              </Link>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-auto"
+              onClick={() => {
+                setJoined(null);
+                setManual("");
+                handledRef.current = false;
+              }}
+            >
+              Check in next
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {!active ? (
         <Button type="button" onClick={start}>
           Open camera scanner
@@ -169,7 +250,7 @@ export function QrScanner() {
         className="space-y-2 border-t border-border pt-3"
       >
         <p className="text-sm font-medium text-foreground/80">
-          Or open by reg number
+          Or check in by reg number
         </p>
         <Input
           label="Reg no / QR link"
@@ -179,7 +260,7 @@ export function QrScanner() {
           onChange={(e) => setManual(e.target.value)}
         />
         <Button type="submit" variant="secondary" disabled={looking}>
-          {looking ? "Looking…" : "Open print"}
+          {looking ? "Checking in…" : "Add to queue"}
         </Button>
       </form>
     </div>

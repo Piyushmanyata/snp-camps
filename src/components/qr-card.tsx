@@ -59,7 +59,7 @@ export function QrCard({
       <div className="text-center">
         <p className="text-sm font-semibold text-brand">Show at volunteer desk</p>
         <p className="mt-0.5 text-xs text-muted">
-          They scan this QR to open your prescription
+          Scan to join the queue · then print when called
         </p>
       </div>
     </div>
