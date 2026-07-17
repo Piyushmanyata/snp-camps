@@ -18,10 +18,21 @@ export type Camp = {
   created_at: string;
 };
 
+export type CampDayStats = {
+  id: string;
+  camp_id: string;
+  day_date: string;
+  seat_limit: number;
+  seats_taken: number;
+  seats_left: number;
+  is_full: boolean;
+};
+
 export type Patient = {
   id: string;
   user_id: string | null;
   camp_id: string;
+  camp_day_id: string | null;
   reg_no: number;
   full_name: string;
   gender: "M" | "F" | "O" | null;
@@ -47,4 +58,17 @@ export function queueTone(status: string): "default" | "ok" | "wait" {
   if (status === "seen") return "ok";
   if (status === "waiting") return "wait";
   return "default";
+}
+
+export function formatCampDay(isoDate: string) {
+  try {
+    return new Date(isoDate + "T12:00:00").toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return isoDate;
+  }
 }

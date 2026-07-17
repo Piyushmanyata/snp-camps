@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { queueLabel, queueTone } from "@/lib/types";
+import { formatCampDay, queueLabel, queueTone } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -26,6 +26,7 @@ export type AdminPatientRow = {
   created_at: string;
   camp_id: string;
   camps: { name: string } | null;
+  day_date?: string | null;
 };
 
 export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
@@ -134,6 +135,7 @@ export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
                 </p>
                 <p className="truncate text-xs text-muted">
                   {[
+                    r.day_date ? formatCampDay(r.day_date) : null,
                     r.phone || null,
                     r.age != null ? `${r.age}y` : null,
                     r.gender,

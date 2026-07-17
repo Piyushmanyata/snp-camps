@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
+import { ChangeDay } from "@/components/change-day";
 
 type Props = {
   campId: string;
+  days: CampDayStats[];
   defaultPhone?: string;
   userId?: string | null;
   createdBy?: string | null;
@@ -16,14 +19,21 @@ type Created = {
   id: string;
   reg_no: number;
   full_name: string;
+  camp_day_id?: string;
+  day_date?: string;
 };
 
 export function PatientForm({
   campId,
+  days,
   defaultPhone = "",
   userId = null,
   createdBy = null,
 }: Props) {
+  const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
+  const firstOpen = openDays[0]?.id || "";
+
+  const [campDayId, setCampDayId] = useState(firstOpen);
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
@@ -39,6 +49,19 @@ export function PatientForm({
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!campDayId) {
+      setError("Select a camp day with open seats.");
+      setLoading(false);
+      return;
+    }
+
+    const selected = days.find((d) => d.id === campDayId);
+    if (selected?.is_full) {
+      setError("That day is full. Choose another day.");
+      setLoading(false);
+      return;
+    }
 
     const phoneDigits = phone.replace(/\D/g, "");
     const phone10 = phoneDigits.slice(-10);
@@ -68,15 +91,11 @@ export function PatientForm({
       p_aadhaar_last4: last4 || null,
       p_user_id: userId,
       p_created_by: createdBy,
+      p_camp_day_id: campDayId,
     });
 
     if (err) {
-      const msg = err.message || "Registration failed";
-      setError(
-        /already registered/i.test(msg)
-          ? msg
-          : msg,
-      );
+      setError(err.message || "Registration failed");
       setLoading(false);
       return;
     }
@@ -101,8 +120,10 @@ export function PatientForm({
         <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-center">
           <p className="text-sm font-semibold text-brand">Registered successfully</p>
           <p className="text-xs text-brand/80">
-            Not in queue yet — show this QR at the desk so a volunteer can check
-            you in
+            {created.day_date
+              ? `Day: ${formatCampDay(created.day_date)} · `
+              : ""}
+            Not in queue yet — show QR at the desk for check-in
           </p>
         </div>
         <QrCard
@@ -111,6 +132,14 @@ export function PatientForm({
           patientId={created.id}
         />
         <p className="text-center text-lg font-semibold">{created.full_name}</p>
+        <div className="rounded-xl border border-border p-4">
+          <p className="mb-2 text-sm font-medium">Need a different day?</p>
+          <ChangeDay
+            patientId={created.id}
+            currentDayId={created.camp_day_id || campDayId}
+            days={days}
+          />
+        </div>
         <Button type="button" variant="secondary" onClick={() => setCreated(null)}>
           Register another
         </Button>
@@ -118,8 +147,39 @@ export function PatientForm({
     );
   }
 
+  if (!days.length) {
+    return (
+      <p className="text-sm text-muted">
+        No camp days configured. Ask admin to add days and seat limits.
+      </p>
+    );
+  }
+
+  if (!openDays.length) {
+    return (
+      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+        All days are full. You can still view seat status on the home page —
+        registration reopens if seats free up or admin raises limits.
+      </p>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      <Select
+        label="Camp day *"
+        required
+        value={campDayId}
+        onChange={(e) => setCampDayId(e.target.value)}
+      >
+        <option value="">Select day…</option>
+        {days.map((d) => (
+          <option key={d.id} value={d.id} disabled={d.is_full}>
+            {formatCampDay(d.day_date)}
+            {d.is_full ? " · FULL" : ` · ${d.seats_left} seats left`}
+          </option>
+        ))}
+      </Select>
       <Input
         label="Full name *"
         required
@@ -164,7 +224,7 @@ export function PatientForm({
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         placeholder="10-digit mobile"
-        hint="Used to stop the same person registering twice"
+        hint="One registration per phone · used to block duplicates"
       />
       <Input
         label="Email"
@@ -184,7 +244,7 @@ export function PatientForm({
       />
       <ErrorBox message={error} />
       <Button type="submit" disabled={loading}>
-        {loading ? "Saving…" : "Register & join queue"}
+        {loading ? "Saving…" : "Register for selected day"}
       </Button>
     </form>
   );

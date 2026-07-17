@@ -1,12 +1,18 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import { queueLabel, queueTone } from "@/lib/types";
+import {
+  formatCampDay,
+  queueLabel,
+  queueTone,
+  type CampDayStats,
+} from "@/lib/types";
 import { Badge, Card, NavLink, Shell } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
+import { ChangeDay } from "@/components/change-day";
+import { SeatBoard } from "@/components/seat-board";
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -16,12 +22,27 @@ export default async function PatientHomePage() {
   const { data: patient } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, queue_status, gender, age, phone, address, aadhaar_last4",
+      "id, reg_no, full_name, queue_status, gender, age, phone, address, aadhaar_last4, camp_id, camp_day_id, camp_days(day_date)",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const campId = patient?.camp_id as string | undefined;
+  const { data: dayStats } = campId
+    ? await supabase.rpc("camp_day_stats", { p_camp_id: campId })
+    : await supabase.rpc("camp_day_stats", { p_camp_id: null });
+  const days = (dayStats as CampDayStats[]) || [];
+
+  const dayRel = patient?.camp_days as
+    | { day_date: string }
+    | { day_date: string }[]
+    | null
+    | undefined;
+  const dayDate = Array.isArray(dayRel)
+    ? dayRel[0]?.day_date
+    : dayRel?.day_date;
 
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
@@ -35,9 +56,15 @@ export default async function PatientHomePage() {
           <Card>
             <p className="mb-1 font-semibold">No registration linked yet</p>
             <p className="mb-4 text-sm text-muted">
-              Register for today’s camp to get your reg number and QR.
+              Register for a camp day with open seats to get your reg number and
+              QR.
             </p>
             <NavLink href="/register">Register now</NavLink>
+            {days.length ? (
+              <div className="mt-4">
+                <SeatBoard days={days} title="Available days" compact />
+              </div>
+            ) : null}
           </Card>
         ) : (
           <>
@@ -49,6 +76,7 @@ export default async function PatientHomePage() {
                   </p>
                   <p className="mt-0.5 text-sm text-muted">
                     {[
+                      dayDate ? formatCampDay(dayDate) : null,
                       patient.gender,
                       patient.age ? `${patient.age} yrs` : null,
                       patient.phone,
@@ -72,6 +100,19 @@ export default async function PatientHomePage() {
               regNo={patient.reg_no}
               patientId={patient.id}
             />
+            <Card>
+              <p className="mb-2 text-sm font-semibold">Change camp day</p>
+              <p className="mb-3 text-xs text-muted">
+                One day per registration. Full days cannot be selected unless
+                you already hold that seat.
+              </p>
+              <ChangeDay
+                patientId={patient.id}
+                currentDayId={patient.camp_day_id}
+                days={days}
+              />
+            </Card>
+            <SeatBoard days={days} title="Seat availability" compact />
             {isStaff(profile?.role) ? (
               <NavLink href={`/print/${patient.id}`} variant="soft">
                 Open print form

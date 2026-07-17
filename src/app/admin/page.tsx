@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
+import type { CampDayStats } from "@/lib/types";
 import { Card, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
+import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminPatients } from "@/components/admin-patients";
 import { AdminVolunteers } from "@/components/admin-volunteers";
+import { SeatBoard } from "@/components/seat-board";
 
 export default async function AdminPage() {
   const { profile } = await getSessionProfile();
@@ -19,10 +22,15 @@ export default async function AdminPage() {
 
   const active = camps?.find((c) => c.is_active);
 
+  const { data: dayStats } = active
+    ? await supabase.rpc("camp_day_stats", { p_camp_id: active.id })
+    : { data: [] };
+  const days = (dayStats as CampDayStats[]) || [];
+
   const { data: allPatients } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camps(name)",
+      "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -32,6 +40,13 @@ export default async function AdminPage() {
     const campName = Array.isArray(campRel)
       ? campRel[0]?.name ?? null
       : campRel?.name ?? null;
+    const dayRel = p.camp_days as
+      | { day_date: string }
+      | { day_date: string }[]
+      | null;
+    const dayDate = Array.isArray(dayRel)
+      ? dayRel[0]?.day_date ?? null
+      : dayRel?.day_date ?? null;
     return {
       id: p.id as string,
       reg_no: p.reg_no as number,
@@ -43,6 +58,7 @@ export default async function AdminPage() {
       created_at: p.created_at as string,
       camp_id: p.camp_id as string,
       camps: campName ? { name: campName } : null,
+      day_date: dayDate,
     };
   });
 
@@ -92,6 +108,8 @@ export default async function AdminPage() {
           </p>
         </Card>
 
+        {active ? <SeatBoard days={days} title="Live seat board" /> : null}
+
         <div className="grid gap-2.5">
           <NavLink href="/register" variant="primary">
             Register patient
@@ -100,6 +118,14 @@ export default async function AdminPage() {
             Open volunteer desk
           </NavLink>
         </div>
+
+        {active ? (
+          <AdminCampDays
+            campId={active.id}
+            campName={active.name}
+            initialDays={days}
+          />
+        ) : null}
 
         <AdminPatients initial={patients} />
 
