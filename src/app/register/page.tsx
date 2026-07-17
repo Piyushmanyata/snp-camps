@@ -65,9 +65,9 @@ export default async function RegisterPage() {
 
           <Card className="lg:col-span-3">
             <p className="mb-4 text-sm text-muted">
-              One person, one day. After save: if they have a phone, show the QR
-              for login; if not, staff can print the prescription here. Desk
-              scan adds them to the queue; print marks them seen.
+              {isStaff(profile?.role)
+                ? "One person, one day. Desk registration adds them to the live queue immediately. No phone? Print here (print marks seen). Has a phone? Show the login QR."
+                : "One person, one day. After save you are registered only — not in the queue yet. Scan your QR at the desk to join the queue, or keep it for login anytime."}
             </p>
             <PatientForm
               campId={camp.id}

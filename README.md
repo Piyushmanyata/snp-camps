@@ -2,7 +2,8 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-- Patient registration → reg no + QR (no password)  
+- Patient self-registration → reg no + QR only (not queued)  
+- Volunteer desk registration → auto-join live queue  
 - Patient scans QR → instant login on their phone  
 - No phone? Staff print prescription from registration screen  
 - Desk **scan** → add to queue · **print** → mark seen  
