@@ -476,11 +476,16 @@ export function PatientForm({
         </div>
 
         <div className="rounded-xl border border-border p-4">
-          <p className="mb-2 text-sm font-medium">Need a different day?</p>
+          <p className="mb-2 text-sm font-medium">
+            {queueStatus === "waiting" || queueStatus === "seen"
+              ? "Camp day"
+              : "Need a different day?"}
+          </p>
           <ChangeDay
             patientId={created.id}
             currentDayId={created.camp_day_id || campDayId}
             days={days}
+            queueStatus={queueStatus ?? "registered"}
           />
         </div>
 

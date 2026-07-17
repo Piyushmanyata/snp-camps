@@ -190,6 +190,10 @@ begin
     raise exception 'Patient not found';
   end if;
 
+  if r.queue_status in ('waiting', 'seen') then
+    raise exception 'Cannot change camp day after joining the queue';
+  end if;
+
   if not public.is_staff() then
     if auth.uid() is null or r.user_id is distinct from auth.uid() then
       raise exception 'Not allowed';

@@ -10,16 +10,40 @@ export function ChangeDay({
   patientId,
   currentDayId,
   days,
+  queueStatus = "registered",
 }: {
   patientId: string;
   currentDayId: string | null;
   days: CampDayStats[];
+  /** When waiting/seen, day change is locked (also enforced in DB). */
+  queueStatus?: string | null;
 }) {
   const router = useRouter();
   const [dayId, setDayId] = useState(currentDayId || "");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const locked =
+    queueStatus === "waiting" || queueStatus === "seen";
+
+  if (locked) {
+    const dayLabel = days.find((d) => d.id === currentDayId);
+    return (
+      <div className="rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted">
+        <p className="font-medium text-foreground">
+          {dayLabel
+            ? formatCampDay(dayLabel.day_date)
+            : "Camp day locked"}
+        </p>
+        <p className="mt-1 text-xs">
+          {queueStatus === "seen"
+            ? "Day cannot be changed after the patient has been seen."
+            : "Day cannot be changed after joining the queue."}
+        </p>
+      </div>
+    );
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

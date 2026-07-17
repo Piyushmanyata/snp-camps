@@ -115,15 +115,18 @@ export default async function PatientHomePage() {
             </div>
             <div className="space-y-4">
               <Card>
-                <p className="mb-2 text-sm font-semibold">Change camp day</p>
+                <p className="mb-2 text-sm font-semibold">Camp day</p>
                 <p className="mb-3 text-xs text-muted">
-                  One day per registration. Full days cannot be selected unless
-                  you already hold that seat.
+                  {patient.queue_status === "waiting" ||
+                  patient.queue_status === "seen"
+                    ? "Your day is fixed once you are in the queue."
+                    : "One day per registration. You can switch while seats remain, until you join the queue."}
                 </p>
                 <ChangeDay
                   patientId={patient.id}
                   currentDayId={patient.camp_day_id}
                   days={days}
+                  queueStatus={patient.queue_status}
                 />
               </Card>
               <SeatBoard days={days} title="Seat availability" compact />
