@@ -3,10 +3,9 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import { Badge, Card, Shell } from "@/components/ui";
+import { Badge, Card, NavLink, Shell } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
-import type { Patient } from "@/lib/types";
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -29,27 +28,25 @@ export default async function PatientHomePage() {
   const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
 
   return (
-    <Shell title="My profile" backHref="/">
+    <Shell title="My profile" subtitle="Your camp registration" backHref="/">
       <div className="space-y-4">
         {!patient ? (
           <Card>
-            <p className="mb-3 text-muted">
-              No registration linked to this phone yet.
+            <p className="mb-1 font-semibold">No registration linked yet</p>
+            <p className="mb-4 text-sm text-muted">
+              Register for today’s camp to get your reg number and QR.
             </p>
-            <Link
-              href="/register"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand font-semibold text-white"
-            >
-              Register now
-            </Link>
+            <NavLink href="/register">Register now</NavLink>
           </Card>
         ) : (
           <>
-            <Card>
+            <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xl font-bold">{patient.full_name}</p>
-                  <p className="text-sm text-muted">
+                <div className="min-w-0">
+                  <p className="text-xl font-bold tracking-tight">
+                    {patient.full_name}
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted">
                     {[
                       patient.gender,
                       patient.age ? `${patient.age} yrs` : null,
@@ -59,7 +56,7 @@ export default async function PatientHomePage() {
                       .join(" · ")}
                   </p>
                   {patient.aadhaar_last4 ? (
-                    <p className="text-xs text-muted">
+                    <p className="mt-1 text-xs text-muted">
                       Aadhaar ···· {patient.aadhaar_last4}
                     </p>
                   ) : null}
@@ -75,12 +72,9 @@ export default async function PatientHomePage() {
               patientId={patient.id}
             />
             {isStaff(profile?.role) ? (
-              <Link
-                href={`/print/${patient.id}`}
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-brand-soft font-semibold text-brand"
-              >
+              <NavLink href={`/print/${patient.id}`} variant="soft">
                 Open print form
-              </Link>
+              </NavLink>
             ) : null}
           </>
         )}

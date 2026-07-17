@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Card, ErrorBox, Input, Shell } from "@/components/ui";
@@ -37,7 +38,11 @@ export default function StaffLoginPage() {
   }
 
   return (
-    <Shell title="Staff login" backHref="/">
+    <Shell
+      title="Staff login"
+      subtitle="Admin and volunteer access"
+      backHref="/"
+    >
       <Card>
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
@@ -47,6 +52,7 @@ export default function StaffLoginPage() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
           />
           <Input
             label="Password"
@@ -62,6 +68,13 @@ export default function StaffLoginPage() {
           </Button>
         </form>
       </Card>
+      <p className="mt-4 text-center text-sm text-muted">
+        Need an account? Ask admin to add you, or{" "}
+        <Link href="/staff/register" className="font-medium text-brand underline">
+          use invite code
+        </Link>
+        .
+      </p>
     </Shell>
   );
 }

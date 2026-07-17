@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
-import { Card, Shell } from "@/components/ui";
+import { Card, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminSearch } from "@/components/admin-search";
@@ -40,51 +39,49 @@ export default async function AdminPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <Shell title="Admin" backHref="/">
+    <Shell
+      title="Admin"
+      subtitle={profile?.full_name || "Camp control"}
+      backHref="/"
+    >
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2.5">
           <Stat label="Registered" value={total} />
-          <Stat label="Waiting" value={waiting} />
-          <Stat label="Seen" value={seen} />
+          <Stat label="Waiting" value={waiting} tone="wait" />
+          <Stat label="Seen" value={seen} tone="ok" />
         </div>
 
-        <Card>
-          <p className="text-sm text-muted">Active camp</p>
-          <p className="text-lg font-semibold">{active?.name || "None set"}</p>
-          <p className="text-sm text-muted">
-            Volunteers: {volunteers?.length ?? 0}
+        <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+            Active camp
+          </p>
+          <p className="mt-0.5 text-xl font-bold tracking-tight">
+            {active?.name || "None set"}
+          </p>
+          {active?.venue ? (
+            <p className="text-sm text-muted">{active.venue}</p>
+          ) : null}
+          <p className="mt-2 text-xs text-muted">
+            {volunteers?.length ?? 0} volunteer
+            {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff
           </p>
         </Card>
 
+        <div className="grid gap-2.5">
+          <NavLink href="/register" variant="primary">
+            Register patient
+          </NavLink>
+          <NavLink href="/volunteer" variant="soft">
+            Open volunteer desk
+          </NavLink>
+        </div>
+
         <AdminCamps camps={camps || []} />
-
         <AdminVolunteers initial={volunteers || []} />
-
         <AdminSearch />
 
-        <Link
-          href="/volunteer"
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-brand-soft font-semibold text-brand"
-        >
-          Open volunteer desk
-        </Link>
-        <Link
-          href="/register"
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand font-semibold text-white"
-        >
-          Register patient
-        </Link>
         <SignOutButton />
       </div>
     </Shell>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3 text-center">
-      <p className="text-2xl font-bold text-brand">{value}</p>
-      <p className="text-xs text-muted">{label}</p>
-    </div>
   );
 }

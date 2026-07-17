@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import { Card, Shell } from "@/components/ui";
+import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 
 export default async function RegisterPage() {
@@ -15,26 +15,47 @@ export default async function RegisterPage() {
     .maybeSingle();
 
   return (
-    <Shell title="Register patient" backHref="/">
+    <Shell
+      title="Register patient"
+      subtitle="Join today’s eye camp queue"
+      backHref={
+        profile?.role === "admin"
+          ? "/admin"
+          : isStaff(profile?.role)
+            ? "/volunteer"
+            : "/"
+      }
+    >
       {!camp ? (
         <Card>
-          <p className="text-muted">
-            No active camp. Ask admin to create/activate a camp first.
-          </p>
+          <EmptyState>
+            No active camp. Ask admin to create or activate a camp first.
+          </EmptyState>
           {profile?.role === "admin" ? (
-            <Link href="/admin" className="mt-3 inline-block text-brand underline">
+            <Link
+              href="/admin"
+              className="mt-3 inline-flex text-sm font-semibold text-brand underline"
+            >
               Go to admin
             </Link>
           ) : null}
         </Card>
       ) : (
         <div className="space-y-4">
-          <Card>
-            <p className="text-sm text-muted">Active camp</p>
-            <p className="text-lg font-semibold">{camp.name}</p>
-            {camp.venue ? <p className="text-sm text-muted">{camp.venue}</p> : null}
+          <Card className="bg-gradient-to-br from-brand-soft/60 to-card">
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              Active camp
+            </p>
+            <p className="text-lg font-bold tracking-tight">{camp.name}</p>
+            <p className="text-sm text-muted">
+              {[camp.venue, camp.camp_date].filter(Boolean).join(" · ") ||
+                "Walk-in registration"}
+            </p>
           </Card>
           <Card>
+            <p className="mb-4 text-sm text-muted">
+              Fill the form — only Aadhaar last 4 digits are stored if provided.
+            </p>
             <PatientForm
               campId={camp.id}
               userId={profile?.role === "patient" ? userId : null}

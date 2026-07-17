@@ -8,7 +8,6 @@ export function QrCard({
   regNo,
   patientId,
 }: {
-  /** Absolute or relative print URL; if empty, built from patientId */
   value?: string;
   regNo: number;
   patientId?: string;
@@ -31,32 +30,38 @@ export function QrCard({
 
   if (!payload) {
     return (
-      <div className="rounded-2xl border border-border bg-white p-5 text-center text-sm text-muted">
+      <div className="rounded-2xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted">
         Preparing QR…
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-white p-5">
-      <p className="text-sm font-medium text-muted">Registration No.</p>
-      <p className="text-4xl font-bold tracking-tight text-brand">{regNo}</p>
-      <div className="rounded-xl border border-border bg-white p-3">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+      <div className="text-center">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Registration no.
+        </p>
+        <p className="text-5xl font-bold tabular-nums tracking-tight text-brand">
+          {regNo}
+        </p>
+      </div>
+      <div className="rounded-2xl border border-border bg-white p-4 shadow-inner">
         <QRCodeSVG
           value={payload}
-          size={220}
+          size={200}
           level="H"
           includeMargin
           bgColor="#ffffff"
-          fgColor="#000000"
+          fgColor="#0a5c3a"
         />
       </div>
-      <p className="text-center text-xs font-medium text-brand">
-        Scan at volunteer desk to print
-      </p>
-      <p className="max-w-[16rem] break-all text-center text-[10px] leading-snug text-muted">
-        {payload}
-      </p>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-brand">Show at volunteer desk</p>
+        <p className="mt-0.5 text-xs text-muted">
+          They scan this QR to open your prescription
+        </p>
+      </div>
     </div>
   );
 }

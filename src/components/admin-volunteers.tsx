@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, ErrorBox, Input } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Input,
+  SectionTitle,
+} from "@/components/ui";
 
 type Volunteer = {
   id: string;
@@ -51,9 +59,7 @@ export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
       },
       ...prev,
     ]);
-    setOk(
-      `Volunteer created. Share login: ${email} / (the password you set).`,
-    );
+    setOk(`Created. Share login: ${email} + the password you set.`);
     setFullName("");
     setEmail("");
     setPassword("");
@@ -63,26 +69,32 @@ export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
 
   return (
     <Card>
-      <h2 className="mb-3 font-semibold">Volunteers</h2>
+      <SectionTitle hint={`${list.length} total`}>Volunteers</SectionTitle>
       <ul className="mb-4 divide-y divide-border">
         {list.map((v) => (
-          <li key={v.id} className="flex items-center justify-between gap-2 py-2">
+          <li
+            key={v.id}
+            className="flex items-center justify-between gap-2 py-2.5"
+          >
             <div className="min-w-0">
               <p className="truncate font-medium">{v.full_name || "—"}</p>
-              <p className="truncate text-xs text-muted">{v.email || "no email"}</p>
+              <p className="truncate text-xs text-muted">
+                {v.email || "no email"}
+              </p>
             </div>
             <Badge tone="ok">volunteer</Badge>
           </li>
         ))}
         {!list.length ? (
-          <li className="py-2 text-sm text-muted">No volunteers yet.</li>
+          <li className="py-2">
+            <EmptyState>No volunteers yet — add the first below.</EmptyState>
+          </li>
         ) : null}
       </ul>
 
-      <form onSubmit={onSubmit} className="space-y-3">
+      <form onSubmit={onSubmit} className="space-y-3 border-t border-border pt-4">
         <p className="text-sm text-muted">
-          Create a volunteer account. They sign in at Staff login with this email
-          and password.
+          Create an account. They sign in at <strong>Staff login</strong>.
         </p>
         <Input
           label="Full name"
@@ -109,11 +121,11 @@ export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
         />
         <ErrorBox message={error} />
         {ok ? (
-          <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-brand">
+          <p className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-brand">
             {ok}
           </p>
         ) : null}
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} variant="secondary">
           {loading ? "Creating…" : "Add volunteer"}
         </Button>
       </form>

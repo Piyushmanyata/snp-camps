@@ -38,10 +38,15 @@ export default function StaffRegisterPage() {
   }
 
   return (
-    <Shell title="Staff setup" backHref="/">
+    <Shell
+      title="Staff setup"
+      subtitle="First-time account with invite code"
+      backHref="/"
+    >
       <Card>
-        <p className="mb-4 text-sm text-muted">
-          Use the admin or volunteer invite code from your organizer.
+        <p className="mb-4 text-sm leading-relaxed text-muted">
+          Prefer admin to add you? Ask them from the Admin → Volunteers section.
+          Otherwise use the invite code from your organizer.
         </p>
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
@@ -70,6 +75,7 @@ export default function StaffRegisterPage() {
             required
             value={invite}
             onChange={(e) => setInvite(e.target.value)}
+            hint="Admin or volunteer code from env"
           />
           <ErrorBox message={error} />
           <Button type="submit" disabled={loading}>

@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SNP Camps",
-  description: "Medical camp registration & queue — Sikar Nagarik Parishad",
+  title: "SNP Camps · Medical Camp Desk",
+  description:
+    "Patient registration, QR queue & eye prescription print — Sikar Nagarik Parishad (Kolkata)",
 };
 
 export default function RootLayout({

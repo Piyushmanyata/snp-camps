@@ -3,7 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Button, Card, Input } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  SectionTitle,
+} from "@/components/ui";
 
 type Row = {
   id: string;
@@ -15,7 +22,7 @@ type Row = {
 
 export function AdminSearch() {
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function search(e: React.FormEvent) {
@@ -44,41 +51,57 @@ export function AdminSearch() {
 
   return (
     <Card>
-      <h2 className="mb-3 font-semibold">Search patients</h2>
-      <form onSubmit={search} className="mb-3 flex gap-2">
-        <div className="flex-1">
+      <SectionTitle>Search patients</SectionTitle>
+      <form onSubmit={search} className="mb-3 flex items-end gap-2">
+        <div className="min-w-0 flex-1">
           <Input
             label="Name, phone, or reg no"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            placeholder="Search…"
           />
         </div>
-        <div className="flex items-end">
-          <Button type="submit" className="w-auto min-w-24" disabled={loading}>
-            {loading ? "…" : "Go"}
-          </Button>
-        </div>
+        <Button
+          type="submit"
+          className="w-auto min-w-[4.5rem] shrink-0"
+          disabled={loading}
+        >
+          {loading ? "…" : "Go"}
+        </Button>
       </form>
-      <ul className="divide-y divide-border">
-        {rows.map((r) => (
-          <li key={r.id} className="flex items-center justify-between py-2">
-            <div>
-              <p className="font-medium">
-                #{r.reg_no} {r.full_name}
-              </p>
-              <p className="text-xs text-muted">{r.phone}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge tone={r.queue_status === "seen" ? "ok" : "wait"}>
-                {r.queue_status}
-              </Badge>
-              <Link href={`/print/${r.id}`} className="text-sm text-brand underline">
-                Print
-              </Link>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {rows === null ? (
+        <p className="text-xs text-muted">Search to list recent patients.</p>
+      ) : rows.length === 0 ? (
+        <EmptyState>No matches.</EmptyState>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center justify-between gap-2 py-2.5"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">
+                  <span className="tabular-nums text-brand">#{r.reg_no}</span>{" "}
+                  {r.full_name}
+                </p>
+                <p className="truncate text-xs text-muted">{r.phone || "—"}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone={r.queue_status === "seen" ? "ok" : "wait"}>
+                  {r.queue_status}
+                </Badge>
+                <Link
+                  href={`/print/${r.id}`}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
+                >
+                  Print
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

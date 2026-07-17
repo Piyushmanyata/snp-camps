@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, Button, Card, ErrorBox, Input } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Input,
+  SectionTitle,
+} from "@/components/ui";
 import type { Camp } from "@/lib/types";
 
 export function AdminCamps({ camps }: { camps: Camp[] }) {
@@ -47,14 +55,17 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
 
   return (
     <Card>
-      <h2 className="mb-3 font-semibold">Camps</h2>
+      <SectionTitle hint="One active at a time">Camps</SectionTitle>
       <ul className="mb-4 divide-y divide-border">
         {camps.map((c) => (
-          <li key={c.id} className="flex items-center justify-between gap-2 py-2">
-            <div>
-              <p className="font-medium">{c.name}</p>
-              <p className="text-xs text-muted">
-                {[c.venue, c.camp_date].filter(Boolean).join(" · ")}
+          <li
+            key={c.id}
+            className="flex items-center justify-between gap-2 py-2.5"
+          >
+            <div className="min-w-0">
+              <p className="truncate font-medium">{c.name}</p>
+              <p className="truncate text-xs text-muted">
+                {[c.venue, c.camp_date].filter(Boolean).join(" · ") || "—"}
               </p>
             </div>
             {c.is_active ? (
@@ -62,7 +73,7 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
             ) : (
               <button
                 type="button"
-                className="rounded-lg border border-border px-2 py-1 text-sm"
+                className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-medium shadow-sm transition hover:bg-brand-soft"
                 onClick={() => activate(c.id)}
               >
                 Set active
@@ -71,18 +82,27 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
           </li>
         ))}
         {!camps.length ? (
-          <li className="py-2 text-sm text-muted">No camps yet.</li>
+          <li className="py-2">
+            <EmptyState>No camps yet — create the first below.</EmptyState>
+          </li>
         ) : null}
       </ul>
 
-      <form onSubmit={createCamp} className="space-y-3">
+      <form onSubmit={createCamp} className="space-y-3 border-t border-border pt-4">
+        <p className="text-sm font-medium text-foreground/80">New camp</p>
         <Input
-          label="New camp name"
+          label="Camp name"
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. SNP Eye Camp"
         />
-        <Input label="Venue" value={venue} onChange={(e) => setVenue(e.target.value)} />
+        <Input
+          label="Venue"
+          value={venue}
+          onChange={(e) => setVenue(e.target.value)}
+          placeholder="SIKAR BHAWAN"
+        />
         <Input
           label="Date"
           type="date"
@@ -90,7 +110,7 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
           onChange={(e) => setCampDate(e.target.value)}
         />
         <ErrorBox message={error} />
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} variant="secondary">
           {loading ? "Creating…" : "Create camp"}
         </Button>
       </form>

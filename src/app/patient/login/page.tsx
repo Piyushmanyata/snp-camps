@@ -58,7 +58,6 @@ export default function PatientLoginPage() {
       return;
     }
 
-    // Link unclaimed patient rows with same phone
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -72,7 +71,6 @@ export default function PatientLoginPage() {
         .update({ user_id: user.id })
         .is("user_id", null)
         .eq("phone", phoneE164);
-      // also try raw 10-digit match
       const ten = phoneE164.replace(/\D/g, "").slice(-10);
       await supabase
         .from("patients")
@@ -86,7 +84,11 @@ export default function PatientLoginPage() {
   }
 
   return (
-    <Shell title="Patient login" backHref="/">
+    <Shell
+      title="Patient login"
+      subtitle="Phone OTP to view your QR"
+      backHref="/"
+    >
       <Card>
         {step === "phone" ? (
           <form onSubmit={sendOtp} className="space-y-4">
@@ -97,6 +99,7 @@ export default function PatientLoginPage() {
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              hint="We'll send a one-time code via SMS"
             />
             <ErrorBox message={error} />
             <Button type="submit" disabled={loading}>
@@ -105,19 +108,31 @@ export default function PatientLoginPage() {
           </form>
         ) : (
           <form onSubmit={verifyOtp} className="space-y-4">
-            <p className="text-sm text-muted">OTP sent to {normalizePhone(phone)}</p>
+            <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
+              OTP sent to <strong>{normalizePhone(phone)}</strong>
+            </p>
             <Input
               label="OTP"
               inputMode="numeric"
               required
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
+              placeholder="6-digit code"
+              autoComplete="one-time-code"
             />
             <ErrorBox message={error} />
             <Button type="submit" disabled={loading}>
               {loading ? "Verifying…" : "Verify & continue"}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setStep("phone")}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setStep("phone");
+                setOtp("");
+                setError(null);
+              }}
+            >
               Change number
             </Button>
           </form>

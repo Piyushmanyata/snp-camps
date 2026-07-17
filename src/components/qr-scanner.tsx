@@ -17,7 +17,6 @@ export function QrScanner() {
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
-    isScanning?: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -45,11 +44,9 @@ export function QrScanner() {
     setError(null);
     handledRef.current = false;
     setActive(true);
-    // allow DOM node for #qr-reader to mount
     await new Promise((r) => setTimeout(r, 50));
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
-      // clear previous instance if any
       if (scannerRef.current) {
         try {
           await scannerRef.current.stop();
@@ -84,7 +81,7 @@ export function QrScanner() {
       setError(
         e instanceof Error
           ? e.message
-          : "Camera failed — use manual reg no below, or allow camera permission.",
+          : "Camera failed — allow permission, or use reg number below.",
       );
       setActive(false);
     }
@@ -116,7 +113,7 @@ export function QrScanner() {
 
     const reg = Number(raw.replace(/[^\d]/g, ""));
     if (!reg || Number.isNaN(reg)) {
-      setError("Enter registration number (e.g. 1001) or paste patient QR link.");
+      setError("Enter registration number (e.g. 1001) or paste QR link.");
       setLooking(false);
       return;
     }
@@ -146,8 +143,16 @@ export function QrScanner() {
     <div className="space-y-3">
       <div
         id={regionId}
-        className="min-h-[280px] overflow-hidden rounded-2xl border border-border bg-black/5"
-      />
+        className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
+          active ? "min-h-[280px]" : "min-h-[4.5rem]"
+        }`}
+      >
+        {!active ? (
+          <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
+            Camera preview appears here
+          </div>
+        ) : null}
+      </div>
       <ErrorBox message={error} />
       {!active ? (
         <Button type="button" onClick={start}>
@@ -159,8 +164,13 @@ export function QrScanner() {
         </Button>
       )}
 
-      <form onSubmit={openManual} className="space-y-2 border-t border-border pt-3">
-        <p className="text-sm font-medium text-muted">Or open by reg number</p>
+      <form
+        onSubmit={openManual}
+        className="space-y-2 border-t border-border pt-3"
+      >
+        <p className="text-sm font-medium text-foreground/80">
+          Or open by reg number
+        </p>
         <Input
           label="Reg no / QR link"
           inputMode="numeric"

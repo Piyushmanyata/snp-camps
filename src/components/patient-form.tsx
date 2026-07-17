@@ -49,7 +49,6 @@ export function PatientForm({
     }
 
     const supabase = createClient();
-    // RPC is security definer — avoids RLS insert+select RETURNING failures for walk-up/anon
     const { data, error: err } = await supabase.rpc("register_patient", {
       p_camp_id: campId,
       p_full_name: fullName.trim(),
@@ -86,9 +85,12 @@ export function PatientForm({
       site || (typeof window !== "undefined" ? window.location.origin : "");
     return (
       <div className="space-y-4">
-        <p className="text-center text-sm font-medium text-brand">
-          Registered — show QR at the desk
-        </p>
+        <div className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3 text-center">
+          <p className="text-sm font-semibold text-brand">Registered successfully</p>
+          <p className="text-xs text-brand/80">
+            Show this QR at the desk · keep the reg number
+          </p>
+        </div>
         <QrCard
           value={origin ? `${origin}/print/${created.id}` : undefined}
           regNo={created.reg_no}
@@ -107,11 +109,17 @@ export function PatientForm({
       <Input
         label="Full name *"
         required
+        autoComplete="name"
         value={fullName}
         onChange={(e) => setFullName(e.target.value)}
+        placeholder="As on ID card"
       />
       <div className="grid grid-cols-2 gap-3">
-        <Select label="Gender" value={gender} onChange={(e) => setGender(e.target.value)}>
+        <Select
+          label="Gender"
+          value={gender}
+          onChange={(e) => setGender(e.target.value)}
+        >
           <option value="">—</option>
           <option value="M">Male</option>
           <option value="F">Female</option>
@@ -122,27 +130,39 @@ export function PatientForm({
           type="number"
           min={0}
           max={149}
+          inputMode="numeric"
           value={age}
           onChange={(e) => setAge(e.target.value)}
+          placeholder="Years"
         />
       </div>
-      <Input label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+      <Input
+        label="Address"
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+        placeholder="Locality / area"
+      />
       <Input
         label="Phone"
         inputMode="tel"
+        autoComplete="tel"
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
+        placeholder="10-digit mobile"
       />
       <Input
         label="Email"
         type="email"
+        autoComplete="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
+        placeholder="Optional"
       />
       <Input
-        label="Aadhaar (optional — only last 4 stored)"
+        label="Aadhaar (optional)"
         inputMode="numeric"
-        placeholder="XXXX XXXX 1234 or 1234"
+        placeholder="XXXX XXXX 1234 or last 4 only"
+        hint="Only last 4 digits are stored"
         value={aadhaar}
         onChange={(e) => setAadhaar(e.target.value)}
       />
