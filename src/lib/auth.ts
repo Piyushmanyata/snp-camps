@@ -22,11 +22,15 @@ export async function getSessionProfile(): Promise<{
 }
 
 export function isStaff(role?: UserRole | null) {
-  return role === "admin" || role === "volunteer";
+  return role === "admin" || role === "volunteer" || role === "doctor";
 }
 
 export function isAdmin(role?: UserRole | null) {
   return role === "admin";
+}
+
+export function isDoctor(role?: UserRole | null) {
+  return role === "doctor";
 }
 
 /** API guard: requires signed-in admin. Returns JSON error response or user+profile. */

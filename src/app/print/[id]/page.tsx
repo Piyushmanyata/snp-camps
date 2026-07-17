@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { PrintActions } from "@/components/print-actions";
 import { PrintSheet } from "@/components/print-sheet";
-import { patientLoginUrl } from "@/lib/patient-qr";
+import { patientPrintUrl } from "@/lib/qr";
 
 export default async function PrintPage({
   params,
@@ -59,16 +59,12 @@ export default async function PrintPage({
     );
   }
 
-  // Print path: ensure they entered the queue if still only registered,
-  // then mark seen (print = seen) → leaves live queue.
+  // Print path: join FCFS queue only — never mark seen.
   if (patient.queue_status === "registered") {
-    await supabase.rpc("join_queue", {
-      p_patient_id: id,
-      p_reg_no: null,
-    });
-  }
-  if (patient.queue_status !== "seen") {
-    await supabase.rpc("mark_patient_seen", { p_id: id });
+    await supabase.rpc("mark_patient_printed", { p_id: id });
+  } else if (patient.queue_status === "waiting") {
+    // Idempotent: ensure printed_at
+    await supabase.rpc("mark_patient_printed", { p_id: id });
   }
 
   const h = await headers();
@@ -106,12 +102,13 @@ export default async function PrintPage({
         camp={camp}
         origin={origin}
         today={today}
-        qrValue={patientLoginUrl(patient.id, origin)}
+        qrValue={patientPrintUrl(patient.id, origin)}
       />
 
       <p className="no-print mt-3 text-center text-xs text-muted">
-        Fits one A4 page · Use browser Print → Portrait · Margins: Default or
-        Minimum · Patient is <strong>seen</strong> and off the live queue
+        Fits one A4 page · Browser Print → Portrait · Patient is{" "}
+        <strong>in queue</strong> (not seen). Doctor/volunteer scan assigns a
+        doctor and marks seen.
       </p>
     </main>
   );

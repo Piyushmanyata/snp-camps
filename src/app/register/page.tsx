@@ -67,8 +67,8 @@ export default async function RegisterPage() {
           <Card className="lg:col-span-3">
             <p className="mb-4 text-sm text-muted">
               {staff
-                ? "One person, one day. Desk registration adds them to the live queue immediately. No phone? Print here (print marks seen and removes from queue). Has a phone? Show the login QR."
-                : "One person, one day. After save you are registered only — not in the queue yet. Scan your QR at the desk to join the queue, or keep it for login anytime."}
+                ? "One person, one day. After save they are registered only. Print the prescription to put them in the queue. Later scan assigns a doctor (seen). No phone? Print at this desk."
+                : "One person, one day. After save you are registered only. Show your QR at the desk for print (joins queue), then doctor/volunteer scan marks seen."}
             </p>
             <PatientForm
               campId={camp.id}

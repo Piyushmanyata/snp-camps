@@ -1,7 +1,7 @@
 -- SNP Camps v1 — run once in Supabase SQL Editor
 create extension if not exists "pgcrypto";
 
-create type public.user_role as enum ('admin', 'volunteer', 'patient');
+create type public.user_role as enum ('admin', 'volunteer', 'doctor', 'patient');
 create type public.queue_status as enum ('registered', 'waiting', 'seen');
 
 create table public.profiles (
@@ -41,7 +41,9 @@ create table public.patients (
   aadhaar_last4 char(4) check (aadhaar_last4 is null or aadhaar_last4 ~ '^[0-9]{4}$'),
   queue_status public.queue_status not null default 'registered',
   queued_at timestamptz,
+  printed_at timestamptz,
   seen_at timestamptz,
+  seen_by uuid references public.profiles (id) on delete set null,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (reg_no)
@@ -85,7 +87,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and role in ('admin', 'volunteer')
+    where id = auth.uid() and role in ('admin', 'volunteer', 'doctor')
   );
 $$;
 

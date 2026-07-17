@@ -13,7 +13,7 @@ import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
 import { ChangeDay } from "@/components/change-day";
 import { SeatBoard } from "@/components/seat-board";
-import { patientLoginUrl } from "@/lib/patient-qr";
+import { patientPrintUrl } from "@/lib/qr";
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -103,15 +103,22 @@ export default async function PatientHomePage() {
                 </div>
               </Card>
               <QrCard
-                value={patientLoginUrl(patient.id, origin)}
+                value={patientPrintUrl(patient.id, origin)}
                 regNo={patient.reg_no}
                 patientId={patient.id}
               />
               {isStaff(profile?.role) ? (
                 <NavLink href={`/print/${patient.id}`} variant="soft">
-                  Open print form
+                  Open print form (join queue)
                 </NavLink>
               ) : null}
+              <p className="text-center text-xs text-muted">
+                {patient.queue_status === "registered"
+                  ? "Not in queue until staff prints your prescription."
+                  : patient.queue_status === "waiting"
+                    ? "In queue — waiting for doctor scan."
+                    : "Seen by a doctor."}
+              </p>
             </div>
             <div className="space-y-4">
               <Card>

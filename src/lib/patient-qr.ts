@@ -32,20 +32,21 @@ export function verifyPatientQrToken(
   }
 }
 
-/** QR payload: patient scans → instant login; desk scan still extracts patient id. */
+/**
+ * Staff-scan QR payload (print URL). Patient opening it does not log them in.
+ * Kept name for call-site compatibility.
+ */
 export function patientLoginUrl(
   patientId: string,
   origin?: string | null,
 ): string {
-  const base =
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SITE_URL) ||
-    origin ||
-    "";
-  const clean = String(base || "").replace(/\/$/, "");
-  const token = signPatientQrToken(patientId);
-  if (!clean || !token) {
-    // Fall back to print URL so desk scan still works without secret
-    return patientPrintUrl(patientId, origin);
-  }
-  return `${clean}/patient/enter/${patientId}?t=${token}`;
+  return patientPrintUrl(patientId, origin);
+}
+
+/** @deprecated use patientPrintUrl / patientLoginUrl (staff scan only) */
+export function patientStaffScanUrl(
+  patientId: string,
+  origin?: string | null,
+): string {
+  return patientPrintUrl(patientId, origin);
 }

@@ -44,6 +44,7 @@ export default function StaffLoginPage() {
 
     if (profile?.role === "admin") router.replace("/admin");
     else if (profile?.role === "volunteer") router.replace("/volunteer");
+    else if (profile?.role === "doctor") router.replace("/doctor");
     else router.replace("/patient");
     router.refresh();
   }
@@ -51,7 +52,7 @@ export default function StaffLoginPage() {
   return (
     <Shell
       title="Staff login"
-      subtitle="Admin and volunteer access"
+      subtitle="Admin, volunteer, and doctor access"
       backHref="/"
       width="md"
     >

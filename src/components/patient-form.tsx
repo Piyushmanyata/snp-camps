@@ -62,11 +62,6 @@ export function PatientForm({
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
-  /** Desk reg auto-queue result: waiting | seen | failed | null (self-reg) */
-  const [queueStatus, setQueueStatus] = useState<
-    "waiting" | "seen" | "failed" | null
-  >(null);
-  const [queueBusy, setQueueBusy] = useState(false);
 
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMsg, setLookupMsg] = useState<string | null>(null);
@@ -306,77 +301,19 @@ export function PatientForm({
       loginUrl = `${window.location.origin}/print/${createdRow.id}`;
     }
 
-    // Volunteer/admin desk reg: auto-join live queue. Self-reg stays registered only.
-    let autoQueueNote: string | null = null;
-    let autoQueueStatus: "waiting" | "seen" | "failed" | null = null;
-    if (isStaff) {
-      const { data: qData, error: qErr } = await supabase.rpc("join_queue", {
-        p_patient_id: createdRow.id,
-        p_reg_no: null,
-      });
-      if (qErr) {
-        autoQueueStatus = "failed";
-        autoQueueNote = `Registered, but queue join failed: ${qErr.message}. Use “Add to queue” below.`;
-      } else {
-        const qRow = (Array.isArray(qData) ? qData[0] : qData) as {
-          already_in_queue?: boolean;
-          queue_status?: string;
-        } | null;
-        if (qRow?.queue_status === "seen") {
-          autoQueueStatus = "seen";
-          autoQueueNote = "Already marked seen (printed earlier).";
-        } else {
-          autoQueueStatus = "waiting";
-          autoQueueNote = qRow?.already_in_queue
-            ? "Already in the live queue."
-            : "Added to live queue (waiting).";
-        }
-      }
-    }
-
+    // Stay registered until print. Print joins the live queue.
     setCreated({ ...createdRow, loginUrl, accountReady });
-    setQueueNote(autoQueueNote);
-    setQueueStatus(autoQueueStatus);
+    setQueueNote(
+      isStaff
+        ? "Registered only. Print prescription to put them in the queue."
+        : null,
+    );
     setLoading(false);
-  }
-
-  async function addToQueue() {
-    if (!created) return;
-    setQueueBusy(true);
-    setQueueNote(null);
-    setError(null);
-    const supabase = createClient();
-    const { data, error: err } = await supabase.rpc("join_queue", {
-      p_patient_id: created.id,
-      p_reg_no: null,
-    });
-    setQueueBusy(false);
-    if (err) {
-      setQueueStatus("failed");
-      setError(err.message);
-      return;
-    }
-    const row = (Array.isArray(data) ? data[0] : data) as {
-      already_in_queue?: boolean;
-      queue_status?: string;
-    } | null;
-    if (row?.queue_status === "seen") {
-      setQueueStatus("seen");
-      setQueueNote("Already marked seen (printed earlier).");
-    } else {
-      setQueueStatus("waiting");
-      setQueueNote(
-        row?.already_in_queue
-          ? "Already in the live queue."
-          : "Added to live queue (waiting).",
-      );
-    }
   }
 
   function resetForm() {
     setCreated(null);
     setQueueNote(null);
-    setQueueStatus(null);
     setError(null);
     setFullName("");
     setGender("");
@@ -406,14 +343,8 @@ export function PatientForm({
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
             {isStaff
-              ? queueStatus === "waiting"
-                ? "In live queue"
-                : queueStatus === "seen"
-                  ? "Already seen"
-                  : queueStatus === "failed"
-                    ? "Registered — queue join failed"
-                    : "Registered at desk"
-              : "Not in queue until desk check-in"}
+              ? "Registered at desk — print to join queue"
+              : "Not in queue until desk prints your form"}
           </p>
         </div>
 
@@ -426,11 +357,12 @@ export function PatientForm({
             ) : null}
             <div>
               <p className="text-sm font-semibold text-foreground">
-                No smartphone?
+                Print prescription
               </p>
               <p className="text-xs text-muted">
-                Print the prescription on this desk now. Opening print marks the
-                patient as <strong>seen</strong>.
+                Everyone needs a paper form. Opening print puts them{" "}
+                <strong>in the queue</strong> (not seen). Scan later to assign a
+                doctor.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -438,19 +370,8 @@ export function PatientForm({
                 href={`/print/${created.id}?auto=1`}
                 className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
               >
-                Print prescription now
+                Print now (join queue)
               </Link>
-              {queueStatus === "failed" || queueStatus === null ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="sm:w-auto sm:min-w-[10rem]"
-                  disabled={queueBusy}
-                  onClick={() => void addToQueue()}
-                >
-                  {queueBusy ? "Adding…" : "Add to queue"}
-                </Button>
-              ) : null}
             </div>
             <ErrorBox message={error} />
           </div>
@@ -459,8 +380,8 @@ export function PatientForm({
         <div className="space-y-2">
           <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
             {isStaff
-              ? "Has a phone? Show this QR"
-              : "Your QR — scan to log in anytime"}
+              ? "Has a phone? Show this QR at desk"
+              : "Your QR — show at desk for print & scan"}
           </p>
           <QrCard
             value={created.loginUrl}
@@ -468,24 +389,21 @@ export function PatientForm({
             patientId={created.id}
             staffHint={isStaff}
           />
-          {created.accountReady && !isStaff ? (
+          {!isStaff ? (
             <p className="text-center text-xs text-muted">
-              No password — scan this QR to open your profile
+              Keep this reg number. Staff will print your form (queue) then
+              scan when a doctor sees you.
             </p>
           ) : null}
         </div>
 
         <div className="rounded-xl border border-border p-4">
-          <p className="mb-2 text-sm font-medium">
-            {queueStatus === "waiting" || queueStatus === "seen"
-              ? "Camp day"
-              : "Need a different day?"}
-          </p>
+          <p className="mb-2 text-sm font-medium">Need a different day?</p>
           <ChangeDay
             patientId={created.id}
             currentDayId={created.camp_day_id || campDayId}
             days={days}
-            queueStatus={queueStatus ?? "registered"}
+            queueStatus="registered"
           />
         </div>
 
@@ -676,8 +594,8 @@ export function PatientForm({
       </div>
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
-          ? "No password. After save they join the live queue automatically. Print here if no phone (print → seen), or show the QR."
-          : "No password. After save you are registered only — join the queue at the desk (scan QR). Your QR also opens your profile anytime."}
+          ? "After save they stay registered. Print prescription to put them in the queue. Later scan assigns a doctor (seen)."
+          : "After save you are registered only. Show your QR at the desk for print (queue), then doctor scan (seen)."}
       </p>
       <ErrorBox message={error} />
       <Button type="submit" disabled={loading || lookupState === "loading"}>

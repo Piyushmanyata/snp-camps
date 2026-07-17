@@ -53,17 +53,19 @@ export function QrCard({
         {staffHint ? (
           <>
             <p className="text-sm font-semibold text-brand">
-              Patient phone login
+              Show at desk
             </p>
             <p className="mt-0.5 text-xs text-muted">
-              They scan → instant login · desk scan → queue · print → seen
+              Print first (joins queue) · later scan assigns doctor (seen)
             </p>
           </>
         ) : (
           <>
-            <p className="text-sm font-semibold text-brand">Scan to open profile</p>
+            <p className="text-sm font-semibold text-brand">
+              Show this QR at the desk
+            </p>
             <p className="mt-0.5 text-xs text-muted">
-              Instant login · show same QR at desk for queue &amp; print
+              Staff print prescription → queue · doctor scan → seen
             </p>
           </>
         )}

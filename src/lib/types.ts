@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "volunteer" | "patient";
+export type UserRole = "admin" | "volunteer" | "doctor" | "patient";
 export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {
@@ -43,7 +43,9 @@ export type Patient = {
   aadhaar_last4: string | null;
   queue_status: QueueStatus;
   queued_at: string | null;
+  printed_at: string | null;
   seen_at: string | null;
+  seen_by: string | null;
   created_by: string | null;
   created_at: string;
 };

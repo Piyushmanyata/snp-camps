@@ -9,6 +9,7 @@ export default async function HomePage() {
   const { profile } = await getSessionProfile();
   if (profile?.role === "admin") redirect("/admin");
   if (profile?.role === "volunteer") redirect("/volunteer");
+  if (profile?.role === "doctor") redirect("/doctor");
   if (profile?.role === "patient") redirect("/patient");
 
   const supabase = await createClient();
@@ -40,8 +41,8 @@ export default async function HomePage() {
               Medical Camp Desk
             </h1>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted lg:mx-0">
-              Multi-day eye camp · limited seats per day · register, get QR, check
-              in at the desk
+              Multi-day eye camp · limited seats per day · register, print at
+              desk, then doctor scan
             </p>
           </div>
 
@@ -77,7 +78,7 @@ export default async function HomePage() {
                 {!camp
                   ? "No active camp"
                   : anyOpen
-                    ? "Pick a day → reg no + QR"
+                    ? "Pick a day → reg no + show QR at desk"
                     : "All days full"}
               </span>
             </Link>
@@ -88,7 +89,7 @@ export default async function HomePage() {
             >
               <span className="text-base font-semibold">Patient login</span>
               <span className="text-xs text-muted">
-                Reg no + password · view QR
+                View reg no &amp; status
               </span>
             </Link>
 
@@ -99,7 +100,9 @@ export default async function HomePage() {
               <span className="text-base font-semibold text-brand">
                 Staff login
               </span>
-              <span className="text-xs text-brand/70">Admin &amp; volunteers</span>
+              <span className="text-xs text-brand/70">
+                Admin · volunteers · doctors
+              </span>
             </Link>
 
             <p className="text-center text-xs text-muted sm:col-span-1 lg:text-left">

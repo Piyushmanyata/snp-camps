@@ -2,14 +2,17 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-- Patient self-registration → reg no + QR only (not queued)  
-- Volunteer desk registration → auto-join live queue  
-- Patient scans QR → instant login on their phone  
-- No phone? Staff print prescription from registration screen  
-- Desk **scan** → add to queue · **print** → mark seen  
-- One active camp, FCFS queue  
-- Admin: camps, search, counts  
-- Aadhaar at top of registration; auto-fill when lookup is enabled  
+## Camp flow (v2)
+
+1. **Register** (self or desk) → status `registered`
+2. **Print** prescription at desk (scan QR or search reg) → joins FCFS **queue** (`waiting`)
+3. **Scan** by volunteer (pick any doctor) or doctor (self-assign) → **seen** (once only)
+4. Re-scan of a seen patient is **blocked** (“Already seen by Dr X”)
+5. Must print before seen — unprinted scan opens print, not assign
+
+- Patient QR is for **staff scan only** (no phone QR login)
+- Everyone needs a paper prescription (no paperless path)
+- One active camp, single FCFS queue; doctor recorded when seen
 - Aadhaar: optional, **last 4 digits only** stored
 
 ## Stack
@@ -24,21 +27,25 @@ In Supabase Dashboard → SQL Editor, run:
 
 `supabase/schema.sql`
 
+Then apply queue/doctor migration (or use script):
+
+`supabase/fix-print-queue-doctor.sql`  
+`node scripts/apply-print-queue-doctor.mjs` (needs `SUPABASE_DB_PASSWORD`)
+
 ### 2. Auth settings
 
-- **Email**: enable Email provider (staff). Prefer **disable email confirm** for camp day.  
-- **Phone**: enable Phone + SMS (Twilio/MessageBird) for patient OTP. Desk registration works without it.
+- **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.  
+- **Phone**: optional for patient OTP login (status view only). Desk registration works without it.
 
 ### 3. Env
 
-Copy `.env.example` → `.env.local` (already seeded for your project).
+Copy `.env.example` → `.env.local`.
 
 ```
 ADMIN_INVITE_CODE=...
 VOLUNTEER_INVITE_CODE=...
+SUPABASE_SERVICE_ROLE_KEY=...   # create volunteers/doctors, patient accounts
 ```
-
-Optional: `SUPABASE_SERVICE_ROLE_KEY` for stronger staff role assignment.
 
 ### 4. Local
 
@@ -49,7 +56,8 @@ npm run dev
 
 1. Open `/staff/register` with **admin** invite code  
 2. Create a camp → set active  
-3. Register patients → scan/print from `/volunteer`
+3. Admin → add **doctors** and volunteers  
+4. Register patients → **print** at desk → **scan** on volunteer/doctor desk
 
 ### 5. Deploy Vercel
 
@@ -57,15 +65,16 @@ npm run dev
 npx vercel
 ```
 
-Add the same env vars in Vercel project settings. Set `NEXT_PUBLIC_SITE_URL` to the production URL (for QR links).
+Add the same env vars in Vercel. Set `NEXT_PUBLIC_SITE_URL` to the production URL (for QR links).
 
 ## Roles
 
 | Role | Access |
 |------|--------|
-| Admin | Camps, search, counts, volunteer desk, print |
-| Volunteer | Register, queue, scan, print |
-| Patient | Scan QR to login (or legacy reg+password / OTP), own profile + QR |
+| Admin | Camps, search, counts, create volunteers/doctors, desks, print |
+| Volunteer | Register, print (queue), scan + pick doctor, live queue |
+| Doctor | Login, stats (patients they saw), scan (self-assign), print |
+| Patient | Optional login for reg/status; show QR at desk for staff |
 
 ## Privacy
 

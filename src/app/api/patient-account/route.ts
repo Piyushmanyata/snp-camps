@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
-import { patientLoginUrl } from "@/lib/patient-qr";
+import { patientPrintUrl } from "@/lib/qr";
 
 type Body = {
   patientId?: string;
@@ -13,9 +13,8 @@ type Body = {
 };
 
 /**
- * Create / ensure a patient login after registration.
- * Password is optional — desk/self-reg uses QR magic login (random password).
- * Password change on an already-linked account requires that patient session or admin.
+ * Create / ensure a patient login after registration (optional password).
+ * QR is for staff scan only — not passwordless patient login.
  */
 export async function POST(req: Request) {
   const body = await readJsonBody<Body>(req);
@@ -70,7 +69,7 @@ export async function POST(req: Request) {
 
   const email = patientAuthEmail(regNo);
   const name = fullName || patient.full_name || `Patient ${regNo}`;
-  const loginUrl = patientLoginUrl(patientId, origin);
+  const loginUrl = patientPrintUrl(patientId, origin);
 
   // Already linked — only the same patient session or an admin may set password
   if (patient.user_id) {
@@ -82,7 +81,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "Login already exists for this patient. Scan the QR to sign in, or ask admin.",
+              "Login already exists for this patient. Use patient login or ask admin.",
           },
           { status: 403 },
         );

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, EmptyState, ErrorBox } from "@/components/ui";
+import { Badge, Button, EmptyState, ErrorBox } from "@/components/ui";
+import type { DoctorOption } from "@/components/qr-scanner";
 
 export type LiveQueuePatient = {
   id: string;
@@ -13,13 +14,16 @@ export type LiveQueuePatient = {
   phone: string | null;
 };
 
-/** Waiting-only queue: print or mark seen removes the row from the live list. */
+/** Waiting-only queue. Assign doctor marks seen and removes from list. */
 export function LiveQueue({
   initial,
+  doctors = [],
+  mode = "volunteer",
   pollMs = 12_000,
 }: {
   initial: LiveQueuePatient[];
-  /** Soft poll so multi-desk desks stay in sync without Realtime overhead. */
+  doctors?: DoctorOption[];
+  mode?: "volunteer" | "doctor" | "admin";
   pollMs?: number;
 }) {
   const router = useRouter();
@@ -27,6 +31,8 @@ export function LiveQueue({
   const [prev, setPrev] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pickId, setPickId] = useState<string | null>(null);
+  const [doctorId, setDoctorId] = useState("");
   const [pending, startTransition] = useTransition();
 
   if (initial !== prev) {
@@ -56,24 +62,50 @@ export function LiveQueue({
     };
   }, [pollMs, refresh]);
 
-  async function markSeen(p: LiveQueuePatient) {
+  async function assign(patientId: string, chosen: string | null) {
     setError(null);
-    setBusyId(p.id);
-    // Optimistic remove — seen patients leave the live queue immediately
-    setRows((list) => list.filter((r) => r.id !== p.id));
+    setBusyId(patientId);
     const supabase = createClient();
-    const { error: err } = await supabase.rpc("mark_patient_seen", {
-      p_id: p.id,
+    const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
+      p_patient_id: patientId,
+      p_reg_no: null,
+      p_doctor_id: chosen,
     });
     setBusyId(null);
+
     if (err) {
       setError(err.message);
-      setRows((list) => {
-        if (list.some((r) => r.id === p.id)) return list;
-        return [...list, p].sort((a, b) => a.reg_no - b.reg_no);
-      });
       return;
     }
+
+    const row = (Array.isArray(data) ? data[0] : data) as {
+      already_seen?: boolean;
+      error_code?: string | null;
+      doctor_name?: string | null;
+    } | null;
+
+    if (row?.error_code === "must_print_first") {
+      setError("Print prescription first.");
+      return;
+    }
+    if (row?.error_code === "doctor_required") {
+      setError("Select a doctor.");
+      return;
+    }
+    if (row?.error_code === "already_seen" || row?.already_seen) {
+      setError(
+        row.doctor_name
+          ? `Already seen by ${row.doctor_name}`
+          : "Already seen",
+      );
+      setRows((list) => list.filter((r) => r.id !== patientId));
+      refresh();
+      return;
+    }
+
+    setRows((list) => list.filter((r) => r.id !== patientId));
+    setPickId(null);
+    setDoctorId("");
     refresh();
   }
 
@@ -85,44 +117,106 @@ export function LiveQueue({
       ) : null}
       <ul className="divide-y divide-border lg:max-h-[70vh] lg:overflow-y-auto">
         {rows.map((p) => (
-          <li
-            key={p.id}
-            className="flex items-center justify-between gap-2 px-1 py-3"
-          >
-            <div className="min-w-0">
-              <p className="truncate font-semibold">
-                <span className="tabular-nums text-brand">#{p.reg_no}</span>{" "}
-                {p.full_name}
-              </p>
-              {p.phone ? (
-                <p className="truncate text-xs text-muted">{p.phone}</p>
-              ) : null}
+          <li key={p.id} className="px-1 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">
+                  <span className="tabular-nums text-brand">#{p.reg_no}</span>{" "}
+                  {p.full_name}
+                </p>
+                {p.phone ? (
+                  <p className="truncate text-xs text-muted">{p.phone}</p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Badge tone="wait">In queue</Badge>
+                <Link
+                  href={`/print/${p.id}`}
+                  className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-semibold text-brand shadow-sm transition hover:bg-brand-soft"
+                >
+                  Reprint
+                </Link>
+                {mode === "doctor" ? (
+                  <button
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => void assign(p.id, null)}
+                    className="rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-1.5 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
+                  >
+                    {busyId === p.id ? "…" : "See now"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickId(pickId === p.id ? null : p.id);
+                      setDoctorId("");
+                      setError(null);
+                    }}
+                    className="rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-1.5 text-sm font-semibold text-brand transition hover:bg-white"
+                  >
+                    Assign
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Badge tone="wait">In queue</Badge>
-              <Link
-                href={`/print/${p.id}`}
-                className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-semibold text-brand shadow-sm transition hover:bg-brand-soft"
-              >
-                Print
-              </Link>
-              <button
-                type="button"
-                disabled={busyId === p.id}
-                onClick={() => void markSeen(p)}
-                className="rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-1.5 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
-                title="Mark seen and remove from live queue"
-              >
-                {busyId === p.id ? "…" : "Seen"}
-              </button>
-            </div>
+
+            {pickId === p.id && mode !== "doctor" ? (
+              <div className="mt-2 space-y-2 rounded-xl border border-border bg-background p-2.5">
+                <p className="text-xs font-semibold text-muted">
+                  Which doctor is seeing them?
+                </p>
+                {doctors.length === 0 ? (
+                  <p className="text-xs text-amber-800">
+                    No doctors yet — ask admin to add doctors.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {doctors.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setDoctorId(d.id)}
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+                          doctorId === d.id
+                            ? "border-brand bg-brand-soft text-brand"
+                            : "border-border bg-white"
+                        }`}
+                      >
+                        {d.full_name || "Doctor"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-auto"
+                    disabled={!doctorId || busyId === p.id}
+                    onClick={() => void assign(p.id, doctorId)}
+                  >
+                    {busyId === p.id ? "…" : "Confirm seen"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="w-auto"
+                    onClick={() => setPickId(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </li>
         ))}
         {!rows.length ? (
           <li className="px-1 py-2">
             <EmptyState>
-              Queue is empty. Scan a patient QR or enter reg no to check them
-              in. Seen patients leave this list automatically.
+              Queue is empty. Print a patient prescription to add them here.
+              Assign a doctor (or doctor self-scan) to mark seen.
             </EmptyState>
           </li>
         ) : null}

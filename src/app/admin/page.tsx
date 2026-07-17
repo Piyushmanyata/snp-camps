@@ -8,6 +8,7 @@ import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminPatients } from "@/components/admin-patients";
 import { AdminVolunteers } from "@/components/admin-volunteers";
+import { AdminDoctors } from "@/components/admin-doctors";
 import { SeatBoard } from "@/components/seat-board";
 
 export default async function AdminPage() {
@@ -24,7 +25,8 @@ export default async function AdminPage() {
 
   const active = camps?.find((c) => c.is_active);
 
-  const [dayStatsRes, patientsRes, volunteersRes] = await Promise.all([
+  const [dayStatsRes, patientsRes, volunteersRes, doctorsRes] =
+    await Promise.all([
     active
       ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
       : Promise.resolve({ data: [] as CampDayStats[] }),
@@ -39,6 +41,11 @@ export default async function AdminPage() {
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at")
       .eq("role", "volunteer")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at")
+      .eq("role", "doctor")
       .order("created_at", { ascending: false }),
   ]);
 
@@ -84,6 +91,7 @@ export default async function AdminPage() {
   }
 
   const volunteers = volunteersRes.data || [];
+  const doctors = doctorsRes.data || [];
 
   return (
     <Shell
@@ -94,7 +102,7 @@ export default async function AdminPage() {
     >
       <div className="space-y-4 lg:space-y-6">
         <div className="grid max-w-xl grid-cols-3 gap-2.5 sm:gap-3">
-          <Stat label="Not queued" value={notQueued} />
+          <Stat label="Not printed" value={notQueued} />
           <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Seen" value={seen} tone="ok" />
         </div>
@@ -112,8 +120,9 @@ export default async function AdminPage() {
             ) : null}
             <p className="mt-2 text-xs text-muted">
               {volunteers.length} volunteer
-              {volunteers.length === 1 ? "" : "s"} on staff · {patients.length}{" "}
-              patient{patients.length === 1 ? "" : "s"} loaded
+              {volunteers.length === 1 ? "" : "s"} · {doctors.length} doctor
+              {doctors.length === 1 ? "" : "s"} · {patients.length} patient
+              {patients.length === 1 ? "" : "s"} loaded
             </p>
             <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
               <NavLink href="/register" variant="primary">
@@ -121,6 +130,9 @@ export default async function AdminPage() {
               </NavLink>
               <NavLink href="/volunteer" variant="soft">
                 Open volunteer desk
+              </NavLink>
+              <NavLink href="/doctor" variant="soft">
+                Open doctor desk
               </NavLink>
             </div>
           </Card>
@@ -140,7 +152,10 @@ export default async function AdminPage() {
         </div>
 
         <AdminPatients initial={patients} />
-        <AdminVolunteers initial={volunteers} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AdminVolunteers initial={volunteers} />
+          <AdminDoctors initial={doctors} />
+        </div>
 
         <SignOutButton />
       </div>

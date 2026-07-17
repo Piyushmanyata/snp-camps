@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isStaff } from "@/lib/auth";
+import { getSessionProfile, isStaff, isDoctor } from "@/lib/auth";
 import {
   Card,
   NavLink,
@@ -8,13 +8,14 @@ import {
   Shell,
   Stat,
 } from "@/components/ui";
-import { QrScanner } from "@/components/qr-scanner";
+import { QrScanner, type DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
 
 export default async function VolunteerPage() {
   const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) redirect("/login");
+  if (isDoctor(profile?.role)) redirect("/doctor");
 
   const supabase = await createClient();
   const { data: camp } = await supabase
@@ -23,8 +24,7 @@ export default async function VolunteerPage() {
     .eq("is_active", true)
     .maybeSingle();
 
-  // Live queue = waiting only. Seen patients are removed immediately.
-  const [waitingRes, seenCountRes] = camp
+  const [waitingRes, seenCountRes, doctorsRes] = camp
     ? await Promise.all([
         supabase
           .from("patients")
@@ -38,19 +38,29 @@ export default async function VolunteerPage() {
           .select("id", { count: "exact", head: true })
           .eq("camp_id", camp.id)
           .eq("queue_status", "seen"),
+        supabase
+          .from("profiles")
+          .select("id, full_name")
+          .eq("role", "doctor")
+          .order("full_name", { ascending: true }),
       ])
-    : [{ data: [] as LiveQueuePatient[] }, { count: 0 }];
+    : [
+        { data: [] as LiveQueuePatient[] },
+        { count: 0 },
+        { data: [] as DoctorOption[] },
+      ];
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
   const seenCount = seenCountRes.count ?? 0;
+  const doctors = (doctorsRes.data || []) as DoctorOption[];
 
   return (
     <Shell
       title="Volunteer desk"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · Scan → queue · Print/Seen → leave queue`
-          : "Scan → queue · Print/Seen → leave queue"
+          ? `${profile.full_name} · Print → queue · Scan → assign doctor`
+          : "Print → queue · Scan → assign doctor"
       }
       backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
@@ -71,7 +81,7 @@ export default async function VolunteerPage() {
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
               <Stat label="In queue" value={waiting.length} tone="wait" />
-              <Stat label="Seen today" value={seenCount} tone="ok" />
+              <Stat label="Seen" value={seenCount} tone="ok" />
             </div>
           </div>
         </Card>
@@ -79,8 +89,10 @@ export default async function VolunteerPage() {
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="space-y-4">
             <Card>
-              <SectionTitle hint="Scan = queue">Check in patient</SectionTitle>
-              <QrScanner />
+              <SectionTitle hint="After print · pick doctor">
+                Scan / assign doctor
+              </SectionTitle>
+              <QrScanner mode="volunteer" doctors={doctors} />
             </Card>
             <NavLink href="/register" variant="primary">
               Register walk-in patient
@@ -89,11 +101,15 @@ export default async function VolunteerPage() {
 
           <Card padding="sm">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · seen leave automatically">
+              <SectionTitle hint="FCFS · assign doctor to mark seen">
                 Live queue
               </SectionTitle>
             </div>
-            <LiveQueue initial={waiting} />
+            <LiveQueue
+              initial={waiting}
+              doctors={doctors}
+              mode="volunteer"
+            />
           </Card>
         </div>
 
