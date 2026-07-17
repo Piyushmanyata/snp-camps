@@ -32,6 +32,12 @@ export type AdminPatientRow = {
 export function AdminPatients({ initial }: { initial: AdminPatientRow[] }) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
+  const [prevInitial, setPrevInitial] = useState(initial);
+  // Sync list when server re-renders with fresh data (router.refresh)
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
+    setRows(initial);
+  }
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<
     "all" | "registered" | "waiting" | "seen"

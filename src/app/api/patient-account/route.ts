@@ -1,20 +1,36 @@
 import { NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
 
+type Body = {
+  patientId?: string;
+  regNo?: number | string;
+  password?: string;
+  fullName?: string;
+};
+
 /**
- * Create (or reset) a patient login after registration.
- * Uses synthetic email reg{N}@patients.snp.local so patients sign in with reg no + password.
+ * Create a patient login after registration (reg no + password).
+ * First-time setup is allowed for unlinked patients (desk/self-reg flow).
+ * Password change on an already-linked account requires that patient session or admin.
  */
 export async function POST(req: Request) {
-  const body = await req.json();
+  const body = await readJsonBody<Body>(req);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const patientId = String(body.patientId || "").trim();
   const regNo = Number(body.regNo);
   const password = String(body.password || "");
   const fullName = String(body.fullName || "").trim();
 
   if (!patientId || !Number.isFinite(regNo) || regNo <= 0) {
-    return NextResponse.json({ error: "patientId and regNo required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "patientId and regNo required" },
+      { status: 400 },
+    );
   }
   if (password.length < 6) {
     return NextResponse.json(
@@ -23,19 +39,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) {
+  const admin = createServiceRoleClient();
+  if (!admin) {
     return NextResponse.json(
       { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
       { status: 500 },
     );
   }
-
-  const admin = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceKey,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: patient, error: pErr } = await admin
     .from("patients")
@@ -53,8 +63,21 @@ export async function POST(req: Request) {
   const email = patientAuthEmail(regNo);
   const name = fullName || patient.full_name || `Patient ${regNo}`;
 
-  // If already linked, update password on that auth user
+  // Already linked — only the same patient session or an admin may reset password
   if (patient.user_id) {
+    const { userId, profile } = await getSessionProfile();
+    const allowed =
+      userId === patient.user_id || isAdmin(profile?.role);
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "Login already exists for this patient. Sign in to change password, or ask admin.",
+        },
+        { status: 403 },
+      );
+    }
+
     const { error: updErr } = await admin.auth.admin.updateUserById(
       patient.user_id,
       { password, email_confirm: true },
@@ -69,7 +92,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, linked: true });
   }
 
-  // Create new auth user
+  // First-time account for unlinked registration
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
@@ -78,7 +101,6 @@ export async function POST(req: Request) {
   });
 
   if (createErr) {
-    // Email already exists — try link by looking up user
     if (/already|registered|exists/i.test(createErr.message)) {
       return NextResponse.json(
         {

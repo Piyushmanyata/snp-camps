@@ -18,8 +18,8 @@ export default function StaffLoginPage() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const { error: err } = await supabase.auth.signInWithPassword({
-      email,
+    const { data: signIn, error: err } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
       password,
     });
     if (err) {
@@ -27,10 +27,21 @@ export default function StaffLoginPage() {
       setLoading(false);
       return;
     }
+
+    const userId = signIn.user?.id;
+    if (!userId) {
+      setError("Sign-in succeeded but no user session.");
+      setLoading(false);
+      return;
+    }
+
+    // Must filter by user id — staff can read multiple profiles via RLS
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
-      .single();
+      .eq("id", userId)
+      .maybeSingle();
+
     if (profile?.role === "admin") router.replace("/admin");
     else if (profile?.role === "volunteer") router.replace("/volunteer");
     else router.replace("/patient");

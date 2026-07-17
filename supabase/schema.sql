@@ -376,7 +376,7 @@ returns table (
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   r public.patients%rowtype;
   v_already boolean := false;
@@ -416,7 +416,7 @@ begin
   return query
   select r.id, r.reg_no, r.full_name, r.queue_status, v_already;
 end;
-$;
+$$;
 
 grant execute on function public.join_queue(uuid, integer) to authenticated;
 

@@ -11,6 +11,7 @@ import {
   Input,
   SectionTitle,
 } from "@/components/ui";
+import { queueLabel, queueTone } from "@/lib/types";
 
 type Row = {
   id: string;
@@ -20,16 +21,24 @@ type Row = {
   queue_status: string;
 };
 
+/** Escape characters that break PostgREST `or` / `ilike` filter syntax. */
+function sanitizeFilterTerm(term: string) {
+  return term.replace(/[%_,.()\\"]/g, "").trim();
+}
+
 export function AdminSearch() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function search(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     const supabase = createClient();
-    const term = q.trim();
+    const term = sanitizeFilterTerm(q);
+
     let query = supabase
       .from("patients")
       .select("id, reg_no, full_name, phone, queue_status")
@@ -40,12 +49,19 @@ export function AdminSearch() {
       if (/^\d+$/.test(term)) {
         query = query.or(`reg_no.eq.${term},phone.ilike.%${term}%`);
       } else {
-        query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%`);
+        query = query.or(
+          `full_name.ilike.%${term}%,phone.ilike.%${term}%`,
+        );
       }
     }
 
-    const { data } = await query;
-    setRows((data as Row[]) || []);
+    const { data, error: err } = await query;
+    if (err) {
+      setError(err.message);
+      setRows([]);
+    } else {
+      setRows((data as Row[]) || []);
+    }
     setLoading(false);
   }
 
@@ -69,6 +85,9 @@ export function AdminSearch() {
           {loading ? "…" : "Go"}
         </Button>
       </form>
+      {error ? (
+        <p className="mb-2 text-sm text-danger">{error}</p>
+      ) : null}
       {rows === null ? (
         <p className="text-xs text-muted">Search to list recent patients.</p>
       ) : rows.length === 0 ? (
@@ -88,8 +107,8 @@ export function AdminSearch() {
                 <p className="truncate text-xs text-muted">{r.phone || "—"}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Badge tone={r.queue_status === "seen" ? "ok" : "wait"}>
-                  {r.queue_status}
+                <Badge tone={queueTone(r.queue_status)}>
+                  {queueLabel(r.queue_status)}
                 </Badge>
                 <Link
                   href={`/print/${r.id}`}

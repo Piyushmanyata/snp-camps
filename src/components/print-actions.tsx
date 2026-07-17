@@ -24,7 +24,7 @@ export function PrintActions({
           {regNo != null ? `#${regNo}` : "Prescription"}
           {name ? ` · ${name}` : ""}
         </p>
-        <p className="text-xs text-muted">Marked as seen after print</p>
+        <p className="text-xs text-muted">Opening this page marks the patient as seen</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button

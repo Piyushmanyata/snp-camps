@@ -14,8 +14,25 @@ export default async function PrintPage({
   const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) redirect("/login");
 
+  const uuidOk =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id,
+    );
+
+  if (!uuidOk) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-10">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold">Invalid patient link</p>
+          <p className="mt-1 text-sm text-muted">
+            Check the QR or registration number and try again.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const supabase = await createClient();
-  await supabase.rpc("mark_patient_seen", { p_id: id });
 
   const { data: patient } = await supabase
     .from("patients")
@@ -35,6 +52,9 @@ export default async function PrintPage({
       </main>
     );
   }
+
+  // Mark seen only after we know the patient exists
+  await supabase.rpc("mark_patient_seen", { p_id: id });
 
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";

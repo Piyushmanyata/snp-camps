@@ -56,8 +56,9 @@ export default function PatientLoginPage() {
     });
 
     if (err) {
+      const msg = err.message.toLowerCase();
       setError(
-        err.message.includes("Invalid login")
+        msg.includes("invalid") || msg.includes("credentials")
           ? "Wrong reg no or password. Use the password set at registration."
           : err.message,
       );

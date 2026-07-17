@@ -24,6 +24,11 @@ type Volunteer = {
 export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
   const router = useRouter();
   const [list, setList] = useState(initial);
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
+    setList(initial);
+  }
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

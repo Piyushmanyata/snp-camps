@@ -25,6 +25,11 @@ export function AdminCampDays({
 }) {
   const router = useRouter();
   const [days, setDays] = useState(initialDays);
+  const [prevDays, setPrevDays] = useState(initialDays);
+  if (initialDays !== prevDays) {
+    setPrevDays(initialDays);
+    setDays(initialDays);
+  }
   const [dayDate, setDayDate] = useState("");
   const [seats, setSeats] = useState("100");
   const [error, setError] = useState<string | null>(null);

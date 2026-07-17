@@ -44,9 +44,6 @@ export function QrScanner() {
   }, []);
 
   async function checkIn(opts: { id?: string; regNo?: number }) {
-    if (handledRef.current && opts.id) {
-      /* allow manual after scan reset */
-    }
     setError(null);
     setJoined(null);
 
@@ -57,12 +54,14 @@ export function QrScanner() {
     });
 
     if (err) {
+      handledRef.current = false;
       setError(err.message);
       return;
     }
 
     const row = (Array.isArray(data) ? data[0] : data) as Joined | null;
     if (!row) {
+      handledRef.current = false;
       setError("Could not add to queue.");
       return;
     }

@@ -1,26 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profile?.role !== "admin") {
-    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
-  }
-
-  return { user };
-}
+import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { readJsonBody, requireAdmin } from "@/lib/auth";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -44,7 +25,15 @@ export async function POST(req: Request) {
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
 
-  const body = await req.json();
+  const body = await readJsonBody<{
+    fullName?: string;
+    email?: string;
+    password?: string;
+  }>(req);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const fullName = String(body.fullName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
@@ -55,20 +44,17 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+  }
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) {
+  const admin = createServiceRoleClient();
+  if (!admin) {
     return NextResponse.json(
       { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
       { status: 500 },
     );
   }
-
-  const admin = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceKey,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,

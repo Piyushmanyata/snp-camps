@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { patientPrintUrl } from "@/lib/qr";
 
 export function QrCard({
   value,
@@ -12,20 +13,12 @@ export function QrCard({
   regNo: number;
   patientId?: string;
 }) {
-  const [payload, setPayload] = useState(value || "");
-
-  useEffect(() => {
-    if (value && value.length > 8) {
-      setPayload(value);
-      return;
-    }
-    if (patientId) {
-      const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-      const origin =
-        site ||
-        (typeof window !== "undefined" ? window.location.origin : "");
-      setPayload(origin ? `${origin}/print/${patientId}` : patientId);
-    }
+  // Prefer explicit value (full URL from parent). Fall back to site URL + patientId.
+  // No useEffect/setState — avoids cascading renders and hydration flicker.
+  const payload = useMemo(() => {
+    if (value && value.length > 8) return value;
+    if (patientId) return patientPrintUrl(patientId);
+    return value || "";
   }, [value, patientId]);
 
   if (!payload) {
