@@ -2,23 +2,21 @@
 
 import { useMemo } from "react";
 import { QrCode } from "@/components/qr-code";
-import { patientPrintUrl } from "@/lib/qr";
+import { patientScanUrl } from "@/lib/qr";
 
+/** Self-reg only: big reg no + QR for desk staff to scan. Never show on volunteer desk. */
 export function QrCard({
   value,
   regNo,
   patientId,
-  staffHint = false,
 }: {
   value?: string;
   regNo: number;
   patientId?: string;
-  /** Desk registration: wording for volunteer/admin */
-  staffHint?: boolean;
 }) {
   const payload = useMemo(() => {
     if (value && value.length > 8) return value;
-    if (patientId) return patientPrintUrl(patientId);
+    if (patientId) return patientScanUrl(patientId);
     return value || "";
   }, [value, patientId]);
 
@@ -50,25 +48,10 @@ export function QrCard({
         />
       </div>
       <div className="text-center">
-        {staffHint ? (
-          <>
-            <p className="text-sm font-semibold text-brand">
-              Show at desk
-            </p>
-            <p className="mt-0.5 text-xs text-muted">
-              Print first (joins queue) · later scan assigns doctor (seen)
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm font-semibold text-brand">
-              Show this QR at the desk
-            </p>
-            <p className="mt-0.5 text-xs text-muted">
-              Staff print prescription → queue · doctor scan → seen
-            </p>
-          </>
-        )}
+        <p className="text-sm font-semibold text-brand">Show this at the desk</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Staff print → queue · doctor/volunteer scan → seen
+        </p>
       </div>
     </div>
   );

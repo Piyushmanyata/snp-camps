@@ -1,12 +1,27 @@
-/** Build the QR payload for a patient print link. Prefer absolute production URL. */
-export function patientPrintUrl(patientId: string, origin?: string | null): string {
+/** Absolute origin for patient QR links. Prefer NEXT_PUBLIC_SITE_URL. */
+function resolveOrigin(origin?: string | null): string {
   const base =
     (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SITE_URL) ||
     origin ||
     (typeof window !== "undefined" ? window.location.origin : "");
-  const clean = String(base || "").replace(/\/$/, "");
-  if (!clean) return patientId; // UUID alone — scanner accepts it
+  return String(base || "").replace(/\/$/, "");
+}
+
+/** Direct print form URL (staff). Opening joins the queue. */
+export function patientPrintUrl(patientId: string, origin?: string | null): string {
+  const clean = resolveOrigin(origin);
+  if (!clean) return patientId;
   return `${clean}/print/${patientId}`;
+}
+
+/**
+ * Staff-scan QR payload. Uses /patient/enter so staff cameras route by status:
+ * registered → print, waiting/seen → desk assign.
+ */
+export function patientScanUrl(patientId: string, origin?: string | null): string {
+  const clean = resolveOrigin(origin);
+  if (!clean) return patientId;
+  return `${clean}/patient/enter/${patientId}`;
 }
 
 const UUID_RE =

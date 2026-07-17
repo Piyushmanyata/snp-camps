@@ -6,13 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { Button, Card, ErrorBox, Input, Shell } from "@/components/ui";
 
-const QR_ERRORS: Record<string, string> = {
+const LOGIN_ERRORS: Record<string, string> = {
   invalid_qr:
-    "That QR link is invalid or expired. Ask the desk to re-show your QR.",
-  not_found: "Patient not found for that QR.",
+    "That link is for camp staff only. Use your reg number below, or ask the desk.",
+  not_found: "Patient not found. Check your registration number.",
   server: "Server is missing configuration. Ask staff to check setup.",
-  account: "Could not open your account from QR. Try again or ask the desk.",
-  session: "Could not start your session from QR. Try scanning again.",
+  account: "Could not open your account. Try again or ask the desk.",
+  session: "Could not start your session. Try again.",
 };
 
 function normalizePhone(raw: string) {
@@ -43,7 +43,7 @@ export default function PatientLoginPage() {
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("error");
-    if (code && QR_ERRORS[code]) setError(QR_ERRORS[code]);
+    if (code && LOGIN_ERRORS[code]) setError(LOGIN_ERRORS[code]);
   }, []);
 
   async function loginWithPassword(e: React.FormEvent) {
@@ -73,7 +73,7 @@ export default function PatientLoginPage() {
       const msg = err.message.toLowerCase();
       setError(
         msg.includes("invalid") || msg.includes("credentials")
-          ? "Wrong reg no or password. Use the password set at registration."
+          ? "Wrong reg no or password. Ask the desk if you never set a password."
           : err.message,
       );
       setLoading(false);
@@ -149,14 +149,15 @@ export default function PatientLoginPage() {
   return (
     <Shell
       title="Patient login"
-      subtitle="Scan your registration QR, or use backup login"
+      subtitle="View your reg number and queue status"
       backHref="/"
       width="md"
     >
       <Card>
-        <p className="mb-4 rounded-xl border border-brand/20 bg-brand-soft px-3 py-2.5 text-sm text-brand">
-          Prefer your <strong>registration QR</strong> — open the camera on your
-          phone and scan it to sign in instantly. No password needed.
+        <p className="mb-4 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted">
+          QR codes are for <strong>camp staff only</strong> (print &amp; doctor
+          assign). Sign in here with reg no + password, or phone OTP when SMS is
+          enabled.
         </p>
         <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-background p-1">
           <button
@@ -199,7 +200,7 @@ export default function PatientLoginPage() {
               onChange={(e) => setRegNo(e.target.value)}
               placeholder="e.g. 1001"
               autoComplete="username"
-              hint="Shown on your QR card after registration"
+              hint="On your registration slip or confirmation screen"
             />
             <Input
               label="Password"
@@ -207,7 +208,7 @@ export default function PatientLoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password set at registration"
+              placeholder="If set by desk/admin"
               autoComplete="current-password"
             />
             <ErrorBox message={error} />

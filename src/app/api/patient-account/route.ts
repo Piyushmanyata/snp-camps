@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
-import { patientPrintUrl } from "@/lib/qr";
+import { patientScanUrl } from "@/lib/qr";
 
 type Body = {
   patientId?: string;
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // Optional password (legacy / admin reset). Empty → auto random for QR login.
+  // Optional password (admin / explicit set). Empty → random (account exists for OTP link only).
   if (passwordRaw && passwordRaw.length < 6) {
     return NextResponse.json(
       { error: "Password must be at least 6 characters" },
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
 
   const email = patientAuthEmail(regNo);
   const name = fullName || patient.full_name || `Patient ${regNo}`;
-  const loginUrl = patientPrintUrl(patientId, origin);
+  const loginUrl = patientScanUrl(patientId, origin);
 
   // Already linked — only the same patient session or an admin may set password
   if (patient.user_id) {
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "A login already exists for this reg no. Scan your QR, or ask admin.",
+            "A login already exists for this reg no. Use patient login or ask admin.",
         },
         { status: 400 },
       );

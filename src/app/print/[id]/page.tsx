@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { PrintActions } from "@/components/print-actions";
 import { PrintSheet } from "@/components/print-sheet";
-import { patientPrintUrl } from "@/lib/qr";
+import { patientScanUrl } from "@/lib/qr";
 
 export default async function PrintPage({
   params,
@@ -59,11 +59,8 @@ export default async function PrintPage({
     );
   }
 
-  // Print path: join FCFS queue only — never mark seen.
-  if (patient.queue_status === "registered") {
-    await supabase.rpc("mark_patient_printed", { p_id: id });
-  } else if (patient.queue_status === "waiting") {
-    // Idempotent: ensure printed_at
+  // Print path: join FCFS queue only — never mark seen. Idempotent if already waiting.
+  if (patient.queue_status === "registered" || patient.queue_status === "waiting") {
     await supabase.rpc("mark_patient_printed", { p_id: id });
   }
 
@@ -102,7 +99,7 @@ export default async function PrintPage({
         camp={camp}
         origin={origin}
         today={today}
-        qrValue={patientPrintUrl(patient.id, origin)}
+        qrValue={patientScanUrl(patient.id, origin)}
       />
 
       <p className="no-print mt-3 text-center text-xs text-muted">

@@ -74,7 +74,7 @@ Add the same env vars in Vercel. Set `NEXT_PUBLIC_SITE_URL` to the production UR
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats (patients they saw), scan (self-assign), print |
-| Patient | Optional login for reg/status; show QR at desk for staff |
+| Patient | Optional login for reg/status; desk prints paper QR for staff scan |
 
 ## Privacy
 

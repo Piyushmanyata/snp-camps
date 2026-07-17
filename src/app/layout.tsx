@@ -13,7 +13,7 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: "SNP Camps · Medical Camp Desk",
   description:
-    "Patient registration, QR queue & eye prescription print — Sikar Nagarik Parishad (Kolkata)",
+    "Medical camp desk: register, print prescription (queue), staff-scan doctor assign — Sikar Nagarik Parishad (Kolkata)",
 };
 
 export const viewport: Viewport = {

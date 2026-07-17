@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { patientPrintUrl } from "@/lib/qr";
+import { patientScanUrl } from "@/lib/qr";
 
 function qrSecret(): string {
   return (
@@ -9,7 +9,7 @@ function qrSecret(): string {
   );
 }
 
-/** HMAC token for passwordless patient QR login. Server-only. */
+/** Optional HMAC for QR integrity. Server-only. */
 export function signPatientQrToken(patientId: string): string {
   const secret = qrSecret();
   if (!secret) return "";
@@ -32,21 +32,18 @@ export function verifyPatientQrToken(
   }
 }
 
-/**
- * Staff-scan QR payload (print URL). Patient opening it does not log them in.
- * Kept name for call-site compatibility.
- */
+/** Staff-scan QR (enter route). Does not log patients in. */
 export function patientLoginUrl(
   patientId: string,
   origin?: string | null,
 ): string {
-  return patientPrintUrl(patientId, origin);
+  return patientScanUrl(patientId, origin);
 }
 
-/** @deprecated use patientPrintUrl / patientLoginUrl (staff scan only) */
+/** @deprecated use patientScanUrl */
 export function patientStaffScanUrl(
   patientId: string,
   origin?: string | null,
 ): string {
-  return patientPrintUrl(patientId, origin);
+  return patientScanUrl(patientId, origin);
 }

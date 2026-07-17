@@ -18,14 +18,14 @@ type Props = {
   } | null;
   origin: string;
   today: string;
-  /** Signed login QR when available; falls back to print URL. */
+  /** Staff-scan QR on paper (enter URL preferred). */
   qrValue?: string;
 };
 
 /** Dense one-page A4 prescription matching SNP eye-clinic form. */
 export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
   const qr =
-    qrValue || `${origin.replace(/\/$/, "")}/print/${patient.id}`;
+    qrValue || `${origin.replace(/\/$/, "")}/patient/enter/${patient.id}`;
   const venue = camp?.venue || camp?.name || "SIKAR BHAWAN";
   const genderMark =
     patient.gender === "M" ? "M" : patient.gender === "F" ? "F" : "M / F";

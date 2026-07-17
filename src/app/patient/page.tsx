@@ -13,7 +13,7 @@ import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
 import { ChangeDay } from "@/components/change-day";
 import { SeatBoard } from "@/components/seat-board";
-import { patientPrintUrl } from "@/lib/qr";
+import { patientScanUrl } from "@/lib/qr";
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -62,8 +62,7 @@ export default async function PatientHomePage() {
           <Card>
             <p className="mb-1 font-semibold">No registration linked yet</p>
             <p className="mb-4 text-sm text-muted">
-              Register for a camp day with open seats to get your reg number and
-              QR.
+              Register for a camp day with open seats to get your reg number.
             </p>
             <NavLink href="/register">Register now</NavLink>
             {days.length ? (
@@ -102,16 +101,17 @@ export default async function PatientHomePage() {
                   </Badge>
                 </div>
               </Card>
-              <QrCard
-                value={patientPrintUrl(patient.id, origin)}
-                regNo={patient.reg_no}
-                patientId={patient.id}
-              />
               {isStaff(profile?.role) ? (
                 <NavLink href={`/print/${patient.id}`} variant="soft">
                   Open print form (join queue)
                 </NavLink>
-              ) : null}
+              ) : (
+                <QrCard
+                  value={patientScanUrl(patient.id, origin)}
+                  regNo={patient.reg_no}
+                  patientId={patient.id}
+                />
+              )}
               <p className="text-center text-xs text-muted">
                 {patient.queue_status === "registered"
                   ? "Not in queue until staff prints your prescription."

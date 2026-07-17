@@ -78,7 +78,7 @@ export default async function HomePage() {
                 {!camp
                   ? "No active camp"
                   : anyOpen
-                    ? "Pick a day → reg no + show QR at desk"
+                    ? "Pick a day → get reg no → desk prints"
                     : "All days full"}
               </span>
             </Link>

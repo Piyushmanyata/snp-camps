@@ -15,14 +15,13 @@ import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { ChangeDay } from "@/components/change-day";
-
 type Props = {
   campId: string;
   days: CampDayStats[];
   defaultPhone?: string;
   userId?: string | null;
   createdBy?: string | null;
-  /** Volunteer/admin desk registration — show print & queue actions */
+  /** Volunteer/admin desk registration — print only, no on-screen QR */
   isStaff?: boolean;
 };
 
@@ -32,8 +31,6 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
-  loginUrl?: string;
-  accountReady?: boolean;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
@@ -265,44 +262,9 @@ export function PatientForm({
       return;
     }
 
-    const createdRow = row as Created;
-    let loginUrl: string | undefined;
-    let accountReady = false;
-
-    try {
-      const res = await fetch("/api/patient-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId: createdRow.id,
-          regNo: createdRow.reg_no,
-          fullName: createdRow.full_name,
-        }),
-      });
-      const json = (await res.json()) as {
-        error?: string;
-        loginUrl?: string;
-      };
-      if (!res.ok) {
-        setError(
-          `Registered (reg ${createdRow.reg_no}) but login QR setup failed: ${json.error || "unknown"}. Desk can still print by reg no.`,
-        );
-      } else {
-        loginUrl = json.loginUrl;
-        accountReady = Boolean(json.loginUrl);
-      }
-    } catch {
-      setError(
-        `Registered (reg ${createdRow.reg_no}) but login QR setup failed. Desk can still print.`,
-      );
-    }
-
-    if (!loginUrl && typeof window !== "undefined") {
-      loginUrl = `${window.location.origin}/print/${createdRow.id}`;
-    }
-
-    // Stay registered until print. Print joins the live queue.
-    setCreated({ ...createdRow, loginUrl, accountReady });
+    // Stay registered until print. No auth account / no on-screen desk QR.
+    // Paper form QR (after print) is for staff scan only.
+    setCreated(row as Created);
     setQueueNote(
       isStaff
         ? "Registered only. Print prescription to put them in the queue."
@@ -360,9 +322,9 @@ export function PatientForm({
                 Print prescription
               </p>
               <p className="text-xs text-muted">
-                Everyone needs a paper form. Opening print puts them{" "}
-                <strong>in the queue</strong> (not seen). Scan later to assign a
-                doctor.
+                Paper form only — no on-screen QR. Print puts them{" "}
+                <strong>in the queue</strong>. The QR is on the printed sheet
+                for later doctor/volunteer scan.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -375,27 +337,18 @@ export function PatientForm({
             </div>
             <ErrorBox message={error} />
           </div>
-        ) : null}
-
-        <div className="space-y-2">
-          <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
-            {isStaff
-              ? "Has a phone? Show this QR at desk"
-              : "Your QR — show at desk for print & scan"}
-          </p>
-          <QrCard
-            value={created.loginUrl}
-            regNo={created.reg_no}
-            patientId={created.id}
-            staffHint={isStaff}
-          />
-          {!isStaff ? (
-            <p className="text-center text-xs text-muted">
-              Keep this reg number. Staff will print your form (queue) then
-              scan when a doctor sees you.
+        ) : (
+          <div className="space-y-2">
+            <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
+              Show this at the desk
             </p>
-          ) : null}
-        </div>
+            <QrCard regNo={created.reg_no} patientId={created.id} />
+            <p className="text-center text-xs text-muted">
+              Keep reg #{created.reg_no}. Desk prints your form (queue), then
+              scans when a doctor sees you.
+            </p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-border p-4">
           <p className="mb-2 text-sm font-medium">Need a different day?</p>
@@ -594,8 +547,8 @@ export function PatientForm({
       </div>
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
-          ? "After save they stay registered. Print prescription to put them in the queue. Later scan assigns a doctor (seen)."
-          : "After save you are registered only. Show your QR at the desk for print (queue), then doctor scan (seen)."}
+          ? "After save they stay registered. Print the paper form to put them in the queue (QR is on the printout only). Later scan assigns a doctor (seen)."
+          : "After save you are registered only. Show your reg number or QR at the desk for print (queue), then doctor scan (seen)."}
       </p>
       <ErrorBox message={error} />
       <Button type="submit" disabled={loading || lookupState === "loading"}>
