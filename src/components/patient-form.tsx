@@ -40,6 +40,14 @@ export function PatientForm({
     setLoading(true);
     setError(null);
 
+    const phoneDigits = phone.replace(/\D/g, "");
+    const phone10 = phoneDigits.slice(-10);
+    if (phone10.length !== 10) {
+      setError("Phone is required (10-digit mobile) to prevent duplicate registration.");
+      setLoading(false);
+      return;
+    }
+
     const digits = aadhaar.replace(/\D/g, "");
     const last4 = digits.length >= 4 ? digits.slice(-4) : "";
     if (aadhaar.trim() && last4.length !== 4) {
@@ -55,7 +63,7 @@ export function PatientForm({
       p_gender: gender || null,
       p_age: age ? Number(age) : null,
       p_address: address.trim() || null,
-      p_phone: phone.trim() || null,
+      p_phone: phone10,
       p_email: email.trim() || null,
       p_aadhaar_last4: last4 || null,
       p_user_id: userId,
@@ -63,7 +71,12 @@ export function PatientForm({
     });
 
     if (err) {
-      setError(err.message);
+      const msg = err.message || "Registration failed";
+      setError(
+        /already registered/i.test(msg)
+          ? msg
+          : msg,
+      );
       setLoading(false);
       return;
     }
@@ -143,12 +156,14 @@ export function PatientForm({
         placeholder="Locality / area"
       />
       <Input
-        label="Phone"
+        label="Phone *"
         inputMode="tel"
         autoComplete="tel"
+        required
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         placeholder="10-digit mobile"
+        hint="Used to stop the same person registering twice"
       />
       <Input
         label="Email"

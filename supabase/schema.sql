@@ -184,7 +184,10 @@ grant select, update on public.profiles to authenticated;
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
 
--- registration RPC (security definer — reliable for walk-up + staff desk)
+-- Prevent the same patient registering twice on the same camp.
+-- Match keys (in order): phone (last 10 digits), aadhaar last4 + name, linked user_id,
+-- fallback name + age when no phone/aadhaar.
+
 create or replace function public.register_patient(
   p_camp_id uuid,
   p_full_name text,
@@ -206,8 +209,13 @@ declare
   v_user_id uuid;
   v_created_by uuid;
   v_aadhaar char(4);
+  v_name text;
+  v_phone text;
+  v_phone10 text;
+  v_existing_reg integer;
 begin
-  if p_full_name is null or length(trim(p_full_name)) = 0 then
+  v_name := trim(coalesce(p_full_name, ''));
+  if length(v_name) = 0 then
     raise exception 'full_name required';
   end if;
 
@@ -239,17 +247,72 @@ begin
     end if;
   end if;
 
+  v_phone := nullif(trim(coalesce(p_phone, '')), '');
+  v_phone10 := nullif(right(regexp_replace(coalesce(v_phone, ''), '\D', '', 'g'), 10), '');
+  if v_phone10 is not null and length(v_phone10) < 10 then
+    v_phone10 := null;
+  end if;
+
+  -- 1) Same linked user already on this camp
+  if v_user_id is not null then
+    select p.reg_no into v_existing_reg
+    from public.patients p
+    where p.camp_id = p_camp_id and p.user_id = v_user_id
+    limit 1;
+    if v_existing_reg is not null then
+      raise exception 'Already registered for this camp (reg no %).', v_existing_reg;
+    end if;
+  end if;
+
+  -- 2) Same phone (last 10 digits) on this camp
+  if v_phone10 is not null then
+    select p.reg_no into v_existing_reg
+    from public.patients p
+    where p.camp_id = p_camp_id
+      and right(regexp_replace(coalesce(p.phone, ''), '\D', '', 'g'), 10) = v_phone10
+    limit 1;
+    if v_existing_reg is not null then
+      raise exception 'Already registered for this camp with this phone (reg no %).', v_existing_reg;
+    end if;
+  end if;
+
+  -- 3) Same Aadhaar last4 + name on this camp
+  if v_aadhaar is not null then
+    select p.reg_no into v_existing_reg
+    from public.patients p
+    where p.camp_id = p_camp_id
+      and p.aadhaar_last4 = v_aadhaar
+      and lower(trim(p.full_name)) = lower(v_name)
+    limit 1;
+    if v_existing_reg is not null then
+      raise exception 'Already registered for this camp (same name + Aadhaar last 4, reg no %).', v_existing_reg;
+    end if;
+  end if;
+
+  -- 4) Fallback when no phone/aadhaar: same name + age on this camp
+  if v_phone10 is null and v_aadhaar is null and p_age is not null then
+    select p.reg_no into v_existing_reg
+    from public.patients p
+    where p.camp_id = p_camp_id
+      and lower(trim(p.full_name)) = lower(v_name)
+      and p.age = p_age
+    limit 1;
+    if v_existing_reg is not null then
+      raise exception 'Already registered for this camp (same name + age, reg no %).', v_existing_reg;
+    end if;
+  end if;
+
   return query
   insert into public.patients (
     camp_id, user_id, full_name, gender, age, address, phone, email, aadhaar_last4, created_by, queue_status
   ) values (
     p_camp_id,
     v_user_id,
-    trim(p_full_name),
+    v_name,
     case when p_gender in ('M','F','O') then p_gender else null end,
     p_age,
     nullif(trim(coalesce(p_address, '')), ''),
-    nullif(trim(coalesce(p_phone, '')), ''),
+    v_phone,
     nullif(trim(coalesce(p_email, '')), ''),
     v_aadhaar,
     v_created_by,
