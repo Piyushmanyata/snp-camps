@@ -23,10 +23,14 @@ export function SeatBoard({
 
   return (
     <Card padding={compact ? "sm" : "md"}>
-      <SectionTitle hint="All days stay listed">
-        {title}
-      </SectionTitle>
-      <ul className="space-y-2">
+      <SectionTitle hint="All days stay listed">{title}</SectionTitle>
+      <ul
+        className={
+          compact
+            ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+            : "grid gap-2 sm:grid-cols-2"
+        }
+      >
         {days.map((d) => {
           const pct =
             d.seat_limit > 0

@@ -42,6 +42,7 @@ export default function StaffLoginPage() {
       title="Staff login"
       subtitle="Admin and volunteer access"
       backHref="/"
+      width="md"
     >
       <Card>
         <form onSubmit={onSubmit} className="space-y-4">

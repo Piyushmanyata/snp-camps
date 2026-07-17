@@ -5,22 +5,34 @@ import type {
   ReactNode,
 } from "react";
 
+const shellWidths = {
+  sm: "max-w-lg",
+  md: "max-w-2xl",
+  lg: "max-w-4xl",
+  xl: "max-w-6xl",
+} as const;
+
 export function Shell({
   title,
   subtitle,
   children,
   backHref,
   actions,
+  width = "sm",
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   backHref?: string;
   actions?: ReactNode;
+  /** Desktop content width. Mobile stays full-bleed with padding. */
+  width?: keyof typeof shellWidths;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-5 sm:py-7">
-      <header className="mb-5 flex items-start gap-3">
+    <div
+      className={`mx-auto flex w-full flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8 ${shellWidths[width]}`}
+    >
+      <header className="mb-5 flex items-start gap-3 sm:mb-6">
         {backHref ? (
           <Link
             href={backHref}
@@ -34,7 +46,7 @@ export function Shell({
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand">
             SNP Camps
           </p>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[1.7rem]">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[1.75rem]">
             {title}
           </h1>
           {subtitle ? (

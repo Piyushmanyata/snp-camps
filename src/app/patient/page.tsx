@@ -50,7 +50,12 @@ export default async function PatientHomePage() {
   const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
 
   return (
-    <Shell title="My profile" subtitle="Your camp registration" backHref="/">
+    <Shell
+      title="My profile"
+      subtitle="Your camp registration"
+      backHref="/"
+      width="lg"
+    >
       <div className="space-y-4">
         {!patient ? (
           <Card>
@@ -67,58 +72,62 @@ export default async function PatientHomePage() {
             ) : null}
           </Card>
         ) : (
-          <>
-            <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xl font-bold tracking-tight">
-                    {patient.full_name}
-                  </p>
-                  <p className="mt-0.5 text-sm text-muted">
-                    {[
-                      dayDate ? formatCampDay(dayDate) : null,
-                      patient.gender,
-                      patient.age ? `${patient.age} yrs` : null,
-                      patient.phone,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {patient.aadhaar_last4 ? (
-                    <p className="mt-1 text-xs text-muted">
-                      Aadhaar ···· {patient.aadhaar_last4}
+          <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+            <div className="space-y-4">
+              <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold tracking-tight">
+                      {patient.full_name}
                     </p>
-                  ) : null}
+                    <p className="mt-0.5 text-sm text-muted">
+                      {[
+                        dayDate ? formatCampDay(dayDate) : null,
+                        patient.gender,
+                        patient.age ? `${patient.age} yrs` : null,
+                        patient.phone,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {patient.aadhaar_last4 ? (
+                      <p className="mt-1 text-xs text-muted">
+                        Aadhaar ···· {patient.aadhaar_last4}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Badge tone={queueTone(patient.queue_status)}>
+                    {queueLabel(patient.queue_status)}
+                  </Badge>
                 </div>
-                <Badge tone={queueTone(patient.queue_status)}>
-                  {queueLabel(patient.queue_status)}
-                </Badge>
-              </div>
-            </Card>
-            <QrCard
-              value={`${origin}/print/${patient.id}`}
-              regNo={patient.reg_no}
-              patientId={patient.id}
-            />
-            <Card>
-              <p className="mb-2 text-sm font-semibold">Change camp day</p>
-              <p className="mb-3 text-xs text-muted">
-                One day per registration. Full days cannot be selected unless
-                you already hold that seat.
-              </p>
-              <ChangeDay
+              </Card>
+              <QrCard
+                value={`${origin}/print/${patient.id}`}
+                regNo={patient.reg_no}
                 patientId={patient.id}
-                currentDayId={patient.camp_day_id}
-                days={days}
               />
-            </Card>
-            <SeatBoard days={days} title="Seat availability" compact />
-            {isStaff(profile?.role) ? (
-              <NavLink href={`/print/${patient.id}`} variant="soft">
-                Open print form
-              </NavLink>
-            ) : null}
-          </>
+              {isStaff(profile?.role) ? (
+                <NavLink href={`/print/${patient.id}`} variant="soft">
+                  Open print form
+                </NavLink>
+              ) : null}
+            </div>
+            <div className="space-y-4">
+              <Card>
+                <p className="mb-2 text-sm font-semibold">Change camp day</p>
+                <p className="mb-3 text-xs text-muted">
+                  One day per registration. Full days cannot be selected unless
+                  you already hold that seat.
+                </p>
+                <ChangeDay
+                  patientId={patient.id}
+                  currentDayId={patient.camp_day_id}
+                  days={days}
+                />
+              </Card>
+              <SeatBoard days={days} title="Seat availability" compact />
+            </div>
+          </div>
         )}
         <SignOutButton />
       </div>

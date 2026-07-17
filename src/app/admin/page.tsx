@@ -83,53 +83,56 @@ export default async function AdminPage() {
       title="Admin"
       subtitle={profile?.full_name || "Camp control"}
       backHref="/"
+      width="xl"
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2.5">
+      <div className="space-y-4 lg:space-y-6">
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3 lg:max-w-xl">
           <Stat label="Not queued" value={notQueued} />
           <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Seen" value={seen} tone="ok" />
         </div>
 
-        <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-            Active camp
-          </p>
-          <p className="mt-0.5 text-xl font-bold tracking-tight">
-            {active?.name || "None set"}
-          </p>
-          {active?.venue ? (
-            <p className="text-sm text-muted">{active.venue}</p>
-          ) : null}
-          <p className="mt-2 text-xs text-muted">
-            {volunteers?.length ?? 0} volunteer
-            {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff ·{" "}
-            {patients.length} patient{patients.length === 1 ? "" : "s"} total
-          </p>
-        </Card>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              Active camp
+            </p>
+            <p className="mt-0.5 text-xl font-bold tracking-tight">
+              {active?.name || "None set"}
+            </p>
+            {active?.venue ? (
+              <p className="text-sm text-muted">{active.venue}</p>
+            ) : null}
+            <p className="mt-2 text-xs text-muted">
+              {volunteers?.length ?? 0} volunteer
+              {(volunteers?.length ?? 0) === 1 ? "" : "s"} on staff ·{" "}
+              {patients.length} patient{patients.length === 1 ? "" : "s"} total
+            </p>
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+              <NavLink href="/register" variant="primary">
+                Register patient
+              </NavLink>
+              <NavLink href="/volunteer" variant="soft">
+                Open volunteer desk
+              </NavLink>
+            </div>
+          </Card>
 
-        {active ? <SeatBoard days={days} title="Live seat board" /> : null}
-
-        <div className="grid gap-2.5">
-          <NavLink href="/register" variant="primary">
-            Register patient
-          </NavLink>
-          <NavLink href="/volunteer" variant="soft">
-            Open volunteer desk
-          </NavLink>
+          {active ? <SeatBoard days={days} title="Live seat board" /> : null}
         </div>
 
-        {active ? (
-          <AdminCampDays
-            campId={active.id}
-            campName={active.name}
-            initialDays={days}
-          />
-        ) : null}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {active ? (
+            <AdminCampDays
+              campId={active.id}
+              campName={active.name}
+              initialDays={days}
+            />
+          ) : null}
+          <AdminCamps camps={camps || []} />
+        </div>
 
         <AdminPatients initial={patients} />
-
-        <AdminCamps camps={camps || []} />
         <AdminVolunteers initial={volunteers || []} />
 
         <SignOutButton />

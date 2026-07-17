@@ -1,170 +1,8 @@
--- Multi-day camps with per-day seat limits
+-- Fix ambiguous camp_day_id in RETURNS TABLE functions + admin delete camp
 
-create table if not exists public.camp_days (
-  id uuid primary key default gen_random_uuid(),
-  camp_id uuid not null references public.camps (id) on delete cascade,
-  day_date date not null,
-  seat_limit integer not null check (seat_limit >= 0),
-  created_at timestamptz not null default now(),
-  unique (camp_id, day_date)
-);
+-- RETURNS TABLE columns become PL/pgSQL variables and shadow table columns.
+-- Always qualify patients.camp_day_id / patients.id etc.
 
-create index if not exists camp_days_camp_date_idx
-  on public.camp_days (camp_id, day_date);
-
-alter table public.patients
-  add column if not exists camp_day_id uuid references public.camp_days (id) on delete restrict;
-
-create index if not exists patients_camp_day_idx on public.patients (camp_day_id);
-
-alter table public.camp_days enable row level security;
-
-drop policy if exists "read camp days" on public.camp_days;
-create policy "read camp days" on public.camp_days
-  for select to anon, authenticated using (true);
-
-drop policy if exists "admin camp days" on public.camp_days;
-create policy "admin camp days" on public.camp_days
-  for all to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
-
-grant select on public.camp_days to anon, authenticated;
-grant insert, update, delete on public.camp_days to authenticated;
-
--- Seed: for each camp without days, create one day from camp_date (or today) with 200 seats
-insert into public.camp_days (camp_id, day_date, seat_limit)
-select c.id, coalesce(c.camp_date, current_date), 200
-from public.camps c
-where not exists (select 1 from public.camp_days d where d.camp_id = c.id)
-on conflict (camp_id, day_date) do nothing;
-
--- Assign patients missing a day to the earliest day of their camp
-update public.patients p
-set camp_day_id = (
-  select d.id from public.camp_days d
-  where d.camp_id = p.camp_id
-  order by d.day_date
-  limit 1
-)
-where p.camp_day_id is null;
-
--- Public/staff seat board for a camp (or active camp if null)
-create or replace function public.camp_day_stats(p_camp_id uuid default null)
-returns table (
-  id uuid,
-  camp_id uuid,
-  day_date date,
-  seat_limit integer,
-  seats_taken integer,
-  seats_left integer,
-  is_full boolean
-)
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  with target as (
-    select coalesce(
-      p_camp_id,
-      (select c.id from public.camps c where c.is_active = true limit 1)
-    ) as camp_id
-  )
-  select
-    d.id,
-    d.camp_id,
-    d.day_date,
-    d.seat_limit,
-    count(p.id)::integer as seats_taken,
-    greatest(d.seat_limit - count(p.id)::integer, 0) as seats_left,
-    (count(p.id)::integer >= d.seat_limit) as is_full
-  from public.camp_days d
-  cross join target t
-  left join public.patients p on p.camp_day_id = d.id
-  where d.camp_id = t.camp_id
-  group by d.id, d.camp_id, d.day_date, d.seat_limit
-  order by d.day_date;
-$$;
-
-grant execute on function public.camp_day_stats(uuid) to anon, authenticated;
-
--- Admin upsert camp day seats
-create or replace function public.upsert_camp_day(
-  p_camp_id uuid,
-  p_day_date date,
-  p_seat_limit integer,
-  p_day_id uuid default null
-)
-returns public.camp_days
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  r public.camp_days;
-  v_taken integer;
-begin
-  if not public.is_admin() then
-    raise exception 'admin only';
-  end if;
-  if p_seat_limit is null or p_seat_limit < 0 then
-    raise exception 'seat_limit must be >= 0';
-  end if;
-
-  if p_day_id is not null then
-    select count(*)::int into v_taken from public.patients where camp_day_id = p_day_id;
-    if p_seat_limit < v_taken then
-      raise exception 'Cannot set seats below taken (%)', v_taken;
-    end if;
-    update public.camp_days
-    set day_date = p_day_date,
-        seat_limit = p_seat_limit
-    where id = p_day_id and camp_id = p_camp_id
-    returning * into r;
-    if r.id is null then
-      raise exception 'Day not found';
-    end if;
-    return r;
-  end if;
-
-  insert into public.camp_days (camp_id, day_date, seat_limit)
-  values (p_camp_id, p_day_date, p_seat_limit)
-  on conflict (camp_id, day_date)
-  do update set seat_limit = excluded.seat_limit
-  returning * into r;
-
-  select count(*)::int into v_taken from public.patients where camp_day_id = r.id;
-  if r.seat_limit < v_taken then
-    raise exception 'Cannot set seats below taken (%)', v_taken;
-  end if;
-
-  return r;
-end;
-$$;
-
-grant execute on function public.upsert_camp_day(uuid, date, integer, uuid) to authenticated;
-
-create or replace function public.delete_camp_day(p_day_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if not public.is_admin() then
-    raise exception 'admin only';
-  end if;
-  if exists (select 1 from public.patients where camp_day_id = p_day_id) then
-    raise exception 'Cannot delete a day that has patients — reassign them first';
-  end if;
-  delete from public.camp_days where id = p_day_id;
-end;
-$$;
-
-grant execute on function public.delete_camp_day(uuid) to authenticated;
-
--- Change registration day (one day per patient; only if seats free)
 create or replace function public.change_camp_day(
   p_patient_id uuid,
   p_new_day_id uuid
@@ -185,7 +23,7 @@ declare
   v_new public.camp_days%rowtype;
   v_taken integer;
 begin
-  select * into r from public.patients where patients.id = p_patient_id for update;
+  select * into r from public.patients p where p.id = p_patient_id for update;
   if r.id is null then
     raise exception 'Patient not found';
   end if;
@@ -196,7 +34,7 @@ begin
     end if;
   end if;
 
-  select * into v_new from public.camp_days where camp_days.id = p_new_day_id for update;
+  select * into v_new from public.camp_days d where d.id = p_new_day_id for update;
   if v_new.id is null then
     raise exception 'Day not found';
   end if;
@@ -225,8 +63,8 @@ begin
   update public.patients p
   set camp_day_id = p_new_day_id
   where p.id = r.id
-  returning p.id, p.reg_no, p.full_name, p.camp_day_id
-    into r.id, r.reg_no, r.full_name, r.camp_day_id;
+  returning p.id, p.reg_no, p.full_name, p.camp_day_id, p.user_id, p.camp_id
+    into r.id, r.reg_no, r.full_name, r.camp_day_id, r.user_id, r.camp_id;
 
   id := r.id;
   reg_no := r.reg_no;
@@ -239,7 +77,6 @@ $$;
 
 grant execute on function public.change_camp_day(uuid, uuid) to anon, authenticated;
 
--- Updated register_patient with day + capacity
 create or replace function public.register_patient(
   p_camp_id uuid,
   p_full_name text,
@@ -253,7 +90,13 @@ create or replace function public.register_patient(
   p_created_by uuid default null,
   p_camp_day_id uuid default null
 )
-returns table (id uuid, reg_no integer, full_name text, camp_day_id uuid, day_date date)
+returns table (
+  id uuid,
+  reg_no integer,
+  full_name text,
+  camp_day_id uuid,
+  day_date date
+)
 language plpgsql
 security definer
 set search_path = public
@@ -283,7 +126,7 @@ begin
     raise exception 'Please select a camp day';
   end if;
 
-  select * into v_day from public.camp_days where camp_days.id = p_camp_day_id for update;
+  select * into v_day from public.camp_days d where d.id = p_camp_day_id for update;
   if v_day.id is null or v_day.camp_id is distinct from p_camp_id then
     raise exception 'Invalid camp day';
   end if;
@@ -325,7 +168,6 @@ begin
     v_phone10 := null;
   end if;
 
-  -- One registration per person per camp (any day)
   if v_user_id is not null then
     select p.reg_no into v_existing_reg
     from public.patients p
@@ -409,8 +251,127 @@ begin
 end;
 $$;
 
--- Drop old overload if signature changed (Postgres keeps both if arg lists differ)
--- Re-grant both possible signatures
 grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
 ) to anon, authenticated;
+
+-- Also fix seat counts in upsert / delete day (qualify for safety)
+create or replace function public.upsert_camp_day(
+  p_camp_id uuid,
+  p_day_date date,
+  p_seat_limit integer,
+  p_day_id uuid default null
+)
+returns public.camp_days
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.camp_days;
+  v_taken integer;
+begin
+  if not public.is_admin() then
+    raise exception 'admin only';
+  end if;
+  if p_seat_limit is null or p_seat_limit < 0 then
+    raise exception 'seat_limit must be >= 0';
+  end if;
+
+  if p_day_id is not null then
+    select count(*)::int into v_taken
+    from public.patients p
+    where p.camp_day_id = p_day_id;
+    if p_seat_limit < v_taken then
+      raise exception 'Cannot set seats below taken (%)', v_taken;
+    end if;
+    update public.camp_days d
+    set day_date = p_day_date,
+        seat_limit = p_seat_limit
+    where d.id = p_day_id and d.camp_id = p_camp_id
+    returning d.* into r;
+    if r.id is null then
+      raise exception 'Day not found';
+    end if;
+    return r;
+  end if;
+
+  insert into public.camp_days (camp_id, day_date, seat_limit)
+  values (p_camp_id, p_day_date, p_seat_limit)
+  on conflict (camp_id, day_date)
+  do update set seat_limit = excluded.seat_limit
+  returning * into r;
+
+  select count(*)::int into v_taken
+  from public.patients p
+  where p.camp_day_id = r.id;
+  if r.seat_limit < v_taken then
+    raise exception 'Cannot set seats below taken (%)', v_taken;
+  end if;
+
+  return r;
+end;
+$$;
+
+grant execute on function public.upsert_camp_day(uuid, date, integer, uuid) to authenticated;
+
+create or replace function public.delete_camp_day(p_day_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'admin only';
+  end if;
+  if exists (select 1 from public.patients p where p.camp_day_id = p_day_id) then
+    raise exception 'Cannot delete a day that has patients — reassign them first';
+  end if;
+  delete from public.camp_days d where d.id = p_day_id;
+end;
+$$;
+
+grant execute on function public.delete_camp_day(uuid) to authenticated;
+
+-- Admin delete whole camp (blocked if any patients remain)
+create or replace function public.delete_camp(p_camp_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+  v_was_active boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'admin only';
+  end if;
+
+  if not exists (select 1 from public.camps c where c.id = p_camp_id) then
+    raise exception 'Camp not found';
+  end if;
+
+  select count(*)::int into v_count
+  from public.patients p
+  where p.camp_id = p_camp_id;
+
+  if v_count > 0 then
+    raise exception 'Cannot delete camp with % patient(s). Remove patients first.', v_count;
+  end if;
+
+  select c.is_active into v_was_active from public.camps c where c.id = p_camp_id;
+
+  -- camp_days cascade from camps; days with no patients are safe
+  delete from public.camp_days d where d.camp_id = p_camp_id;
+  delete from public.camps c where c.id = p_camp_id;
+
+  -- if we deleted the active camp, leave none active (admin re-activates another)
+  if v_was_active then
+    null;
+  end if;
+end;
+$$;
+
+grant execute on function public.delete_camp(uuid) to authenticated;

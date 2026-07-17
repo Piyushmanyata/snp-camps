@@ -32,6 +32,7 @@ export default async function RegisterPage() {
             ? "/volunteer"
             : "/"
       }
+      width="lg"
     >
       {!camp ? (
         <Card>
@@ -48,24 +49,26 @@ export default async function RegisterPage() {
           ) : null}
         </Card>
       ) : (
-        <div className="space-y-4">
-          <Card className="bg-gradient-to-br from-brand-soft/60 to-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-              Active camp
-            </p>
-            <p className="text-lg font-bold tracking-tight">{camp.name}</p>
-            <p className="text-sm text-muted">
-              {camp.venue || "Walk-in registration"}
-            </p>
-          </Card>
+        <div className="grid gap-4 lg:grid-cols-5 lg:items-start">
+          <div className="space-y-4 lg:col-span-2">
+            <Card className="bg-gradient-to-br from-brand-soft/60 to-card">
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+                Active camp
+              </p>
+              <p className="text-lg font-bold tracking-tight">{camp.name}</p>
+              <p className="text-sm text-muted">
+                {camp.venue || "Walk-in registration"}
+              </p>
+            </Card>
+            <SeatBoard days={days} title="Seat availability" compact />
+          </div>
 
-          <SeatBoard days={days} title="Seat availability" compact />
-
-          <Card>
+          <Card className="lg:col-span-3">
             <p className="mb-4 text-sm text-muted">
               One person can register for one day only. Full days stay listed
-              but closed. After register, a volunteer must scan QR / reg no to
-              add them to the live queue.
+              but closed. Set a password to log in later with your reg no. After
+              register, a volunteer must scan QR / reg no to add them to the live
+              queue.
             </p>
             <PatientForm
               campId={camp.id}

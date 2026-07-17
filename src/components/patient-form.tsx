@@ -21,6 +21,7 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
+  passwordSet?: boolean;
 };
 
 export function PatientForm({
@@ -41,6 +42,8 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
   const [aadhaar, setAadhaar] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
@@ -59,6 +62,17 @@ export function PatientForm({
     const selected = days.find((d) => d.id === campDayId);
     if (selected?.is_full) {
       setError("That day is full. Choose another day.");
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Choose a password (min 6 characters) to log in later with your reg no.");
+      setLoading(false);
+      return;
+    }
+    if (password !== password2) {
+      setError("Passwords do not match.");
       setLoading(false);
       return;
     }
@@ -107,7 +121,34 @@ export function PatientForm({
       return;
     }
 
-    setCreated(row as Created);
+    const createdRow = row as Created;
+    let passwordSet = false;
+    try {
+      const res = await fetch("/api/patient-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: createdRow.id,
+          regNo: createdRow.reg_no,
+          password,
+          fullName: createdRow.full_name,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(
+          `Registered (reg ${createdRow.reg_no}) but login setup failed: ${json.error || "unknown"}. Save your QR; admin can help set a password later.`,
+        );
+      } else {
+        passwordSet = true;
+      }
+    } catch {
+      setError(
+        `Registered (reg ${createdRow.reg_no}) but login setup failed. Save your QR.`,
+      );
+    }
+
+    setCreated({ ...createdRow, passwordSet });
     setLoading(false);
   }
 
@@ -125,6 +166,11 @@ export function PatientForm({
               : ""}
             Not in queue yet — show QR at the desk for check-in
           </p>
+          {created.passwordSet ? (
+            <p className="mt-1 text-xs text-brand/90">
+              Login later with reg no <strong>{created.reg_no}</strong> + your password
+            </p>
+          ) : null}
         </div>
         <QrCard
           value={origin ? `${origin}/print/${created.id}` : undefined}
@@ -188,7 +234,7 @@ export function PatientForm({
         onChange={(e) => setFullName(e.target.value)}
         placeholder="As on ID card"
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Select
           label="Gender"
           value={gender}
@@ -216,24 +262,26 @@ export function PatientForm({
         onChange={(e) => setAddress(e.target.value)}
         placeholder="Locality / area"
       />
-      <Input
-        label="Phone *"
-        inputMode="tel"
-        autoComplete="tel"
-        required
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="10-digit mobile"
-        hint="One registration per phone · used to block duplicates"
-      />
-      <Input
-        label="Email"
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Optional"
-      />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Input
+          label="Phone *"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="10-digit mobile"
+          hint="One registration per phone"
+        />
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
       <Input
         label="Aadhaar (optional)"
         inputMode="numeric"
@@ -242,6 +290,29 @@ export function PatientForm({
         value={aadhaar}
         onChange={(e) => setAadhaar(e.target.value)}
       />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Input
+          label="Login password *"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={6}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Min 6 characters"
+          hint="Use with your reg no to view QR later"
+        />
+        <Input
+          label="Confirm password *"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={6}
+          value={password2}
+          onChange={(e) => setPassword2(e.target.value)}
+          placeholder="Repeat password"
+        />
+      </div>
       <ErrorBox message={error} />
       <Button type="submit" disabled={loading}>
         {loading ? "Saving…" : "Register for selected day"}
