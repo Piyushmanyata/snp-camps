@@ -2,9 +2,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
-import { Card, EmptyState, Shell, StepList } from "@/components/ui";
+import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SeatBoard } from "@/components/seat-board";
+import { SignOutButton } from "@/components/sign-out";
 
 export default async function RegisterPage() {
   const supabase = await createClient();
@@ -25,16 +26,15 @@ export default async function RegisterPage() {
   return (
     <Shell
       title="Register patient"
-      subtitle="Choose a day with open seats"
-      backHref={
-        profile?.role === "admin"
-          ? "/admin"
-          : staff
-            ? "/volunteer"
-            : "/"
+      subtitle={
+        staff
+          ? "Desk registration · phone required"
+          : "Phone OTP · choose a day with open seats"
       }
+      backHref={staff ? undefined : "/"}
       width="lg"
       roleLabel={staff ? "Staff" : undefined}
+      actions={staff ? <SignOutButton place="header" /> : undefined}
     >
       {!camp ? (
         <Card>
@@ -63,33 +63,13 @@ export default async function RegisterPage() {
               </p>
             </Card>
             <SeatBoard days={days} title="Seat availability" compact />
-            <Card padding="sm" className="hidden bg-background/50 sm:block">
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-                After you register
-              </p>
-              <StepList
-                steps={
-                  staff
-                    ? [
-                        { title: "Save", detail: "Gets a reg number" },
-                        { title: "Print", detail: "Optional · joins queue" },
-                        { title: "Scan", detail: "Doctor marks seen" },
-                      ]
-                    : [
-                        { title: "Aadhaar", detail: "Verify 12-digit number" },
-                        { title: "Sign in", detail: "Reg no + password shown" },
-                        { title: "Doctor", detail: "Scan when you are seen" },
-                      ]
-                }
-              />
-            </Card>
           </div>
 
           <Card className="lg:col-span-3">
             <p className="prose-help mb-4 text-sm text-muted">
               {staff
                 ? "One person, one day. After save they are registered. Print joins the live queue (optional). Doctors can scan registered patients without printing."
-                : "Self-registration is Aadhaar-only. After verify you get a reg number and password, are signed in, and receive SMS/WhatsApp when those are configured."}
+                : "Self-registration uses phone OTP. After verify you complete details, get a reg number, and stay signed in. Aadhaar is optional for later."}
             </p>
             <PatientForm
               campId={camp.id}

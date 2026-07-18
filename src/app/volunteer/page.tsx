@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isStaff, isDoctor } from "@/lib/auth";
+import { getSessionProfile, isStaff, isDoctor, isAdmin } from "@/lib/auth";
 import {
   Card,
+  CollapsibleSection,
   NavLink,
   SectionTitle,
   Shell,
@@ -11,6 +12,7 @@ import {
 import { QrScanner, type DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
+import { AdminVolunteers } from "@/components/admin-volunteers";
 
 export default async function VolunteerPage() {
   const { profile } = await getSessionProfile();
@@ -24,7 +26,7 @@ export default async function VolunteerPage() {
     .eq("is_active", true)
     .maybeSingle();
 
-  const [waitingRes, seenCountRes, doctorsRes] = camp
+  const [waitingRes, seenCountRes, doctorsRes, volunteersRes] = camp
     ? await Promise.all([
         supabase
           .from("patients")
@@ -43,44 +45,50 @@ export default async function VolunteerPage() {
           .select("id, full_name")
           .eq("role", "doctor")
           .order("full_name", { ascending: true }),
+        supabase
+          .from("profiles")
+          .select("id, full_name, email, phone, role, created_at")
+          .eq("role", "volunteer")
+          .order("created_at", { ascending: false }),
       ])
-    : [
-        { data: [] as LiveQueuePatient[], count: 0 },
-        { count: 0 },
-        { data: [] as DoctorOption[] },
-      ];
+    : await Promise.all([
+        Promise.resolve({ data: [] as LiveQueuePatient[], count: 0 }),
+        Promise.resolve({ count: 0 }),
+        Promise.resolve({ data: [] as DoctorOption[] }),
+        supabase
+          .from("profiles")
+          .select("id, full_name, email, phone, role, created_at")
+          .eq("role", "volunteer")
+          .order("created_at", { ascending: false }),
+      ]);
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
   const waitingCount = waitingRes.count ?? waiting.length;
   const seenCount = seenCountRes.count ?? 0;
   const doctors = (doctorsRes.data || []) as DoctorOption[];
+  const volunteers = volunteersRes.data || [];
   if (
     Boolean(campError) ||
-    [waitingRes, seenCountRes, doctorsRes].some(
+    [waitingRes, seenCountRes, doctorsRes, volunteersRes].some(
       (result) => "error" in result && Boolean(result.error),
     )
   ) {
     throw new Error("Volunteer desk data could not be loaded");
   }
 
-  const dock = [
-    { href: "/register", label: "Register", primary: true },
-    { href: "#scan", label: "Scan" },
-    { href: "#queue", label: "Queue" },
-  ];
+  const manage = isAdmin(profile?.role);
 
   return (
     <Shell
       title="Volunteer desk"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · Print → queue · Scan → assign doctor`
-          : "Print → queue · Scan → assign doctor"
+          ? `${profile.full_name} · Register · Print · Scan`
+          : "Register · Print · Scan"
       }
-      backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
       roleLabel="Volunteer"
-      dock={dock}
+      actions={<SignOutButton place="header" />}
     >
       <div className="space-y-4">
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
@@ -101,28 +109,28 @@ export default async function VolunteerPage() {
               <Stat label="Seen" value={seenCount} tone="ok" />
             </div>
           </div>
+          <div className="desk-inline-actions mt-4">
+            <NavLink href="/register" variant="primary">
+              Register walk-in patient
+            </NavLink>
+          </div>
         </Card>
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <div className="space-y-4">
-            <Card id="scan">
-              <SectionTitle hint="After print · pick doctor">
-                Scan / assign doctor
-              </SectionTitle>
-              <QrScanner
-                mode="volunteer"
-                doctors={doctors}
-                disabledReason={
-                  camp ? undefined : "No active camp. Ask an admin to activate a camp first."
-                }
-              />
-            </Card>
-            <div className="desk-inline-actions">
-              <NavLink href="/register" variant="primary">
-                Register walk-in patient
-              </NavLink>
-            </div>
-          </div>
+          <Card id="scan">
+            <SectionTitle hint="After print · pick doctor">
+              Scan / assign doctor
+            </SectionTitle>
+            <QrScanner
+              mode="volunteer"
+              doctors={doctors}
+              disabledReason={
+                camp
+                  ? undefined
+                  : "No active camp. Ask an admin to activate a camp first."
+              }
+            />
+          </Card>
 
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
@@ -140,14 +148,13 @@ export default async function VolunteerPage() {
           </Card>
         </div>
 
-        {profile?.role === "admin" ? (
-          <div className="desk-inline-actions">
-            <NavLink href="/admin" variant="secondary">
-              Admin dashboard
-            </NavLink>
-          </div>
-        ) : null}
-        <SignOutButton />
+        <CollapsibleSection
+          title="Volunteers"
+          hint={`${volunteers.length} · KPIs & register`}
+          defaultOpen
+        >
+          <AdminVolunteers initial={volunteers} canManage={manage} />
+        </CollapsibleSection>
       </div>
     </Shell>
   );

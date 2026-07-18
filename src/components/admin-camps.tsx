@@ -6,11 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   ErrorBox,
   Input,
-  SectionTitle,
 } from "@/components/ui";
 import type { Camp } from "@/lib/types";
 
@@ -75,8 +73,8 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
   }
 
   return (
-    <Card>
-      <SectionTitle hint="One active at a time">Camps</SectionTitle>
+    <div className="space-y-3">
+      <p className="text-sm text-muted">One camp active at a time.</p>
       <ul className="mb-4 divide-y divide-border">
         {camps.map((c) => (
           <li
@@ -147,6 +145,6 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
           {loading ? "Creating…" : "Create camp"}
         </Button>
       </form>
-    </Card>
+    </div>
   );
 }

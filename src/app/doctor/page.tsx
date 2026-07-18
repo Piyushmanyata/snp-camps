@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin } from "@/lib/auth";
 import {
   Card,
+  CollapsibleSection,
   EmptyState,
-  NavLink,
   SectionTitle,
   Shell,
   Stat,
@@ -12,6 +12,7 @@ import {
 import { QrScanner, type DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
+import { AdminDoctors } from "@/components/admin-doctors";
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -30,6 +31,7 @@ export default async function DoctorPage() {
   const isDoc = profile?.role === "doctor";
   const doctorId = isDoc ? userId : null;
   const scanMode = isDoc ? "doctor" : "admin";
+  const manage = isAdmin(profile?.role);
 
   const kolkataDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -39,73 +41,85 @@ export default async function DoctorPage() {
   }).format(new Date());
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
 
-  const [waitingRes, seenTodayRes, mySeenRes, doctorsRes] = camp
-    ? await Promise.all([
-        supabase
-          .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "waiting")
-          .order("queued_at", { ascending: true, nullsFirst: false })
-          .limit(100),
-        doctorId
-          ? supabase
-              .from("patients")
-              .select("id", { count: "exact", head: true })
-              .eq("camp_id", camp.id)
-              .eq("queue_status", "seen")
-              .eq("seen_by", doctorId)
-              .gte("seen_at", startOfDay.toISOString())
-          : Promise.resolve({ count: 0 }),
-        doctorId
-          ? supabase
-              .from("patients")
-              .select("id, reg_no, full_name, seen_at, phone")
-              .eq("camp_id", camp.id)
-              .eq("seen_by", doctorId)
-              .eq("queue_status", "seen")
-              .order("seen_at", { ascending: false })
-              .limit(50)
-          : Promise.resolve({
-              data: [] as {
-                id: string;
-                reg_no: number;
-                full_name: string;
-                seen_at: string | null;
-                phone: string | null;
-              }[],
-            }),
-        !isDoc
-          ? supabase
-              .from("profiles")
-              .select("id, full_name")
-              .eq("role", "doctor")
-              .order("full_name", { ascending: true })
-          : Promise.resolve({ data: [] as DoctorOption[] }),
-      ])
-    : [
-        { data: [] as LiveQueuePatient[], count: 0 },
-        { count: 0 },
-        {
-          data: [] as {
-            id: string;
-            reg_no: number;
-            full_name: string;
-            seen_at: string | null;
-            phone: string | null;
-          }[],
-        },
-        { data: [] as DoctorOption[] },
-      ];
+  const [waitingRes, seenTodayRes, mySeenRes, doctorsRes, doctorsFullRes] =
+    camp
+      ? await Promise.all([
+          supabase
+            .from("patients")
+            .select("id, reg_no, full_name, phone, queued_at", {
+              count: "exact",
+            })
+            .eq("camp_id", camp.id)
+            .eq("queue_status", "waiting")
+            .order("queued_at", { ascending: true, nullsFirst: false })
+            .limit(100),
+          doctorId
+            ? supabase
+                .from("patients")
+                .select("id", { count: "exact", head: true })
+                .eq("camp_id", camp.id)
+                .eq("queue_status", "seen")
+                .eq("seen_by", doctorId)
+                .gte("seen_at", startOfDay.toISOString())
+            : Promise.resolve({ count: 0 }),
+          doctorId
+            ? supabase
+                .from("patients")
+                .select("id, reg_no, full_name, seen_at, phone")
+                .eq("camp_id", camp.id)
+                .eq("seen_by", doctorId)
+                .eq("queue_status", "seen")
+                .order("seen_at", { ascending: false })
+                .limit(50)
+            : Promise.resolve({
+                data: [] as {
+                  id: string;
+                  reg_no: number;
+                  full_name: string;
+                  seen_at: string | null;
+                  phone: string | null;
+                }[],
+              }),
+          supabase
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "doctor")
+            .order("full_name", { ascending: true }),
+          supabase
+            .from("profiles")
+            .select("id, full_name, email, phone, role, created_at")
+            .eq("role", "doctor")
+            .order("created_at", { ascending: false }),
+        ])
+      : await Promise.all([
+          Promise.resolve({ data: [] as LiveQueuePatient[], count: 0 }),
+          Promise.resolve({ count: 0 }),
+          Promise.resolve({
+            data: [] as {
+              id: string;
+              reg_no: number;
+              full_name: string;
+              seen_at: string | null;
+              phone: string | null;
+            }[],
+          }),
+          Promise.resolve({ data: [] as DoctorOption[] }),
+          supabase
+            .from("profiles")
+            .select("id, full_name, email, phone, role, created_at")
+            .eq("role", "doctor")
+            .order("created_at", { ascending: false }),
+        ]);
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
   const waitingCount = waitingRes.count ?? waiting.length;
   const seenToday = seenTodayRes.count ?? 0;
   const mySeen = mySeenRes.data || [];
   const doctors = (doctorsRes.data || []) as DoctorOption[];
+  const doctorsFull = doctorsFullRes.data || [];
   if (
     Boolean(campError) ||
-    [waitingRes, seenTodayRes, mySeenRes, doctorsRes].some(
+    [waitingRes, seenTodayRes, mySeenRes, doctorsRes, doctorsFullRes].some(
       (result) => "error" in result && Boolean(result.error),
     )
   ) {
@@ -120,14 +134,9 @@ export default async function DoctorPage() {
           ? `${profile.full_name} · Scan patients you see`
           : "Scan patients you see"
       }
-      backHref={profile?.role === "admin" ? "/admin" : "/"}
       width="xl"
       roleLabel={isDoc ? "Doctor" : "Admin"}
-      dock={[
-        { href: "#scan", label: "Scan", primary: true },
-        { href: "#queue", label: "Queue" },
-        { href: "#seen", label: "Seen" },
-      ]}
+      actions={<SignOutButton place="header" />}
     >
       <div className="space-y-4">
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
@@ -146,7 +155,7 @@ export default async function DoctorPage() {
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
               <Stat label="In queue" value={waitingCount} tone="wait" />
               <Stat
-                label={isDoc ? "You saw today" : "Doctor view"}
+                label={isDoc ? "You saw today" : "Doctors"}
                 value={isDoc ? seenToday : doctors.length}
                 tone="ok"
               />
@@ -155,26 +164,26 @@ export default async function DoctorPage() {
         </Card>
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <div className="space-y-4">
-            <Card id="scan">
-              <SectionTitle
-                hint={
-                  isDoc
-                    ? "No print needed · once only"
-                    : "Pick doctor · once only"
-                }
-              >
-                Scan patient
-              </SectionTitle>
-              <QrScanner
-                mode={scanMode}
-                doctors={doctors}
-                disabledReason={
-                  camp ? undefined : "No active camp. Ask an admin to activate a camp first."
-                }
-              />
-            </Card>
-          </div>
+          <Card id="scan">
+            <SectionTitle
+              hint={
+                isDoc
+                  ? "No print needed · once only"
+                  : "Pick doctor · once only"
+              }
+            >
+              Scan patient
+            </SectionTitle>
+            <QrScanner
+              mode={scanMode}
+              doctors={doctors}
+              disabledReason={
+                camp
+                  ? undefined
+                  : "No active camp. Ask an admin to activate a camp first."
+              }
+            />
+          </Card>
 
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
@@ -192,58 +201,61 @@ export default async function DoctorPage() {
           </Card>
         </div>
 
-        <Card id="seen">
-          <SectionTitle hint={isDoc ? `${mySeen.length} recent` : "Doctor assignment mode"}>
-            {isDoc ? "Patients you saw" : "Doctor view"}
-          </SectionTitle>
-          {mySeen.length ? (
-            <ul className="divide-y divide-border">
-              {mySeen.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      <span className="tabular text-brand">#{p.reg_no}</span>{" "}
-                      {p.full_name}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {p.seen_at
-                        ? new Date(p.seen_at).toLocaleString("en-IN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            day: "numeric",
-                            month: "short",
-                          })
-                        : "—"}
-                      {p.phone ? ` · ${p.phone}` : ""}
-                    </p>
-                  </div>
-                  <a
-                    href={`/print/${p.id}`}
-                    className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
+        {isDoc ? (
+          <CollapsibleSection
+            title="Patients you saw"
+            hint={`${mySeen.length} recent`}
+            defaultOpen
+          >
+            {mySeen.length ? (
+              <ul className="divide-y divide-border">
+                {mySeen.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 py-2.5"
                   >
-                    Form
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState>
-              {isDoc
-                ? "No patients assigned to you yet. Scan a registered patient when they arrive — no print required."
-                : "Choose a doctor while scanning. Patient history appears in each doctor's own view."}
-            </EmptyState>
-          )}
-        </Card>
-
-        {profile?.role === "admin" ? (
-          <NavLink href="/admin" variant="secondary">
-            Admin dashboard
-          </NavLink>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        <span className="tabular text-brand">#{p.reg_no}</span>{" "}
+                        {p.full_name}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {p.seen_at
+                          ? new Date(p.seen_at).toLocaleString("en-IN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              day: "numeric",
+                              month: "short",
+                            })
+                          : "—"}
+                        {p.phone ? ` · ${p.phone}` : ""}
+                      </p>
+                    </div>
+                    <a
+                      href={`/print/${p.id}`}
+                      className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
+                    >
+                      Form
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState>
+                No patients assigned to you yet. Scan a registered patient when
+                they arrive — no print required.
+              </EmptyState>
+            )}
+          </CollapsibleSection>
         ) : null}
-        <SignOutButton />
+
+        <CollapsibleSection
+          title="Doctors"
+          hint={`${doctorsFull.length} · KPIs & register`}
+          defaultOpen={!isDoc}
+        >
+          <AdminDoctors initial={doctorsFull} canManage={manage} />
+        </CollapsibleSection>
       </div>
     </Shell>
   );

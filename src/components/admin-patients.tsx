@@ -7,11 +7,9 @@ import { formatCampDay, queueLabel, queueTone } from "@/lib/types";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   ErrorBox,
   Input,
-  SectionTitle,
 } from "@/components/ui";
 
 export type AdminPatientRow = {
@@ -157,9 +155,7 @@ export function AdminPatients({
   }
 
   return (
-    <Card>
-      <SectionTitle hint={total + " total"}>All patients</SectionTitle>
-
+    <div className="space-y-3">
       <div className="mb-3 space-y-3">
         <Input
           label="Filter list"
@@ -292,6 +288,6 @@ export function AdminPatients({
           </Button>
         </div>
       ) : null}
-    </Card>
+    </div>
   );
 }

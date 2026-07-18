@@ -53,8 +53,8 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
-                Multi-day eye camp with limited seats. Self-register with
-                Aadhaar, get your reg no &amp; password, then doctor scan.
+                Multi-day eye camp with limited seats. Self-register with phone
+                OTP, get your reg no, then doctor scan.
               </p>
             </div>
           </div>
@@ -89,7 +89,7 @@ export default async function HomePage() {
                   !camp
                     ? "No active camp"
                     : anyOpen
-                      ? "Aadhaar verify → reg no + password → signed in"
+                      ? "Phone OTP → details → reg no → signed in"
                       : "All days full"
                 }
                 variant="primary"
@@ -105,7 +105,7 @@ export default async function HomePage() {
             <ActionCard
               href="/patient/login"
               title="Patient login"
-              description="Reg no + password (sent on register / logout)"
+              description="Phone OTP or reg no + password"
               variant="secondary"
             />
 
@@ -138,8 +138,8 @@ export default async function HomePage() {
             <StepList
               steps={[
                 {
-                  title: "Aadhaar register",
-                  detail: "Verify · get reg no & password",
+                  title: "Phone OTP register",
+                  detail: "Verify mobile · get reg no",
                 },
                 {
                   title: "Optional desk print",

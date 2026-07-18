@@ -98,7 +98,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_request_role text;
@@ -249,7 +249,7 @@ begin
     v_created_by,
     'registered',
     null,
-    case when public.is_staff() then null else encode(gen_random_bytes(24), 'hex') end,
+    case when public.is_staff() then null else encode(extensions.gen_random_bytes(24), 'hex') end,
     case when public.is_staff() then null else now() + interval '30 minutes' end
   )
   returning

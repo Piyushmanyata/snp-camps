@@ -63,9 +63,9 @@ export default async function PatientHomePage() {
     <Shell
       title="My profile"
       subtitle="Your camp registration"
-      backHref="/"
       width="lg"
       roleLabel="Patient"
+      actions={<SignOutButton place="header" patientMode />}
     >
       <div className="space-y-4">
         {!patient ? (
@@ -74,7 +74,7 @@ export default async function PatientHomePage() {
               No registration linked yet
             </p>
             <p className="prose-help mb-4 text-sm text-muted">
-              Register for a camp day with open seats to get your reg number.
+              Register with phone OTP for a camp day with open seats.
             </p>
             <NavLink href="/register">Register now</NavLink>
             {days.length ? (
@@ -153,7 +153,6 @@ export default async function PatientHomePage() {
             </div>
           </div>
         )}
-        <SignOutButton patientMode />
       </div>
     </Shell>
   );

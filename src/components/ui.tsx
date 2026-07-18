@@ -182,6 +182,44 @@ export function SectionTitle({
   );
 }
 
+/** Native collapsible panel — keeps long dashboards scannable. */
+export function CollapsibleSection({
+  title,
+  hint,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      open={defaultOpen || undefined}
+      className="group rounded-2xl border border-border/90 bg-card shadow-[var(--shadow-card)]"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="text-lg font-semibold tracking-tight text-foreground">
+          {title}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {hint ? (
+            <span className="text-[0.8125rem] text-muted">{hint}</span>
+          ) : null}
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted transition group-open:rotate-180"
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        </span>
+      </summary>
+      <div className="border-t border-border px-5 pb-5 pt-4">{children}</div>
+    </details>
+  );
+}
+
 export function Button({
   className = "",
   variant = "primary",

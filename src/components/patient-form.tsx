@@ -22,7 +22,6 @@ import {
   SuccessBox,
   WarningBox,
 } from "@/components/ui";
-import { QrCard } from "@/components/qr-card";
 import { ChangeDay } from "@/components/change-day";
 
 type Props = {
@@ -42,14 +41,20 @@ type Created = {
   camp_day_id?: string;
   day_date?: string;
   claim_token?: string | null;
-  /** Shown once after self-reg (and on logout re-issue) */
   password?: string;
   loggedIn?: boolean;
   notifyNote?: string;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
-type VerifyState = "idle" | "loading" | "ok" | "fail";
+
+function normalizePhoneE164(raw: string): string | null {
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `+91${d}`;
+  if (d.length === 12 && d.startsWith("91")) return `+${d}`;
+  if (d.length === 13 && d.startsWith("091")) return `+91${d.slice(3)}`;
+  return null;
+}
 
 export function PatientForm({
   campId,
@@ -66,10 +71,6 @@ export function PatientForm({
 
   const [campDayId, setCampDayId] = useState(firstOpen);
   const [aadhaar, setAadhaar] = useState("");
-  const [aadhaarVerified, setAadhaarVerified] = useState(false);
-  const [verificationToken, setVerificationToken] = useState("");
-  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
-  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
@@ -81,9 +82,18 @@ export function PatientForm({
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
 
+  // Self-reg: phone OTP gate (primary). Aadhaar kept for later.
+  const [otpStep, setOtpStep] = useState<"phone" | "otp" | "form">(
+    isStaff ? "form" : "phone",
+  );
+  const [otp, setOtp] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(isStaff);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(userId);
+
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMsg, setLookupMsg] = useState<string | null>(null);
   const [filledFromAadhaar, setFilledFromAadhaar] = useState(false);
+  const [showAadhaarLater, setShowAadhaarLater] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLookedUp = useRef<string>("");
   const lookupRequest = useRef(0);
@@ -166,60 +176,10 @@ export function PatientForm({
     [applyProfile],
   );
 
-  async function verifyAadhaar() {
-    const d = digitsOnly(aadhaar);
-    setError(null);
-    setAadhaarVerified(false);
-    if (!isValidAadhaarNumber(d)) {
-      setVerifyState("fail");
-      setVerifyMsg("Enter a valid 12-digit Aadhaar number.");
-      return;
-    }
-
-    setVerifyState("loading");
-    setVerifyMsg("Verifying Aadhaar…");
-    try {
-      const res = await fetch("/api/aadhaar-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aadhaar: d }),
-      });
-      const json = (await res.json()) as {
-        verified?: boolean;
-        validated?: boolean;
-        error?: string;
-        message?: string;
-        mode?: string;
-        verificationToken?: string;
-      };
-      if (
-        !res.ok ||
-        json.verified !== true ||
-        !/^[0-9a-f]{64}$/i.test(json.verificationToken || "")
-      ) {
-        setVerifyState("fail");
-        setVerifyMsg(json.error || "Aadhaar verification failed.");
-        return;
-      }
-      setAadhaarVerified(true);
-      setVerificationToken(json.verificationToken || "");
-      setVerifyState("ok");
-      setVerifyMsg(json.message || "Aadhaar verified.");
-      if (lookupEnabled && isStaff) void runAadhaarLookup(d);
-    } catch {
-      setVerifyState("fail");
-      setVerifyMsg("Verification request failed. Try again.");
-    }
-  }
-
   function onAadhaarChange(value: string) {
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
     setFilledFromAadhaar(false);
-    setAadhaarVerified(false);
-    setVerificationToken("");
-    setVerifyState("idle");
-    setVerifyMsg(null);
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
@@ -227,13 +187,11 @@ export function PatientForm({
     const d = digitsOnly(formatted);
     if (lookupTimer.current) clearTimeout(lookupTimer.current);
 
-    if (!lookupEnabled) {
+    if (!lookupEnabled || !isStaff) {
       setLookupState("skipped");
       setLookupMsg(
         d.length >= 4
-          ? isStaff
-            ? "Only last 4 digits are stored. Enter other details below."
-            : "Self-registration requires full Aadhaar verification."
+          ? "Optional · only last 4 digits are stored when provided."
           : null,
       );
       return;
@@ -255,14 +213,11 @@ export function PatientForm({
       return;
     }
 
-    // Self-reg waits for explicit verify; staff can auto-lookup
-    if (isStaff) {
-      setLookupState("loading");
-      setLookupMsg("Fetching details…");
-      lookupTimer.current = setTimeout(() => {
-        void runAadhaarLookup(d);
-      }, 450);
-    }
+    setLookupState("loading");
+    setLookupMsg("Fetching details…");
+    lookupTimer.current = setTimeout(() => {
+      void runAadhaarLookup(d);
+    }, 450);
   }
 
   useEffect(() => {
@@ -272,6 +227,85 @@ export function PatientForm({
       lookupAbort.current?.abort();
     };
   }, []);
+
+  async function sendOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const phoneE164 = normalizePhoneE164(phone);
+    if (!phoneE164) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      setLoading(false);
+      return;
+    }
+    const supabase = createClient();
+    const { error: err } = await supabase.auth.signInWithOtp({
+      phone: phoneE164,
+    });
+    if (err) {
+      setError(
+        err.message +
+          " — Phone OTP needs SMS configured in Supabase Auth. Ask the desk to register you if SMS is unavailable.",
+      );
+      setLoading(false);
+      return;
+    }
+    setOtpStep("otp");
+    setLoading(false);
+  }
+
+  async function verifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const phoneE164 = normalizePhoneE164(phone);
+    if (!phoneE164) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      setLoading(false);
+      return;
+    }
+    const supabase = createClient();
+    const { error: err } = await supabase.auth.verifyOtp({
+      phone: phoneE164,
+      token: otp,
+      type: "sms",
+    });
+    if (err) {
+      setError(err.message);
+      setLoading(false);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("OTP verified but no session was created. Try again.");
+      setLoading(false);
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .upsert({ id: user.id, role: "patient", phone: phoneE164 });
+
+    // If desk already registered this phone, link and open profile
+    const { data: linkedId, error: linkErr } = await supabase.rpc(
+      "link_patient_phone",
+      { p_phone: phoneE164 },
+    );
+    if (!linkErr && linkedId) {
+      router.replace("/patient");
+      router.refresh();
+      return;
+    }
+
+    setSessionUserId(user.id);
+    setPhoneVerified(true);
+    setOtpStep("form");
+    setPhone(phoneE164.replace(/\D/g, "").slice(-10));
+    setLoading(false);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -295,19 +329,7 @@ export function PatientForm({
     const aDigits = digitsOnly(aadhaar);
     const last4 = aadhaarLast4(aadhaar);
 
-    // Self-registration: Aadhaar only (must verify)
-    if (!isStaff) {
-      if (!isValidAadhaarNumber(aDigits)) {
-        setError("Self-registration requires a valid 12-digit Aadhaar.");
-        setLoading(false);
-        return;
-      }
-      if (!aadhaarVerified || !verificationToken) {
-        setError("Verify your Aadhaar first, then complete registration.");
-        setLoading(false);
-        return;
-      }
-    } else if (aadhaar.trim()) {
+    if (aadhaar.trim()) {
       if (aDigits.length === 12 && !isValidAadhaarNumber(aDigits)) {
         setError("Aadhaar number looks invalid. Correct it or clear the field.");
         setLoading(false);
@@ -335,8 +357,14 @@ export function PatientForm({
 
     const phoneDigits = phone.replace(/\D/g, "");
     const phone10 = phoneDigits.slice(-10);
-    if (isStaff && phone10.length !== 10) {
-      setError("Phone is required (10-digit mobile) to prevent duplicate registration.");
+    if (phone10.length !== 10) {
+      setError("Phone is required (10-digit mobile).");
+      setLoading(false);
+      return;
+    }
+
+    if (!isStaff && !phoneVerified) {
+      setError("Verify your phone with OTP first.");
       setLoading(false);
       return;
     }
@@ -377,15 +405,15 @@ export function PatientForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            verificationToken,
             campId,
             campDayId,
             fullName: fullName.trim(),
             gender: gender || null,
             age: ageValue,
             address: address.trim() || null,
-            phone: phone10 || null,
+            phone: phone10,
             email: email.trim() || null,
+            aadhaarLast4: last4 || null,
           }),
         });
         const payload = (await response.json()) as {
@@ -417,7 +445,6 @@ export function PatientForm({
 
     const base = row as Created;
 
-    // Staff: registered only until print
     if (isStaff) {
       setCreated(base);
       setQueueNote(
@@ -427,7 +454,7 @@ export function PatientForm({
       return;
     }
 
-    // Self-reg: create account → notify SMS/WA → sign in → show credentials
+    // Phone OTP self-reg: already signed in — optional password fallback
     try {
       const accRes = await fetch("/api/patient-account", {
         method: "POST",
@@ -448,36 +475,10 @@ export function PatientForm({
         message?: string;
       };
 
-      if (!accRes.ok) {
-        setCreated(base);
-        setError(
-          acc.error ||
-            "Registered, but login account failed. Ask the desk for help.",
-        );
-        setLoading(false);
-        return;
-      }
-
-      if (acc.message && !acc.password) {
-        setCreated(base);
-        setError(acc.message);
-        setLoading(false);
-        return;
-      }
-
-      let loggedIn = false;
-      if (acc.password) {
-        const { error: signErr } = await supabase.auth.signInWithPassword({
-          email: patientAuthEmail(base.reg_no),
-          password: acc.password,
-        });
-        loggedIn = !signErr;
-      }
-
       const smsOn = acc.notifyConfigured?.sms;
       const waOn = acc.notifyConfigured?.whatsapp;
       let notifyNote =
-        "Save your reg number and password. They are also sent by SMS/WhatsApp when those services are configured.";
+        "You are signed in with phone OTP. Save reg no + password as backup when shown.";
       if (acc.notify) {
         const parts: string[] = [];
         if (acc.notify.sms === "sent") parts.push("SMS sent");
@@ -490,18 +491,23 @@ export function PatientForm({
         if (parts.length) notifyNote = parts.join(" · ");
       }
 
+      if (acc.password) {
+        // Link password login as backup without forcing re-auth
+        await supabase.auth.signInWithPassword({
+          email: patientAuthEmail(base.reg_no),
+          password: acc.password,
+        }).catch(() => undefined);
+      }
+
       setCreated({
         ...base,
         password: acc.password,
-        loggedIn,
+        loggedIn: true,
         notifyNote,
       });
-      if (loggedIn) router.refresh();
+      router.refresh();
     } catch {
-      setCreated(base);
-      setError(
-        "Registered, but could not finish login setup. Use reg no at the desk.",
-      );
+      setCreated({ ...base, loggedIn: true });
     }
     setLoading(false);
   }
@@ -517,13 +523,16 @@ export function PatientForm({
     setPhone(defaultPhone);
     setEmail("");
     setAadhaar("");
-    setAadhaarVerified(false);
-    setVerifyState("idle");
-    setVerifyMsg(null);
     setLookupState("idle");
     setLookupMsg(null);
     setFilledFromAadhaar(false);
     setCampDayId(firstOpen);
+    if (!isStaff) {
+      setOtpStep("phone");
+      setOtp("");
+      setPhoneVerified(false);
+      setSessionUserId(null);
+    }
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
@@ -551,16 +560,14 @@ export function PatientForm({
               : ""}
             {isStaff
               ? "Registered at desk — print to join queue, or doctor can scan directly"
-              : created.loggedIn
-                ? "You are logged in — save your password below"
-                : "Save your login details"}
+              : "You are logged in with phone OTP"}
           </p>
         </div>
 
         {!isStaff && created.password ? (
           <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
             <p className="text-sm font-bold text-amber-950">
-              Your login (save now)
+              Backup login (optional)
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
@@ -585,11 +592,7 @@ export function PatientForm({
             </div>
             <p className="text-xs text-amber-900/90">
               {created.notifyNote ||
-                "These are also sent by SMS/WhatsApp when configured."}
-            </p>
-            <p className="text-xs text-muted">
-              If you sign out, we show your reg no and a new password again (and
-              re-send by SMS/WhatsApp when configured).
+                "Prefer phone OTP next time. Password is a backup."}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Link
@@ -611,6 +614,13 @@ export function PatientForm({
               </Button>
             </div>
           </div>
+        ) : !isStaff ? (
+          <Link
+            href="/patient"
+            className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
+          >
+            Go to my profile
+          </Link>
         ) : null}
 
         {isStaff ? (
@@ -635,14 +645,6 @@ export function PatientForm({
             </div>
             <ErrorBox message={error} />
           </div>
-        ) : !created.password ? (
-          <div className="space-y-2">
-            <ErrorBox message={error} />
-            <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted">
-              Show this at the desk if needed
-            </p>
-            <QrCard regNo={created.reg_no} patientId={created.id} />
-          </div>
         ) : null}
 
         <div className="rounded-xl border border-border p-4">
@@ -665,7 +667,7 @@ export function PatientForm({
                 href="/volunteer"
                 className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
               >
-                Back to volunteer desk
+                Volunteer desk
               </Link>
             </>
           ) : (
@@ -698,8 +700,89 @@ export function PatientForm({
     );
   }
 
+  // —— Self-reg: phone OTP steps ——
+  if (!isStaff && otpStep === "phone") {
+    return (
+      <form onSubmit={sendOtp} className="space-y-4" noValidate>
+        <div className="rounded-2xl border border-brand/20 bg-brand-soft/40 p-4">
+          <p className="text-sm font-semibold text-foreground">
+            Step 1 · Verify mobile
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Main registration is phone OTP. Aadhaar integration is reserved for
+            later.
+          </p>
+        </div>
+        <Input
+          label="Mobile number *"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="10-digit Indian mobile"
+          hint="OTP sent by SMS (Supabase Auth)"
+        />
+        <ErrorBox message={error} />
+        <Button type="submit" loading={loading} disabled={loading}>
+          {loading ? "Sending OTP…" : "Send OTP"}
+        </Button>
+      </form>
+    );
+  }
+
+  if (!isStaff && otpStep === "otp") {
+    return (
+      <form onSubmit={verifyOtp} className="space-y-4" noValidate>
+        <div className="rounded-2xl border border-brand/20 bg-brand-soft/40 p-4">
+          <p className="text-sm font-semibold text-foreground">
+            Step 2 · Enter OTP
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Code sent to{" "}
+            <span className="font-semibold text-foreground" translate="no">
+              {normalizePhoneE164(phone) || phone}
+            </span>
+          </p>
+        </div>
+        <Input
+          label="OTP *"
+          name="otp"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          required
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
+          placeholder="6-digit code"
+        />
+        <ErrorBox message={error} />
+        <Button type="submit" loading={loading} disabled={loading}>
+          {loading ? "Verifying…" : "Verify & continue"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setOtpStep("phone");
+            setOtp("");
+            setError(null);
+          }}
+        >
+          Change number
+        </Button>
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {!isStaff ? (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-brand">
+          Phone verified
+          {sessionUserId ? " · signed in" : ""} · complete your details
+        </div>
+      ) : null}
+
       <Select
         label="Camp day *"
         required
@@ -715,245 +798,161 @@ export function PatientForm({
         ))}
       </Select>
 
-      <div
-        className={`space-y-2 rounded-2xl border p-4 ${
-          aadhaarVerified || filledFromAadhaar
-            ? "border-brand/30 bg-brand-soft/40"
-            : "border-border bg-background/80"
-        }`}
-      >
-        <div className="flex items-start justify-between gap-2">
+      <Input
+        label="Full name *"
+        required
+        autoComplete="name"
+        value={fullName}
+        onChange={(e) => setFullName(e.target.value)}
+        placeholder="Full name"
+      />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Select
+          label="Gender"
+          value={gender}
+          onChange={(e) => setGender(e.target.value)}
+        >
+          <option value="">—</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+          <option value="O">Other</option>
+        </Select>
+        <Input
+          label="Age"
+          type="number"
+          min={0}
+          max={149}
+          inputMode="numeric"
+          value={age}
+          onChange={(e) => setAge(e.target.value)}
+          placeholder="Years"
+        />
+      </div>
+      <Input
+        label="Address"
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+        placeholder="Locality / area"
+      />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Input
+          label="Phone *"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          value={phone}
+          onChange={(e) => {
+            if (!isStaff && phoneVerified) return;
+            setPhone(e.target.value);
+          }}
+          readOnly={!isStaff && phoneVerified}
+          placeholder="10-digit mobile"
+          hint={
+            isStaff
+              ? "One registration per phone"
+              : "Locked after OTP verification"
+          }
+        />
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+
+      {/* Aadhaar deferred — optional only */}
+      <div className="rounded-2xl border border-dashed border-border bg-background/80">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+          onClick={() => setShowAadhaarLater((v) => !v)}
+        >
           <div>
             <p className="text-sm font-semibold text-foreground">
-              Aadhaar{!isStaff ? " *" : ""}
+              Aadhaar (later)
             </p>
             <p className="text-xs text-muted">
-              {!isStaff
-                ? "Self-registration is Aadhaar-only. Verify, then complete details."
-                : lookupEnabled
-                  ? "Enter 12 digits — details fill when the service is available."
-                  : "Optional at desk. Full number or last 4. Only last 4 is stored."}
+              Optional for now · full integration coming later
             </p>
           </div>
-          {!isStaff ? (
-            <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand ring-1 ring-brand/15">
-              Required
-            </span>
-          ) : lookupEnabled ? (
-            <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand ring-1 ring-brand/15">
-              Auto-fill on
-            </span>
-          ) : (
-            <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200">
-              Optional
-            </span>
-          )}
-        </div>
-
-        <Input
-          label={
-            !isStaff
-              ? "Aadhaar number *"
-              : lookupEnabled
-                ? "Aadhaar number"
-                : "Aadhaar (optional)"
-          }
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="XXXX XXXX 1234"
-          hint="Never stored in full — last 4 only"
-          required={!isStaff}
-          value={aadhaar}
-          onChange={(e) => onAadhaarChange(e.target.value)}
-        />
-
-        {!isStaff ? (
-          <Button
-            type="button"
-            variant={aadhaarVerified ? "secondary" : "primary"}
-            size="sm"
-            disabled={
-              verifyState === "loading" ||
-              digitsOnly(aadhaar).length !== 12
-            }
-            loading={verifyState === "loading"}
-            onClick={() => void verifyAadhaar()}
-          >
-            {aadhaarVerified
-              ? "Verified ✓"
-              : verifyState === "loading"
-                ? "Verifying…"
-                : "Verify Aadhaar"}
-          </Button>
-        ) : null}
-
-        {isStaff && lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={lookupState === "loading"}
-            onClick={() => {
-              lastLookedUp.current = "";
-              void runAadhaarLookup(aadhaar);
-            }}
-          >
-            {lookupState === "loading" ? "Fetching…" : "Fetch details again"}
-          </Button>
-        ) : null}
-
-        {verifyMsg ? (
-          <p
-            role="status"
-            aria-live="polite"
-            className={`rounded-xl px-3 py-2 text-xs ${
-              verifyState === "ok"
-                ? "bg-brand-soft text-brand"
-                : verifyState === "fail"
-                  ? "border border-amber-200 bg-amber-50 text-amber-950"
-                  : "bg-background text-muted"
-            }`}
-          >
-            {verifyMsg}
-          </p>
-        ) : null}
-
-        {lookupMsg && isStaff ? (
-          <p
-            role="status"
-            aria-live="polite"
-            className={`rounded-xl px-3 py-2 text-xs ${
-              lookupState === "ok"
-                ? "bg-brand-soft text-brand"
-                : lookupState === "fail"
-                  ? "border border-amber-200 bg-amber-50 text-amber-950"
-                  : "bg-background text-muted"
-            }`}
-          >
-            {lookupMsg}
-          </p>
+          <span className="text-muted" aria-hidden="true">
+            {showAadhaarLater ? "▴" : "▾"}
+          </span>
+        </button>
+        {showAadhaarLater ? (
+          <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+            <Input
+              label={
+                isStaff && lookupEnabled
+                  ? "Aadhaar number"
+                  : "Aadhaar (optional)"
+              }
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="XXXX XXXX 1234"
+              hint="Never stored in full — last 4 only"
+              value={aadhaar}
+              onChange={(e) => onAadhaarChange(e.target.value)}
+            />
+            {isStaff && lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={lookupState === "loading"}
+                onClick={() => {
+                  lastLookedUp.current = "";
+                  void runAadhaarLookup(aadhaar);
+                }}
+              >
+                {lookupState === "loading" ? "Fetching…" : "Fetch details"}
+              </Button>
+            ) : null}
+            {lookupMsg && isStaff ? (
+              <p
+                role="status"
+                className={`rounded-xl px-3 py-2 text-xs ${
+                  lookupState === "ok"
+                    ? "bg-brand-soft text-brand"
+                    : lookupState === "fail"
+                      ? "border border-amber-200 bg-amber-50 text-amber-950"
+                      : "bg-background text-muted"
+                }`}
+              >
+                {lookupMsg}
+              </p>
+            ) : null}
+            {filledFromAadhaar ? (
+              <p className="text-xs text-brand">
+                Some fields filled from Aadhaar — review before save.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
-      {!isStaff && !aadhaarVerified ? (
-        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-5 text-center">
-          <p className="font-semibold text-foreground">Step 2 · Patient details</p>
-          <p className="mt-1 text-sm text-muted">
-            Verify Aadhaar above to continue. Your details stay hidden until then.
-          </p>
-        </div>
-      ) : null}
-
-      <div className={!isStaff && !aadhaarVerified ? "hidden" : "space-y-1"}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-          {filledFromAadhaar
-            ? "Review & edit details"
-            : !isStaff && !aadhaarVerified
-              ? "Verify Aadhaar above first"
-              : "Patient details"}
-        </p>
-      </div>
-
-      <fieldset
-        disabled={!isStaff && !aadhaarVerified}
-        className={
-          !isStaff && !aadhaarVerified
-            ? "hidden"
-            : "space-y-4 disabled:opacity-60"
-        }
-      >
-        <Input
-          label="Full name *"
-          required
-          autoComplete="name"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="As on Aadhaar / ID"
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Select
-            label="Gender"
-            value={gender}
-            onChange={(e) => setGender(e.target.value)}
-          >
-            <option value="">—</option>
-            <option value="M">Male</option>
-            <option value="F">Female</option>
-            <option value="O">Other</option>
-          </Select>
-          <Input
-            label="Age"
-            type="number"
-            min={0}
-            max={149}
-            inputMode="numeric"
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-            placeholder="Years"
-          />
-        </div>
-        <Input
-          label="Address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Locality / area"
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
-            label={isStaff ? "Phone *" : "Phone (optional)"}
-            inputMode="tel"
-            autoComplete="tel"
-            required={isStaff}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="10-digit mobile"
-            hint={
-              isStaff
-                ? "One registration per phone"
-                : "Optional · Reg no + password sent here when configured"
-            }
-          />
-          <Input
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Optional"
-          />
-        </div>
-      </fieldset>
-
-      <p
-        className={
-          "rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted " +
-          (!isStaff && !aadhaarVerified ? "hidden" : "")
-        }
-      >
+      <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
           ? "After save they stay registered. Print to join the queue, or a doctor can scan them directly (seen)."
-          : "After verify + save you are logged in. Keep your reg number and password. Doctor can scan without a print."}
+          : "After save you stay signed in with phone OTP. Doctor can scan without a print."}
       </p>
       <ErrorBox message={error} />
-      {isStaff || aadhaarVerified ? (
-        <Button
-          type="submit"
-          disabled={
-            loading ||
-            lookupState === "loading" ||
-            verifyState === "loading"
-          }
-          loading={loading}
-        >
-          {loading
-            ? isStaff
-              ? "Saving…"
-              : "Registering & signing you in…"
-            : isStaff
-              ? "Register for selected day"
-              : "Verify done · Register & sign in"}
-        </Button>
-      ) : null}
+      <Button
+        type="submit"
+        disabled={loading || lookupState === "loading"}
+        loading={loading}
+      >
+        {loading
+          ? isStaff
+            ? "Saving…"
+            : "Registering…"
+          : isStaff
+            ? "Register for selected day"
+            : "Register for selected day"}
+      </Button>
     </form>
   );
 }

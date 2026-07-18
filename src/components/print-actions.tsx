@@ -50,7 +50,7 @@ export function PrintActions({
           href="/volunteer"
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-brand-soft px-4 text-sm font-semibold text-brand transition hover:bg-white"
         >
-          Back to desk
+          Volunteer desk
         </Link>
         <Link
           href="/register"

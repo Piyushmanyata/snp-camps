@@ -16,11 +16,14 @@ type Credentials = {
 /**
  * Staff: plain sign-out.
  * Patient: re-issue password, show reg+password, notify SMS/WA stubs, then sign out.
+ * place="header" → compact red control for Shell actions (top-right).
  */
 export function SignOutButton({
   patientMode = false,
+  place = "block",
 }: {
   patientMode?: boolean;
+  place?: "block" | "header";
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -50,7 +53,6 @@ export function SignOutButton({
       };
 
       if (!res.ok || json.regNo == null || !json.password) {
-        // Still sign out; show error if credentials failed
         setError(json.error || "Could not re-issue password. Signing out…");
         const supabase = createClient();
         await supabase.auth.signOut();
@@ -82,6 +84,14 @@ export function SignOutButton({
       setError("Something went wrong. Try again.");
     }
     setLoading(false);
+  }
+
+  function onClick() {
+    if (patientMode) void patientSignOut();
+    else {
+      setLoading(true);
+      void plainSignOut();
+    }
   }
 
   if (creds) {
@@ -141,21 +151,39 @@ export function SignOutButton({
     );
   }
 
+  if (place === "header") {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        {error ? (
+          <p className="max-w-[10rem] text-right text-[10px] font-medium text-red-700">
+            {error}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onClick}
+          className="pressable inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-red-600 px-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading
+            ? patientMode
+              ? "…"
+              : "…"
+            : "Sign out"}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <ErrorBox message={error} />
       <Button
         type="button"
-        variant="secondary"
+        variant="danger"
         loading={loading}
         disabled={loading}
-        onClick={() => {
-          if (patientMode) void patientSignOut();
-          else {
-            setLoading(true);
-            void plainSignOut();
-          }
-        }}
+        onClick={onClick}
       >
         {loading
           ? patientMode

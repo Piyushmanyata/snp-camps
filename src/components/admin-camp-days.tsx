@@ -7,11 +7,9 @@ import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   ErrorBox,
   Input,
-  SectionTitle,
 } from "@/components/ui";
 
 export function AdminCampDays({
@@ -114,12 +112,10 @@ export function AdminCampDays({
   }
 
   return (
-    <Card>
-      <SectionTitle hint={campName}>Camp days & seats</SectionTitle>
-      <p className="mb-3 text-sm text-muted">
-        Each day has a seat cap. Registration closes for a day when full; other
-        days stay open. One patient = one day (they can change later if seats
-        remain).
+    <div className="space-y-3">
+      <p className="text-sm text-muted">
+        {campName}: each day has a seat cap. Registration closes for a day when
+        full; other days stay open. One patient = one day.
       </p>
 
       <ul className="mb-4 divide-y divide-border">
@@ -200,6 +196,6 @@ export function AdminCampDays({
           {loading ? "Saving…" : "Add / update day"}
         </Button>
       </form>
-    </Card>
+    </div>
   );
 }

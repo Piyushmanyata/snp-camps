@@ -1,5 +1,5 @@
 -- SNP Camps v1 — run once in Supabase SQL Editor
-create extension if not exists "pgcrypto";
+create extension if not exists pgcrypto with schema extensions;
 
 create type public.user_role as enum ('admin', 'volunteer', 'doctor', 'patient');
 create type public.queue_status as enum ('registered', 'waiting', 'seen');

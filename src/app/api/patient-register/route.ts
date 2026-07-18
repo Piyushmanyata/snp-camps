@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 type Body = {
+  /** Aadhaar path (kept for later integration). */
   verificationToken?: string;
   campId?: string;
   campDayId?: string;
@@ -13,6 +15,8 @@ type Body = {
   address?: string | null;
   phone?: string | null;
   email?: string | null;
+  /** Optional last-4 only; never full Aadhaar. */
+  aadhaarLast4?: string | null;
 };
 
 const UUID =
@@ -27,12 +31,20 @@ function publicError(message?: string) {
     return "A matching registration already exists for this camp.";
   }
   if (/verification/i.test(message)) {
-    return "Aadhaar verification expired. Verify again.";
+    return "Verification expired. Verify again.";
   }
   if (/active camp|invalid camp day/i.test(message)) {
     return "The selected camp or day is no longer available.";
   }
+  if (/phone/i.test(message)) {
+    return "A valid phone number is required for registration.";
+  }
   return "Registration failed. Try again or ask the desk.";
+}
+
+function normalizePhone10(raw: string | null | undefined) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  return digits.slice(-10);
 }
 
 export async function POST(request: Request) {
@@ -50,7 +62,10 @@ export async function POST(request: Request) {
   const fullName = String(body.fullName || "").trim();
   const address = String(body.address || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
-  const phone = String(body.phone || "").replace(/\D/g, "").slice(-10);
+  const phone = normalizePhone10(body.phone);
+  const aadhaarLast4 = String(body.aadhaarLast4 || "")
+    .replace(/\D/g, "")
+    .slice(-4);
   const gender = ["M", "F", "O"].includes(String(body.gender))
     ? String(body.gender)
     : null;
@@ -58,7 +73,7 @@ export async function POST(request: Request) {
 
   const rate = checkRateLimit(request, {
     scope: "patient-register",
-    identifier: verificationToken || "missing-token",
+    identifier: verificationToken || phone || "missing",
     limit: 8,
     windowMs: 10 * 60_000,
   });
@@ -73,13 +88,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (
-    !/^[0-9a-f]{64}$/i.test(verificationToken) ||
-    !UUID.test(campId) ||
-    !UUID.test(campDayId)
-  ) {
+  if (!UUID.test(campId) || !UUID.test(campDayId)) {
     return NextResponse.json(
-      { error: "Aadhaar verification and a valid camp day are required." },
+      { error: "A valid camp day is required." },
       { status: 400, headers },
     );
   }
@@ -89,10 +100,7 @@ export async function POST(request: Request) {
       { status: 400, headers },
     );
   }
-  if (
-    age !== null &&
-    (!Number.isInteger(age) || age < 0 || age > 149)
-  ) {
+  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 149)) {
     return NextResponse.json(
       { error: "Age must be a whole number from 0 to 149." },
       { status: 400, headers },
@@ -110,9 +118,9 @@ export async function POST(request: Request) {
       { status: 400, headers },
     );
   }
-  if (phone && phone.length !== 10) {
+  if (aadhaarLast4 && aadhaarLast4.length !== 4) {
     return NextResponse.json(
-      { error: "Enter a valid 10-digit mobile number." },
+      { error: "Aadhaar last 4 must be 4 digits." },
       { status: 400, headers },
     );
   }
@@ -125,22 +133,101 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await admin.rpc("register_verified_patient", {
-    p_verification_token: verificationToken,
+  // —— Path A: Aadhaar verified token (legacy / future integration) ——
+  if (/^[0-9a-f]{64}$/i.test(verificationToken)) {
+    if (phone && phone.length !== 10) {
+      return NextResponse.json(
+        { error: "Enter a valid 10-digit mobile number." },
+        { status: 400, headers },
+      );
+    }
+    const { data, error } = await admin.rpc("register_verified_patient", {
+      p_verification_token: verificationToken,
+      p_camp_id: campId,
+      p_full_name: fullName,
+      p_gender: gender,
+      p_age: age,
+      p_address: address || null,
+      p_phone: phone || null,
+      p_email: email || null,
+      p_camp_day_id: campDayId,
+    });
+
+    if (error) {
+      return NextResponse.json(
+        { error: publicError(error.message) },
+        { status: /verification/i.test(error.message) ? 403 : 409, headers },
+      );
+    }
+
+    const patient = Array.isArray(data) ? data[0] : data;
+    if (!patient) {
+      return NextResponse.json(
+        { error: "Registration failed. Try again or ask the desk." },
+        { status: 500, headers },
+      );
+    }
+    return NextResponse.json({ patient, mode: "aadhaar" }, { status: 201, headers });
+  }
+
+  // —— Path B: Phone OTP session (primary) ——
+  const sessionClient = await createClient();
+  const {
+    data: { user },
+  } = await sessionClient.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        error:
+          "Verify your phone with OTP first, then complete registration.",
+      },
+      { status: 401, headers },
+    );
+  }
+
+  const sessionPhone = normalizePhone10(user.phone || "");
+  const regPhone = phone.length === 10 ? phone : sessionPhone;
+  if (regPhone.length !== 10) {
+    return NextResponse.json(
+      { error: "A verified 10-digit mobile number is required." },
+      { status: 400, headers },
+    );
+  }
+  if (sessionPhone && sessionPhone !== regPhone) {
+    return NextResponse.json(
+      { error: "Phone must match the number you verified with OTP." },
+      { status: 400, headers },
+    );
+  }
+
+  // Ensure profile is patient with phone on file
+  await admin.from("profiles").upsert({
+    id: user.id,
+    role: "patient",
+    phone: `+91${regPhone}`,
+    full_name: fullName,
+    email: email || null,
+  });
+
+  const { data, error } = await admin.rpc("register_patient", {
     p_camp_id: campId,
     p_full_name: fullName,
     p_gender: gender,
     p_age: age,
     p_address: address || null,
-    p_phone: phone || null,
+    p_phone: regPhone,
     p_email: email || null,
+    p_aadhaar_last4: aadhaarLast4 || null,
+    p_user_id: user.id,
+    p_created_by: null,
     p_camp_day_id: campDayId,
   });
 
   if (error) {
     return NextResponse.json(
       { error: publicError(error.message) },
-      { status: /verification/i.test(error.message) ? 403 : 409, headers },
+      { status: 409, headers },
     );
   }
 
@@ -152,5 +239,8 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ patient }, { status: 201, headers });
+  return NextResponse.json(
+    { patient, mode: "phone_otp" },
+    { status: 201, headers },
+  );
 }

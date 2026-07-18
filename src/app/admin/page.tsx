@@ -2,7 +2,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
-import { Card, NavLink, Shell, Stat, StepList } from "@/components/ui";
+import {
+  Card,
+  CollapsibleSection,
+  NavLink,
+  Shell,
+  Stat,
+} from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
@@ -30,33 +36,32 @@ export default async function AdminPage() {
     queueCountsRes,
     volunteersRes,
     doctorsRes,
-  ] =
-    await Promise.all([
-      active
-        ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
-        : Promise.resolve({ data: [] as CampDayStats[] }),
-      supabase
-        .from("patients")
-        .select(
-          "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
-          { count: "exact" },
-        )
-        .order("created_at", { ascending: false })
-        .limit(50),
-      active
-        ? supabase.rpc("camp_queue_counts", { p_camp_id: active.id })
-        : Promise.resolve({ data: [] }),
-      supabase
-        .from("profiles")
-        .select("id, full_name, email, phone, role, created_at")
-        .eq("role", "volunteer")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("profiles")
-        .select("id, full_name, email, phone, role, created_at")
-        .eq("role", "doctor")
-        .order("created_at", { ascending: false }),
-    ]);
+  ] = await Promise.all([
+    active
+      ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
+      : Promise.resolve({ data: [] as CampDayStats[] }),
+    supabase
+      .from("patients")
+      .select(
+        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
+        { count: "exact" },
+      )
+      .order("created_at", { ascending: false })
+      .limit(50),
+    active
+      ? supabase.rpc("camp_queue_counts", { p_camp_id: active.id })
+      : Promise.resolve({ data: [] }),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at")
+      .eq("role", "volunteer")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at")
+      .eq("role", "doctor")
+      .order("created_at", { ascending: false }),
+  ]);
 
   const dataQueries = [
     patientsRes,
@@ -115,86 +120,102 @@ export default async function AdminPage() {
     <Shell
       title="Admin"
       subtitle={profile?.full_name || "Camp control"}
-      backHref="/"
       width="xl"
       roleLabel="Admin"
-      dock={[
-        { href: "/register", label: "Register", primary: true },
-        { href: "/volunteer", label: "Volunteer" },
-        { href: "/doctor", label: "Doctor" },
-      ]}
+      actions={<SignOutButton place="header" />}
     >
-      <div className="space-y-5 lg:space-y-6">
+      <div className="space-y-4 lg:space-y-5">
         <div className="grid max-w-xl grid-cols-3 gap-2.5 sm:gap-3">
           <Stat label="Not printed" value={notQueued} />
           <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Seen" value={seen} tone="ok" />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
-            <p className="text-xs font-bold uppercase tracking-wide text-brand">
-              Active camp
-            </p>
-            <p className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">
-              {active?.name || "None set"}
-            </p>
-            {active?.venue ? (
-              <p className="text-[0.9375rem] text-muted">{active.venue}</p>
-            ) : null}
-            <p className="mt-2 text-[0.8125rem] text-muted">
-              {volunteers.length} volunteer
-              {volunteers.length === 1 ? "" : "s"} · {doctors.length} doctor
-              {doctors.length === 1 ? "" : "s"} · {patientsRes.count ?? patients.length} patient
-              {(patientsRes.count ?? patients.length) === 1 ? "" : "s"} total
-            </p>
-            <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
-              <NavLink href="/register" variant="primary">
-                Register patient
-              </NavLink>
-              <NavLink href="/volunteer" variant="soft">
-                Open volunteer desk
-              </NavLink>
-              <NavLink href="/doctor" variant="soft">
-                Open doctor desk
-              </NavLink>
-            </div>
-          </Card>
-
-          {active ? <SeatBoard days={days} title="Live seat board" /> : null}
-        </div>
-
-        <Card padding="sm" className="bg-background/50">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
-            Desk flow
+        <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
+          <p className="text-xs font-bold uppercase tracking-wide text-brand">
+            Active camp
           </p>
-          <StepList
-            steps={[
-              { title: "Register", detail: "One patient, one day" },
-              { title: "Print", detail: "Joins live queue" },
-              { title: "Scan", detail: "Doctor marks seen" },
-            ]}
-          />
+          <p className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">
+            {active?.name || "None set"}
+          </p>
+          {active?.venue ? (
+            <p className="text-[0.9375rem] text-muted">{active.venue}</p>
+          ) : null}
+          <p className="mt-2 text-[0.8125rem] text-muted">
+            {volunteers.length} volunteer
+            {volunteers.length === 1 ? "" : "s"} · {doctors.length} doctor
+            {doctors.length === 1 ? "" : "s"} ·{" "}
+            {patientsRes.count ?? patients.length} patient
+            {(patientsRes.count ?? patients.length) === 1 ? "" : "s"} total
+          </p>
+          <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
+            <NavLink href="/register" variant="primary">
+              Register patient
+            </NavLink>
+            <NavLink href="/volunteer" variant="soft">
+              Volunteer desk
+            </NavLink>
+            <NavLink href="/doctor" variant="soft">
+              Doctor desk
+            </NavLink>
+          </div>
         </Card>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          {active ? (
+        {active ? (
+          <CollapsibleSection
+            title="Seat board"
+            hint={`${days.length} day${days.length === 1 ? "" : "s"}`}
+            defaultOpen
+          >
+            <SeatBoard days={days} title="Live seat board" />
+          </CollapsibleSection>
+        ) : null}
+
+        {active ? (
+          <CollapsibleSection
+            title="Camp days"
+            hint={active.name}
+            defaultOpen={!days.length}
+          >
             <AdminCampDays
               campId={active.id}
               campName={active.name}
               initialDays={days}
             />
-          ) : null}
+          </CollapsibleSection>
+        ) : null}
+
+        <CollapsibleSection
+          title="Camps"
+          hint={`${camps?.length ?? 0} total`}
+          defaultOpen={!active}
+        >
           <AdminCamps camps={camps || []} />
-        </div>
+        </CollapsibleSection>
 
-        <AdminPatients initial={patients} totalCount={patientsRes.count ?? patients.length} />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <AdminVolunteers initial={volunteers} />
-          <AdminDoctors initial={doctors} />
-        </div>
+        <CollapsibleSection
+          title="Patients"
+          hint={`${patientsRes.count ?? patients.length} total`}
+        >
+          <AdminPatients
+            initial={patients}
+            totalCount={patientsRes.count ?? patients.length}
+          />
+        </CollapsibleSection>
 
-        <SignOutButton />
+        <CollapsibleSection
+          title="Volunteers"
+          hint={`${volunteers.length} · tap for KPIs`}
+        >
+          <AdminVolunteers initial={volunteers} canManage />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Doctors"
+          hint={`${doctors.length} · tap for KPIs`}
+        >
+          <AdminDoctors initial={doctors} canManage />
+        </CollapsibleSection>
       </div>
     </Shell>
   );
