@@ -53,9 +53,9 @@ export function StaffDetailPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     void (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch(
           `/api/admin/staff-detail?id=${encodeURIComponent(person.id)}&role=${role}`,

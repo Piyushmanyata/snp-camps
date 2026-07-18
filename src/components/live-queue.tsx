@@ -12,6 +12,7 @@ import {
   ErrorBox,
   Spinner,
 } from "@/components/ui";
+import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/components/qr-scanner";
 
 export type LiveQueuePatient = {
@@ -39,6 +40,7 @@ export function LiveQueue({
   pollMs?: number;
 }) {
   const router = useRouter();
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [rows, setRows] = useState(initial);
   const [total, setTotal] = useState(initialTotal ?? initial.length);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export function LiveQueue({
     setTotal(initialTotal ?? initial.length);
   }
 
-  const refreshQueue = useCallback(async () => {
+  const refreshQueue = useCallback(async (isManual = false) => {
     if (!campId) return true;
     setRefreshing(true);
     const supabase = createClient();
@@ -76,9 +78,13 @@ export function LiveQueue({
       setError("Queue refresh failed. Showing the last successful list.");
       return false;
     }
-    setRows((data || []) as LiveQueuePatient[]);
+    const freshRows = (data || []) as LiveQueuePatient[];
+    setRows(freshRows);
     setTotal(count ?? data?.length ?? 0);
     setError(null);
+    if (isManual) {
+      setToastMsg(`Queue updated: ${freshRows.length} patient(s) waiting`);
+    }
     return true;
   }, [campId]);
 
@@ -110,6 +116,13 @@ export function LiveQueue({
       setError("Select a doctor.");
       return;
     }
+    try {
+      if (typeof window !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate([100, 30, 100]);
+      }
+    } catch {
+      /* ignore */
+    }
     if (row?.error_code === "already_seen" || row?.already_seen) {
       setError(
         row.doctor_name
@@ -118,22 +131,26 @@ export function LiveQueue({
       );
       setRows((list) => list.filter((r) => r.id !== patientId));
       setTotal((value) => Math.max(0, value - 1));
-      void refreshQueue();
+      void refreshQueue(false);
       router.refresh();
       return;
     }
 
+    setToastMsg("Patient assignment complete");
     setRows((list) => list.filter((r) => r.id !== patientId));
     setTotal((value) => Math.max(0, value - 1));
     setPickId(null);
     setDoctorId("");
-    void refreshQueue();
+    void refreshQueue(false);
     router.refresh();
   }
 
   return (
     <div>
       <ErrorBox message={error} />
+      {toastMsg ? (
+        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+      ) : null}
       <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
         <span aria-live="polite">
           {total > rows.length
@@ -145,7 +162,7 @@ export function LiveQueue({
         </span>
         <button
           type="button"
-          onClick={() => void refreshQueue()}
+          onClick={() => void refreshQueue(true)}
           disabled={refreshing || !campId}
           className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >

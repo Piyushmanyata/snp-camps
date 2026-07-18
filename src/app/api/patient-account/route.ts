@@ -114,35 +114,18 @@ export async function POST(req: Request) {
     });
   }
 
-  // Already linked — only same patient session or admin may change password
+  // Already linked — only the patient session or an admin may provision credentials.
   if (patient.user_id) {
-    if (passwordRaw) {
-      const { userId, profile } = await getSessionProfile();
-      const allowed =
-        userId === patient.user_id || isAdmin(profile?.role);
-      if (!allowed) {
-        return NextResponse.json(
-          {
-            error:
-              "Login already exists for this patient. Use patient login or ask admin.",
-          },
-          { status: 403 },
-        );
-      }
-
-      const { error: updErr } = await admin.auth.admin.updateUserById(
-        patient.user_id,
-        { password: passwordRaw, email_confirm: true },
+    const { userId, profile } = await getSessionProfile();
+    const allowed = userId === patient.user_id || isAdmin(profile?.role);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Login already exists for this patient." },
+        { status: 403 },
       );
-      if (updErr) {
-        return NextResponse.json({ error: updErr.message }, { status: 400 });
-      }
-      await admin
-        .from("profiles")
-        .update({ role: "patient", full_name: name, email })
-        .eq("id", patient.user_id);
+    }
 
-      const notify = await maybeNotify(passwordRaw);
+    if (!passwordRaw && !returnCredentials) {
       return NextResponse.json({
         ok: true,
         linked: true,
@@ -150,12 +133,27 @@ export async function POST(req: Request) {
         patientId,
         userId: patient.user_id,
         regNo,
-        ...(returnCredentials ? { password: passwordRaw } : {}),
-        notify,
         notifyConfigured: configured,
       });
     }
 
+    const password = passwordRaw || generatePatientPassword();
+    const { error: updErr } = await admin.auth.admin.updateUserById(
+      patient.user_id,
+      { email, password, email_confirm: true },
+    );
+    if (updErr) {
+      return NextResponse.json({ error: "Patient login could not be updated." }, { status: 400 });
+    }
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({ role: "patient", full_name: name, email })
+      .eq("id", patient.user_id);
+    if (profileError) {
+      return NextResponse.json({ error: "Patient profile could not be updated." }, { status: 500 });
+    }
+
+    const notify = await maybeNotify(password);
     return NextResponse.json({
       ok: true,
       linked: true,
@@ -163,6 +161,8 @@ export async function POST(req: Request) {
       patientId,
       userId: patient.user_id,
       regNo,
+      ...(returnCredentials ? { password } : {}),
+      notify,
       notifyConfigured: configured,
     });
   }

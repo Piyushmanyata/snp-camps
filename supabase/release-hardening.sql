@@ -1,14 +1,23 @@
--- Final release hardening. Safe to apply before the frontend deployment.
+-- Final release hardening. Apply once before the frontend deployment.
 -- The anonymous grant remains temporarily for the old frontend and is removed
 -- by verified-registration-revoke-anon.sql after the new API is live.
 
-alter function public.register_patient(
-  uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
-) rename to register_patient_authorized_impl;
+DO $$
+BEGIN
+  IF to_regprocedure('public.register_patient(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid)') IS NOT NULL
+     AND to_regprocedure('public.register_patient_authorized_impl(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid)') IS NULL
+  THEN
+    ALTER FUNCTION public.register_patient(
+      uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
+    ) RENAME TO register_patient_authorized_impl;
+  END IF;
+END $$;
 
 revoke all on function public.register_patient_authorized_impl(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
 ) from public, anon, authenticated, service_role;
+
+drop function if exists public.register_patient(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid);
 
 create function public.register_patient(
   p_camp_id uuid,

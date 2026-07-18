@@ -122,6 +122,9 @@ begin
   if not public.is_admin() then
     raise exception 'admin only';
   end if;
+  if not exists (select 1 from public.camps where id = p_camp_id) then
+    raise exception 'Camp not found';
+  end if;
   update public.camps set is_active = false where is_active = true;
   update public.camps set is_active = true where id = p_camp_id;
 end;

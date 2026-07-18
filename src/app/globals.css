@@ -23,6 +23,525 @@
   --radius: 1rem;
   --print-ink: #1a3a8a;
   --ring: #0a5c3a;
+  --ring-offset: 2px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Sticky mobile dock height (actions + padding + home indicator) */
+  --dock-height: 4.75rem;
+  /* Field type scale — slightly larger than default 16px for sun glare */
+  --text-body: 1.0625rem; /* 17px */
+  --text-small: 0.9375rem; /* 15px */
+  --text-caption: 0.8125rem; /* 13px */
+  --touch-min: 3rem; /* 48px */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-mid: var(--brand-mid);
+  --color-accent: var(--accent);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-sans: var(--font-geist-sans);
+  --shadow-card: var(--shadow);
+  --shadow-lift: var(--shadow-lift);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: color-mix(in srgb, var(--brand) 12%, transparent);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Bump root slightly more on very small phones for outdoor use */
+@media (max-width: 380px) {
+  :root {
+    --text-body: 1.075rem;
+  }
+}
+
+/* Soft brand wash — cheap for low-end phones */
+@supports (background: color-mix(in srgb, white, black)) {
+  body {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-soft) 75%, transparent) 0%,
+        var(--background) 22rem
+      );
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 22%, white);
+  color: var(--foreground);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: var(--ring-offset);
+  border-radius: 0.25rem;
+}
+
+:focus-visible,
+:target {
+  scroll-margin-top: 5rem;
+  scroll-margin-bottom: 2rem;
+}
+
+/* Skip link — keyboard only */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  z-index: 100;
+  transform: translateY(-120%);
+  border-radius: 0.75rem;
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+  text-decoration: none;
+  box-shadow: var(--shadow-lift);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0.75rem);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Utility: screen-reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Number columns stay aligned */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Comfortable prose for help text */
+.prose-help {
+  max-width: 40rem;
+  text-wrap: pretty;
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  line-height: 1.25;
+}
+
+/* Sticky bottom action dock (mobile desk pages) */
+.mobile-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 -8px 28px rgb(10 22 17 / 10%);
+  padding:
+    0.5rem
+    max(0.6rem, var(--safe-right))
+    calc(0.45rem + var(--safe-bottom))
+    max(0.6rem, var(--safe-left));
+}
+
+.mobile-dock-inner {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.mobile-dock a,
+.mobile-dock button,
+.mobile-dock-item {
+  min-height: var(--touch-min);
+  padding-inline: 0.35rem;
+}
+
+/* Reserve space so content is not hidden under the dock */
+.has-mobile-dock {
+  padding-bottom: calc(var(--dock-height) + var(--safe-bottom) + 1.5rem) !important;
+}
+
+@media (min-width: 1024px) {
+  .mobile-dock {
+    display: none;
+  }
+
+  .has-mobile-dock {
+    padding-bottom: calc(2.5rem + var(--safe-bottom)) !important;
+  }
+}
+
+/* Hide desktop-only CTAs that duplicate dock actions on small screens */
+.desk-inline-actions {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desk-inline-actions {
+    display: grid;
+  }
+}
+
+/* In-page jump chips (phone desk) */
+.jump-chip-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  gap: 0.45rem;
+}
+
+.jump-chip {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.jump-chip:active {
+  background: var(--brand-soft);
+}
+
+/* Camp day picker chips (registration) */
+.day-chip-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 380px) {
+  .day-chip-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) {
+  .day-chip-row {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+}
+
+.day-chip {
+  display: flex;
+  min-height: 3.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  border-radius: 0.9rem;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.day-chip:disabled,
+.day-chip-full {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.day-chip-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.day-chip-date {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+.day-chip-meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.day-chip-active .day-chip-meta {
+  color: var(--brand);
+}
+
+/* Sticky save bar for desk registration on phone */
+.sticky-submit {
+  position: sticky;
+  bottom: 0.35rem;
+  z-index: 25;
+  margin-left: -0.15rem;
+  margin-right: -0.15rem;
+  padding: 0.55rem 0.15rem 0.15rem;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--card) 92%, transparent) 28%,
+    var(--card) 55%
+  );
+}
+
+.has-mobile-dock .sticky-submit {
+  bottom: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .sticky-submit {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+}
+
+/* Anchor scroll offset for sticky dock + header */
+#scan,
+#queue,
+#seen,
+#register-action {
+  scroll-margin-top: 0.75rem;
+  scroll-margin-bottom: calc(var(--dock-height) + 1rem);
+}
+
+/* Scanner viewport: larger hit target on phone cameras */
+#scan [id^="qr-reader"] {
+  min-height: 14rem;
+}
+
+@media (max-width: 640px) {
+  #scan [id^="qr-reader"] video,
+  #scan [id^="qr-reader"] canvas {
+    border-radius: 0.75rem;
+  }
+}
+
+/* Cards that should feel pressable */
+.pressable {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 0.75rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  z-index: 60;
+  background: var(--foreground);
+  color: var(--card);
+  font-size: var(--text-small);
+  font-weight: 600;
+  padding: 0.6rem 1.25rem;
+  border-radius: 2rem;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: toast-in 0.2s ease forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (min-width: 1024px) {
+  .toast {
+    bottom: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+.print-preview {
+  box-shadow: var(--shadow);
+}
+
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 100%;
+    height: auto;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  .print-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: var(--print-ink) !important;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .skip-link {
+    display: none !important;
+  }
+}
+
+
+:root {
+  --background: #eef5f1;
+  --foreground: #07120e;
+  --brand: #0a5c3a;
+  --brand-dark: #053722;
+  --brand-soft: #dff0e7;
+  --brand-mid: #178a57;
+  --accent: #a67c12;
+  --card: #ffffff;
+  /* Darker muted for outdoor glare readability */
+  --muted: #3d4f46;
+  --border: #6f8e7e;
+  --danger: #a11c12;
+  --danger-soft: #fef3f2;
+  --success: #0a5c3a;
+  --success-soft: #e3f2eb;
+  --warning: #7a3508;
+  --warning-soft: #fffbeb;
+  --shadow: 0 1px 2px rgb(10 22 17 / 5%), 0 6px 20px rgb(10 22 17 / 6%);
+  --shadow-lift: 0 2px 4px rgb(10 22 17 / 6%), 0 12px 28px rgb(10 22 17 / 8%);
+  --radius: 1rem;
+  --print-ink: #1a3a8a;
+  --ring: #0a5c3a;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);

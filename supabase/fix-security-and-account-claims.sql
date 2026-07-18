@@ -113,7 +113,10 @@ declare
   v_taken integer;
   v_row public.patients%rowtype;
 begin
-  v_request_role := nullif(current_setting('request.jwt.claim.role', true), '');
+  v_request_role := coalesce(
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    auth.role()
+  );
   if v_request_role = 'authenticated' and not public.is_staff() then
     raise exception 'staff only';
   end if;
@@ -154,7 +157,10 @@ begin
   end if;
 
   if p_user_id is not null then
-    if p_user_id is distinct from auth.uid() and not public.is_staff() then
+    if v_request_role <> 'service_role'
+      and p_user_id is distinct from auth.uid()
+      and not public.is_staff()
+    then
       raise exception 'Cannot register for another user';
     end if;
     v_user_id := p_user_id;
@@ -166,6 +172,9 @@ begin
     v_created_by := coalesce(p_created_by, auth.uid());
   else
     v_created_by := auth.uid();
+  end if;
+  if v_request_role = 'service_role' and p_user_id is not null then
+    v_created_by := null;
   end if;
 
   if p_aadhaar_last4 is null or length(trim(p_aadhaar_last4)) = 0 then
@@ -585,6 +594,13 @@ declare
   v_phone_confirmed_at timestamptz;
 begin
   if auth.uid() is null then raise exception 'Sign in required'; end if;
+  if not exists (
+    select 1
+    from public.profiles
+    where id = auth.uid() and role = 'patient'
+  ) then
+    raise exception 'Patient account required';
+  end if;
   v_phone10 := right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10);
   if length(v_phone10) <> 10 then raise exception 'Valid phone required'; end if;
 

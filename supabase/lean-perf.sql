@@ -16,6 +16,16 @@ create index if not exists camps_is_active_idx
   on public.camps (is_active)
   where is_active = true;
 
+-- Doctor counts lookup
+create index if not exists patients_seen_by_seen_at_idx
+  on public.patients (seen_by, seen_at)
+  where seen_by is not null;
+
+-- Volunteer counts lookup
+create index if not exists patients_created_by_created_at_idx
+  on public.patients (created_by, created_at)
+  where created_by is not null;
+
 -- Volunteer desk: all my counters in one call
 create or replace function public.volunteer_my_counts(p_since timestamptz)
 returns table (
@@ -35,7 +45,11 @@ as $$
     count(*) filter (where p.queue_status = 'waiting')::bigint,
     count(*) filter (where p.queue_status = 'seen')::bigint
   from public.patients p
-  where p.created_by = auth.uid();
+  where p.created_by = auth.uid()
+    and exists (
+      select 1 from public.profiles pr
+      where pr.id = auth.uid() and pr.role in ('admin', 'volunteer', 'doctor')
+    );
 $$;
 
 revoke all on function public.volunteer_my_counts(timestamptz)
@@ -64,7 +78,11 @@ as $$
     )::bigint,
     count(*) filter (where p.queue_status = 'seen')::bigint
   from public.patients p
-  where p.seen_by = auth.uid();
+  where p.seen_by = auth.uid()
+    and exists (
+      select 1 from public.profiles pr
+      where pr.id = auth.uid() and pr.role = 'doctor'
+    );
 $$;
 
 revoke all on function public.doctor_my_counts(uuid, timestamptz)

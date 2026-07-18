@@ -28,7 +28,7 @@ const QrScanner = dynamic(
 );
 
 export default async function VolunteerPage() {
-  const { userId, profile } = await getSessionProfile();
+  const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) redirect("/login");
   if (isDoctor(profile?.role)) redirect("/doctor");
 

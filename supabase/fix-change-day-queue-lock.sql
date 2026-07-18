@@ -1,6 +1,8 @@
 -- Once a patient is in the live queue (waiting) or seen, camp day cannot change.
 -- Registered-only patients may still switch days while seats remain.
 
+drop function if exists public.change_camp_day(uuid, uuid);
+
 create or replace function public.change_camp_day(
   p_patient_id uuid,
   p_new_day_id uuid
@@ -36,7 +38,10 @@ begin
     end if;
   end if;
 
-  select * into v_new from public.camp_days d where d.id = p_new_day_id for update;
+  select * into v_new
+  from public.camp_days d
+  where d.id = p_new_day_id
+  for update;
   if v_new.id is null then
     raise exception 'Day not found';
   end if;
@@ -77,4 +82,4 @@ begin
 end;
 $$;
 
-grant execute on function public.change_camp_day(uuid, uuid) to anon, authenticated;
+grant execute on function public.change_camp_day(uuid, uuid) to authenticated;

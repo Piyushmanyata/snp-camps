@@ -49,6 +49,13 @@ set camp_day_id = (
 )
 where p.camp_day_id is null;
 
+-- Drop functions before recreating to avoid signature/return type conflicts
+drop function if exists public.camp_day_stats(uuid);
+drop function if exists public.upsert_camp_day(uuid, date, integer, uuid);
+drop function if exists public.delete_camp_day(uuid);
+drop function if exists public.change_camp_day(uuid, uuid);
+drop function if exists public.register_patient(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid);
+
 -- Public/staff seat board for a camp (or active camp if null)
 create or replace function public.camp_day_stats(p_camp_id uuid default null)
 returns table (
@@ -108,11 +115,21 @@ begin
   if not public.is_admin() then
     raise exception 'admin only';
   end if;
+  if not exists (select 1 from public.camps c where c.id = p_camp_id) then
+    raise exception 'Camp not found';
+  end if;
   if p_seat_limit is null or p_seat_limit < 0 then
     raise exception 'seat_limit must be >= 0';
   end if;
 
   if p_day_id is not null then
+    select * into r
+    from public.camp_days d
+    where d.id = p_day_id and d.camp_id = p_camp_id
+    for update;
+    if r.id is null then
+      raise exception 'Day not found';
+    end if;
     select count(*)::int into v_taken from public.patients where camp_day_id = p_day_id;
     if p_seat_limit < v_taken then
       raise exception 'Cannot set seats below taken (%)', v_taken;
@@ -128,16 +145,22 @@ begin
     return r;
   end if;
 
+  select d.* into r
+  from public.camp_days d
+  where d.camp_id = p_camp_id and d.day_date = p_day_date
+  for update;
+  if r.id is not null then
+    select count(*)::int into v_taken from public.patients where camp_day_id = r.id;
+    if p_seat_limit < v_taken then
+      raise exception 'Cannot set seats below taken (%)', v_taken;
+    end if;
+  end if;
+
   insert into public.camp_days (camp_id, day_date, seat_limit)
   values (p_camp_id, p_day_date, p_seat_limit)
   on conflict (camp_id, day_date)
   do update set seat_limit = excluded.seat_limit
   returning * into r;
-
-  select count(*)::int into v_taken from public.patients where camp_day_id = r.id;
-  if r.seat_limit < v_taken then
-    raise exception 'Cannot set seats below taken (%)', v_taken;
-  end if;
 
   return r;
 end;
@@ -200,7 +223,10 @@ begin
     end if;
   end if;
 
-  select * into v_new from public.camp_days where camp_days.id = p_new_day_id for update;
+  select * into v_new
+  from public.camp_days
+  where camp_days.id = p_new_day_id
+  for update;
   if v_new.id is null then
     raise exception 'Day not found';
   end if;
@@ -241,7 +267,7 @@ begin
 end;
 $$;
 
-grant execute on function public.change_camp_day(uuid, uuid) to anon, authenticated;
+grant execute on function public.change_camp_day(uuid, uuid) to authenticated;
 
 -- Updated register_patient with day + capacity
 create or replace function public.register_patient(

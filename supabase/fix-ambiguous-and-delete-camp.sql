@@ -79,7 +79,7 @@ begin
 end;
 $$;
 
-grant execute on function public.change_camp_day(uuid, uuid) to anon, authenticated;
+grant execute on function public.change_camp_day(uuid, uuid) to authenticated;
 
 create or replace function public.register_patient(
   p_camp_id uuid,

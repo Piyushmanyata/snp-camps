@@ -186,6 +186,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: sessionProfile } = await sessionClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (sessionProfile?.role && sessionProfile.role !== "patient") {
+    return NextResponse.json(
+      { error: "Patient registration only." },
+      { status: 403, headers },
+    );
+  }
+
   const sessionPhone = normalizePhone10(user.phone || "");
   const regPhone = phone.length === 10 ? phone : sessionPhone;
   if (regPhone.length !== 10) {

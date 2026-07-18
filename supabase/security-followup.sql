@@ -17,8 +17,15 @@ declare
   v_auth_phone text;
   v_phone_confirmed_at timestamptz;
 begin
-  if auth.uid() is null then raise exception 'Sign in required'; end if;
-  v_phone10 := right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10);
+   if auth.uid() is null then raise exception 'Sign in required'; end if;
+   if not exists (
+     select 1
+     from public.profiles
+     where id = auth.uid() and role = 'patient'
+   ) then
+     raise exception 'Patient account required';
+   end if;
+   v_phone10 := right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10);
   if length(v_phone10) <> 10 then raise exception 'Valid phone required'; end if;
 
   select u.phone, u.phone_confirmed_at

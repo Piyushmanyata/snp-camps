@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr } from "@/lib/qr";
 import { Button, ErrorBox, Input } from "@/components/ui";
+import { Toast } from "@/components/toast";
 
 export type DoctorOption = {
   id: string;
@@ -47,6 +48,7 @@ export function QrScanner({
   const uid = useId().replace(/:/g, "");
   const regionId = `qr-reader-${uid}`;
   const [error, setError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [active, setActive] = useState(false);
   const [manual, setManual] = useState("");
   const [looking, setLooking] = useState(false);
@@ -115,8 +117,16 @@ export function QrScanner({
         return row;
       }
 
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(80);
+        }
+      } catch {
+        /* ignore */
+      }
       setAssigned(row);
       setLookup(null);
+      setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
       handledRef.current = true;
       await stopScanner();
       router.refresh();
@@ -152,6 +162,14 @@ export function QrScanner({
 
       await stopScanner();
 
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(40);
+        }
+      } catch {
+        /* ignore */
+      }
+
       if (row.queue_status === "seen") {
         setLookup(row);
         handledRef.current = true;
@@ -179,10 +197,14 @@ export function QrScanner({
     const id = params.get("scan") || params.get("checkin");
     if (!id) {
       const err = params.get("error");
-      if (err === "not_found") {
-        setError("Patient not found for that QR.");
-      } else if (err === "scan_lookup" || err === "server") {
-        setError("Could not look up that QR. Try again or use reg number.");
+      if (err === "not_found" || err === "scan_lookup" || err === "server") {
+        window.setTimeout(() => {
+          setError(
+            err === "not_found"
+              ? "Patient not found for that QR."
+              : "Could not look up that QR. Try again or use reg number.",
+          );
+        }, 0);
       }
       return;
     }
@@ -587,6 +609,9 @@ export function QrScanner({
           {looking ? "Looking up…" : "Look up patient"}
         </Button>
       </form>
+      {toastMsg ? (
+        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+      ) : null}
     </div>
   );
 }

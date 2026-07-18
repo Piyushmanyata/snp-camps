@@ -29,7 +29,7 @@ In Supabase Dashboard → SQL Editor, run:
 
 `supabase/schema.sql`
 
-For the current production lineage, apply these SQL files in order:
+For the current production lineage, apply these SQL files in order. The other SQL files in this directory are historical or superseded; do not apply them to a current database.
 
 1. `supabase/fix-print-queue-doctor.sql`
 2. `supabase/fix-camp-days.sql`

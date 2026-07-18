@@ -9,7 +9,11 @@ const nextConfig: NextConfig = {
   compress: true,
   reactStrictMode: true,
   experimental: {
-    optimizePackageImports: ["qrcode.react", "@supabase/supabase-js"],
+    optimizePackageImports: [
+      "qrcode.react",
+      "@supabase/supabase-js",
+      "@supabase/ssr",
+    ],
   },
   async headers() {
     return [
@@ -23,16 +27,29 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(self), microphone=(), geolocation=()",
           },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          {
+            key: "X-DNS-Prefetch-Control",
+            value: "on",
+          },
         ],
       },
       {
-        // Long-cache static assets (hashed Next chunks already immutable)
         source: "/favicon.ico",
         headers: [
           {
             key: "Cache-Control",
             value: "public, max-age=86400, stale-while-revalidate=604800",
           },
+        ],
+      },
+      {
+        source: "/api/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
         ],
       },
     ];

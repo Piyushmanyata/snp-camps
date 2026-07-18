@@ -53,8 +53,7 @@ export async function GET(
     );
   }
 
-  // registered → print joins queue; waiting/seen → desk assign UI
-  if (status === "registered") {
+  if (status === "registered" && profile?.role !== "doctor") {
     return NextResponse.redirect(new URL(`/print/${id}`, origin));
   }
 

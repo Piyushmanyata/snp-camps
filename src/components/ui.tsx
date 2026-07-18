@@ -253,7 +253,7 @@ export function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`pressable inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${sizes} ${styles} ${className}`}
+      className={`pressable inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-brand/40 ${sizes} ${styles} ${className}`}
       {...props}
     >
       {loading ? (

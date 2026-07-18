@@ -19,10 +19,10 @@ import {
   ErrorBox,
   Input,
   SegmentedControl,
-  Select,
   SuccessBox,
   WarningBox,
 } from "@/components/ui";
+import { Toast } from "@/components/toast";
 import { ChangeDay } from "@/components/change-day";
 
 type Props = {
@@ -82,6 +82,7 @@ export function PatientForm({
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Self-reg: phone OTP gate (primary). Aadhaar kept for later.
   const [otpStep, setOtpStep] = useState<"phone" | "otp" | "form">(
@@ -286,9 +287,14 @@ export function PatientForm({
       return;
     }
 
-    await supabase
+    const { error: profileError } = await supabase
       .from("profiles")
       .upsert({ id: user.id, role: "patient", phone: phoneE164 });
+    if (profileError) {
+      setError("Could not save your patient profile. Try again.");
+      setLoading(false);
+      return;
+    }
 
     // If desk already registered this phone, link and open profile
     const { data: linkedId, error: linkErr } = await supabase.rpc(
@@ -609,11 +615,15 @@ export function PatientForm({
                   void navigator.clipboard?.writeText(
                     `Reg #${created.reg_no}\nPassword: ${created.password}`,
                   );
+                  setToastMsg("Credentials copied to clipboard");
                 }}
               >
                 Copy login
               </Button>
             </div>
+            {toastMsg ? (
+              <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+            ) : null}
           </div>
         ) : !isStaff ? (
           <Link
