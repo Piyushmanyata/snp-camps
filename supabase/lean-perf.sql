@@ -71,40 +71,28 @@ revoke all on function public.doctor_my_counts(uuid, timestamptz)
   from public, anon;
 grant execute on function public.doctor_my_counts(uuid, timestamptz) to authenticated;
 
--- Drop patients from realtime publication if present (no live websockets)
+-- Drop hot tables from realtime publication if present (no live websockets)
 do $$
+declare
+  t text;
 begin
-  if exists (
-    select 1
-    from pg_publication pub
-    join pg_publication_rel pr on pr.prpubid = pub.oid
-    join pg_class c on c.oid = pr.prrelid
-    join pg_namespace n on n.oid = c.relnamespace
-    where pub.pubname = 'supabase_realtime'
-      and n.nspname = 'public'
-      and c.relname = 'patients'
-  ) then
-    execute 'alter publication supabase_realtime drop table public.patients';
-  end if;
-exception
-  when others then
-    null;
-end $$;
-
-do $$
-begin
-  if exists (
-    select 1
-    from pg_publication pub
-    join pg_publication_rel pr on pr.prpubid = pub.oid
-    join pg_class c on c.oid = pr.prrelid
-    join pg_namespace n on n.oid = c.relnamespace
-    where pub.pubname = 'supabase_realtime'
-      and n.nspname = 'public'
-      and c.relname = 'camp_days'
-  ) then
-    execute 'alter publication supabase_realtime drop table public.camp_days';
-  end if;
+  foreach t in array array['patients', 'camp_days'] loop
+    if exists (
+      select 1
+      from pg_publication pub
+      join pg_publication_rel pr on pr.prpubid = pub.oid
+      join pg_class c on c.oid = pr.prrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where pub.pubname = 'supabase_realtime'
+        and n.nspname = 'public'
+        and c.relname = t
+    ) then
+      execute format(
+        'alter publication supabase_realtime drop table public.%I',
+        t
+      );
+    end if;
+  end loop;
 exception
   when others then
     null;

@@ -174,7 +174,7 @@ export default async function AdminPage() {
         {active ? (
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · assign doctor · refresh or every 2 min">
+              <SectionTitle hint="FCFS · assign doctor · auto-refresh">
                 Queue
               </SectionTitle>
             </div>

@@ -139,7 +139,9 @@ export function LiveQueue({
           {total > rows.length
             ? "Showing first " + rows.length + " of " + total
             : total + " waiting"}
-          {pollMs > 0 ? " · auto every 2 min" : ""}
+          {pollMs > 0
+            ? ` · auto every ${Math.round(pollMs / 60_000)} min`
+            : ""}
         </span>
         <button
           type="button"

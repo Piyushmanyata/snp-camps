@@ -63,7 +63,7 @@ export function SeatBoard({
           hint={
             campId
               ? pollMs > 0
-                ? "Updates every 2 min · or Refresh"
+                ? `Updates every ${Math.round(pollMs / 60_000)} min · or Refresh`
                 : "Tap Refresh for latest seats"
               : "All days listed"
           }

@@ -91,47 +91,41 @@ export default async function DoctorPage() {
   }).format(new Date());
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
 
-  const [countsRes, mySeenRes] = camp
-    ? await Promise.all([
-        supabase.rpc("doctor_my_counts", {
-          p_camp_id: camp.id,
-          p_since: startOfDay.toISOString(),
-        }),
-        supabase
-          .from("patients")
-          .select("id, reg_no, full_name, seen_at, phone")
-          .eq("camp_id", camp.id)
-          .eq("seen_by", userId)
-          .eq("queue_status", "seen")
-          .order("seen_at", { ascending: false })
-          .limit(50),
-      ])
-    : await Promise.all([
-        Promise.resolve({ data: [{ seen_today: 0, seen_total: 0 }] }),
-        Promise.resolve({
-          data: [] as {
-            id: string;
-            reg_no: number;
-            full_name: string;
-            seen_at: string | null;
-            phone: string | null;
-          }[],
-        }),
-      ]);
+  let seenToday = 0;
+  let myTotal = 0;
+  let mySeen: {
+    id: string;
+    reg_no: number;
+    full_name: string;
+    seen_at: string | null;
+    phone: string | null;
+  }[] = [];
 
-  const counts = Array.isArray(countsRes.data)
-    ? countsRes.data[0]
-    : countsRes.data;
-  const seenToday = Number(counts?.seen_today ?? 0);
-  const myTotal = Number(counts?.seen_total ?? 0);
-  const mySeen = mySeenRes.data || [];
+  if (camp) {
+    const [countsRes, mySeenRes] = await Promise.all([
+      supabase.rpc("doctor_my_counts", {
+        p_camp_id: camp.id,
+        p_since: startOfDay.toISOString(),
+      }),
+      supabase
+        .from("patients")
+        .select("id, reg_no, full_name, seen_at, phone")
+        .eq("camp_id", camp.id)
+        .eq("seen_by", userId)
+        .eq("queue_status", "seen")
+        .order("seen_at", { ascending: false })
+        .limit(50),
+    ]);
 
-  if (
-    Boolean(campError) ||
-    [countsRes, mySeenRes].some(
-      (result) => "error" in result && Boolean(result.error),
-    )
-  ) {
+    if (countsRes.error || mySeenRes.error) {
+      throw new Error("Doctor desk data could not be loaded");
+    }
+
+    const counts = countsRes.data?.[0];
+    seenToday = Number(counts?.seen_today ?? 0);
+    myTotal = Number(counts?.seen_total ?? 0);
+    mySeen = mySeenRes.data || [];
+  } else if (campError) {
     throw new Error("Doctor desk data could not be loaded");
   }
 
