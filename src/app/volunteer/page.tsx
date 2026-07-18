@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff, isDoctor, isAdmin } from "@/lib/auth";
+import type { CampDayStats } from "@/lib/types";
 import {
   Card,
-  CollapsibleSection,
   NavLink,
   SectionTitle,
   Shell,
@@ -13,70 +13,136 @@ import { QrScanner, type DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
 import { AdminVolunteers } from "@/components/admin-volunteers";
+import { SeatBoard } from "@/components/seat-board";
 
 export default async function VolunteerPage() {
-  const { profile } = await getSessionProfile();
+  const { userId, profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) redirect("/login");
   if (isDoctor(profile?.role)) redirect("/doctor");
 
   const supabase = await createClient();
+  const admin = isAdmin(profile?.role);
+
+  // Admin volunteer desk = manage volunteers only (no scanner / queue).
+  if (admin) {
+    const { data: volunteers, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at")
+      .eq("role", "volunteer")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error("Volunteer desk data could not be loaded");
+
+    return (
+      <Shell
+        title="Volunteer desk"
+        subtitle="Manage volunteers · KPIs · add / remove"
+        width="xl"
+        roleLabel="Admin"
+        actions={<SignOutButton place="header" />}
+      >
+        <div className="space-y-4">
+          <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
+            <p className="text-xs font-bold uppercase tracking-wide text-brand">
+              Staff management
+            </p>
+            <p className="text-xl font-bold tracking-tight">
+              {volunteers?.length ?? 0} volunteer
+              {(volunteers?.length ?? 0) === 1 ? "" : "s"}
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              Tap a volunteer for their KPIs and patients. Scanner and live
+              queue live on the main admin dashboard.
+            </p>
+            <div className="desk-inline-actions mt-4">
+              <NavLink href="/admin" variant="soft">
+                Back to admin
+              </NavLink>
+            </div>
+          </Card>
+          <Card>
+            <AdminVolunteers initial={volunteers || []} canManage />
+          </Card>
+        </div>
+      </Shell>
+    );
+  }
+
+  // Volunteer operational desk — own KPIs only.
   const { data: camp, error: campError } = await supabase
     .from("camps")
     .select("id, name, venue")
     .eq("is_active", true)
     .maybeSingle();
 
-  const [waitingRes, seenCountRes, doctorsRes, volunteersRes] = camp
-    ? await Promise.all([
-        supabase
-          .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "waiting")
-          .order("queued_at", { ascending: true, nullsFirst: false })
-          .limit(100),
-        supabase
-          .from("patients")
-          .select("id", { count: "exact", head: true })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "seen"),
-        supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("role", "doctor")
-          .order("full_name", { ascending: true }),
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, phone, role, created_at")
-          .eq("role", "volunteer")
-          .order("created_at", { ascending: false }),
-      ])
-    : await Promise.all([
-        Promise.resolve({ data: [] as LiveQueuePatient[], count: 0 }),
-        Promise.resolve({ count: 0 }),
-        Promise.resolve({ data: [] as DoctorOption[] }),
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, phone, role, created_at")
-          .eq("role", "volunteer")
-          .order("created_at", { ascending: false }),
-      ]);
+  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
 
-  const waiting = (waitingRes.data || []) as LiveQueuePatient[];
-  const waitingCount = waitingRes.count ?? waiting.length;
-  const seenCount = seenCountRes.count ?? 0;
-  const doctors = (doctorsRes.data || []) as DoctorOption[];
-  const volunteers = volunteersRes.data || [];
+  const [waitingRes, doctorsRes, dayStatsRes, myTotalRes, myTodayRes, myWaitRes, mySeenRes] =
+    camp
+      ? await Promise.all([
+          supabase
+            .from("patients")
+            .select("id, reg_no, full_name, phone, queued_at", {
+              count: "exact",
+            })
+            .eq("camp_id", camp.id)
+            .eq("queue_status", "waiting")
+            .order("queued_at", { ascending: true, nullsFirst: false })
+            .limit(100),
+          supabase
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "doctor")
+            .order("full_name", { ascending: true }),
+          supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
+          supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("created_by", userId!),
+          supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("created_by", userId!)
+            .gte("created_at", startOfDay),
+          supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("created_by", userId!)
+            .eq("queue_status", "waiting"),
+          supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("created_by", userId!)
+            .eq("queue_status", "seen"),
+        ])
+      : await Promise.all([
+          Promise.resolve({ data: [] as LiveQueuePatient[], count: 0 }),
+          Promise.resolve({ data: [] as DoctorOption[] }),
+          Promise.resolve({ data: [] as CampDayStats[] }),
+          Promise.resolve({ count: 0 }),
+          Promise.resolve({ count: 0 }),
+          Promise.resolve({ count: 0 }),
+          Promise.resolve({ count: 0 }),
+        ]);
+
   if (
     Boolean(campError) ||
-    [waitingRes, seenCountRes, doctorsRes, volunteersRes].some(
+    [waitingRes, doctorsRes, myTotalRes, myTodayRes, myWaitRes, mySeenRes].some(
       (result) => "error" in result && Boolean(result.error),
     )
   ) {
     throw new Error("Volunteer desk data could not be loaded");
   }
 
-  const manage = isAdmin(profile?.role);
+  const waiting = (waitingRes.data || []) as LiveQueuePatient[];
+  const waitingCount = waitingRes.count ?? waiting.length;
+  const doctors = (doctorsRes.data || []) as DoctorOption[];
+  const days = (dayStatsRes.data as CampDayStats[]) || [];
 
   return (
     <Shell
@@ -92,7 +158,7 @@ export default async function VolunteerPage() {
     >
       <div className="space-y-4">
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-brand">
                 Active camp
@@ -104,9 +170,23 @@ export default async function VolunteerPage() {
                 <p className="text-[0.9375rem] text-muted">{camp.venue}</p>
               ) : null}
             </div>
-            <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
-              <Stat label="In queue" value={waitingCount} tone="wait" />
-              <Stat label="Seen" value={seenCount} tone="ok" />
+            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat
+                label="You registered"
+                value={myTotalRes.count ?? 0}
+                tone="ok"
+              />
+              <Stat label="Today" value={myTodayRes.count ?? 0} />
+              <Stat
+                label="In queue"
+                value={myWaitRes.count ?? 0}
+                tone="wait"
+              />
+              <Stat
+                label="Doctor seen"
+                value={mySeenRes.count ?? 0}
+                tone="ok"
+              />
             </div>
           </div>
           <div className="desk-inline-actions mt-4">
@@ -115,6 +195,15 @@ export default async function VolunteerPage() {
             </NavLink>
           </div>
         </Card>
+
+        {camp ? (
+          <SeatBoard
+            days={days}
+            campId={camp.id}
+            title="Live seat board"
+            compact
+          />
+        ) : null}
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <Card id="scan">
@@ -147,14 +236,6 @@ export default async function VolunteerPage() {
             />
           </Card>
         </div>
-
-        <CollapsibleSection
-          title="Volunteers"
-          hint={`${volunteers.length} · KPIs & register`}
-          defaultOpen
-        >
-          <AdminVolunteers initial={volunteers} canManage={manage} />
-        </CollapsibleSection>
       </div>
     </Shell>
   );

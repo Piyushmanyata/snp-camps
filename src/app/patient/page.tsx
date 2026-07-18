@@ -79,7 +79,7 @@ export default async function PatientHomePage() {
             <NavLink href="/register">Register now</NavLink>
             {days.length ? (
               <div className="mt-4">
-                <SeatBoard days={days} title="Available days" compact />
+                <SeatBoard days={days} campId={campId} title="Available days" compact />
               </div>
             ) : null}
           </Card>
@@ -149,7 +149,7 @@ export default async function PatientHomePage() {
                   queueStatus={patient.queue_status}
                 />
               </Card>
-              <SeatBoard days={days} title="Seat availability" compact />
+              <SeatBoard days={days} campId={campId} title="Seat availability" compact />
             </div>
           </div>
         )}

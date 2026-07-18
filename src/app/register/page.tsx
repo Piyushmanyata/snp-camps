@@ -62,7 +62,7 @@ export default async function RegisterPage() {
                 {camp.venue || "Walk-in registration"}
               </p>
             </Card>
-            <SeatBoard days={days} title="Seat availability" compact />
+            <SeatBoard days={days} campId={camp.id} title="Live seat board" compact />
           </div>
 
           <Card className="lg:col-span-3">

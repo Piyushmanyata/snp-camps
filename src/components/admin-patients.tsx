@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorBox,
   Input,
+  Stat,
 } from "@/components/ui";
 
 export type AdminPatientRow = {
@@ -24,14 +25,121 @@ export type AdminPatientRow = {
   camp_id: string;
   camps: { name: string } | null;
   day_date?: string | null;
+  created_by?: string | null;
+  seen_by?: string | null;
+  queued_at?: string | null;
+  seen_at?: string | null;
+  volunteer_name?: string | null;
+  doctor_name?: string | null;
 };
+
+function fmtTs(iso: string | null | undefined) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+}
+
+function waitMinutes(
+  queuedAt: string | null | undefined,
+  seenAt: string | null | undefined,
+  createdAt: string | null | undefined,
+) {
+  const end = seenAt ? new Date(seenAt).getTime() : NaN;
+  const start = queuedAt
+    ? new Date(queuedAt).getTime()
+    : createdAt
+      ? new Date(createdAt).getTime()
+      : NaN;
+  if (!Number.isFinite(end) || !Number.isFinite(start) || end < start) {
+    return null;
+  }
+  return Math.round((end - start) / 60_000);
+}
+
+async function resolveNames(
+  rows: {
+    created_by?: string | null;
+    seen_by?: string | null;
+  }[],
+): Promise<Map<string, string>> {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    if (r.created_by) ids.add(r.created_by);
+    if (r.seen_by) ids.add(r.seen_by);
+  }
+  const map = new Map<string, string>();
+  if (!ids.size) return map;
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", [...ids]);
+  for (const p of data || []) {
+    map.set(p.id as string, (p.full_name as string) || "—");
+  }
+  return map;
+}
+
+function mapRows(
+  data: Record<string, unknown>[],
+  names: Map<string, string>,
+): AdminPatientRow[] {
+  return data.map((patient) => {
+    const camp = patient.camps as
+      | { name: string }
+      | { name: string }[]
+      | null;
+    const day = patient.camp_days as
+      | { day_date: string }
+      | { day_date: string }[]
+      | null;
+    const createdBy = (patient.created_by as string | null) ?? null;
+    const seenBy = (patient.seen_by as string | null) ?? null;
+    return {
+      id: patient.id as string,
+      reg_no: patient.reg_no as number,
+      full_name: patient.full_name as string,
+      phone: (patient.phone as string | null) ?? null,
+      queue_status: patient.queue_status as string,
+      gender: (patient.gender as string | null) ?? null,
+      age: (patient.age as number | null) ?? null,
+      created_at: patient.created_at as string,
+      camp_id: patient.camp_id as string,
+      camps: Array.isArray(camp) ? camp[0] ?? null : camp,
+      day_date: Array.isArray(day)
+        ? day[0]?.day_date ?? null
+        : day?.day_date ?? null,
+      created_by: createdBy,
+      seen_by: seenBy,
+      queued_at: (patient.queued_at as string | null) ?? null,
+      seen_at: (patient.seen_at as string | null) ?? null,
+      volunteer_name: createdBy ? names.get(createdBy) ?? null : null,
+      doctor_name: seenBy ? names.get(seenBy) ?? null : null,
+    };
+  });
+}
+
+const SELECT =
+  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date)";
 
 export function AdminPatients({
   initial,
   totalCount,
+  avgWaitMinutes = null,
+  showAttribution = true,
 }: {
   initial: AdminPatientRow[];
   totalCount?: number;
+  avgWaitMinutes?: number | null;
+  showAttribution?: boolean;
 }) {
   const [rows, setRows] = useState(initial);
   const [total, setTotal] = useState(totalCount ?? initial.length);
@@ -60,10 +168,7 @@ export function AdminPatients({
       const supabase = createClient();
       let query = supabase
         .from("patients")
-        .select(
-          "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
-          { count: "exact" },
-        )
+        .select(SELECT, { count: "exact" })
         .order("created_at", { ascending: false })
         .range(page * 50, page * 50 + 49);
 
@@ -87,39 +192,18 @@ export function AdminPatients({
 
       const { data, count, error: queryError } = await query;
       if (currentRequest !== requestId.current) return;
-      setLoading(false);
       if (queryError) {
+        setLoading(false);
         setError("Patient search failed. Try again.");
         return;
       }
 
-      setRows(
-        (data || []).map((patient) => {
-          const camp = patient.camps as
-            | { name: string }
-            | { name: string }[]
-            | null;
-          const day = patient.camp_days as
-            | { day_date: string }
-            | { day_date: string }[]
-            | null;
-          return {
-            id: patient.id as string,
-            reg_no: patient.reg_no as number,
-            full_name: patient.full_name as string,
-            phone: (patient.phone as string | null) ?? null,
-            queue_status: patient.queue_status as string,
-            gender: (patient.gender as string | null) ?? null,
-            age: (patient.age as number | null) ?? null,
-            created_at: patient.created_at as string,
-            camp_id: patient.camp_id as string,
-            camps: Array.isArray(camp) ? camp[0] ?? null : camp,
-            day_date: Array.isArray(day)
-              ? day[0]?.day_date ?? null
-              : day?.day_date ?? null,
-          };
-        }),
+      const names = await resolveNames(
+        (data || []) as { created_by?: string | null; seen_by?: string | null }[],
       );
+      if (currentRequest !== requestId.current) return;
+      setLoading(false);
+      setRows(mapRows((data || []) as Record<string, unknown>[], names));
       setTotal(count ?? 0);
     }, 300);
 
@@ -156,6 +240,20 @@ export function AdminPatients({
 
   return (
     <div className="space-y-3">
+      {avgWaitMinutes != null && !Number.isNaN(avgWaitMinutes) ? (
+        <div className="grid grid-cols-1 gap-2 sm:max-w-xs">
+          <Stat
+            label="Avg wait (queue → doctor)"
+            value={
+              avgWaitMinutes < 1
+                ? "< 1 min"
+                : `${Math.round(avgWaitMinutes)} min`
+            }
+            tone="wait"
+          />
+        </div>
+      ) : null}
+
       <div className="mb-3 space-y-3">
         <Input
           label="Filter list"
@@ -174,9 +272,9 @@ export function AdminPatients({
           {(
             [
               ["all", "All"],
-              ["registered", "Not queued"],
+              ["registered", "Registered"],
               ["waiting", "In queue"],
-              ["seen", "Seen"],
+              ["seen", "Doctor seen"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -212,53 +310,95 @@ export function AdminPatients({
             : "No patients match this filter."}
         </EmptyState>
       ) : (
-        <ul className="max-h-[28rem] divide-y divide-border overflow-y-auto">
-          {rows.map((r) => (
-            <li
-              key={r.id}
-              className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-semibold">
-                  <span className="tabular text-brand">#{r.reg_no}</span>{" "}
-                  {r.full_name}
-                </p>
-                <p className="truncate text-xs text-muted">
-                  {[
-                    r.day_date ? formatCampDay(r.day_date) : null,
-                    r.phone || null,
-                    r.age != null ? `${r.age}y` : null,
-                    r.gender,
-                    r.camps?.name,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Badge tone={queueTone(r.queue_status)}>
-                  {queueLabel(r.queue_status)}
-                </Badge>
-                <Link
-                  href={`/print/${r.id}`}
-                  className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
-                >
-                  Print
-                </Link>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  className="w-auto"
-                  disabled={deletingId === r.id}
-                  loading={deletingId === r.id}
-                  onClick={() => removePatient(r)}
-                >
-                  {deletingId === r.id ? "…" : "Remove"}
-                </Button>
-              </div>
-            </li>
-          ))}
+        <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
+          {rows.map((r) => {
+            const wait = waitMinutes(r.queued_at, r.seen_at, r.created_at);
+            return (
+              <li
+                key={r.id}
+                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">
+                    <span className="tabular text-brand">#{r.reg_no}</span>{" "}
+                    {r.full_name}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {[
+                      r.day_date ? formatCampDay(r.day_date) : null,
+                      r.phone || null,
+                      r.age != null ? `${r.age}y` : null,
+                      r.gender,
+                      r.camps?.name,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </p>
+                  {showAttribution ? (
+                    <div className="mt-1.5 space-y-0.5 text-xs text-muted">
+                      <p>
+                        <span className="font-semibold text-foreground/70">
+                          Registered
+                        </span>
+                        {fmtTs(r.created_at)
+                          ? ` · ${fmtTs(r.created_at)}`
+                          : ""}
+                        {r.volunteer_name
+                          ? ` · by ${r.volunteer_name}`
+                          : r.created_by
+                            ? " · by staff"
+                            : " · self / walk-in"}
+                      </p>
+                      {r.queued_at ? (
+                        <p>
+                          <span className="font-semibold text-foreground/70">
+                            Queued
+                          </span>
+                          {` · ${fmtTs(r.queued_at)}`}
+                        </p>
+                      ) : null}
+                      {r.queue_status === "seen" || r.seen_at ? (
+                        <p>
+                          <span className="font-semibold text-foreground/70">
+                            Doctor seen
+                          </span>
+                          {fmtTs(r.seen_at) ? ` · ${fmtTs(r.seen_at)}` : ""}
+                          {r.doctor_name
+                            ? ` · Dr ${r.doctor_name}`
+                            : r.seen_by
+                              ? " · doctor"
+                              : ""}
+                          {wait != null ? ` · wait ${wait} min` : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Badge tone={queueTone(r.queue_status)}>
+                    {queueLabel(r.queue_status)}
+                  </Badge>
+                  <Link
+                    href={`/print/${r.id}`}
+                    className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
+                  >
+                    Print
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    className="w-auto"
+                    disabled={deletingId === r.id}
+                    loading={deletingId === r.id}
+                    onClick={() => removePatient(r)}
+                  >
+                    {deletingId === r.id ? "…" : "Remove"}
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {total > 50 ? (

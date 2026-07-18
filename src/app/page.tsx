@@ -156,7 +156,7 @@ export default async function HomePage() {
 
         <div className="min-w-0">
           {camp ? (
-            <SeatBoard days={days} title="Seats by day" compact />
+            <SeatBoard days={days} campId={camp.id} title="Live seats" compact />
           ) : (
             <div className="hidden rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center text-sm text-muted lg:block">
               Seat board appears when a camp is active.

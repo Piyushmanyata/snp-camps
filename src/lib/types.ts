@@ -51,7 +51,7 @@ export type Patient = {
 };
 
 export function queueLabel(status: string) {
-  if (status === "seen") return "Seen";
+  if (status === "seen") return "Doctor seen";
   if (status === "waiting") return "In queue";
   return "Registered";
 }

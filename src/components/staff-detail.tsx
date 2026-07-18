@@ -122,7 +122,7 @@ export function StaffDetailPanel({
             {role === "volunteer" ? (
               <>
                 <Stat label="In queue" value={kpis?.waiting ?? 0} tone="wait" />
-                <Stat label="Seen" value={kpis?.seen ?? 0} tone="ok" />
+                <Stat label="Doctor seen" value={kpis?.seen ?? 0} tone="ok" />
               </>
             ) : null}
           </div>

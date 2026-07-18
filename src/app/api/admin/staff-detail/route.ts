@@ -25,8 +25,11 @@ export async function GET(req: Request) {
     );
   }
 
-  // Non-admins may only inspect their own role roster (and themselves freely).
-  if (!isAdmin(profile?.role) && profile?.role !== role && id !== userId) {
+  // Non-admins may only see their own KPIs (not fellow staff).
+  if (!isAdmin(profile?.role) && id !== userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!isAdmin(profile?.role) && profile?.role !== role) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
