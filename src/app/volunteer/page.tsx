@@ -189,7 +189,7 @@ export default async function VolunteerPage() {
 
         <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <Card id="scan">
-            <SectionTitle hint="After print · pick doctor">
+            <SectionTitle hint="Scan paper or phone QR · pick doctor">
               Scan / assign doctor
             </SectionTitle>
             <QrScanner

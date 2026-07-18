@@ -97,7 +97,8 @@ export async function POST(req: Request) {
 
   const email = patientAuthEmail(regNo);
   const name = patient.full_name || `Patient ${regNo}`;
-  const loginUrl = patientScanUrl(patientId, process.env.NEXT_PUBLIC_SITE_URL);
+  // Staff-scan QR only — not a patient login link
+  const scanUrl = patientScanUrl(patientId, process.env.NEXT_PUBLIC_SITE_URL);
   const configured = notifyConfigured();
   const phoneOnFile = patient.phone;
 
@@ -145,7 +146,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         linked: true,
-        loginUrl,
+        scanUrl,
         patientId,
         userId: patient.user_id,
         regNo,
@@ -158,7 +159,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       linked: true,
-      loginUrl,
+      scanUrl,
       patientId,
       userId: patient.user_id,
       regNo,
@@ -263,7 +264,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
           ok: true,
           linked: true,
-          loginUrl,
+          scanUrl,
           patientId,
           userId: existingProfile.id,
           regNo,
@@ -337,7 +338,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     userId: created.user.id,
-    loginUrl,
+    scanUrl,
     patientId,
     regNo,
     ...(returnCredentials ? { password } : {}),

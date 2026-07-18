@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -44,7 +44,8 @@ export function QrScanner({
   disabledReason?: string;
 }) {
   const router = useRouter();
-  const regionId = "qr-reader";
+  const uid = useId().replace(/:/g, "");
+  const regionId = `qr-reader-${uid}`;
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
   const [manual, setManual] = useState("");
@@ -55,6 +56,7 @@ export function QrScanner({
   const [assigning, setAssigning] = useState(false);
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
+  const badScanAt = useRef(0);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
@@ -175,7 +177,15 @@ export function QrScanner({
     if (autoScanDone.current || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const id = params.get("scan") || params.get("checkin");
-    if (!id) return;
+    if (!id) {
+      const err = params.get("error");
+      if (err === "not_found") {
+        setError("Patient not found for that QR.");
+      } else if (err === "scan_lookup" || err === "server") {
+        setError("Could not look up that QR. Try again or use reg number.");
+      }
+      return;
+    }
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         id,
@@ -198,6 +208,7 @@ export function QrScanner({
     setLookup(null);
     setAssigned(null);
     handledRef.current = false;
+    badScanAt.current = 0;
     setActive(true);
     await new Promise((r) => setTimeout(r, 50));
     try {
@@ -219,9 +230,14 @@ export function QrScanner({
       await scanner.start(
         cameraId,
         {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
+          fps: 12,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const edge = Math.min(viewfinderWidth, viewfinderHeight);
+            const size = Math.max(180, Math.floor(edge * 0.72));
+            return { width: size, height: size };
+          },
           aspectRatio: 1,
+          disableFlip: false,
         },
         (decoded) => {
           if (handledRef.current) return;
@@ -229,6 +245,15 @@ export function QrScanner({
           if (id) {
             handledRef.current = true;
             void resolvePatient({ id });
+            return;
+          }
+          // Throttle "not a patient QR" so flicker doesn't spam
+          const now = Date.now();
+          if (now - badScanAt.current > 2500) {
+            badScanAt.current = now;
+            setError(
+              "That QR is not a patient staff-scan code. Use the paper form or reg no.",
+            );
           }
         },
         () => undefined,
@@ -300,9 +325,9 @@ export function QrScanner({
           </>
         ) : (
           <>
-            <strong className="text-foreground">Scan</strong> to assign a doctor
-            (marks seen). Optional: print first to put them in the queue.
-            Re-scan is blocked.
+            <strong className="text-foreground">Scan</strong> paper or phone QR
+            to assign a doctor (marks seen). Optional: print first to put them
+            in the queue. Re-scan is blocked.
           </>
         )}
       </p>
@@ -369,8 +394,8 @@ export function QrScanner({
           {lookup.queue_status === "registered" && mode !== "doctor" ? (
             <>
               <p className="mt-1 text-sm text-muted">
-                Registered — print to join the queue, or assign a doctor
-                now (no print required).
+                Registered — print to join the queue, or assign a doctor now
+                (no print required).
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -548,8 +573,8 @@ export function QrScanner({
         </p>
         <Input
           label="Reg no / QR link"
-          inputMode="numeric"
-          placeholder="e.g. 1001"
+          inputMode="text"
+          placeholder="e.g. 1001 or paste QR link"
           disabled={Boolean(disabledReason)}
           value={manual}
           onChange={(e) => setManual(e.target.value)}

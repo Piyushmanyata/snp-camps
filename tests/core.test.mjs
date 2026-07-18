@@ -8,6 +8,7 @@ import {
   normalizeGender,
 } from "../src/lib/aadhaar.ts";
 import {
+  isPatientUuid,
   parsePatientIdFromQr,
   patientPrintUrl,
   patientScanUrl,
@@ -34,10 +35,15 @@ test("gender normalization accepts common provider values", () => {
   assert.equal(normalizeGender("unknown"), null);
 });
 
-test("QR parser accepts only supported patient identifiers", () => {
+test("QR parser accepts staff-scan identifiers only", () => {
   const id = "A0B1C2D3-E4F5-4678-9ABC-DEF012345678";
   const normalized = id.toLowerCase();
+  assert.equal(isPatientUuid(id), true);
   assert.equal(parsePatientIdFromQr(id), normalized);
+  assert.equal(
+    parsePatientIdFromQr("https://camp.example/p/" + id),
+    normalized,
+  );
   assert.equal(
     parsePatientIdFromQr("https://camp.example/patient/enter/" + id + "?t=x"),
     normalized,
@@ -50,14 +56,27 @@ test("QR parser accepts only supported patient identifiers", () => {
     parsePatientIdFromQr("https://camp.example/anything?id=" + id),
     normalized,
   );
+  assert.equal(
+    parsePatientIdFromQr("https://camp.example/doctor?scan=" + id),
+    normalized,
+  );
+  assert.equal(parsePatientIdFromQr("snp:" + id), normalized);
   assert.equal(parsePatientIdFromQr("javascript:alert(1)"), null);
   assert.equal(parsePatientIdFromQr("/patient/enter/not-a-uuid"), null);
 });
 
-test("patient URLs are canonical and passwords avoid ambiguous characters", () => {
+test("patient URLs are staff-scan canonical and passwords avoid ambiguous characters", () => {
   const id = "a0b1c2d3-e4f5-4678-9abc-def012345678";
-  assert.equal(patientScanUrl(id, "https://camp.example/"), "https://camp.example/patient/enter/" + id);
-  assert.equal(patientPrintUrl(id, "https://camp.example/"), "https://camp.example/print/" + id);
+  assert.equal(
+    patientScanUrl(id, "https://camp.example/"),
+    "https://camp.example/p/" + id,
+  );
+  assert.equal(
+    patientPrintUrl(id, "https://camp.example/"),
+    "https://camp.example/print/" + id,
+  );
+  // No origin → bare uuid (still scannable in-app)
+  assert.equal(patientScanUrl(id, ""), id);
 
   const generated = new Set(
     Array.from({ length: 20 }, () => generatePatientPassword(12)),

@@ -75,14 +75,19 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
               {patient.age ?? "——"}{" "}
               <span className="ml-1 font-semibold">{genderMark}</span>
             </p>
-            <div className="mt-0.5 rounded border border-[#1a3a8a] bg-white p-0.5">
-              <QrCode
-                value={qr}
-                size={64}
-                level="M"
-                includeMargin={false}
-                fgColor="#1a3a8a"
-              />
+            <div className="mt-0.5 flex flex-col items-end gap-0.5">
+              <div className="rounded border border-[#1a3a8a] bg-white p-1">
+                <QrCode
+                  value={qr}
+                  size={96}
+                  level="H"
+                  includeMargin
+                  fgColor="#1a3a8a"
+                />
+              </div>
+              <p className="w-full text-right text-[7px] font-semibold uppercase leading-none tracking-wide opacity-80">
+                Staff scan
+              </p>
             </div>
           </div>
         </div>

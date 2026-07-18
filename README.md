@@ -12,7 +12,7 @@ Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 6. Volunteer/admin can print for queue or assign a doctor on scan
 7. Re-scan of a seen patient is **blocked** (“Already seen by Dr X”)
 
-- Patient QR is for **staff scan only** (no phone QR login)
+- Patient QR is for **volunteer/doctor scan only** (payload `/p/{uuid}` — no phone QR login)
 - Print is optional desk convenience; doctors only need to scan
 - One active camp, single FCFS queue; doctor recorded when seen
 - Aadhaar: full number used only for verify/lookup in memory; **last 4 digits only** stored
@@ -44,6 +44,7 @@ For the current production lineage, apply these SQL files in order:
 11. `supabase/dashboard-stats.sql`
 12. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
 13. `supabase/lean-perf.sql` (partial indexes, desk KPI RPCs, no realtime on hot tables)
+14. `supabase/fix-qr-staff-scan.sql` (lookup + assign RPCs for volunteer QR scan)
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { QrCode } from "@/components/qr-code";
 import { patientScanUrl } from "@/lib/qr";
 
-/** Self-reg only: big reg no + QR for desk staff to scan. Never show on volunteer desk. */
+/** Patient phone / confirmation: big reg no + staff-scan QR. Not for login. */
 export function QrCard({
   value,
   regNo,
@@ -44,16 +44,18 @@ export function QrCard({
       <div className="rounded-2xl border border-border bg-white p-4 shadow-inner">
         <QrCode
           value={payload}
-          size={200}
+          size={220}
           level="H"
           includeMargin
           fgColor="#0a5c3a"
         />
       </div>
       <div className="text-center">
-        <p className="text-sm font-semibold text-brand">Show this at the desk</p>
+        <p className="text-sm font-semibold text-brand">
+          Show this QR to camp staff
+        </p>
         <p className="prose-help mt-1 text-xs text-muted">
-          Staff print → queue · doctor or volunteer scan → seen
+          Volunteers scan to assign a doctor · not a login code
         </p>
       </div>
     </div>

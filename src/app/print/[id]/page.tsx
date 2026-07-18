@@ -119,9 +119,9 @@ export default async function PrintPage({
       />
 
       <p className="no-print mt-3 text-center text-xs text-muted">
-        Fits one A4 page · Browser Print → Portrait · Patient is{" "}
-        <strong>in queue</strong> (not seen). Doctor/volunteer scan assigns a
-        doctor and marks seen.
+        Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>{" "}
+        (not login). Patient is <strong>in queue</strong> until a volunteer or
+        doctor scans and marks seen.
       </p>
     </main>
   );
