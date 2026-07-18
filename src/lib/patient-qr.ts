@@ -1,12 +1,10 @@
+import "server-only";
+
 import { createHmac, timingSafeEqual } from "crypto";
 import { patientScanUrl } from "@/lib/qr";
 
 function qrSecret(): string {
-  return (
-    process.env.PATIENT_QR_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    ""
-  );
+  return process.env.PATIENT_QR_SECRET || "";
 }
 
 /** Optional HMAC for QR integrity. Server-only. */

@@ -34,6 +34,7 @@ export function AdminCampDays({
   const [seats, setSeats] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
 
   async function refresh() {
@@ -72,12 +73,14 @@ export function AdminCampDays({
   }
 
   async function saveSeats(dayId: string, dayDateIso: string) {
+    if (savingId) return;
     setError(null);
     const limit = Number(editing[dayId] ?? "");
     if (Number.isNaN(limit) || limit < 0) {
       setError("Seat limit must be ≥ 0");
       return;
     }
+    setSavingId(dayId);
     const supabase = createClient();
     const { error: err } = await supabase.rpc("upsert_camp_day", {
       p_camp_id: campId,
@@ -94,6 +97,7 @@ export function AdminCampDays({
       });
       await refresh();
     }
+    setSavingId(null);
   }
 
   async function removeDay(dayId: string) {
@@ -149,9 +153,11 @@ export function AdminCampDays({
                 variant="secondary"
                 size="sm"
                 className="w-auto"
+                disabled={savingId === d.id}
+                loading={savingId === d.id}
                 onClick={() => saveSeats(d.id, d.day_date)}
               >
-                Save
+                {savingId === d.id ? "Saving…" : "Save"}
               </Button>
               <Button
                 type="button"

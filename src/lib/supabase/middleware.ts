@@ -39,7 +39,9 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Refresh session cookie; route guards live in pages
-  await supabase.auth.getUser();
+  // Validate locally against Supabase JWKS when possible; this also refreshes
+  // an expired access token through the cookie adapter without the extra Auth
+  // network round-trip performed by getUser().
+  await supabase.auth.getClaims();
   return supabaseResponse;
 }

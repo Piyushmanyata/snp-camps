@@ -154,13 +154,13 @@ export function AdminVolunteers({ initial }: { initial: Volunteer[] }) {
         />
         <Input
           label="Temporary password"
-          type="text"
+          type="password"
           required
-          minLength={6}
+          minLength={12}
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="min 6 characters"
+          placeholder="12+ characters"
         />
         <ErrorBox message={error} />
         {ok ? (

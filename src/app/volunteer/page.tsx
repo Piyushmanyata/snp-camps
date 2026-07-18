@@ -18,7 +18,7 @@ export default async function VolunteerPage() {
   if (isDoctor(profile?.role)) redirect("/doctor");
 
   const supabase = await createClient();
-  const { data: camp } = await supabase
+  const { data: camp, error: campError } = await supabase
     .from("camps")
     .select("id, name, venue")
     .eq("is_active", true)
@@ -28,7 +28,7 @@ export default async function VolunteerPage() {
     ? await Promise.all([
         supabase
           .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at")
+          .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
           .eq("camp_id", camp.id)
           .eq("queue_status", "waiting")
           .order("queued_at", { ascending: true, nullsFirst: false })
@@ -45,14 +45,23 @@ export default async function VolunteerPage() {
           .order("full_name", { ascending: true }),
       ])
     : [
-        { data: [] as LiveQueuePatient[] },
+        { data: [] as LiveQueuePatient[], count: 0 },
         { count: 0 },
         { data: [] as DoctorOption[] },
       ];
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
+  const waitingCount = waitingRes.count ?? waiting.length;
   const seenCount = seenCountRes.count ?? 0;
   const doctors = (doctorsRes.data || []) as DoctorOption[];
+  if (
+    Boolean(campError) ||
+    [waitingRes, seenCountRes, doctorsRes].some(
+      (result) => "error" in result && Boolean(result.error),
+    )
+  ) {
+    throw new Error("Volunteer desk data could not be loaded");
+  }
 
   const dock = [
     { href: "/register", label: "Register", primary: true },
@@ -88,7 +97,7 @@ export default async function VolunteerPage() {
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
-              <Stat label="In queue" value={waiting.length} tone="wait" />
+              <Stat label="In queue" value={waitingCount} tone="wait" />
               <Stat label="Seen" value={seenCount} tone="ok" />
             </div>
           </div>
@@ -100,7 +109,13 @@ export default async function VolunteerPage() {
               <SectionTitle hint="After print · pick doctor">
                 Scan / assign doctor
               </SectionTitle>
-              <QrScanner mode="volunteer" doctors={doctors} />
+              <QrScanner
+                mode="volunteer"
+                doctors={doctors}
+                disabledReason={
+                  camp ? undefined : "No active camp. Ask an admin to activate a camp first."
+                }
+              />
             </Card>
             <div className="desk-inline-actions">
               <NavLink href="/register" variant="primary">
@@ -117,6 +132,8 @@ export default async function VolunteerPage() {
             </div>
             <LiveQueue
               initial={waiting}
+              initialTotal={waitingCount}
+              campId={camp?.id ?? null}
               doctors={doctors}
               mode="volunteer"
             />

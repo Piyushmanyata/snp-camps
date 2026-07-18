@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
@@ -9,6 +10,7 @@ import {
   notifyPatient,
   registrationMessage,
 } from "@/lib/notify";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type Body = {
   patientId?: string;
@@ -38,6 +40,18 @@ export async function POST(req: Request) {
   const passwordRaw = body.password != null ? String(body.password) : "";
   const returnCredentials = body.returnCredentials === true;
   const doNotify = body.notify === true;
+  const rate = checkRateLimit(req, {
+    scope: "patient-account",
+    identifier: `${patientId}:${regNo}`,
+    limit: 12,
+    windowMs: 10 * 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many account attempts. Try again later." },
+      { status: 429, headers: rate.headers },
+    );
+  }
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       patientId,
@@ -61,7 +75,7 @@ export async function POST(req: Request) {
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
-      { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+      { error: "Patient account service is unavailable" },
       { status: 500 },
     );
   }
@@ -165,6 +179,36 @@ export async function POST(req: Request) {
     );
   }
 
+  // Atomically reserve the single-use claim before touching Supabase Auth.
+  // This prevents two concurrent requests from creating/linking/deleting each
+  // other's user across the database/Auth transaction boundary.
+  const reservationToken = randomBytes(24).toString("hex");
+  const { data: reserved, error: reserveError } = await admin
+    .from("patients")
+    .update({ account_claim_token: reservationToken })
+    .eq("id", patientId)
+    .is("user_id", null)
+    .eq("account_claim_token", claimToken)
+    .gt("account_claim_expires_at", new Date().toISOString())
+    .select("id")
+    .maybeSingle();
+  if (reserveError || !reserved) {
+    return NextResponse.json(
+      { error: "Registration claim expired or was already used" },
+      { status: 409 },
+    );
+  }
+
+  async function restoreClaim() {
+    if (!admin) return;
+    await admin
+      .from("patients")
+      .update({ account_claim_token: claimToken })
+      .eq("id", patientId)
+      .is("user_id", null)
+      .eq("account_claim_token", reservationToken);
+  }
+
   const password = passwordRaw || generatePatientPassword();
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -182,28 +226,38 @@ export async function POST(req: Request) {
         .eq("email", email)
         .maybeSingle();
       if (existingProfile?.id && existingProfile.role === "patient") {
-        await admin.from("profiles").upsert({
+        const { error: existingProfileError } = await admin
+          .from("profiles")
+          .upsert({
           id: existingProfile.id,
           role: "patient",
           full_name: name,
           email,
         });
+        if (existingProfileError) {
+          await restoreClaim();
+          return NextResponse.json(
+            { error: "Patient login could not be provisioned. Try again." },
+            { status: 500 },
+          );
+        }
         const { data: linked, error: linkErr } = await admin
           .from("patients")
-            .update({
-              user_id: existingProfile.id,
-              account_claim_token: null,
-              account_claim_expires_at: null,
-            })
+          .update({
+            user_id: existingProfile.id,
+            account_claim_token: null,
+            account_claim_expires_at: null,
+          })
           .eq("id", patientId)
           .is("user_id", null)
-          .eq("account_claim_token", claimToken)
+          .eq("account_claim_token", reservationToken)
           .select("id")
           .maybeSingle();
         if (linkErr || !linked) {
+          await restoreClaim();
           return NextResponse.json(
-            { error: linkErr?.message || "Registration claim was already used" },
-            { status: linkErr ? 400 : 409 },
+            { error: "Registration claim was already used" },
+            { status: 409 },
           );
         }
         return NextResponse.json({
@@ -219,6 +273,7 @@ export async function POST(req: Request) {
             "Account already existed. Sign in with your previous password, or use Sign out → show credentials after logging in.",
         });
       }
+      await restoreClaim();
       return NextResponse.json(
         {
           error:
@@ -227,20 +282,33 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    return NextResponse.json({ error: createErr.message }, { status: 400 });
+    await restoreClaim();
+    return NextResponse.json(
+      { error: "Patient login could not be created. Try again." },
+      { status: 400 },
+    );
   }
 
   if (!created.user) {
+    await restoreClaim();
     return NextResponse.json({ error: "No user created" }, { status: 400 });
   }
 
-  await admin.from("profiles").upsert({
+  const { error: profileError } = await admin.from("profiles").upsert({
     id: created.user.id,
     role: "patient",
     full_name: name,
     email,
     phone: phoneOnFile,
   });
+  if (profileError) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    await restoreClaim();
+    return NextResponse.json(
+      { error: "Patient login could not be provisioned. Try again." },
+      { status: 500 },
+    );
+  }
 
   const { data: linked, error: linkErr } = await admin
     .from("patients")
@@ -251,12 +319,13 @@ export async function POST(req: Request) {
     })
     .eq("id", patientId)
     .is("user_id", null)
-    .eq("account_claim_token", claimToken)
+    .eq("account_claim_token", reservationToken)
     .select("id")
     .maybeSingle();
 
   if (linkErr || !linked) {
     await admin.auth.admin.deleteUser(created.user.id);
+    await restoreClaim();
     return NextResponse.json(
       { error: linkErr?.message || "Registration claim was already used" },
       { status: linkErr ? 400 : 409 },

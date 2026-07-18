@@ -27,7 +27,7 @@ export function SeatBoard({
       <ul
         className={
           compact
-            ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+            ? "grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-2"
             : "grid gap-2 sm:grid-cols-2"
         }
       >

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const body = await readJsonBody<{
@@ -19,13 +19,25 @@ export async function POST(req: Request) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const invite = String(body.invite || "").trim();
+  const rate = checkRateLimit(req, {
+    scope: "staff-register",
+    identifier: email || "missing-email",
+    limit: 5,
+    windowMs: 15 * 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Try again later." },
+      { status: 429, headers: rate.headers },
+    );
+  }
 
   if (!fullName || !email || !password || !invite) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
-  if (password.length < 6) {
+  if (password.length < 12) {
     return NextResponse.json(
-      { error: "Password must be at least 6 characters" },
+      { error: "Password must be at least 12 characters" },
       { status: 400 },
     );
   }
@@ -64,15 +76,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid invite code" }, { status: 403 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    return NextResponse.json(
-      { error: "Server missing Supabase config" },
-      { status: 500 },
-    );
-  }
-
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
@@ -81,15 +84,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const supabase = createClient(url, anon);
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
-    options: { data: { full_name: fullName, staff_role: role } },
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(
+      { error: "Could not create account. The email may already be in use." },
+      { status: 400 },
+    );
   }
 
   if (!data.user) {
@@ -101,8 +107,9 @@ export async function POST(req: Request) {
     .update({ role, full_name: fullName, email })
     .eq("id", data.user.id);
   if (profileErr) {
+    await admin.auth.admin.deleteUser(data.user.id);
     return NextResponse.json(
-      { error: "Account created but staff role could not be provisioned" },
+      { error: "Staff account could not be provisioned. Try again." },
       { status: 500 },
     );
   }

@@ -49,12 +49,26 @@ export async function requireAdmin() {
   return { userId, profile };
 }
 
-/** Safely parse JSON body; returns null on invalid JSON. */
+/** Parse a small JSON body without buffering an unbounded request. */
 export async function readJsonBody<T = Record<string, unknown>>(
   req: Request,
+  maxBytes = 16_384,
 ): Promise<T | null> {
   try {
-    return (await req.json()) as T;
+    const declaredLength = Number(req.headers.get("content-length") || "0");
+    if (
+      !Number.isFinite(declaredLength) ||
+      declaredLength < 0 ||
+      declaredLength > maxBytes
+    ) {
+      return null;
+    }
+
+    const text = await req.text();
+    if (!text || new TextEncoder().encode(text).byteLength > maxBytes) {
+      return null;
+    }
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }

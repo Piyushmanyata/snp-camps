@@ -57,6 +57,7 @@ export default function StaffLoginPage() {
     if (profile?.role === "admin") router.replace("/admin");
     else if (profile?.role === "volunteer") router.replace("/volunteer");
     else if (profile?.role === "doctor") router.replace("/doctor");
+    else if (profile?.role === "patient") router.replace("/patient");
     else router.replace("/patient");
     router.refresh();
   }

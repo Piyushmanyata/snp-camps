@@ -32,6 +32,7 @@ export function SignOutButton({
     await supabase.auth.signOut();
     router.replace("/");
     router.refresh();
+    setLoading(false);
   }
 
   async function patientSignOut() {

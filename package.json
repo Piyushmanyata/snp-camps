@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --no-warnings --test tests/*.test.mjs",
+    "verify": "npm run lint && npm test && npm run build",
+    "load:smoke": "node scripts/load-test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

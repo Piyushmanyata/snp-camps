@@ -30,7 +30,7 @@ export async function POST() {
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
-      { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+      { error: "Patient account service is unavailable" },
       { status: 500 },
     );
   }

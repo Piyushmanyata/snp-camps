@@ -31,7 +31,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
     patient.gender === "M" ? "M" : patient.gender === "F" ? "F" : "M / F";
 
   return (
-    <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a]/bg-white text-[#1a3a8a]">
+    <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a] bg-white text-[#1a3a8a]">
       <header className="border-b border-[#1a3a8a] px-3 pb-1.5 pt-2 text-center">
         <p className="text-[13px] font-extrabold leading-tight tracking-wide sm:text-[15px]">
           SIKAR NAGARIK PARISHAD (KOLKATA)
@@ -75,7 +75,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
               {patient.age ?? "——"}{" "}
               <span className="ml-1 font-semibold">{genderMark}</span>
             </p>
-            <div className="mt-0.5 rounded border border-[#1a3a8a]/bg-white p-0.5">
+            <div className="mt-0.5 rounded border border-[#1a3a8a] bg-white p-0.5">
               <QrCode
                 value={qr}
                 size={64}
@@ -87,7 +87,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
           </div>
         </div>
 
-        <div className="mt-2 border-t border-dotted border-[#1a3a8a]/pt-1.5">
+        <div className="mt-2 border-t border-dotted border-[#1a3a8a] pt-1.5">
           <p className="mb-1 text-[10px] font-bold">Diagnosis:</p>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] sm:text-[10px]">
             <Check label="RE – CATARACT" />
@@ -192,7 +192,7 @@ function Line({
   strong?: boolean;
 }) {
   return (
-    <p className="flex min-h-[1.15rem] items-end gap-1 border-b border-dotted border-[#1a3a8a]/pb-px">
+    <p className="flex min-h-[1.15rem] items-end gap-1 border-b border-dotted border-[#1a3a8a] pb-px">
       <span className="shrink-0 font-semibold">{label}:</span>
       <span
         className={`min-w-0 flex-1 text-black ${strong ? "font-bold" : ""}`}

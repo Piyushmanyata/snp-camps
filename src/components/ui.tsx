@@ -543,7 +543,7 @@ export function SegmentedControl<T extends string>({
 }) {
   return (
     <div
-      role="tablist"
+      role="group"
       aria-label={label || "Options"}
       className="grid gap-1 rounded-xl bg-background p-1"
       style={{
@@ -556,8 +556,7 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
-            role="tab"
-            aria-selected={selected}
+            aria-pressed={selected}
             onClick={() => onChange(opt.value)}
             className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 ${
               selected

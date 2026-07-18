@@ -150,25 +150,23 @@ export default function PatientLoginPage() {
       return;
     }
 
-    if (user) {
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ phone: phoneE164, role: "patient" })
-        .eq("id", user.id);
-      const { data: linkedId, error: linkErr } = await supabase.rpc(
-        "link_patient_phone",
-        { p_phone: phoneE164 },
+    const { error: profileErr } = await supabase
+      .from("profiles")
+      .update({ phone: phoneE164, role: "patient" })
+      .eq("id", user.id);
+    const { data: linkedId, error: linkErr } = await supabase.rpc(
+      "link_patient_phone",
+      { p_phone: phoneE164 },
+    );
+    if (profileErr || linkErr || !linkedId) {
+      await supabase.auth.signOut();
+      setError(
+        linkErr?.message ||
+          profileErr?.message ||
+          "No unlinked registration was found for this phone number.",
       );
-      if (profileErr || linkErr || !linkedId) {
-        await supabase.auth.signOut();
-        setError(
-          linkErr?.message ||
-            profileErr?.message ||
-            "No unlinked registration was found for this phone number.",
-        );
-        setLoading(false);
-        return;
-      }
+      setLoading(false);
+      return;
     }
 
     router.replace("/patient");

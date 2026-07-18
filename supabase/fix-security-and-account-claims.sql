@@ -22,6 +22,43 @@ alter table public.patients
 alter table public.patients
   add column if not exists account_claim_expires_at timestamptz;
 
+-- Persist canonical lookup keys so duplicate checks use indexes instead of
+-- running regexp/lower expressions across every registration while holding a
+-- capacity lock.
+alter table public.patients
+  add column if not exists phone_normalized text
+  generated always as (
+    nullif(right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 10), '')
+  ) stored;
+
+alter table public.patients
+  add column if not exists full_name_normalized text
+  generated always as (lower(btrim(full_name))) stored;
+
+create index if not exists patients_user_id_idx
+  on public.patients (user_id)
+  where user_id is not null;
+
+create index if not exists patients_created_by_idx
+  on public.patients (created_by)
+  where created_by is not null;
+
+create unique index if not exists patients_camp_user_unique_idx
+  on public.patients (camp_id, user_id)
+  where user_id is not null;
+
+create unique index if not exists patients_camp_phone_unique_idx
+  on public.patients (camp_id, phone_normalized)
+  where phone_normalized is not null and length(phone_normalized) = 10;
+
+create unique index if not exists patients_camp_aadhaar_name_unique_idx
+  on public.patients (camp_id, aadhaar_last4, full_name_normalized)
+  where aadhaar_last4 is not null;
+
+create unique index if not exists patients_camp_name_age_unique_idx
+  on public.patients (camp_id, full_name_normalized, age)
+  where phone_normalized is null and aadhaar_last4 is null and age is not null;
+
 create index if not exists patients_seen_by_camp_seen_at_idx
   on public.patients (camp_id, seen_by, seen_at desc)
   where queue_status = 'seen' and seen_by is not null;
@@ -64,6 +101,7 @@ security definer
 set search_path = public
 as $$
 declare
+  v_request_role text;
   v_user_id uuid;
   v_created_by uuid;
   v_aadhaar char(4);
@@ -75,6 +113,14 @@ declare
   v_taken integer;
   v_row public.patients%rowtype;
 begin
+  v_request_role := nullif(current_setting('request.jwt.claim.role', true), '');
+  if v_request_role = 'authenticated' and not public.is_staff() then
+    raise exception 'staff only';
+  end if;
+  if v_request_role not in ('anon', 'authenticated', 'service_role') then
+    raise exception 'API role required';
+  end if;
+
   v_name := trim(coalesce(p_full_name, ''));
   if length(v_name) = 0 then
     raise exception 'full_name required';
@@ -86,9 +132,6 @@ begin
   ) then
     raise exception 'No active camp';
   end if;
-
-  -- Serialize registration identity checks and seat accounting per camp.
-  perform pg_advisory_xact_lock(hashtextextended(p_camp_id::text, 0));
 
   if p_camp_day_id is null then
     raise exception 'Please select a camp day';
@@ -157,7 +200,7 @@ begin
     select p.reg_no into v_existing_reg
     from public.patients p
     where p.camp_id = p_camp_id
-      and right(regexp_replace(coalesce(p.phone, ''), '\D', '', 'g'), 10) = v_phone10
+      and p.phone_normalized = v_phone10
     limit 1;
     if v_existing_reg is not null then
       raise exception 'Already registered for this camp with this phone (reg no %). Change day instead.', v_existing_reg;
@@ -169,7 +212,7 @@ begin
     from public.patients p
     where p.camp_id = p_camp_id
       and p.aadhaar_last4 = v_aadhaar
-      and lower(trim(p.full_name)) = lower(v_name)
+      and p.full_name_normalized = lower(v_name)
     limit 1;
     if v_existing_reg is not null then
       raise exception 'Already registered for this camp (same name + Aadhaar last 4, reg no %). Change day instead.', v_existing_reg;
@@ -180,7 +223,7 @@ begin
     select p.reg_no into v_existing_reg
     from public.patients p
     where p.camp_id = p_camp_id
-      and lower(trim(p.full_name)) = lower(v_name)
+      and p.full_name_normalized = lower(v_name)
       and p.age = p_age
     limit 1;
     if v_existing_reg is not null then
@@ -200,7 +243,7 @@ begin
     case when p_gender in ('M','F','O') then p_gender else null end,
     p_age,
     nullif(trim(coalesce(p_address, '')), ''),
-    v_phone,
+    v_phone10,
     nullif(trim(coalesce(p_email, '')), ''),
     v_aadhaar,
     v_created_by,
@@ -232,6 +275,9 @@ begin
 end;
 $$;
 
+revoke all on function public.register_patient(
+  uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
+) from public, anon, authenticated;
 grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
 ) to anon, authenticated;
@@ -342,6 +388,8 @@ begin
 end;
 $$;
 
+revoke all on function public.assign_patient_doctor(uuid, integer, uuid)
+  from public, anon, authenticated;
 grant execute on function public.assign_patient_doctor(uuid, integer, uuid)
   to authenticated;
 
@@ -533,15 +581,30 @@ declare
   v_phone10 text;
   v_count integer;
   v_patient_id uuid;
+  v_auth_phone10 text;
+  v_phone_confirmed_at timestamptz;
 begin
   if auth.uid() is null then raise exception 'Sign in required'; end if;
   v_phone10 := right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10);
   if length(v_phone10) <> 10 then raise exception 'Valid phone required'; end if;
+
+  select u.phone, u.phone_confirmed_at
+  into v_auth_phone10, v_phone_confirmed_at
+  from auth.users u
+  where u.id = auth.uid();
+
+  if
+    v_phone_confirmed_at is null
+    or v_auth_phone10 is distinct from '+91' || v_phone10
+  then
+    raise exception 'Use the phone number verified for this account';
+  end if;
+
   select count(*)::int, min(p.id) into v_count, v_patient_id
   from public.patients p
   join public.camps c on c.id = p.camp_id and c.is_active
   where p.user_id is null
-    and right(regexp_replace(coalesce(p.phone, ''), '\D', '', 'g'), 10) = v_phone10;
+    and p.phone_normalized = v_phone10;
   if v_count = 0 then raise exception 'No unlinked registration was found for this phone number'; end if;
   if v_count > 1 then raise exception 'Multiple registrations found; ask the desk to link your account'; end if;
   update public.patients set user_id = auth.uid() where id = v_patient_id and user_id is null;

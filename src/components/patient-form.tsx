@@ -67,6 +67,7 @@ export function PatientForm({
   const [campDayId, setCampDayId] = useState(firstOpen);
   const [aadhaar, setAadhaar] = useState("");
   const [aadhaarVerified, setAadhaarVerified] = useState(false);
+  const [verificationToken, setVerificationToken] = useState("");
   const [verifyState, setVerifyState] = useState<VerifyState>("idle");
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
@@ -189,13 +190,19 @@ export function PatientForm({
         error?: string;
         message?: string;
         mode?: string;
+        verificationToken?: string;
       };
-      if (!res.ok || json.verified !== true) {
+      if (
+        !res.ok ||
+        json.verified !== true ||
+        !/^[0-9a-f]{64}$/i.test(json.verificationToken || "")
+      ) {
         setVerifyState("fail");
         setVerifyMsg(json.error || "Aadhaar verification failed.");
         return;
       }
       setAadhaarVerified(true);
+      setVerificationToken(json.verificationToken || "");
       setVerifyState("ok");
       setVerifyMsg(json.message || "Aadhaar verified.");
       if (lookupEnabled && isStaff) void runAadhaarLookup(d);
@@ -210,6 +217,7 @@ export function PatientForm({
     setAadhaar(formatted);
     setFilledFromAadhaar(false);
     setAadhaarVerified(false);
+    setVerificationToken("");
     setVerifyState("idle");
     setVerifyMsg(null);
     lastLookedUp.current = "";
@@ -294,7 +302,7 @@ export function PatientForm({
         setLoading(false);
         return;
       }
-      if (!aadhaarVerified) {
+      if (!aadhaarVerified || !verificationToken) {
         setError("Verify your Aadhaar first, then complete registration.");
         setLoading(false);
         return;
@@ -344,22 +352,58 @@ export function PatientForm({
     }
 
     const supabase = createClient();
-    const { data, error: err } = await supabase.rpc("register_patient", {
-      p_camp_id: campId,
-      p_full_name: fullName.trim(),
-      p_gender: gender || null,
-      p_age: ageValue,
-      p_address: address.trim() || null,
-      p_phone: phone10 || null,
-      p_email: email.trim() || null,
-      p_aadhaar_last4: last4 || null,
-      p_user_id: userId,
-      p_created_by: createdBy,
-      p_camp_day_id: campDayId,
-    });
+    let data: unknown;
+    let registrationError: string | null = null;
 
-    if (err) {
-      setError(err.message || "Registration failed");
+    if (isStaff) {
+      const result = await supabase.rpc("register_patient", {
+        p_camp_id: campId,
+        p_full_name: fullName.trim(),
+        p_gender: gender || null,
+        p_age: ageValue,
+        p_address: address.trim() || null,
+        p_phone: phone10 || null,
+        p_email: email.trim() || null,
+        p_aadhaar_last4: last4 || null,
+        p_user_id: userId,
+        p_created_by: createdBy,
+        p_camp_day_id: campDayId,
+      });
+      data = result.data;
+      registrationError = result.error?.message || null;
+    } else {
+      try {
+        const response = await fetch("/api/patient-register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            verificationToken,
+            campId,
+            campDayId,
+            fullName: fullName.trim(),
+            gender: gender || null,
+            age: ageValue,
+            address: address.trim() || null,
+            phone: phone10 || null,
+            email: email.trim() || null,
+          }),
+        });
+        const payload = (await response.json()) as {
+          patient?: Created;
+          error?: string;
+        };
+        data = payload.patient;
+        registrationError = response.ok
+          ? null
+          : payload.error || "Registration failed";
+      } catch {
+        registrationError =
+          "Registration service is unavailable. Check your connection and try again.";
+      }
+    }
+
+    if (registrationError) {
+      setError(registrationError);
       setLoading(false);
       return;
     }
@@ -410,6 +454,13 @@ export function PatientForm({
           acc.error ||
             "Registered, but login account failed. Ask the desk for help.",
         );
+        setLoading(false);
+        return;
+      }
+
+      if (acc.message && !acc.password) {
+        setCreated(base);
+        setError(acc.message);
         setLoading(false);
         return;
       }
@@ -472,6 +523,7 @@ export function PatientForm({
     setLookupState("idle");
     setLookupMsg(null);
     setFilledFromAadhaar(false);
+    setCampDayId(firstOpen);
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
@@ -752,6 +804,8 @@ export function PatientForm({
 
         {verifyMsg ? (
           <p
+            role="status"
+            aria-live="polite"
             className={`rounded-xl px-3 py-2 text-xs ${
               verifyState === "ok"
                 ? "bg-brand-soft text-brand"
@@ -766,6 +820,8 @@ export function PatientForm({
 
         {lookupMsg && isStaff ? (
           <p
+            role="status"
+            aria-live="polite"
             className={`rounded-xl px-3 py-2 text-xs ${
               lookupState === "ok"
                 ? "bg-brand-soft text-brand"
@@ -779,7 +835,16 @@ export function PatientForm({
         ) : null}
       </div>
 
-      <div className="space-y-1">
+      {!isStaff && !aadhaarVerified ? (
+        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-5 text-center">
+          <p className="font-semibold text-foreground">Step 2 · Patient details</p>
+          <p className="mt-1 text-sm text-muted">
+            Verify Aadhaar above to continue. Your details stay hidden until then.
+          </p>
+        </div>
+      ) : null}
+
+      <div className={!isStaff && !aadhaarVerified ? "hidden" : "space-y-1"}>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">
           {filledFromAadhaar
             ? "Review & edit details"
@@ -791,7 +856,11 @@ export function PatientForm({
 
       <fieldset
         disabled={!isStaff && !aadhaarVerified}
-        className="space-y-4 disabled:opacity-60"
+        className={
+          !isStaff && !aadhaarVerified
+            ? "hidden"
+            : "space-y-4 disabled:opacity-60"
+        }
       >
         <Input
           label="Full name *"
@@ -855,30 +924,36 @@ export function PatientForm({
         </div>
       </fieldset>
 
-      <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
+      <p
+        className={
+          "rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted " +
+          (!isStaff && !aadhaarVerified ? "hidden" : "")
+        }
+      >
         {isStaff
           ? "After save they stay registered. Print to join the queue, or a doctor can scan them directly (seen)."
           : "After verify + save you are logged in. Keep your reg number and password. Doctor can scan without a print."}
       </p>
       <ErrorBox message={error} />
-      <Button
-        type="submit"
-        disabled={
-          loading ||
-          lookupState === "loading" ||
-          verifyState === "loading" ||
-          (!isStaff && !aadhaarVerified)
-        }
-        loading={loading}
-      >
-        {loading
-          ? isStaff
-            ? "Saving…"
-            : "Registering & signing you in…"
-          : isStaff
-            ? "Register for selected day"
-            : "Verify done · Register & sign in"}
-      </Button>
+      {isStaff || aadhaarVerified ? (
+        <Button
+          type="submit"
+          disabled={
+            loading ||
+            lookupState === "loading" ||
+            verifyState === "loading"
+          }
+          loading={loading}
+        >
+          {loading
+            ? isStaff
+              ? "Saving…"
+              : "Registering & signing you in…"
+            : isStaff
+              ? "Register for selected day"
+              : "Verify done · Register & sign in"}
+        </Button>
+      ) : null}
     </form>
   );
 }

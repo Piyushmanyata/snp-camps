@@ -27,8 +27,9 @@ function phoneE164(raw: string): string | null {
   const d = raw.replace(/\D/g, "");
   if (d.length === 10) return `+91${d}`;
   if (d.length === 12 && d.startsWith("91")) return `+${d}`;
-  if (raw.startsWith("+") && d.length >= 10) return `+${d}`;
-  return d.length >= 10 ? `+${d}` : null;
+  if (d.length === 13 && d.startsWith("91")) return null;
+  if (raw.startsWith("+") && d.length >= 10 && d.length <= 15) return `+${d}`;
+  return null;
 }
 
 async function postWebhook(

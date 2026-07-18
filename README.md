@@ -29,17 +29,35 @@ In Supabase Dashboard → SQL Editor, run:
 
 `supabase/schema.sql`
 
-Then apply migrations (or use scripts):
+For the current production lineage, apply these SQL files in order:
 
-`supabase/fix-print-queue-doctor.sql`  
-`supabase/fix-doctor-scan-no-print.sql`  
-`supabase/fix-security-and-account-claims.sql`
-`node scripts/apply-print-queue-doctor.mjs`  
-`node scripts/apply-doctor-scan-no-print.mjs` (needs `SUPABASE_DB_PASSWORD`)
-`node scripts/apply-security-and-account-claims.mjs` (needs `SUPABASE_DB_PASSWORD`)
+1. `supabase/fix-print-queue-doctor.sql`
+2. `supabase/fix-camp-days.sql`
+3. `supabase/fix-change-day-queue-lock.sql`
+4. `supabase/fix-ambiguous-and-delete-camp.sql`
+5. `supabase/fix-doctor-scan-no-print.sql`
+6. `supabase/fix-security-and-account-claims.sql`
+7. `supabase/production-readiness.sql`
+8. `supabase/security-followup.sql`
+9. `supabase/verified-registration-cutover.sql` (safe pre-deploy setup)
+10. `supabase/advisor-cleanup.sql`
+11. `supabase/dashboard-stats.sql`
+12. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
 
-Apply the security/account-claims migration before deploying the current app code;
-the patient-account and OTP flows depend on its columns and RPCs.
+The security/account migration must precede the app because patient-account and
+OTP flows use its columns/RPCs. The final
+`supabase/verified-registration-revoke-anon.sql` is a deployment cutover:
+
+1. Deploy the frontend containing `/api/patient-register`.
+2. Smoke-test a verified self-registration.
+3. Apply the revoke file immediately.
+
+Do not apply that final revoke before the matching frontend is live; the old
+browser flow calls `register_patient` directly.
+
+`GET /api/health` is a cheap liveness probe. `GET /api/health?ready=1` also
+checks the required database shape, verified-registration RPC, service-role
+configuration, and `AADHAAR_VERIFY_URL`; it returns 503 until all are ready.
 
 ### 2. Auth settings
 
@@ -86,6 +104,23 @@ npx vercel
 ```
 
 Add the same env vars in Vercel. Set `NEXT_PUBLIC_SITE_URL` to the production URL (for QR links).
+
+## Verification and capacity testing
+
+```bash
+npm run verify
+```
+
+Run load tests only against a production-like staging deployment:
+
+```bash
+LOAD_BASE_URL=https://staging.example.com npm run load:smoke
+```
+
+The harness is read-only by default. More than 100 virtual users requires
+`ALLOW_HIGH_LOAD=true`; coordinate a 5,000-VU test with Supabase/Vercel first.
+Use realistic think time and seeded data, and require under 1% errors with p95
+below 1.5 seconds before treating the result as a capacity signal.
 
 ## Roles
 

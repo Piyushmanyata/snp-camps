@@ -38,9 +38,9 @@ export async function POST(req: Request) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
 
-  if (!fullName || !email || password.length < 6) {
+  if (!fullName || !email || password.length < 12) {
     return NextResponse.json(
-      { error: "Name, email, and password (min 6) required" },
+      { error: "Name, email, and password (min 12) required" },
       { status: 400 },
     );
   }
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
-      { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+      { error: "Account service is unavailable" },
       { status: 500 },
     );
   }
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName, staff_role: "doctor" },
+    user_metadata: { full_name: fullName },
   });
 
   if (createErr) {
@@ -79,7 +79,11 @@ export async function POST(req: Request) {
   });
 
   if (profileErr) {
-    return NextResponse.json({ error: profileErr.message }, { status: 400 });
+    await admin.auth.admin.deleteUser(created.user.id);
+    return NextResponse.json(
+      { error: "Doctor account could not be provisioned. Try again." },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({
@@ -123,7 +127,7 @@ export async function DELETE(req: Request) {
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
-      { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+      { error: "Account service is unavailable" },
       { status: 500 },
     );
   }

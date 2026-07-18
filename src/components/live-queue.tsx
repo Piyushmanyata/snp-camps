@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -23,50 +23,90 @@ export type LiveQueuePatient = {
 /** Waiting-only queue. Assign doctor marks seen and removes from list. */
 export function LiveQueue({
   initial,
+  initialTotal,
+  campId,
   doctors = [],
   mode = "volunteer",
-  pollMs = 12_000,
+  pollMs = 20_000,
 }: {
   initial: LiveQueuePatient[];
+  initialTotal?: number;
+  campId: string | null;
   doctors?: DoctorOption[];
   mode?: "volunteer" | "doctor" | "admin";
   pollMs?: number;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
-  const [prev, setPrev] = useState(initial);
+  const [total, setTotal] = useState(initialTotal ?? initial.length);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
-  const [pending, startTransition] = useTransition();
-
-  if (initial !== prev) {
-    setPrev(initial);
+  const [refreshing, setRefreshing] = useState(false);
+  const [serverSnapshot, setServerSnapshot] = useState({
+    initial,
+    initialTotal,
+  });
+  if (
+    initial !== serverSnapshot.initial ||
+    initialTotal !== serverSnapshot.initialTotal
+  ) {
+    setServerSnapshot({ initial, initialTotal });
     setRows(initial);
+    setTotal(initialTotal ?? initial.length);
   }
 
-  const refresh = useCallback(() => {
-    startTransition(() => {
-      router.refresh();
-    });
-  }, [router]);
+  const refreshQueue = useCallback(async () => {
+    if (!campId) return true;
+    setRefreshing(true);
+    const supabase = createClient();
+    const { data, count, error: refreshError } = await supabase
+      .from("patients")
+      .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
+      .eq("camp_id", campId)
+      .eq("queue_status", "waiting")
+      .order("queued_at", { ascending: true, nullsFirst: false })
+      .range(0, 99);
+    setRefreshing(false);
+
+    if (refreshError) {
+      setError("Queue refresh failed. Showing the last successful list.");
+      return false;
+    }
+    setRows((data || []) as LiveQueuePatient[]);
+    setTotal(count ?? data?.length ?? 0);
+    setError(null);
+    return true;
+  }, [campId]);
 
   useEffect(() => {
-    if (pollMs <= 0) return;
-    const tick = () => {
-      if (document.visibilityState === "visible") refresh();
+    if (pollMs <= 0 || !campId) return;
+    let cancelled = false;
+    let timer = 0;
+    let delay = pollMs + Math.floor(Math.random() * 3_000);
+
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        const ok =
+          document.visibilityState !== "visible" || (await refreshQueue());
+        delay = ok ? pollMs : Math.min(60_000, Math.max(pollMs, delay * 2));
+        schedule();
+      }, delay);
     };
-    const id = window.setInterval(tick, pollMs);
+    schedule();
+
     const onVis = () => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") void refreshQueue();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
-      window.clearInterval(id);
+      cancelled = true;
+      window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [pollMs, refresh]);
+  }, [campId, pollMs, refreshQueue]);
 
   async function assign(patientId: string, chosen: string | null) {
     setError(null);
@@ -101,28 +141,39 @@ export function LiveQueue({
           : "Already seen",
       );
       setRows((list) => list.filter((r) => r.id !== patientId));
-      refresh();
+      setTotal((value) => Math.max(0, value - 1));
+      void refreshQueue();
+      router.refresh();
       return;
     }
 
     setRows((list) => list.filter((r) => r.id !== patientId));
+    setTotal((value) => Math.max(0, value - 1));
     setPickId(null);
     setDoctorId("");
-    refresh();
+    void refreshQueue();
+    router.refresh();
   }
 
   return (
     <div>
       <ErrorBox message={error} />
-      {pending ? (
-        <p
-          className="mb-1 flex items-center gap-1.5 px-1 text-[11px] text-muted"
-          aria-live="polite"
+      <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
+        <span aria-live="polite">
+          {total > rows.length
+            ? "Showing first " + rows.length + " of " + total
+            : total + " waiting"}
+        </span>
+        <button
+          type="button"
+          onClick={() => void refreshQueue()}
+          disabled={refreshing || !campId}
+          className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >
-          <Spinner className="h-3 w-3" />
-          Updating queue…
-        </p>
-      ) : null}
+          {refreshing ? <Spinner className="h-3 w-3" /> : null}
+          Refresh
+        </button>
+      </div>
       <ul
         className="divide-y divide-border lg:max-h-[70vh] lg:overflow-y-auto"
         aria-label="Patients waiting in queue"
@@ -200,6 +251,7 @@ export function LiveQueue({
                       <button
                         key={d.id}
                         type="button"
+                        aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-10 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                           doctorId === d.id

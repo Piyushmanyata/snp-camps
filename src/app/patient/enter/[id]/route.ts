@@ -51,7 +51,9 @@ export async function GET(
     p_reg_no: null,
   });
   if (error) {
-    return NextResponse.redirect(new URL("/patient/login?error=server", origin));
+    const fallback =
+      profile?.role === "doctor" ? "/doctor" : "/volunteer";
+    return NextResponse.redirect(new URL(`${fallback}?error=server`, origin));
   }
   const row = Array.isArray(data) ? data[0] : data;
   const status = row?.queue_status ?? null;

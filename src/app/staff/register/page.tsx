@@ -83,7 +83,7 @@ export default function StaffRegisterPage() {
             type="password"
             autoComplete="new-password"
             required
-            minLength={6}
+              minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             hint="At least 6 characters"

@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         ? Number(raw.age)
         : ageFromDob(raw.dob || raw.date_of_birth);
 
-    const profile: AadhaarProfile = {
+    const aadhaarProfile: AadhaarProfile = {
       full_name: (raw.full_name || raw.name || "").trim() || null,
       gender: normalizeGender(raw.gender),
       age:
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
       email: (raw.email || "").trim() || null,
     };
 
-    if (!profile.full_name && !profile.address && !profile.phone) {
+    if (!aadhaarProfile.full_name && !aadhaarProfile.address && !aadhaarProfile.phone) {
       return NextResponse.json(
         {
           available: true,
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       available: true,
-      profile,
+      profile: aadhaarProfile,
       // Client may store last 4 only after success
       last4: aadhaar.slice(-4),
     });

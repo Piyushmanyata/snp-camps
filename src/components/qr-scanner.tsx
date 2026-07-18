@@ -36,10 +36,12 @@ type AssignRow = {
 export function QrScanner({
   mode = "volunteer",
   doctors = [],
+  disabledReason,
 }: {
   /** doctor = auto self-assign on waiting; volunteer/admin = pick doctor */
   mode?: "volunteer" | "doctor" | "admin";
   doctors?: DoctorOption[];
+  disabledReason?: string;
 }) {
   const router = useRouter();
   const regionId = "qr-reader";
@@ -59,14 +61,20 @@ export function QrScanner({
   } | null>(null);
 
   const stopScanner = useCallback(async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
     try {
-      await scannerRef.current?.stop();
-      scannerRef.current?.clear();
+      await scanner?.stop();
     } catch {
       /* ignore */
+    } finally {
+      try {
+        scanner?.clear();
+      } catch {
+        /* ignore */
+      }
+      setActive(false);
     }
-    scannerRef.current = null;
-    setActive(false);
   }, []);
 
   useEffect(() => {
@@ -226,6 +234,7 @@ export function QrScanner({
         () => undefined,
       );
     } catch (e) {
+      await stopScanner();
       setError(
         e instanceof Error
           ? e.message
@@ -273,6 +282,14 @@ export function QrScanner({
 
   return (
     <div className="space-y-3">
+      {disabledReason ? (
+        <div
+          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          {disabledReason}
+        </div>
+      ) : null}
       <p className="prose-help text-sm text-muted">
         {mode === "doctor" ? (
           <>
@@ -382,6 +399,7 @@ export function QrScanner({
                       <button
                         key={d.id}
                         type="button"
+                        aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
                           doctorId === d.id
@@ -467,6 +485,7 @@ export function QrScanner({
                       <button
                         key={d.id}
                         type="button"
+                        aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
                           doctorId === d.id
@@ -503,7 +522,11 @@ export function QrScanner({
       ) : null}
 
       {!active ? (
-        <Button type="button" onClick={() => void start()}>
+        <Button
+          type="button"
+          disabled={Boolean(disabledReason)}
+          onClick={() => void start()}
+        >
           Open camera scanner
         </Button>
       ) : (
@@ -527,10 +550,15 @@ export function QrScanner({
           label="Reg no / QR link"
           inputMode="numeric"
           placeholder="e.g. 1001"
+          disabled={Boolean(disabledReason)}
           value={manual}
           onChange={(e) => setManual(e.target.value)}
         />
-        <Button type="submit" variant="secondary" disabled={looking}>
+        <Button
+          type="submit"
+          variant="secondary"
+          disabled={looking || Boolean(disabledReason)}
+        >
           {looking ? "Looking up…" : "Look up patient"}
         </Button>
       </form>

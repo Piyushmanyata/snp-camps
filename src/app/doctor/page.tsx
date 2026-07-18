@@ -21,7 +21,7 @@ export default async function DoctorPage() {
   }
 
   const supabase = await createClient();
-  const { data: camp } = await supabase
+  const { data: camp, error: campError } = await supabase
     .from("camps")
     .select("id, name, venue")
     .eq("is_active", true)
@@ -31,14 +31,19 @@ export default async function DoctorPage() {
   const doctorId = isDoc ? userId : null;
   const scanMode = isDoc ? "doctor" : "admin";
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
 
   const [waitingRes, seenTodayRes, mySeenRes, doctorsRes] = camp
     ? await Promise.all([
         supabase
           .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at")
+          .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
           .eq("camp_id", camp.id)
           .eq("queue_status", "waiting")
           .order("queued_at", { ascending: true, nullsFirst: false })
@@ -79,7 +84,7 @@ export default async function DoctorPage() {
           : Promise.resolve({ data: [] as DoctorOption[] }),
       ])
     : [
-        { data: [] as LiveQueuePatient[] },
+        { data: [] as LiveQueuePatient[], count: 0 },
         { count: 0 },
         {
           data: [] as {
@@ -94,9 +99,18 @@ export default async function DoctorPage() {
       ];
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
+  const waitingCount = waitingRes.count ?? waiting.length;
   const seenToday = seenTodayRes.count ?? 0;
   const mySeen = mySeenRes.data || [];
   const doctors = (doctorsRes.data || []) as DoctorOption[];
+  if (
+    Boolean(campError) ||
+    [waitingRes, seenTodayRes, mySeenRes, doctorsRes].some(
+      (result) => "error" in result && Boolean(result.error),
+    )
+  ) {
+    throw new Error("Doctor desk data could not be loaded");
+  }
 
   return (
     <Shell
@@ -130,8 +144,12 @@ export default async function DoctorPage() {
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
-              <Stat label="In queue" value={waiting.length} tone="wait" />
-              <Stat label="You saw today" value={seenToday} tone="ok" />
+              <Stat label="In queue" value={waitingCount} tone="wait" />
+              <Stat
+                label={isDoc ? "You saw today" : "Doctor view"}
+                value={isDoc ? seenToday : doctors.length}
+                tone="ok"
+              />
             </div>
           </div>
         </Card>
@@ -148,7 +166,13 @@ export default async function DoctorPage() {
               >
                 Scan patient
               </SectionTitle>
-              <QrScanner mode={scanMode} doctors={doctors} />
+              <QrScanner
+                mode={scanMode}
+                doctors={doctors}
+                disabledReason={
+                  camp ? undefined : "No active camp. Ask an admin to activate a camp first."
+                }
+              />
             </Card>
           </div>
 
@@ -160,6 +184,8 @@ export default async function DoctorPage() {
             </div>
             <LiveQueue
               initial={waiting}
+              initialTotal={waitingCount}
+              campId={camp?.id ?? null}
               mode={isDoc ? "doctor" : "admin"}
               doctors={doctors}
             />
@@ -167,8 +193,8 @@ export default async function DoctorPage() {
         </div>
 
         <Card id="seen">
-          <SectionTitle hint={`${mySeen.length} recent`}>
-            Patients you saw
+          <SectionTitle hint={isDoc ? `${mySeen.length} recent` : "Doctor assignment mode"}>
+            {isDoc ? "Patients you saw" : "Doctor view"}
           </SectionTitle>
           {mySeen.length ? (
             <ul className="divide-y divide-border">
@@ -205,8 +231,9 @@ export default async function DoctorPage() {
             </ul>
           ) : (
             <EmptyState>
-              No patients assigned to you yet. Scan a registered patient when
-              they arrive — no print required.
+              {isDoc
+                ? "No patients assigned to you yet. Scan a registered patient when they arrive — no print required."
+                : "Choose a doctor while scanning. Patient history appears in each doctor's own view."}
             </EmptyState>
           )}
         </Card>
