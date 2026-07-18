@@ -15,7 +15,10 @@ if (!pwd) {
 
 const client = new Client({
   connectionString: `postgresql://postgres:${encodeURIComponent(pwd)}@db.${ref}.supabase.co:5432/postgres`,
-  ssl: { rejectUnauthorized: false },
+ssl: {
+      rejectUnauthorized: true,
+      ...(process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : {}),
+    },
   connectionTimeoutMillis: 15000,
 });
 

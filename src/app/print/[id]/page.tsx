@@ -38,7 +38,7 @@ export default async function PrintPage({
 
   const supabase = await createClient();
 
-  const { data: patient } = await supabase
+  const { data: patient, error: patientErr } = await supabase
     .from("patients")
     .select(
       "id, reg_no, full_name, gender, age, address, phone, email, queue_status, camps(name, venue, camp_date)",
@@ -46,13 +46,15 @@ export default async function PrintPage({
     .eq("id", id)
     .maybeSingle();
 
-  if (!patient) {
+  if (patientErr || !patient) {
     return (
       <main className="mx-auto max-w-lg px-4 py-10">
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
           <p className="text-lg font-semibold">Patient not found</p>
           <p className="mt-1 text-sm text-muted">
-            Check the QR or registration number and try again.
+            {patientErr
+              ? "The patient record could not be loaded. Try again or ask an admin."
+              : "Check the QR or registration number and try again."}
           </p>
         </div>
       </main>
@@ -61,7 +63,21 @@ export default async function PrintPage({
 
   // Print path: join FCFS queue only — never mark seen. Idempotent if already waiting.
   if (patient.queue_status === "registered" || patient.queue_status === "waiting") {
-    await supabase.rpc("mark_patient_printed", { p_id: id });
+    const { error: queueErr } = await supabase.rpc("mark_patient_printed", {
+      p_id: id,
+    });
+    if (queueErr) {
+      return (
+        <main className="mx-auto max-w-lg px-4 py-10">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
+            <p className="text-lg font-semibold text-red-950">Could not join queue</p>
+            <p className="mt-1 text-sm text-red-900">
+              {queueErr.message || "Try again or ask an admin."}
+            </p>
+          </div>
+        </main>
+      );
+    }
   }
 
   const h = await headers();

@@ -41,6 +41,7 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
+  claim_token?: string | null;
   /** Shown once after self-reg (and on logout re-issue) */
   password?: string;
   loggedIn?: boolean;
@@ -84,6 +85,8 @@ export function PatientForm({
   const [filledFromAadhaar, setFilledFromAadhaar] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLookedUp = useRef<string>("");
+  const lookupRequest = useRef(0);
+  const lookupAbort = useRef<AbortController | null>(null);
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
     if (profile.full_name) setFullName(profile.full_name);
@@ -105,6 +108,10 @@ export function PatientForm({
       }
       if (lastLookedUp.current === d) return;
       lastLookedUp.current = d;
+      const requestId = ++lookupRequest.current;
+      lookupAbort.current?.abort();
+      const controller = new AbortController();
+      lookupAbort.current = controller;
 
       setLookupState("loading");
       setLookupMsg("Fetching details from Aadhaar…");
@@ -115,12 +122,14 @@ export function PatientForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ aadhaar: d }),
+          signal: controller.signal,
         });
         const json = (await res.json()) as {
           available?: boolean;
           error?: string;
           profile?: AadhaarProfile;
         };
+        if (requestId !== lookupRequest.current) return;
 
         if (!res.ok) {
           setLookupState(json.available === false ? "skipped" : "fail");
@@ -143,7 +152,9 @@ export function PatientForm({
           setLookupMsg("No details returned. Fill the form manually.");
           setFilledFromAadhaar(false);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (requestId !== lookupRequest.current) return;
         setLookupState("fail");
         setLookupMsg(
           "Aadhaar lookup failed. Fill name, age and address manually below.",
@@ -174,24 +185,20 @@ export function PatientForm({
       });
       const json = (await res.json()) as {
         verified?: boolean;
+        validated?: boolean;
         error?: string;
         message?: string;
         mode?: string;
       };
-      if (!res.ok || !json.verified) {
+      if (!res.ok || json.verified !== true) {
         setVerifyState("fail");
         setVerifyMsg(json.error || "Aadhaar verification failed.");
         return;
       }
       setAadhaarVerified(true);
       setVerifyState("ok");
-      setVerifyMsg(
-        json.message ||
-          (json.mode === "checksum"
-            ? "Aadhaar number validated. Full eKYC provider can be plugged in later."
-            : "Aadhaar verified."),
-      );
-      if (lookupEnabled) void runAadhaarLookup(d);
+      setVerifyMsg(json.message || "Aadhaar verified.");
+      if (lookupEnabled && isStaff) void runAadhaarLookup(d);
     } catch {
       setVerifyState("fail");
       setVerifyMsg("Verification request failed. Try again.");
@@ -206,6 +213,8 @@ export function PatientForm({
     setVerifyState("idle");
     setVerifyMsg(null);
     lastLookedUp.current = "";
+    lookupRequest.current += 1;
+    lookupAbort.current?.abort();
 
     const d = digitsOnly(formatted);
     if (lookupTimer.current) clearTimeout(lookupTimer.current);
@@ -251,6 +260,8 @@ export function PatientForm({
   useEffect(() => {
     return () => {
       if (lookupTimer.current) clearTimeout(lookupTimer.current);
+      lookupRequest.current += 1;
+      lookupAbort.current?.abort();
     };
   }, []);
 
@@ -316,12 +327,18 @@ export function PatientForm({
 
     const phoneDigits = phone.replace(/\D/g, "");
     const phone10 = phoneDigits.slice(-10);
-    if (phone10.length !== 10) {
-      setError(
-        isStaff
-          ? "Phone is required (10-digit mobile) to prevent duplicate registration."
-          : "Phone is required — we send your reg no and password by SMS/WhatsApp.",
-      );
+    if (isStaff && phone10.length !== 10) {
+      setError("Phone is required (10-digit mobile) to prevent duplicate registration.");
+      setLoading(false);
+      return;
+    }
+
+    const ageValue = age === "" ? null : Number(age);
+    if (
+      ageValue !== null &&
+      (!Number.isInteger(ageValue) || ageValue < 0 || ageValue >= 150)
+    ) {
+      setError("Age must be a whole number from 0 to 149.");
       setLoading(false);
       return;
     }
@@ -331,9 +348,9 @@ export function PatientForm({
       p_camp_id: campId,
       p_full_name: fullName.trim(),
       p_gender: gender || null,
-      p_age: age ? Number(age) : null,
+      p_age: ageValue,
       p_address: address.trim() || null,
-      p_phone: phone10,
+      p_phone: phone10 || null,
       p_email: email.trim() || null,
       p_aadhaar_last4: last4 || null,
       p_user_id: userId,
@@ -374,7 +391,7 @@ export function PatientForm({
         body: JSON.stringify({
           patientId: base.id,
           regNo: base.reg_no,
-          fullName: base.full_name,
+          claimToken: base.claim_token,
           returnCredentials: true,
           notify: true,
         }),
@@ -456,6 +473,8 @@ export function PatientForm({
     setLookupMsg(null);
     setFilledFromAadhaar(false);
     lastLookedUp.current = "";
+    lookupRequest.current += 1;
+    lookupAbort.current?.abort();
   }
 
   if (created) {
@@ -812,17 +831,17 @@ export function PatientForm({
         />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
-            label="Phone *"
+            label={isStaff ? "Phone *" : "Phone (optional)"}
             inputMode="tel"
             autoComplete="tel"
-            required
+            required={isStaff}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="10-digit mobile"
             hint={
               isStaff
                 ? "One registration per phone"
-                : "Reg no + password sent here (SMS/WhatsApp when configured)"
+                : "Optional · Reg no + password sent here when configured"
             }
           />
           <Input

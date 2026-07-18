@@ -70,9 +70,15 @@ begin
     raise exception 'staff only';
   end if;
 
-  select * into r from public.patients where patients.id = p_id;
+  select * into r from public.patients where patients.id = p_id for update;
   if r.id is null then
     raise exception 'Patient not found';
+  end if;
+  if not exists (
+    select 1 from public.camps c
+    where c.id = r.camp_id and c.is_active
+  ) then
+    raise exception 'Patient belongs to an inactive camp';
   end if;
 
   -- Already printed or further along: keep status; ensure printed_at set
@@ -131,9 +137,9 @@ begin
   end if;
 
   if p_patient_id is not null then
-    select * into r from public.patients where patients.id = p_patient_id;
+    select * into r from public.patients where patients.id = p_patient_id for update;
   elsif p_reg_no is not null then
-    select * into r from public.patients where patients.reg_no = p_reg_no;
+    select * into r from public.patients where patients.reg_no = p_reg_no for update;
   else
     raise exception 'Provide patient id or reg no';
   end if;
@@ -198,6 +204,7 @@ declare
   v_doctor_id uuid;
   v_doctor_name text;
   v_caller_role public.user_role;
+  v_doctor_exists boolean;
 begin
   if not public.is_staff() then
     raise exception 'staff only';
@@ -208,9 +215,9 @@ begin
   where p.id = auth.uid();
 
   if p_patient_id is not null then
-    select * into r from public.patients where patients.id = p_patient_id;
+    select * into r from public.patients where patients.id = p_patient_id for update;
   elsif p_reg_no is not null then
-    select * into r from public.patients where patients.reg_no = p_reg_no;
+    select * into r from public.patients where patients.reg_no = p_reg_no for update;
   else
     raise exception 'Provide patient id or reg no';
   end if;
@@ -271,22 +278,18 @@ begin
     return;
   end if;
 
-  select pr.full_name into v_doctor_name
-  from public.profiles pr
-  where pr.id = v_doctor_id and pr.role = 'doctor';
-
-  if v_doctor_name is null and not exists (
+  select exists (
     select 1 from public.profiles pr
-    where pr.id = v_doctor_id and pr.role in ('doctor', 'admin')
-  ) then
+    where pr.id = v_doctor_id and pr.role = 'doctor'
+  ) into v_doctor_exists;
+
+  if not v_doctor_exists then
     raise exception 'Invalid doctor';
   end if;
 
-  if v_doctor_name is null then
-    select pr.full_name into v_doctor_name
-    from public.profiles pr
-    where pr.id = v_doctor_id;
-  end if;
+  select pr.full_name into v_doctor_name
+  from public.profiles pr
+  where pr.id = v_doctor_id;
 
   update public.patients
   set queue_status = 'seen',
@@ -367,6 +370,13 @@ begin
 
   if r.id is null then
     raise exception 'Patient not found';
+  end if;
+
+  if not exists (
+    select 1 from public.camps c
+    where c.id = r.camp_id and c.is_active
+  ) then
+    raise exception 'Patient belongs to an inactive camp';
   end if;
 
   if r.seen_by is not null then

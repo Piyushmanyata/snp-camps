@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody } from "@/lib/auth";
@@ -34,7 +35,16 @@ export async function POST(req: Request) {
 
   const adminCode = process.env.ADMIN_INVITE_CODE;
   const volunteerCode = process.env.VOLUNTEER_INVITE_CODE;
-  if (!adminCode && !volunteerCode) {
+  const usable = (value: string | undefined, placeholder: string) =>
+    Boolean(value && value.length >= 16 && value !== placeholder);
+  const matches = (provided: string, configured: string | undefined) => {
+    if (!configured || provided.length !== configured.length) return false;
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+  };
+  if (
+    !usable(adminCode, "change-me-admin") &&
+    !usable(volunteerCode, "change-me-volunteer")
+  ) {
     return NextResponse.json(
       { error: "Invite codes not configured on server" },
       { status: 500 },
@@ -42,8 +52,14 @@ export async function POST(req: Request) {
   }
 
   let role: "admin" | "volunteer" | null = null;
-  if (adminCode && invite === adminCode) role = "admin";
-  else if (volunteerCode && invite === volunteerCode) role = "volunteer";
+  if (usable(adminCode, "change-me-admin") && matches(invite, adminCode)) {
+    role = "admin";
+  } else if (
+    usable(volunteerCode, "change-me-volunteer") &&
+    matches(invite, volunteerCode)
+  ) {
+    role = "volunteer";
+  }
   else {
     return NextResponse.json({ error: "Invalid invite code" }, { status: 403 });
   }
@@ -53,6 +69,14 @@ export async function POST(req: Request) {
   if (!url || !anon) {
     return NextResponse.json(
       { error: "Server missing Supabase config" },
+      { status: 500 },
+    );
+  }
+
+  const admin = createServiceRoleClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Staff provisioning is not configured on this server" },
       { status: 500 },
     );
   }
@@ -72,19 +96,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No user created" }, { status: 400 });
   }
 
-  const admin = createServiceRoleClient();
-  if (admin) {
-    await admin
-      .from("profiles")
-      .update({ role, full_name: fullName, email })
-      .eq("id", data.user.id);
-  } else if (data.session) {
-    const authed = createClient(url, anon);
-    await authed.auth.setSession(data.session);
-    await authed.rpc("claim_staff_role", {
-      p_role: role,
-      p_name: fullName,
-    });
+  const { error: profileErr } = await admin
+    .from("profiles")
+    .update({ role, full_name: fullName, email })
+    .eq("id", data.user.id);
+  if (profileErr) {
+    return NextResponse.json(
+      { error: "Account created but staff role could not be provisioned" },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true, role });

@@ -38,7 +38,12 @@ async function connect() {
   for (const c of configs) {
     const client = new Client({
       connectionString: c.connectionString,
-      ssl: { rejectUnauthorized: false },
+      ssl: {
+        rejectUnauthorized: true,
+        ...(process.env.SUPABASE_DB_CA
+          ? { ca: process.env.SUPABASE_DB_CA }
+          : {}),
+      },
       connectionTimeoutMillis: 15000,
     });
     try {
@@ -108,7 +113,13 @@ async function main() {
   if (secret) {
     const url = `https://${ref}.supabase.co`;
     const email = process.env.ADMIN_EMAIL || "admin@snp-camps.local";
-    const password = process.env.ADMIN_PASSWORD || "SnpAdmin2026!";
+    const password = process.env.ADMIN_PASSWORD;
+    if (!password || password.length < 12) {
+      console.error(
+        "ADMIN_PASSWORD is required and must be at least 12 characters when SUPABASE_SECRET_KEY is set.",
+      );
+      process.exit(3);
+    }
 
     // list users
     const listRes = await fetch(`${url}/auth/v1/admin/users?page=1&per_page=50`, {
@@ -168,7 +179,7 @@ async function main() {
     console.log("Admin profile:", prof.rows[0]);
     await client2.end();
     console.log("LOGIN email:", email);
-    console.log("LOGIN password:", password);
+    console.log("Admin credentials were configured; password output is intentionally suppressed.");
   }
 }
 

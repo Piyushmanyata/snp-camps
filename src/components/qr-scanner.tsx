@@ -176,10 +176,13 @@ export function QrScanner({
       return;
     }
     autoScanDone.current = true;
-    void resolvePatient({ id }).then(() => {
-      const path = window.location.pathname;
-      router.replace(path, { scroll: false });
-    });
+    const timer = window.setTimeout(() => {
+      void resolvePatient({ id }).then(() => {
+        const path = window.location.pathname;
+        router.replace(path, { scroll: false });
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [resolvePatient, router]);
 
   async function start() {

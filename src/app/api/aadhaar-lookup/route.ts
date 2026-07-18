@@ -7,7 +7,7 @@ import {
   normalizeGender,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
-import { readJsonBody } from "@/lib/auth";
+import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
 
 type Body = { aadhaar?: string };
 
@@ -30,6 +30,13 @@ type ProviderPayload = {
  * Never persists the full Aadhaar number.
  */
 export async function POST(req: Request) {
+  const { profile } = await getSessionProfile();
+  if (!isStaff(profile?.role)) {
+    return NextResponse.json(
+      { error: "Aadhaar lookup is available to camp staff only." },
+      { status: 403 },
+    );
+  }
   if (!isAadhaarLookupEnabledServer()) {
     return NextResponse.json(
       {
@@ -70,12 +77,11 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      await res.text().catch(() => "");
       return NextResponse.json(
         {
           available: true,
           error:
-            text.slice(0, 200) ||
             "Aadhaar lookup failed. Fill the form manually.",
         },
         { status: 502 },
@@ -92,7 +98,7 @@ export async function POST(req: Request) {
       full_name: (raw.full_name || raw.name || "").trim() || null,
       gender: normalizeGender(raw.gender),
       age:
-        ageRaw != null && Number.isFinite(ageRaw) && ageRaw >= 0
+        ageRaw != null && Number.isFinite(ageRaw) && ageRaw >= 0 && ageRaw < 150
           ? Math.floor(ageRaw)
           : null,
       address: (raw.address || "").trim() || null,

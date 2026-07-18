@@ -4,7 +4,10 @@ import pg from "pg";
 const pwd = process.env.SUPABASE_DB_PASSWORD;
 const client = new pg.Client({
   connectionString: `postgresql://postgres:${encodeURIComponent(pwd)}@db.ruklmrzpyutvefancsgo.supabase.co:5432/postgres`,
-  ssl: { rejectUnauthorized: false },
+ssl: {
+      rejectUnauthorized: true,
+      ...(process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : {}),
+    },
 });
 await client.connect();
 await client.query(

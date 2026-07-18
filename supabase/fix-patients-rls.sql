@@ -3,52 +3,33 @@
 
 grant usage on schema public to anon, authenticated;
 
-grant select, insert on public.patients to anon;
-grant select, insert, update on public.patients to authenticated;
-grant usage on sequence public.patient_reg_no_seq to anon, authenticated;
+grant select, delete on public.patients to authenticated;
+revoke insert, update on public.patients from anon, authenticated;
 grant select on public.camps to anon, authenticated;
 
 -- ensure staff helpers callable from policies
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
 
--- Drop and recreate register insert policy (idempotent)
+-- Registration is RPC-only; direct inserts bypass duplicate and queue controls.
 drop policy if exists "register on active camp" on public.patients;
-create policy "register on active camp" on public.patients
-  for insert
-  to anon, authenticated
-  with check (
-    exists (
-      select 1 from public.camps c
-      where c.id = camp_id and c.is_active = true
-    )
-    and (
-      public.is_staff()
-      or user_id is null
-      or user_id = auth.uid()
-    )
-  );
+drop policy if exists "staff insert patients" on public.patients;
+drop policy if exists "staff update patients" on public.patients;
+drop policy if exists "patient update own link" on public.patients;
 
--- Allow SELECT after INSERT (RETURNING) for the registrant
+drop policy if exists "update own profile" on public.profiles;
+drop policy if exists "update own patient profile" on public.profiles;
+create policy "update own patient profile" on public.profiles
+  for update
+  using (id = auth.uid() or public.is_admin())
+  with check (public.is_admin() or (id = auth.uid() and role = 'patient'));
+
+-- Allow the authenticated registrant to read their own row after insert.
 drop policy if exists "patient read own" on public.patients;
 create policy "patient read own" on public.patients
   for select
   to authenticated
   using (user_id = auth.uid());
-
--- Walk-up / desk: allow reading rows with no linked user on the active camp
--- (needed for PostgREST insert().select(); UUID still required to deep-link)
-drop policy if exists "read unlinked on active camp" on public.patients;
-create policy "read unlinked on active camp" on public.patients
-  for select
-  to anon, authenticated
-  using (
-    user_id is null
-    and exists (
-      select 1 from public.camps c
-      where c.id = camp_id and c.is_active = true
-    )
-  );
 
 -- Bulletproof registration path (bypasses RLS via security definer)
 create or replace function public.register_patient(

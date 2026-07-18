@@ -10,7 +10,8 @@ type Body = { aadhaar?: string };
 /**
  * Aadhaar verification stub.
  * When AADHAAR_VERIFY_URL is set, POSTs to the provider.
- * Until then: Verhoeff checksum only (not UIDAI OTP/eKYC).
+ * Without a configured provider, verification fails closed; a checksum alone
+ * is never treated as identity verification.
  * Never stores full Aadhaar.
  */
 export async function POST(req: Request) {
@@ -31,15 +32,18 @@ export async function POST(req: Request) {
   const secret = process.env.AADHAAR_LOOKUP_SECRET?.trim()
     || process.env.AADHAAR_VERIFY_SECRET?.trim();
 
-  // Provider not configured yet — checksum-only gate for self-reg
+  // Never treat a checksum as identity verification; self-registration must
+  // fail closed until an OTP/eKYC provider is configured.
   if (!providerUrl) {
-    return NextResponse.json({
-      verified: true,
-      mode: "checksum",
-      last4: aadhaar.slice(-4),
-      message:
-        "Aadhaar number validated (checksum). Full OTP/eKYC verification will be enabled when the provider is configured.",
-    });
+    return NextResponse.json(
+      {
+        verified: false,
+        mode: "unconfigured",
+        error:
+          "Aadhaar verification is not configured. Ask the desk to register you.",
+      },
+      { status: 503 },
+    );
   }
 
   try {
@@ -87,6 +91,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       verified: true,
+      validated: true,
       mode: "provider",
       last4: aadhaar.slice(-4),
       message: "Aadhaar verified.",

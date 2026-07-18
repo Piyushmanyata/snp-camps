@@ -29,8 +29,7 @@ function normalizePhone(raw: string) {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `+91${digits}`;
   if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
-  if (raw.startsWith("+")) return raw;
-  return `+${digits}`;
+  return "";
 }
 
 type Mode = "password" | "otp";
@@ -51,7 +50,9 @@ export default function PatientLoginPage() {
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("error");
-    if (code && LOGIN_ERRORS[code]) setError(LOGIN_ERRORS[code]);
+    if (!code || !LOGIN_ERRORS[code]) return;
+    const timer = window.setTimeout(() => setError(LOGIN_ERRORS[code]), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function loginWithPassword(e: React.FormEvent) {
@@ -60,7 +61,7 @@ export default function PatientLoginPage() {
     setError(null);
 
     const n = Number(String(regNo).replace(/\D/g, ""));
-    if (!Number.isFinite(n) || n <= 0) {
+    if (!Number.isInteger(n) || n <= 0) {
       setError("Enter your registration number.");
       setLoading(false);
       return;
@@ -96,9 +97,15 @@ export default function PatientLoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    const phoneE164 = normalizePhone(phone);
+    if (!phoneE164) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      setLoading(false);
+      return;
+    }
     const supabase = createClient();
     const { error: err } = await supabase.auth.signInWithOtp({
-      phone: normalizePhone(phone),
+      phone: phoneE164,
     });
     if (err) {
       setError(
@@ -118,6 +125,11 @@ export default function PatientLoginPage() {
     setError(null);
     const supabase = createClient();
     const phoneE164 = normalizePhone(phone);
+    if (!phoneE164 || !/^\+91\d{10}$/.test(phoneE164)) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      setLoading(false);
+      return;
+    }
     const { error: err } = await supabase.auth.verifyOtp({
       phone: phoneE164,
       token: otp,
@@ -132,22 +144,31 @@ export default function PatientLoginPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!user) {
+      setError("OTP verified but no user session was created. Try again.");
+      setLoading(false);
+      return;
+    }
+
     if (user) {
-      await supabase
+      const { error: profileErr } = await supabase
         .from("profiles")
         .update({ phone: phoneE164, role: "patient" })
         .eq("id", user.id);
-      await supabase
-        .from("patients")
-        .update({ user_id: user.id })
-        .is("user_id", null)
-        .eq("phone", phoneE164);
-      const ten = phoneE164.replace(/\D/g, "").slice(-10);
-      await supabase
-        .from("patients")
-        .update({ user_id: user.id })
-        .is("user_id", null)
-        .eq("phone", ten);
+      const { data: linkedId, error: linkErr } = await supabase.rpc(
+        "link_patient_phone",
+        { p_phone: phoneE164 },
+      );
+      if (profileErr || linkErr || !linkedId) {
+        await supabase.auth.signOut();
+        setError(
+          linkErr?.message ||
+            profileErr?.message ||
+            "No unlinked registration was found for this phone number.",
+        );
+        setLoading(false);
+        return;
+      }
     }
 
     router.replace("/patient");

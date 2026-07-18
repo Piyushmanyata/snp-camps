@@ -24,7 +24,15 @@ export default async function AdminPage() {
 
   const active = camps?.find((c) => c.is_active);
 
-  const [dayStatsRes, patientsRes, volunteersRes, doctorsRes] =
+  const [
+    dayStatsRes,
+    patientsRes,
+    registeredCountRes,
+    waitingCountRes,
+    seenCountRes,
+    volunteersRes,
+    doctorsRes,
+  ] =
     await Promise.all([
       active
         ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
@@ -33,9 +41,31 @@ export default async function AdminPage() {
         .from("patients")
         .select(
           "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, camps(name), camp_days(day_date)",
+          { count: "exact" },
         )
         .order("created_at", { ascending: false })
         .limit(300),
+      active
+        ? supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("camp_id", active.id)
+            .eq("queue_status", "registered")
+        : Promise.resolve({ count: 0 }),
+      active
+        ? supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("camp_id", active.id)
+            .eq("queue_status", "waiting")
+        : Promise.resolve({ count: 0 }),
+      active
+        ? supabase
+            .from("patients")
+            .select("id", { count: "exact", head: true })
+            .eq("camp_id", active.id)
+            .eq("queue_status", "seen")
+        : Promise.resolve({ count: 0 }),
       supabase
         .from("profiles")
         .select("id, full_name, email, phone, role, created_at")
@@ -47,6 +77,21 @@ export default async function AdminPage() {
         .eq("role", "doctor")
         .order("created_at", { ascending: false }),
     ]);
+
+  const dataQueries = [
+    patientsRes,
+    registeredCountRes,
+    waitingCountRes,
+    seenCountRes,
+    volunteersRes,
+    doctorsRes,
+  ];
+  if (
+    dataQueries.some((result) => "error" in result && Boolean(result.error)) ||
+    (active && "error" in dayStatsRes && Boolean(dayStatsRes.error))
+  ) {
+    throw new Error("Admin data could not be loaded");
+  }
 
   const days = (dayStatsRes.data as CampDayStats[]) || [];
 
@@ -77,17 +122,9 @@ export default async function AdminPage() {
     };
   });
 
-  const activePatients = active
-    ? patients.filter((p) => p.camp_id === active.id)
-    : patients;
-  let notQueued = 0;
-  let waiting = 0;
-  let seen = 0;
-  for (const p of activePatients) {
-    if (p.queue_status === "waiting") waiting += 1;
-    else if (p.queue_status === "seen") seen += 1;
-    else notQueued += 1;
-  }
+  const notQueued = registeredCountRes.count ?? 0;
+  const waiting = waitingCountRes.count ?? 0;
+  const seen = seenCountRes.count ?? 0;
 
   const volunteers = volunteersRes.data || [];
   const doctors = doctorsRes.data || [];
@@ -126,8 +163,8 @@ export default async function AdminPage() {
             <p className="mt-2 text-[0.8125rem] text-muted">
               {volunteers.length} volunteer
               {volunteers.length === 1 ? "" : "s"} · {doctors.length} doctor
-              {doctors.length === 1 ? "" : "s"} · {patients.length} patient
-              {patients.length === 1 ? "" : "s"} loaded
+              {doctors.length === 1 ? "" : "s"} · {patientsRes.count ?? patients.length} patient
+              {(patientsRes.count ?? patients.length) === 1 ? "" : "s"} total
             </p>
             <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
               <NavLink href="/register" variant="primary">

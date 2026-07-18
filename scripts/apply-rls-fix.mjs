@@ -33,7 +33,10 @@ async function connect() {
   for (const c of configs) {
     const client = new Client({
       connectionString: c.connectionString,
-      ssl: { rejectUnauthorized: false },
+ssl: {
+      rejectUnauthorized: true,
+      ...(process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : {}),
+    },
       connectionTimeoutMillis: 15000,
     });
     try {

@@ -13,8 +13,8 @@ import {
 type Body = {
   patientId?: string;
   regNo?: number | string;
+  claimToken?: string;
   password?: string;
-  fullName?: string;
   /** Return plaintext password once (self-reg first link only). */
   returnCredentials?: boolean;
   /** Send reg+password via SMS/WhatsApp stubs when phone on file. */
@@ -34,16 +34,17 @@ export async function POST(req: Request) {
 
   const patientId = String(body.patientId || "").trim();
   const regNo = Number(body.regNo);
+  const claimToken = String(body.claimToken || "").trim();
   const passwordRaw = body.password != null ? String(body.password) : "";
-  const fullName = String(body.fullName || "").trim();
   const returnCredentials = body.returnCredentials === true;
   const doNotify = body.notify === true;
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    req.headers.get("origin") ||
-    undefined;
-
-  if (!patientId || !Number.isFinite(regNo) || regNo <= 0) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      patientId,
+    ) ||
+    !Number.isInteger(regNo) ||
+    regNo <= 0
+  ) {
     return NextResponse.json(
       { error: "patientId and regNo required" },
       { status: 400 },
@@ -67,7 +68,9 @@ export async function POST(req: Request) {
 
   const { data: patient, error: pErr } = await admin
     .from("patients")
-    .select("id, reg_no, full_name, user_id, phone")
+    .select(
+      "id, reg_no, full_name, user_id, phone, account_claim_token, account_claim_expires_at",
+    )
     .eq("id", patientId)
     .maybeSingle();
 
@@ -79,8 +82,8 @@ export async function POST(req: Request) {
   }
 
   const email = patientAuthEmail(regNo);
-  const name = fullName || patient.full_name || `Patient ${regNo}`;
-  const loginUrl = patientScanUrl(patientId, origin);
+  const name = patient.full_name || `Patient ${regNo}`;
+  const loginUrl = patientScanUrl(patientId, process.env.NEXT_PUBLIC_SITE_URL);
   const configured = notifyConfigured();
   const phoneOnFile = patient.phone;
 
@@ -150,6 +153,18 @@ export async function POST(req: Request) {
   }
 
   // First-time account for unlinked registration
+  if (
+    !/^[0-9a-f]{48}$/i.test(claimToken) ||
+    patient.account_claim_token !== claimToken ||
+    !patient.account_claim_expires_at ||
+    new Date(patient.account_claim_expires_at).getTime() <= Date.now()
+  ) {
+    return NextResponse.json(
+      { error: "Registration claim expired or invalid" },
+      { status: 403 },
+    );
+  }
+
   const password = passwordRaw || generatePatientPassword();
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -163,23 +178,33 @@ export async function POST(req: Request) {
       // Auth user exists but patient not linked — link only, no password reissue without auth
       const { data: existingProfile } = await admin
         .from("profiles")
-        .select("id")
+        .select("id, role")
         .eq("email", email)
         .maybeSingle();
-      if (existingProfile?.id) {
+      if (existingProfile?.id && existingProfile.role === "patient") {
         await admin.from("profiles").upsert({
           id: existingProfile.id,
           role: "patient",
           full_name: name,
           email,
         });
-        const { error: linkErr } = await admin
+        const { data: linked, error: linkErr } = await admin
           .from("patients")
-          .update({ user_id: existingProfile.id })
+            .update({
+              user_id: existingProfile.id,
+              account_claim_token: null,
+              account_claim_expires_at: null,
+            })
           .eq("id", patientId)
-          .is("user_id", null);
-        if (linkErr) {
-          return NextResponse.json({ error: linkErr.message }, { status: 400 });
+          .is("user_id", null)
+          .eq("account_claim_token", claimToken)
+          .select("id")
+          .maybeSingle();
+        if (linkErr || !linked) {
+          return NextResponse.json(
+            { error: linkErr?.message || "Registration claim was already used" },
+            { status: linkErr ? 400 : 409 },
+          );
         }
         return NextResponse.json({
           ok: true,
@@ -217,14 +242,25 @@ export async function POST(req: Request) {
     phone: phoneOnFile,
   });
 
-  const { error: linkErr } = await admin
+  const { data: linked, error: linkErr } = await admin
     .from("patients")
-    .update({ user_id: created.user.id })
+    .update({
+      user_id: created.user.id,
+      account_claim_token: null,
+      account_claim_expires_at: null,
+    })
     .eq("id", patientId)
-    .is("user_id", null);
+    .is("user_id", null)
+    .eq("account_claim_token", claimToken)
+    .select("id")
+    .maybeSingle();
 
-  if (linkErr) {
-    return NextResponse.json({ error: linkErr.message }, { status: 400 });
+  if (linkErr || !linked) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    return NextResponse.json(
+      { error: linkErr?.message || "Registration claim was already used" },
+      { status: linkErr ? 400 : 409 },
+    );
   }
 
   const notify = await maybeNotify(password);

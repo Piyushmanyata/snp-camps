@@ -45,6 +45,8 @@ create table public.patients (
   seen_at timestamptz,
   seen_by uuid references public.profiles (id) on delete set null,
   created_by uuid references auth.users (id) on delete set null,
+  account_claim_token text,
+  account_claim_expires_at timestamptz,
   created_at timestamptz not null default now(),
   unique (reg_no)
 );
@@ -52,6 +54,12 @@ create table public.patients (
 create index patients_camp_queue_idx on public.patients (camp_id, queue_status, created_at);
 create index patients_phone_idx on public.patients (phone);
 create index patients_name_idx on public.patients (full_name);
+create unique index patients_account_claim_token_idx
+  on public.patients (account_claim_token)
+  where account_claim_token is not null;
+create index patients_seen_by_camp_seen_at_idx
+  on public.patients (camp_id, seen_by, seen_at desc)
+  where queue_status = 'seen' and seen_by is not null;
 
 -- auto profile on signup
 create or replace function public.handle_new_user()
@@ -127,7 +135,8 @@ alter table public.patients enable row level security;
 create policy "read own profile" on public.profiles
   for select using (id = auth.uid() or public.is_staff());
 create policy "update own profile" on public.profiles
-  for update using (id = auth.uid() or public.is_admin());
+  for update using (id = auth.uid() or public.is_admin())
+  with check (public.is_admin() or (id = auth.uid() and role = 'patient'));
 create policy "admin update any profile" on public.profiles
   for all using (public.is_admin());
 
@@ -142,50 +151,18 @@ create policy "admin camps" on public.camps
 -- patients
 create policy "staff select patients" on public.patients
   for select using (public.is_staff());
-create policy "staff insert patients" on public.patients
-  for insert with check (public.is_staff());
-create policy "staff update patients" on public.patients
-  for update using (public.is_staff()) with check (public.is_staff());
 create policy "admin delete patients" on public.patients
   for delete using (public.is_admin());
 create policy "patient read own" on public.patients
   for select to authenticated using (user_id = auth.uid());
-create policy "patient update own link" on public.patients
-  for update using (user_id = auth.uid());
--- desk / self-reg on active camp (authenticated or anon walk-up kiosk)
-create policy "register on active camp" on public.patients
-  for insert
-  to anon, authenticated
-  with check (
-    exists (
-      select 1 from public.camps c
-      where c.id = camp_id and c.is_active = true
-    )
-    and (
-      public.is_staff()
-      or user_id is null
-      or user_id = auth.uid()
-    )
-  );
--- insert().select() RETURNING needs SELECT for walk-up rows (user_id null)
-create policy "read unlinked on active camp" on public.patients
-  for select
-  to anon, authenticated
-  using (
-    user_id is null
-    and exists (
-      select 1 from public.camps c
-      where c.id = camp_id and c.is_active = true
-    )
-  );
-
-grant usage on sequence public.patient_reg_no_seq to authenticated, anon;
-grant select, insert on public.patients to anon;
-grant select, insert, update, delete on public.patients to authenticated;
+grant select, delete on public.patients to authenticated;
+revoke insert, update on public.patients from anon, authenticated;
 grant select on public.camps to anon, authenticated;
 grant select, update on public.profiles to authenticated;
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
+revoke all on function public.is_staff() from public;
+revoke all on function public.is_admin() from public;
 
 -- Prevent the same patient registering twice on the same camp.
 -- Match keys (in order): phone (last 10 digits), aadhaar last4 + name, linked user_id,
@@ -330,34 +307,6 @@ grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid
 ) to anon, authenticated;
 
--- elevate role after signup if metadata staff_role is set (invite-gated in app)
-create or replace function public.claim_staff_role(p_role text, p_name text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  meta_role text;
-begin
-  select raw_user_meta_data->>'staff_role' into meta_role
-  from auth.users where id = auth.uid();
-
-  if meta_role is null or meta_role not in ('admin', 'volunteer') then
-    raise exception 'not allowed';
-  end if;
-  if p_role is distinct from meta_role then
-    raise exception 'role mismatch';
-  end if;
-
-  update public.profiles
-  set role = meta_role::public.user_role,
-      full_name = coalesce(nullif(p_name, ''), full_name)
-  where id = auth.uid();
-end;
-$$;
-
-grant execute on function public.claim_staff_role(text, text) to authenticated;
 grant execute on function public.set_active_camp(uuid) to authenticated;
 grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_admin() to authenticated;

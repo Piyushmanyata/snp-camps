@@ -23,7 +23,10 @@ const sql = fs.readFileSync(sqlPath, "utf8");
 
 const c = new Client({
   connectionString: `postgresql://postgres:${encodeURIComponent(pwd)}@db.${ref}.supabase.co:5432/postgres`,
-  ssl: { rejectUnauthorized: false },
+ssl: {
+      rejectUnauthorized: true,
+      ...(process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : {}),
+    },
   connectionTimeoutMillis: 20000,
 });
 

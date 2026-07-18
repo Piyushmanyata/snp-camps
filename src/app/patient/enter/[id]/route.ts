@@ -46,20 +46,21 @@ export async function GET(
   }
 
   const supabase = await createClient();
-  let status: string | null = null;
-  try {
-    const { data } = await supabase.rpc("lookup_patient_scan", {
-      p_patient_id: id,
-      p_reg_no: null,
-    });
-    const row = Array.isArray(data) ? data[0] : data;
-    status = row?.queue_status ?? null;
-  } catch {
-    status = null;
+  const { data, error } = await supabase.rpc("lookup_patient_scan", {
+    p_patient_id: id,
+    p_reg_no: null,
+  });
+  if (error) {
+    return NextResponse.redirect(new URL("/patient/login?error=server", origin));
   }
+  const row = Array.isArray(data) ? data[0] : data;
+  const status = row?.queue_status ?? null;
 
-  if (status === "registered" || !status) {
+  if (status === "registered") {
     return NextResponse.redirect(new URL(`/print/${id}`, origin));
+  }
+  if (!status) {
+    return NextResponse.redirect(new URL("/patient/login?error=not_found", origin));
   }
 
   // waiting or seen → staff desk with scan context
