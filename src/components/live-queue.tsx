@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { POLL_MS, useFixedPoll } from "@/lib/poll";
 import {
   Badge,
   Button,
@@ -20,20 +21,21 @@ export type LiveQueuePatient = {
   phone: string | null;
 };
 
-/** Waiting-only queue. Assign doctor marks seen and removes from list. */
+/** Waiting queue. Assign doctor marks seen and removes from list. */
 export function LiveQueue({
   initial,
   initialTotal,
   campId,
   doctors = [],
   mode = "volunteer",
-  pollMs = 20_000,
+  pollMs = POLL_MS,
 }: {
   initial: LiveQueuePatient[];
   initialTotal?: number;
   campId: string | null;
   doctors?: DoctorOption[];
   mode?: "volunteer" | "doctor" | "admin";
+  /** Auto-refresh interval; 0 = manual only. Default 2 min. */
   pollMs?: number;
 }) {
   const router = useRouter();
@@ -80,33 +82,7 @@ export function LiveQueue({
     return true;
   }, [campId]);
 
-  useEffect(() => {
-    if (pollMs <= 0 || !campId) return;
-    let cancelled = false;
-    let timer = 0;
-    let delay = pollMs + Math.floor(Math.random() * 3_000);
-
-    const schedule = () => {
-      timer = window.setTimeout(async () => {
-        if (cancelled) return;
-        const ok =
-          document.visibilityState !== "visible" || (await refreshQueue());
-        delay = ok ? pollMs : Math.min(60_000, Math.max(pollMs, delay * 2));
-        schedule();
-      }, delay);
-    };
-    schedule();
-
-    const onVis = () => {
-      if (document.visibilityState === "visible") void refreshQueue();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [campId, pollMs, refreshQueue]);
+  useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
   async function assign(patientId: string, chosen: string | null) {
     setError(null);
@@ -163,6 +139,7 @@ export function LiveQueue({
           {total > rows.length
             ? "Showing first " + rows.length + " of " + total
             : total + " waiting"}
+          {pollMs > 0 ? " · auto every 2 min" : ""}
         </span>
         <button
           type="button"

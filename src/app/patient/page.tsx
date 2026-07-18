@@ -52,7 +52,7 @@ export default async function PatientHomePage() {
 
   const statusHint =
     patient?.queue_status === "registered"
-      ? "Registered. Desk may print for the live queue, or a doctor can scan you directly."
+      ? "Registered. Desk may print for the queue, or a doctor can scan you directly."
       : patient?.queue_status === "waiting"
         ? "In queue — waiting for doctor scan."
         : patient?.queue_status === "seen"

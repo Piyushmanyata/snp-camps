@@ -62,13 +62,19 @@ export default async function RegisterPage() {
                 {camp.venue || "Walk-in registration"}
               </p>
             </Card>
-            <SeatBoard days={days} campId={camp.id} title="Live seat board" compact />
+            <SeatBoard
+              days={days}
+              campId={camp.id}
+              title="Seat board"
+              compact
+              pollMs={0}
+            />
           </div>
 
           <Card className="lg:col-span-3">
             <p className="prose-help mb-4 text-sm text-muted">
               {staff
-                ? "One person, one day. After save they are registered. Print joins the live queue (optional). Doctors can scan registered patients without printing."
+                ? "One person, one day. After save they are registered. Print joins the FCFS queue (optional). Doctors can scan registered patients without printing."
                 : "Self-registration uses phone OTP. After verify you complete details, get a reg number, and stay signed in. Aadhaar is optional for later."}
             </p>
             <PatientForm

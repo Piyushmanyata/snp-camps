@@ -1,0 +1,113 @@
+-- Lean high-traffic indexes + desk KPI RPCs (one round-trip instead of 4–5 counts).
+-- Safe to re-run.
+
+-- Hot path: waiting queue list (camp + FCFS order)
+create index if not exists patients_camp_waiting_queued_idx
+  on public.patients (camp_id, queued_at nulls last, created_at)
+  where queue_status = 'waiting';
+
+-- Hot path: camp day seat counts
+create index if not exists patients_camp_day_id_idx
+  on public.patients (camp_day_id)
+  where camp_day_id is not null;
+
+-- Active camp lookup
+create index if not exists camps_is_active_idx
+  on public.camps (is_active)
+  where is_active = true;
+
+-- Volunteer desk: all my counters in one call
+create or replace function public.volunteer_my_counts(p_since timestamptz)
+returns table (
+  total bigint,
+  today bigint,
+  waiting bigint,
+  seen bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    count(*)::bigint,
+    count(*) filter (where p.created_at >= p_since)::bigint,
+    count(*) filter (where p.queue_status = 'waiting')::bigint,
+    count(*) filter (where p.queue_status = 'seen')::bigint
+  from public.patients p
+  where p.created_by = auth.uid();
+$$;
+
+revoke all on function public.volunteer_my_counts(timestamptz)
+  from public, anon;
+grant execute on function public.volunteer_my_counts(timestamptz) to authenticated;
+
+-- Doctor desk: my seen counts in one call
+create or replace function public.doctor_my_counts(
+  p_camp_id uuid,
+  p_since timestamptz
+)
+returns table (
+  seen_today bigint,
+  seen_total bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    count(*) filter (
+      where p.camp_id = p_camp_id
+        and p.queue_status = 'seen'
+        and p.seen_at >= p_since
+    )::bigint,
+    count(*) filter (where p.queue_status = 'seen')::bigint
+  from public.patients p
+  where p.seen_by = auth.uid();
+$$;
+
+revoke all on function public.doctor_my_counts(uuid, timestamptz)
+  from public, anon;
+grant execute on function public.doctor_my_counts(uuid, timestamptz) to authenticated;
+
+-- Drop patients from realtime publication if present (no live websockets)
+do $$
+begin
+  if exists (
+    select 1
+    from pg_publication pub
+    join pg_publication_rel pr on pr.prpubid = pub.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'patients'
+  ) then
+    execute 'alter publication supabase_realtime drop table public.patients';
+  end if;
+exception
+  when others then
+    null;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_publication pub
+    join pg_publication_rel pr on pr.prpubid = pub.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where pub.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'camp_days'
+  ) then
+    execute 'alter publication supabase_realtime drop table public.camp_days';
+  end if;
+exception
+  when others then
+    null;
+end $$;
+
+select 'lean-perf applied' as status;

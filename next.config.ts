@@ -8,9 +8,13 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   reactStrictMode: true,
-  // Tree-shake heavy client packages into smaller chunks
+  // Smaller client graphs for desk routes under high traffic
   experimental: {
-    optimizePackageImports: ["qrcode.react", "@supabase/supabase-js"],
+    optimizePackageImports: [
+      "qrcode.react",
+      "@supabase/supabase-js",
+      "@supabase/ssr",
+    ],
   },
   async headers() {
     return [

@@ -631,7 +631,7 @@ export function PatientForm({
                 Print prescription (optional)
               </p>
               <p className="prose-help mt-0.5 text-xs text-muted">
-                Print puts them in the live queue. Doctors can also scan a
+                Print puts them in the FCFS queue. Doctors can also scan a
                 registered patient directly without printing.
               </p>
             </div>

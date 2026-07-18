@@ -43,6 +43,9 @@ For the current production lineage, apply these SQL files in order:
 10. `supabase/advisor-cleanup.sql`
 11. `supabase/dashboard-stats.sql`
 12. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
+13. `supabase/lean-perf.sql` (partial indexes, desk KPI RPCs, no realtime on hot tables)
+
+Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
 The security/account migration must precede the app because patient-account and
 OTP flows use its columns/RPCs. The final

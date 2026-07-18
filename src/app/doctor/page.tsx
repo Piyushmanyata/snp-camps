@@ -1,3 +1,4 @@
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin } from "@/lib/auth";
@@ -10,9 +11,18 @@ import {
   Shell,
   Stat,
 } from "@/components/ui";
-import { QrScanner } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { AdminDoctors } from "@/components/admin-doctors";
+
+const QrScanner = dynamic(
+  () =>
+    import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
+  {
+    loading: () => (
+      <p className="py-6 text-center text-sm text-muted">Loading scanner…</p>
+    ),
+  },
+);
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -24,7 +34,6 @@ export default async function DoctorPage() {
   const supabase = await createClient();
   const admin = isAdmin(profile?.role);
 
-  // Admin doctor desk = manage doctors only (no scanner / queue).
   if (admin) {
     const { data: doctorsFull, error } = await supabase
       .from("profiles")
@@ -51,8 +60,8 @@ export default async function DoctorPage() {
               {(doctorsFull?.length ?? 0) === 1 ? "" : "s"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Tap a doctor for their KPIs and patients seen. Scanner and live
-              queue live on the main admin dashboard.
+              Tap a doctor for their KPIs and patients seen. Scanner and queue
+              live on the main admin dashboard.
             </p>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
@@ -68,7 +77,6 @@ export default async function DoctorPage() {
     );
   }
 
-  // Doctor operational desk — scan / reg only, own KPIs, no live queue.
   const { data: camp, error: campError } = await supabase
     .from("camps")
     .select("id, name, venue")
@@ -83,15 +91,12 @@ export default async function DoctorPage() {
   }).format(new Date());
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
 
-  const [seenTodayRes, mySeenRes, myTotalRes] = camp
+  const [countsRes, mySeenRes] = camp
     ? await Promise.all([
-        supabase
-          .from("patients")
-          .select("id", { count: "exact", head: true })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "seen")
-          .eq("seen_by", userId)
-          .gte("seen_at", startOfDay.toISOString()),
+        supabase.rpc("doctor_my_counts", {
+          p_camp_id: camp.id,
+          p_since: startOfDay.toISOString(),
+        }),
         supabase
           .from("patients")
           .select("id, reg_no, full_name, seen_at, phone")
@@ -100,14 +105,9 @@ export default async function DoctorPage() {
           .eq("queue_status", "seen")
           .order("seen_at", { ascending: false })
           .limit(50),
-        supabase
-          .from("patients")
-          .select("id", { count: "exact", head: true })
-          .eq("seen_by", userId)
-          .eq("queue_status", "seen"),
       ])
     : await Promise.all([
-        Promise.resolve({ count: 0 }),
+        Promise.resolve({ data: [{ seen_today: 0, seen_total: 0 }] }),
         Promise.resolve({
           data: [] as {
             id: string;
@@ -117,16 +117,18 @@ export default async function DoctorPage() {
             phone: string | null;
           }[],
         }),
-        Promise.resolve({ count: 0 }),
       ]);
 
-  const seenToday = seenTodayRes.count ?? 0;
+  const counts = Array.isArray(countsRes.data)
+    ? countsRes.data[0]
+    : countsRes.data;
+  const seenToday = Number(counts?.seen_today ?? 0);
+  const myTotal = Number(counts?.seen_total ?? 0);
   const mySeen = mySeenRes.data || [];
-  const myTotal = myTotalRes.count ?? 0;
 
   if (
     Boolean(campError) ||
-    [seenTodayRes, mySeenRes, myTotalRes].some(
+    [countsRes, mySeenRes].some(
       (result) => "error" in result && Boolean(result.error),
     )
   ) {

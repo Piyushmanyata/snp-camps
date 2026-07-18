@@ -135,11 +135,7 @@ export default async function AdminPage() {
 
         {active ? (
           <div className="space-y-3">
-            <SeatBoard
-              days={days}
-              campId={active.id}
-              title="Live seat board"
-            />
+            <SeatBoard days={days} campId={active.id} title="Seat board" />
             <CollapsibleSection
               title="Camps & camp days"
               hint={`${camps?.length ?? 0} camp${(camps?.length ?? 0) === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}
@@ -178,8 +174,8 @@ export default async function AdminPage() {
         {active ? (
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="First come, first served · assign doctor">
-                Live queue
+              <SectionTitle hint="FCFS · assign doctor · refresh or every 2 min">
+                Queue
               </SectionTitle>
             </div>
             <LiveQueue

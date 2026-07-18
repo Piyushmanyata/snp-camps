@@ -301,7 +301,7 @@ export function QrScanner({
         ) : (
           <>
             <strong className="text-foreground">Scan</strong> to assign a doctor
-            (marks seen). Optional: print first to put them in the live queue.
+            (marks seen). Optional: print first to put them in the queue.
             Re-scan is blocked.
           </>
         )}
@@ -369,7 +369,7 @@ export function QrScanner({
           {lookup.queue_status === "registered" && mode !== "doctor" ? (
             <>
               <p className="mt-1 text-sm text-muted">
-                Registered — print to join the live queue, or assign a doctor
+                Registered — print to join the queue, or assign a doctor
                 now (no print required).
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
