@@ -89,23 +89,31 @@ export default async function AdminPage() {
       width="xl"
       roleLabel="Admin"
       actions={<SignOutButton place="header" />}
+      dock={[
+        { href: "/register", label: "Register", primary: true },
+        { href: "/admin/patients", label: "Patients" },
+        { href: "/volunteer", label: "Volunteers" },
+        { href: "/doctor", label: "Doctors" },
+      ]}
     >
-      <div className="space-y-4 lg:space-y-5">
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+      <div className="space-y-3 sm:space-y-4 lg:space-y-5">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Stat label="Registered" value={registered} />
           <Stat label="In queue" value={inQueue} tone="wait" />
           <Stat label="Doctor seen" value={doctorSeen} tone="ok" />
         </div>
 
-        <Card className="bg-gradient-to-br from-brand-soft/80 to-card">
-          <p className="text-xs font-bold uppercase tracking-wide text-brand">
+        <Card className="bg-gradient-to-br from-brand-soft/80 to-card !p-4 sm:!p-5">
+          <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
             Active camp
           </p>
-          <p className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">
+          <p className="mt-0.5 text-lg font-bold tracking-tight sm:text-2xl">
             {active?.name || "None set"}
           </p>
           {active?.venue ? (
-            <p className="text-[0.9375rem] text-muted">{active.venue}</p>
+            <p className="text-sm text-muted sm:text-[0.9375rem]">
+              {active.venue}
+            </p>
           ) : null}
           {avgWaitMin != null && !Number.isNaN(avgWaitMin) ? (
             <p className="mt-2 text-[0.8125rem] text-muted">
@@ -117,6 +125,23 @@ export default async function AdminPage() {
               </span>
             </p>
           ) : null}
+          {/* Phone: primary paths always visible (desk-inline is desktop-only) */}
+          <div className="mt-3 grid gap-2 lg:hidden">
+            <NavLink href="/register" variant="primary">
+              Register patient
+            </NavLink>
+            <div className="grid grid-cols-3 gap-2">
+              <NavLink href="/admin/patients" variant="soft">
+                Patients
+              </NavLink>
+              <NavLink href="/volunteer" variant="soft">
+                Volunteers
+              </NavLink>
+              <NavLink href="/doctor" variant="soft">
+                Doctors
+              </NavLink>
+            </div>
+          </div>
           <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
             <NavLink href="/register" variant="primary">
               Register patient

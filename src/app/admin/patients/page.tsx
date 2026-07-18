@@ -112,22 +112,35 @@ export default async function PatientDeskPage() {
       width="xl"
       roleLabel="Admin"
       actions={<SignOutButton place="header" />}
+      dock={[
+        { href: "/register", label: "Register", primary: true },
+        { href: "/admin", label: "Admin" },
+        { href: "/volunteer", label: "Volunteers" },
+      ]}
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+      <div className="space-y-3 sm:space-y-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Stat label="Registered" value={registered} />
           <Stat label="In queue" value={waiting} tone="wait" />
           <Stat label="Doctor seen" value={doctorSeen} tone="ok" />
         </div>
 
-        <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
-          <p className="text-xs font-bold uppercase tracking-wide text-brand">
+        <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
+          <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
             Patient desk
           </p>
           <p className="text-sm text-muted">
             Who registered them, who saw them, and when. Average wait is from
             queue join to doctor seen.
           </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 lg:hidden">
+            <NavLink href="/register" variant="primary">
+              Register
+            </NavLink>
+            <NavLink href="/admin" variant="soft">
+              Admin
+            </NavLink>
+          </div>
           <div className="desk-inline-actions mt-4">
             <NavLink href="/admin" variant="soft">
               Back to admin

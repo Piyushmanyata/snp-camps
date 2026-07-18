@@ -29,7 +29,7 @@ export function MobileDock({
   label?: string;
 }) {
   if (!items.length) return null;
-  const cols = Math.min(items.length, 3);
+  const cols = Math.min(Math.max(items.length, 1), 4);
   return (
     <nav className="mobile-dock no-print" aria-label={label}>
       <div
@@ -42,7 +42,7 @@ export function MobileDock({
           <Link
             key={item.href + item.label}
             href={item.href}
-            className={`pressable inline-flex items-center justify-center rounded-xl px-2 text-center text-sm font-bold transition-colors duration-150 ${
+            className={`pressable mobile-dock-item inline-flex items-center justify-center rounded-xl px-1.5 text-center text-[0.8125rem] font-bold leading-tight transition-colors duration-150 sm:text-sm ${
               item.primary
                 ? "bg-brand text-white shadow-sm hover:bg-brand-dark"
                 : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"
@@ -83,49 +83,51 @@ export function Shell({
   return (
     <>
       <div
-        className={`mx-auto flex w-full flex-1 flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8 ${shellWidths[width]} ${
+        className={`mx-auto flex w-full flex-1 flex-col px-3.5 pt-3 sm:px-6 sm:pt-6 lg:px-8 ${shellWidths[width]} ${
           hasDock ? "has-mobile-dock" : "pb-8 sm:pb-10"
         }`}
         style={{
-          paddingTop: "calc(1rem + var(--safe-top))",
+          paddingTop: "calc(0.75rem + var(--safe-top))",
           ...(hasDock
             ? {}
             : { paddingBottom: "calc(2rem + var(--safe-bottom))" }),
         }}
       >
-        <header className="mb-5 flex items-start gap-3 sm:mb-6">
+        <header className="mb-4 flex items-start gap-2.5 sm:mb-6 sm:gap-3">
           {backHref ? (
             <Link
               href={backHref}
-              className="pressable mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-lg font-semibold text-foreground shadow-sm hover:border-brand/25 hover:bg-brand-soft"
+              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-lg font-semibold text-foreground shadow-sm hover:border-brand/25 hover:bg-brand-soft sm:h-12 sm:w-12"
               aria-label="Go back"
             >
               <span aria-hidden="true">←</span>
             </Link>
           ) : null}
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <p className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-brand sm:text-xs">
                 SNP Camps
               </p>
               {roleLabel ? (
-                <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand ring-1 ring-brand/15">
+                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand ring-1 ring-brand/15 sm:px-2.5 sm:text-[11px]">
                   {roleLabel}
                 </span>
               ) : null}
             </div>
-            <h1 className="mt-0.5 text-[1.7rem] font-bold tracking-tight text-foreground sm:text-[1.9rem]">
+            <h1 className="mt-0.5 text-[1.5rem] font-bold leading-tight tracking-tight text-foreground sm:text-[1.9rem]">
               {title}
             </h1>
             {subtitle ? (
-              <p className="prose-help mt-1 text-muted">{subtitle}</p>
+              <p className="prose-help mt-0.5 text-[0.875rem] text-muted sm:mt-1 sm:text-[0.9375rem]">
+                {subtitle}
+              </p>
             ) : null}
           </div>
           {actions ? (
             <div className="flex shrink-0 items-start gap-2">{actions}</div>
           ) : null}
         </header>
-        <main id="main" className="flex flex-1 flex-col">
+        <main id="main" className="flex flex-1 flex-col gap-0">
           {children}
         </main>
       </div>
@@ -156,7 +158,7 @@ export function Card({
   return (
     <div
       id={id}
-      className={`rounded-2xl border border-border/90 bg-card shadow-[var(--shadow-card)] ${p} ${className}`}
+      className={`rounded-xl border border-border/90 bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
     >
       {children}
     </div>
@@ -468,13 +470,13 @@ export function Stat({
         ? "text-amber-700"
         : "text-brand-dark";
   return (
-    <div className="rounded-2xl border border-border/80 bg-card p-3.5 text-center shadow-[var(--shadow-card)]">
+    <div className="rounded-xl border border-border/80 bg-card px-2 py-2.5 text-center shadow-[var(--shadow-card)] sm:rounded-2xl sm:p-3.5">
       <p
-        className={`tabular text-[1.75rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
+        className={`tabular text-[1.5rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-muted">
+      <p className="mt-0.5 text-[0.625rem] font-semibold uppercase leading-tight tracking-wide text-muted sm:text-xs">
         {label}
       </p>
     </div>

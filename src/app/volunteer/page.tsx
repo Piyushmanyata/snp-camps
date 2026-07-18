@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff, isDoctor, isAdmin } from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
 import {
+  ActionCard,
   Card,
   NavLink,
   SectionTitle,
@@ -49,8 +50,13 @@ export default async function VolunteerPage() {
         width="xl"
         roleLabel="Admin"
         actions={<SignOutButton place="header" />}
+        dock={[
+          { href: "/admin", label: "Admin" },
+          { href: "/register", label: "Register", primary: true },
+          { href: "/admin/patients", label: "Patients" },
+        ]}
       >
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
             <p className="text-xs font-bold uppercase tracking-wide text-brand">
               Staff management
@@ -63,6 +69,11 @@ export default async function VolunteerPage() {
               Tap a volunteer for their KPIs and patients. Scanner and queue
               live on the main admin dashboard.
             </p>
+            <div className="mt-3 grid gap-2 lg:hidden">
+              <NavLink href="/admin" variant="soft">
+                Back to admin
+              </NavLink>
+            </div>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
                 Back to admin
@@ -149,19 +160,26 @@ export default async function VolunteerPage() {
       width="xl"
       roleLabel="Volunteer"
       actions={<SignOutButton place="header" />}
+      dock={[
+        { href: "/register", label: "Register", primary: true },
+        { href: "#scan", label: "Scan" },
+        { href: "#queue", label: "Queue" },
+      ]}
     >
-      <div className="space-y-4">
-        <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
+      <div className="space-y-3 sm:space-y-4">
+        <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-brand">
+              <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
                 Active camp
               </p>
-              <p className="text-xl font-bold tracking-tight sm:text-2xl">
+              <p className="text-lg font-bold tracking-tight sm:text-2xl">
                 {camp?.name || "None"}
               </p>
               {camp?.venue ? (
-                <p className="text-[0.9375rem] text-muted">{camp.venue}</p>
+                <p className="text-sm text-muted sm:text-[0.9375rem]">
+                  {camp.venue}
+                </p>
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
@@ -171,6 +189,31 @@ export default async function VolunteerPage() {
               <Stat label="Doctor seen" value={mySeen} tone="ok" />
             </div>
           </div>
+
+          {/* Always visible on phone — desk-inline-actions is desktop-only */}
+          <div className="mt-3 space-y-2 lg:hidden">
+            <ActionCard
+              href="/register"
+              title="Register walk-in"
+              description={
+                camp
+                  ? "New patient · name, phone, day"
+                  : "Needs an active camp first"
+              }
+              variant="primary"
+              disabled={!camp}
+              disabledReason="No active camp. Ask admin to activate one."
+            />
+            <div className="jump-chip-row" aria-label="Jump to section">
+              <a href="#scan" className="jump-chip">
+                Scan QR
+              </a>
+              <a href="#queue" className="jump-chip">
+                Live queue
+              </a>
+            </div>
+          </div>
+
           <div className="desk-inline-actions mt-4">
             <NavLink href="/register" variant="primary">
               Register walk-in patient
@@ -187,8 +230,8 @@ export default async function VolunteerPage() {
           />
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <Card id="scan">
+        <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
+          <Card id="scan" className="!p-4 sm:!p-5">
             <SectionTitle hint="Scan paper or phone QR · pick doctor">
               Scan / assign doctor
             </SectionTitle>
@@ -205,7 +248,7 @@ export default async function VolunteerPage() {
 
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · auto-refresh">
+              <SectionTitle hint="FCFS · refresh manually">
                 Queue
               </SectionTitle>
             </div>

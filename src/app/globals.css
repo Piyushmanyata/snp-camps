@@ -192,32 +192,34 @@ h3 {
   bottom: 0;
   z-index: 40;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--card) 94%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 -6px 24px rgb(10 22 17 / 8%);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 -8px 28px rgb(10 22 17 / 10%);
   padding:
-    0.55rem
-    max(0.75rem, var(--safe-right))
-    calc(0.55rem + var(--safe-bottom))
-    max(0.75rem, var(--safe-left));
+    0.5rem
+    max(0.6rem, var(--safe-right))
+    calc(0.45rem + var(--safe-bottom))
+    max(0.6rem, var(--safe-left));
 }
 
 .mobile-dock-inner {
   display: grid;
-  gap: 0.5rem;
-  max-width: 36rem;
+  gap: 0.4rem;
+  max-width: 28rem;
   margin: 0 auto;
 }
 
 .mobile-dock a,
-.mobile-dock button {
+.mobile-dock button,
+.mobile-dock-item {
   min-height: var(--touch-min);
+  padding-inline: 0.35rem;
 }
 
 /* Reserve space so content is not hidden under the dock */
 .has-mobile-dock {
-  padding-bottom: calc(var(--dock-height) + var(--safe-bottom) + 1.25rem) !important;
+  padding-bottom: calc(var(--dock-height) + var(--safe-bottom) + 1.5rem) !important;
 }
 
 @media (min-width: 1024px) {
@@ -241,13 +243,148 @@ h3 {
   }
 }
 
+/* In-page jump chips (phone desk) */
+.jump-chip-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  gap: 0.45rem;
+}
+
+.jump-chip {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.jump-chip:active {
+  background: var(--brand-soft);
+}
+
+/* Camp day picker chips (registration) */
+.day-chip-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 380px) {
+  .day-chip-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) {
+  .day-chip-row {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+}
+
+.day-chip {
+  display: flex;
+  min-height: 3.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  border-radius: 0.9rem;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.day-chip:disabled,
+.day-chip-full {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.day-chip-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.day-chip-date {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+.day-chip-meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.day-chip-active .day-chip-meta {
+  color: var(--brand);
+}
+
+/* Sticky save bar for desk registration on phone */
+.sticky-submit {
+  position: sticky;
+  bottom: 0.35rem;
+  z-index: 25;
+  margin-left: -0.15rem;
+  margin-right: -0.15rem;
+  padding: 0.55rem 0.15rem 0.15rem;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--card) 92%, transparent) 28%,
+    var(--card) 55%
+  );
+}
+
+.has-mobile-dock .sticky-submit {
+  bottom: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .sticky-submit {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+}
+
 /* Anchor scroll offset for sticky dock + header */
 #scan,
 #queue,
 #seen,
 #register-action {
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 0.75rem;
   scroll-margin-bottom: calc(var(--dock-height) + 1rem);
+}
+
+/* Scanner viewport: larger hit target on phone cameras */
+#scan [id^="qr-reader"] {
+  min-height: 14rem;
+}
+
+@media (max-width: 640px) {
+  #scan [id^="qr-reader"] video,
+  #scan [id^="qr-reader"] canvas {
+    border-radius: 0.75rem;
+  }
 }
 
 /* Cards that should feel pressable */

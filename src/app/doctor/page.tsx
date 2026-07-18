@@ -140,19 +140,26 @@ export default async function DoctorPage() {
       width="lg"
       roleLabel="Doctor"
       actions={<SignOutButton place="header" />}
+      dock={[
+        { href: "#scan", label: "Scan", primary: true },
+        { href: "#seen", label: "Seen" },
+        { href: "/register", label: "Register" },
+      ]}
     >
-      <div className="space-y-4">
-        <Card className="bg-gradient-to-br from-brand-soft/70 to-card">
+      <div className="space-y-3 sm:space-y-4">
+        <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-brand">
+              <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
                 Active camp
               </p>
-              <p className="text-xl font-bold tracking-tight sm:text-2xl">
+              <p className="text-lg font-bold tracking-tight sm:text-2xl">
                 {camp?.name || "None"}
               </p>
               {camp?.venue ? (
-                <p className="text-[0.9375rem] text-muted">{camp.venue}</p>
+                <p className="text-sm text-muted sm:text-[0.9375rem]">
+                  {camp.venue}
+                </p>
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2">
@@ -160,9 +167,20 @@ export default async function DoctorPage() {
               <Stat label="Total doctor seen" value={myTotal} />
             </div>
           </div>
+          <div className="jump-chip-row mt-3 lg:hidden" aria-label="Jump">
+            <a href="#scan" className="jump-chip">
+              Scan
+            </a>
+            <a href="#seen" className="jump-chip">
+              Patients seen
+            </a>
+            <a href="/register" className="jump-chip">
+              Register
+            </a>
+          </div>
         </Card>
 
-        <Card id="scan">
+        <Card id="scan" className="!p-4 sm:!p-5">
           <SectionTitle hint="Scan QR or type reg number · assigns to you">
             Scan patient
           </SectionTitle>
@@ -177,6 +195,7 @@ export default async function DoctorPage() {
           />
         </Card>
 
+        <div id="seen">
         <CollapsibleSection
           title="Patients you saw"
           hint={`${mySeen.length} recent`}
@@ -222,6 +241,7 @@ export default async function DoctorPage() {
             </EmptyState>
           )}
         </CollapsibleSection>
+        </div>
       </div>
     </Shell>
   );

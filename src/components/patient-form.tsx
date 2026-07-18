@@ -18,6 +18,7 @@ import {
   Button,
   ErrorBox,
   Input,
+  SegmentedControl,
   Select,
   SuccessBox,
   WarningBox,
@@ -624,7 +625,7 @@ export function PatientForm({
         ) : null}
 
         {isStaff ? (
-          <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="space-y-3 rounded-xl border border-border bg-card p-3.5 shadow-sm sm:rounded-2xl sm:p-4">
             {queueNote ? <SuccessBox message={queueNote} /> : null}
             <div>
               <p className="text-sm font-semibold text-foreground">
@@ -635,13 +636,16 @@ export function PatientForm({
                 registered patient directly without printing.
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2">
               <Link
                 href={`/print/${created.id}?auto=1`}
-                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
+                className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
               >
                 Print now (join queue)
               </Link>
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Register another walk-in
+              </Button>
             </div>
             <ErrorBox message={error} />
           </div>
@@ -659,17 +663,12 @@ export function PatientForm({
 
         <div className="flex flex-col gap-2 sm:flex-row">
           {isStaff ? (
-            <>
-              <Button type="button" variant="secondary" onClick={resetForm}>
-                Register another
-              </Button>
-              <Link
-                href="/volunteer"
-                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
-              >
-                Volunteer desk
-              </Link>
-            </>
+            <Link
+              href="/volunteer"
+              className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft sm:flex-1"
+            >
+              Back to volunteer desk
+            </Link>
           ) : (
             <Link
               href="/patient"
@@ -775,84 +774,140 @@ export function PatientForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-3.5 sm:space-y-4">
       {!isStaff ? (
         <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-brand">
           Phone verified
           {sessionUserId ? " · signed in" : ""} · complete your details
         </div>
-      ) : null}
+      ) : (
+        <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
+          Desk mode · no OTP · phone still required
+        </div>
+      )}
 
-      <Select
-        label="Camp day *"
-        required
-        value={campDayId}
-        onChange={(e) => setCampDayId(e.target.value)}
-      >
-        <option value="">Select day…</option>
-        {days.map((d) => (
-          <option key={d.id} value={d.id} disabled={d.is_full}>
-            {formatCampDay(d.day_date)}
-            {d.is_full ? " · FULL" : ` · ${d.seats_left} seats left`}
-          </option>
-        ))}
-      </Select>
+      {/* Tap chips — faster than select on outdoor phones */}
+      <div>
+        <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90">
+          Camp day *
+        </p>
+        <div
+          className="day-chip-row"
+          role="radiogroup"
+          aria-label="Camp day"
+        >
+          {days.map((d) => {
+            const active = campDayId === d.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                disabled={d.is_full}
+                onClick={() => setCampDayId(d.id)}
+                className={`day-chip ${active ? "day-chip-active" : ""} ${
+                  d.is_full ? "day-chip-full" : ""
+                }`}
+              >
+                <span className="day-chip-date">
+                  {formatCampDay(d.day_date)}
+                </span>
+                <span className="day-chip-meta">
+                  {d.is_full ? "FULL" : `${d.seats_left} left`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Hidden native select keeps form semantics + fallback */}
+        <select
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          required
+          value={campDayId}
+          onChange={(e) => setCampDayId(e.target.value)}
+        >
+          <option value="">Select day…</option>
+          {days.map((d) => (
+            <option key={d.id} value={d.id} disabled={d.is_full}>
+              {formatCampDay(d.day_date)}
+            </option>
+          ))}
+        </select>
+      </div>
 
+      {/* Critical fields first on phone: name + phone */}
       <Input
         label="Full name *"
         required
         autoComplete="name"
+        autoFocus={isStaff}
+        enterKeyHint="next"
         value={fullName}
         onChange={(e) => setFullName(e.target.value)}
-        placeholder="Full name"
+        placeholder="Patient full name"
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Select
+      <Input
+        label="Phone *"
+        inputMode="tel"
+        autoComplete="tel"
+        required
+        enterKeyHint="next"
+        value={phone}
+        onChange={(e) => {
+          if (!isStaff && phoneVerified) return;
+          setPhone(e.target.value);
+        }}
+        readOnly={!isStaff && phoneVerified}
+        placeholder="10-digit mobile"
+        hint={
+          isStaff
+            ? "One registration per phone · used for later claim"
+            : "Locked after OTP verification"
+        }
+      />
+
+      <div>
+        <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90">
+          Gender
+        </p>
+        <SegmentedControl
+          value={gender || ""}
+          onChange={setGender}
+          options={[
+            { value: "", label: "—" },
+            { value: "M", label: "Male" },
+            { value: "F", label: "Female" },
+            { value: "O", label: "Other" },
+          ]}
           label="Gender"
-          value={gender}
-          onChange={(e) => setGender(e.target.value)}
-        >
-          <option value="">—</option>
-          <option value="M">Male</option>
-          <option value="F">Female</option>
-          <option value="O">Other</option>
-        </Select>
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <Input
           label="Age"
           type="number"
           min={0}
           max={149}
           inputMode="numeric"
+          enterKeyHint="next"
           value={age}
           onChange={(e) => setAge(e.target.value)}
           placeholder="Years"
         />
-      </div>
-      <Input
-        label="Address"
-        value={address}
-        onChange={(e) => setAddress(e.target.value)}
-        placeholder="Locality / area"
-      />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input
-          label="Phone *"
-          inputMode="tel"
-          autoComplete="tel"
-          required
-          value={phone}
-          onChange={(e) => {
-            if (!isStaff && phoneVerified) return;
-            setPhone(e.target.value);
-          }}
-          readOnly={!isStaff && phoneVerified}
-          placeholder="10-digit mobile"
-          hint={
-            isStaff
-              ? "One registration per phone"
-              : "Locked after OTP verification"
-          }
+          label="Address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Area"
+          enterKeyHint="next"
         />
+      </div>
+
+      {!isStaff ? (
         <Input
           label="Email"
           type="email"
@@ -861,21 +916,23 @@ export function PatientForm({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Optional"
         />
-      </div>
+      ) : null}
 
-      {/* Aadhaar deferred — optional only */}
-      <div className="rounded-2xl border border-dashed border-border bg-background/80">
+      {/* Optional extras collapsed for speed */}
+      <div className="rounded-xl border border-dashed border-border bg-background/80 sm:rounded-2xl">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+          className="flex min-h-12 w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left sm:px-4 sm:py-3"
           onClick={() => setShowAadhaarLater((v) => !v)}
         >
           <div>
             <p className="text-sm font-semibold text-foreground">
-              Aadhaar (later)
+              {isStaff ? "Optional details" : "Aadhaar (later)"}
             </p>
             <p className="text-xs text-muted">
-              Optional for now · full integration coming later
+              {isStaff
+                ? "Email · Aadhaar last 4 · auto-fill"
+                : "Optional · full integration coming later"}
             </p>
           </div>
           <span className="text-muted" aria-hidden="true">
@@ -883,7 +940,17 @@ export function PatientForm({
           </span>
         </button>
         {showAadhaarLater ? (
-          <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+          <div className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
+            {isStaff ? (
+              <Input
+                label="Email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Optional"
+              />
+            ) : null}
             <Input
               label={
                 isStaff && lookupEnabled
@@ -940,19 +1007,21 @@ export function PatientForm({
           : "After save you stay signed in with phone OTP. Doctor can scan without a print."}
       </p>
       <ErrorBox message={error} />
-      <Button
-        type="submit"
-        disabled={loading || lookupState === "loading"}
-        loading={loading}
-      >
-        {loading
-          ? isStaff
-            ? "Saving…"
-            : "Registering…"
-          : isStaff
-            ? "Register for selected day"
-            : "Register for selected day"}
-      </Button>
+      <div className={isStaff ? "sticky-submit" : undefined}>
+        <Button
+          type="submit"
+          disabled={loading || lookupState === "loading" || !campDayId}
+          loading={loading}
+        >
+          {loading
+            ? isStaff
+              ? "Saving…"
+              : "Registering…"
+            : isStaff
+              ? "Save registration"
+              : "Register for selected day"}
+        </Button>
+      </div>
     </form>
   );
 }
