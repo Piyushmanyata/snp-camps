@@ -53,7 +53,22 @@ export async function POST() {
   const password = generatePatientPassword();
   const email = patientAuthEmail(patient.reg_no);
 
+  const { data: userAuth } = await admin.auth.admin.getUserById(userId);
+  const currentEmail = userAuth?.user?.email;
+  const isOtpUser = Boolean(userAuth?.user?.phone);
+
+  let emailToUpdate = email;
+  let regNoToReturn = patient.reg_no;
+  if (isOtpUser && currentEmail && currentEmail.startsWith("reg")) {
+    emailToUpdate = currentEmail;
+    const match = currentEmail.match(/^reg(\d+)@/);
+    if (match && match[1]) {
+      regNoToReturn = Number(match[1]);
+    }
+  }
+
   const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
+    email: emailToUpdate,
     password,
     email_confirm: true,
   });
@@ -66,7 +81,7 @@ export async function POST() {
     .update({
       role: "patient",
       full_name: patient.full_name,
-      email,
+      email: emailToUpdate,
       phone: patient.phone,
     })
     .eq("id", userId);
@@ -75,9 +90,9 @@ export async function POST() {
   if (patient.phone) {
     notify = await notifyPatient({
       phone: patient.phone,
-      message: credentialsMessage(patient.reg_no, password),
+      message: credentialsMessage(regNoToReturn, password),
       template: "credentials",
-      meta: { reg_no: patient.reg_no, patient_id: patient.id },
+      meta: { reg_no: regNoToReturn, patient_id: patient.id },
     });
   }
 
@@ -85,7 +100,7 @@ export async function POST() {
 
   return NextResponse.json({
     ok: true,
-    regNo: patient.reg_no,
+    regNo: regNoToReturn,
     password,
     fullName: patient.full_name,
     phone: patient.phone,

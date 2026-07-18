@@ -8,6 +8,7 @@ import {
   type AadhaarProfile,
 } from "@/lib/aadhaar";
 import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type Body = { aadhaar?: string };
 
@@ -30,6 +31,18 @@ type ProviderPayload = {
  * Never persists the full Aadhaar number.
  */
 export async function POST(req: Request) {
+  const rate = checkRateLimit(req, {
+    scope: "aadhaar-lookup",
+    limit: 30,
+    windowMs: 15 * 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many Aadhaar lookup attempts. Try again later." },
+      { status: 429, headers: rate.headers },
+    );
+  }
+
   const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) {
     return NextResponse.json(

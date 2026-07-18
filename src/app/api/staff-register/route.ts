@@ -50,8 +50,11 @@ export async function POST(req: Request) {
   const usable = (value: string | undefined, placeholder: string) =>
     Boolean(value && value.length >= 16 && value !== placeholder);
   const matches = (provided: string, configured: string | undefined) => {
-    if (!configured || provided.length !== configured.length) return false;
-    return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
+    if (!configured) return false;
+    const bufProvided = Buffer.from(provided);
+    const bufConfigured = Buffer.from(configured);
+    if (bufProvided.byteLength !== bufConfigured.byteLength) return false;
+    return timingSafeEqual(bufProvided, bufConfigured);
   };
   if (
     !usable(adminCode, "change-me-admin") &&

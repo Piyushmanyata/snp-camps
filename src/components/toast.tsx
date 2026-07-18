@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export function Toast({
   message,
@@ -11,12 +11,18 @@ export function Toast({
   duration?: number;
   onClose: () => void;
 }) {
+  const cb = useRef(onClose);
+
+  useEffect(() => {
+    cb.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      onClose();
+      cb.current();
     }, duration);
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [duration]);
 
   return (
     <div className="toast" role="status" aria-live="polite">

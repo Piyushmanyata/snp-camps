@@ -90,7 +90,9 @@ export default async function PrintPage({
     | null;
   const camp = Array.isArray(campRel) ? campRel[0] ?? null : campRel;
 
-  const today = new Date().toLocaleDateString("en-IN");
+  const today = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
 
   return (
     <main className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">

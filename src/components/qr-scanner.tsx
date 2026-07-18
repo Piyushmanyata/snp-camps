@@ -59,6 +59,7 @@ export function QrScanner({
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
   const badScanAt = useRef(0);
+  const isMounted = useRef(true);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
@@ -82,7 +83,9 @@ export function QrScanner({
   }, []);
 
   useEffect(() => {
+    isMounted.current = true;
     return () => {
+      isMounted.current = false;
       void stopScanner();
     };
   }, [stopScanner]);
@@ -235,15 +238,24 @@ export function QrScanner({
     await new Promise((r) => setTimeout(r, 50));
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
+      if (!isMounted.current) return;
       if (scannerRef.current) {
         await stopScanner();
+        if (!isMounted.current) return;
         setActive(true);
         await new Promise((r) => setTimeout(r, 50));
       }
+      if (!isMounted.current) return;
       const scanner = new Html5Qrcode(regionId, { verbose: false });
       scannerRef.current = scanner;
 
       const cameras = await Html5Qrcode.getCameras().catch(() => []);
+      if (!isMounted.current) {
+        try {
+          scanner.clear();
+        } catch { /* ignore */ }
+        return;
+      }
       const back =
         cameras.find((c) => /back|rear|environment/i.test(c.label)) ||
         cameras[cameras.length - 1];

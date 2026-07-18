@@ -154,6 +154,19 @@ export default function PatientLoginPage() {
       .from("profiles")
       .update({ phone: phoneE164, role: "patient" })
       .eq("id", user.id);
+
+    const { data: linked } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (linked) {
+      router.replace("/patient");
+      router.refresh();
+      return;
+    }
+
     const { data: linkedId, error: linkErr } = await supabase.rpc(
       "link_patient_phone",
       { p_phone: phoneE164 },

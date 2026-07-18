@@ -37,6 +37,7 @@ function fmtTs(iso: string | null | undefined) {
   if (!iso) return null;
   try {
     return new Date(iso).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "numeric",
       month: "short",
       hour: "2-digit",

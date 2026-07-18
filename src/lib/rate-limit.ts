@@ -59,9 +59,8 @@ export function checkRateLimit(request: Request, options: Options) {
   sweepExpired(now);
 
   const address = clientAddress(request);
-  const identifier = options.identifier?.slice(0, 512) || "";
   const addressHash = createHash("sha256")
-    .update(`${address}:${identifier}`)
+    .update(address)
     .digest("base64url")
     .slice(0, 20);
   const key = options.scope + ":" + addressHash;

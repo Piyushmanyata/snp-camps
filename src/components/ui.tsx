@@ -1,9 +1,10 @@
 import Link from "next/link";
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
+import {
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  useId,
 } from "react";
 
 const shellWidths = {
@@ -305,11 +306,8 @@ export function Input({
   hint?: string;
   error?: string | null;
 }) {
-  const inputId =
-    id ||
-    (typeof label === "string"
-      ? `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
-      : undefined);
+  const uniqueId = useId();
+  const inputId = id || `field-${uniqueId}`;
   const hintId = hint ? `${inputId}-hint` : undefined;
   const errorId = error ? `${inputId}-error` : undefined;
 
@@ -359,11 +357,8 @@ export function Select({
   children: ReactNode;
   hint?: string;
 }) {
-  const selectId =
-    id ||
-    (typeof label === "string"
-      ? `select-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
-      : undefined);
+  const uniqueId = useId();
+  const selectId = id || `select-${uniqueId}`;
   const hintId = hint ? `${selectId}-hint` : undefined;
 
   return (

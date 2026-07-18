@@ -2,10 +2,13 @@
 -- The anonymous grant remains temporarily for the old frontend and is removed
 -- by verified-registration-revoke-anon.sql after the new API is live.
 
+drop function if exists public.register_patient_authorized_impl(
+  uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
+);
+
 DO $$
 BEGIN
   IF to_regprocedure('public.register_patient(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid)') IS NOT NULL
-     AND to_regprocedure('public.register_patient_authorized_impl(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid)') IS NULL
   THEN
     ALTER FUNCTION public.register_patient(
       uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid

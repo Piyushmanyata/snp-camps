@@ -86,7 +86,7 @@ export default function StaffRegisterPage() {
               minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            hint="At least 6 characters"
+            hint="At least 12 characters"
             placeholder="Choose a password"
           />
           <Input

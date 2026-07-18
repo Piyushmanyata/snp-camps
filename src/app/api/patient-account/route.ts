@@ -137,17 +137,31 @@ export async function POST(req: Request) {
       });
     }
 
+    const { data: userAuth } = await admin.auth.admin.getUserById(patient.user_id);
+    const currentEmail = userAuth?.user?.email;
+    const isOtpUser = Boolean(userAuth?.user?.phone);
+
+    let emailToUpdate = email;
+    let regNoToReturn = regNo;
+    if (isOtpUser && currentEmail && currentEmail.startsWith("reg")) {
+      emailToUpdate = currentEmail;
+      const match = currentEmail.match(/^reg(\d+)@/);
+      if (match && match[1]) {
+        regNoToReturn = Number(match[1]);
+      }
+    }
+
     const password = passwordRaw || generatePatientPassword();
     const { error: updErr } = await admin.auth.admin.updateUserById(
       patient.user_id,
-      { email, password, email_confirm: true },
+      { email: emailToUpdate, password, email_confirm: true },
     );
     if (updErr) {
       return NextResponse.json({ error: "Patient login could not be updated." }, { status: 400 });
     }
     const { error: profileError } = await admin
       .from("profiles")
-      .update({ role: "patient", full_name: name, email })
+      .update({ role: "patient", full_name: name, email: emailToUpdate })
       .eq("id", patient.user_id);
     if (profileError) {
       return NextResponse.json({ error: "Patient profile could not be updated." }, { status: 500 });
@@ -160,7 +174,7 @@ export async function POST(req: Request) {
       scanUrl,
       patientId,
       userId: patient.user_id,
-      regNo,
+      regNo: regNoToReturn,
       ...(returnCredentials ? { password } : {}),
       notify,
       notifyConfigured: configured,

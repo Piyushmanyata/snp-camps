@@ -289,7 +289,8 @@ export function PatientForm({
 
     const { error: profileError } = await supabase
       .from("profiles")
-      .upsert({ id: user.id, role: "patient", phone: phoneE164 });
+      .update({ role: "patient", phone: phoneE164 })
+      .eq("id", user.id);
     if (profileError) {
       setError("Could not save your patient profile. Try again.");
       setLoading(false);
