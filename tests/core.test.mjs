@@ -9,6 +9,7 @@ import {
 } from "../src/lib/aadhaar.ts";
 import {
   isPatientUuid,
+  parseRegistrationNumber,
   parsePatientIdFromQr,
   patientPrintUrl,
   patientScanUrl,
@@ -63,6 +64,14 @@ test("QR parser accepts staff-scan identifiers only", () => {
   assert.equal(parsePatientIdFromQr("snp:" + id), normalized);
   assert.equal(parsePatientIdFromQr("javascript:alert(1)"), null);
   assert.equal(parsePatientIdFromQr("/patient/enter/not-a-uuid"), null);
+});
+
+test("registration number parser rejects overflow and malformed values", () => {
+  assert.equal(parseRegistrationNumber("Reg #1001"), 1001);
+  assert.equal(parseRegistrationNumber(2_147_483_647), 2_147_483_647);
+  assert.equal(parseRegistrationNumber("2147483648"), null);
+  assert.equal(parseRegistrationNumber(Number.POSITIVE_INFINITY), null);
+  assert.equal(parseRegistrationNumber("not a number"), null);
 });
 
 test("patient URLs are staff-scan canonical and passwords avoid ambiguous characters", () => {

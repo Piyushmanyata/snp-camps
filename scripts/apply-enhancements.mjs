@@ -24,6 +24,7 @@ const sqlFiles = [
   "fix-ambiguous-and-delete-camp.sql",
   "lean-perf.sql",
   "release-hardening.sql",
+  "fix-registration-contract.sql",
   "performance-snapshot.sql",
 ];
 

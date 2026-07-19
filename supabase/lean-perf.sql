@@ -72,13 +72,13 @@ set search_path = public
 as $$
   select
     count(*) filter (
-      where p.camp_id = p_camp_id
-        and p.queue_status = 'seen'
-        and p.seen_at >= p_since
+      where p.seen_at >= p_since
     )::bigint,
-    count(*) filter (where p.queue_status = 'seen')::bigint
+    count(*)::bigint
   from public.patients p
-  where p.seen_by = auth.uid()
+  where p.camp_id = p_camp_id
+    and p.seen_by = auth.uid()
+    and p.queue_status = 'seen'
     and exists (
       select 1 from public.profiles pr
       where pr.id = auth.uid() and pr.role = 'doctor'

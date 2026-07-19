@@ -4,7 +4,10 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { parsePatientIdFromQr } from "@/lib/qr";
+import {
+  parsePatientIdFromQr,
+  parseRegistrationNumber,
+} from "@/lib/qr";
 import { Button, ErrorBox, Input } from "@/components/ui";
 import { Toast } from "@/components/toast";
 
@@ -319,8 +322,8 @@ export function QrScanner({
       return;
     }
 
-    const reg = Number(raw.replace(/[^\d]/g, ""));
-    if (!reg || Number.isNaN(reg)) {
+    const reg = parseRegistrationNumber(raw);
+    if (reg === null) {
       setError("Enter registration number (e.g. 1001) or paste QR link.");
       setLooking(false);
       return;

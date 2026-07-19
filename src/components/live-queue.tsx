@@ -41,24 +41,37 @@ export function LiveQueue({
 }) {
   const router = useRouter();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [rows, setRows] = useState(initial);
-  const [total, setTotal] = useState(initialTotal ?? initial.length);
+  const [queueState, setQueueState] = useState<{
+    source: LiveQueuePatient[];
+    rows: LiveQueuePatient[];
+    total: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [serverSnapshot, setServerSnapshot] = useState({
-    initial,
-    initialTotal,
-  });
-  if (
-    initial !== serverSnapshot.initial ||
-    initialTotal !== serverSnapshot.initialTotal
+  const currentQueue =
+    queueState?.source === initial
+      ? queueState
+      : { source: initial, rows: initial, total: initialTotal ?? initial.length };
+  const rows = currentQueue.rows;
+  const total = currentQueue.total;
+
+  function updateQueue(
+    update: (current: typeof currentQueue) => typeof currentQueue,
   ) {
-    setServerSnapshot({ initial, initialTotal });
-    setRows(initial);
-    setTotal(initialTotal ?? initial.length);
+    setQueueState((previous) =>
+      update(
+        previous?.source === initial
+          ? previous
+          : {
+              source: initial,
+              rows: initial,
+              total: initialTotal ?? initial.length,
+            },
+      ),
+    );
   }
 
   const refreshQueue = useCallback(async (isManual = false) => {
@@ -67,7 +80,7 @@ export function LiveQueue({
     const supabase = createClient();
     const { data, count, error: refreshError } = await supabase
       .from("patients")
-      .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
+      .select("id, reg_no, full_name, phone", { count: "exact" })
       .eq("camp_id", campId)
       .eq("queue_status", "waiting")
       .order("queued_at", { ascending: true, nullsFirst: false })
@@ -79,14 +92,17 @@ export function LiveQueue({
       return false;
     }
     const freshRows = (data || []) as LiveQueuePatient[];
-    setRows(freshRows);
-    setTotal(count ?? data?.length ?? 0);
+    setQueueState({
+      source: initial,
+      rows: freshRows,
+      total: count ?? data?.length ?? 0,
+    });
     setError(null);
     if (isManual) {
       setToastMsg(`Queue updated: ${freshRows.length} patient(s) waiting`);
     }
     return true;
-  }, [campId]);
+  }, [campId, initial]);
 
   useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
@@ -129,19 +145,23 @@ export function LiveQueue({
           ? `Already seen by ${row.doctor_name}`
           : "Already seen",
       );
-      setRows((list) => list.filter((r) => r.id !== patientId));
-      setTotal((value) => Math.max(0, value - 1));
-      void refreshQueue(false);
+      updateQueue((current) => ({
+        ...current,
+        rows: current.rows.filter((r) => r.id !== patientId),
+        total: Math.max(0, current.total - 1),
+      }));
       router.refresh();
       return;
     }
 
     setToastMsg("Patient assignment complete");
-    setRows((list) => list.filter((r) => r.id !== patientId));
-    setTotal((value) => Math.max(0, value - 1));
+    updateQueue((current) => ({
+      ...current,
+      rows: current.rows.filter((r) => r.id !== patientId),
+      total: Math.max(0, current.total - 1),
+    }));
     setPickId(null);
     setDoctorId("");
-    void refreshQueue(false);
     router.refresh();
   }
 

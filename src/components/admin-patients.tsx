@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { parseRegistrationNumber } from "@/lib/qr";
 import { formatCampDay, queueLabel, queueTone } from "@/lib/types";
 import {
   Badge,
@@ -178,13 +179,20 @@ export function AdminPatients({
       const term = q.trim().toLowerCase();
       if (term) {
         if (/^\d+$/.test(term)) {
-          const regNo = Number(term);
+          const regNo = parseRegistrationNumber(term);
           const phone = term.slice(-10);
-          query = query.or(
-            phone.length === 10
-              ? "reg_no.eq." + regNo + ",phone_normalized.eq." + phone
-              : "reg_no.eq." + regNo,
-          );
+          const filters = [];
+          if (regNo !== null) filters.push("reg_no.eq." + regNo);
+          if (phone.length === 10) {
+            filters.push("phone_normalized.eq." + phone);
+          }
+          if (!filters.length) {
+            setLoading(false);
+            setRows([]);
+            setTotal(0);
+            return;
+          }
+          query = query.or(filters.join(","));
         } else {
           const escaped = term.replace(/[%_]/g, "\\$&");
           query = query.ilike("full_name_normalized", "%" + escaped + "%");

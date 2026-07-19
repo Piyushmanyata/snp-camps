@@ -21,14 +21,13 @@ export function SeatBoard({
   /** Auto-refresh interval; 0 = manual only. Default 2 min. */
   pollMs?: number;
 }) {
-  const [days, setDays] = useState(initialDays);
-  const [serverDays, setServerDays] = useState(initialDays);
+  const [localSnapshot, setLocalSnapshot] = useState<{
+    source: CampDayStats[];
+    days: CampDayStats[];
+  } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-
-  if (initialDays !== serverDays) {
-    setServerDays(initialDays);
-    setDays(initialDays);
-  }
+  const days =
+    localSnapshot?.source === initialDays ? localSnapshot.days : initialDays;
 
   const refresh = useCallback(async () => {
     if (!campId) return true;
@@ -39,9 +38,12 @@ export function SeatBoard({
     });
     setRefreshing(false);
     if (error) return false;
-    setDays((data as CampDayStats[]) || []);
+    setLocalSnapshot({
+      source: initialDays,
+      days: (data as CampDayStats[]) || [],
+    });
     return true;
-  }, [campId]);
+  }, [campId, initialDays]);
 
   useFixedPoll(refresh, pollMs, Boolean(campId));
 

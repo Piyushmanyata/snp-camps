@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { patientAuthEmail } from "@/lib/patient-auth";
+import { parseRegistrationNumber } from "@/lib/qr";
 import {
   Button,
   Card,
@@ -60,8 +61,8 @@ export default function PatientLoginPage() {
     setLoading(true);
     setError(null);
 
-    const n = Number(String(regNo).replace(/\D/g, ""));
-    if (!Number.isInteger(n) || n <= 0) {
+    const n = parseRegistrationNumber(regNo);
+    if (n === null) {
       setError("Enter your registration number.");
       setLoading(false);
       return;

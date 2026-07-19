@@ -42,9 +42,10 @@ For the current production lineage, apply these SQL files in order. The other SQ
 9. `supabase/verified-registration-cutover.sql` (safe pre-deploy setup)
 10. `supabase/advisor-cleanup.sql`
 11. `supabase/dashboard-stats.sql`
-12. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
-13. `supabase/lean-perf.sql` (partial indexes, desk KPI RPCs, no realtime on hot tables)
-14. `supabase/fix-qr-staff-scan.sql` (lookup + assign RPCs for volunteer QR scan)
+12. `supabase/lean-perf.sql` (partial indexes, desk KPI RPCs, no realtime on hot tables)
+13. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
+14. `supabase/fix-registration-contract.sql` (claim-token return-shape and indexed duplicate-check repair)
+15. `supabase/fix-qr-staff-scan.sql` (lookup + assign RPCs for volunteer QR scan)
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 

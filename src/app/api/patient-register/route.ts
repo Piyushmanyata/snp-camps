@@ -213,14 +213,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // Ensure profile is patient with phone on file
-  await admin.from("profiles").upsert({
+  // Ensure profile is patient with phone on file before creating the row.
+  const { error: profileError } = await admin.from("profiles").upsert({
     id: user.id,
     role: "patient",
     phone: `+91${regPhone}`,
     full_name: fullName,
     email: email || null,
   });
+  if (profileError) {
+    return NextResponse.json(
+      { error: "Registration service is unavailable." },
+      { status: 503, headers },
+    );
+  }
 
   const { data, error } = await admin.rpc("register_patient", {
     p_camp_id: campId,

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
-import { patientScanUrl } from "@/lib/qr";
+import { parseRegistrationNumber, patientScanUrl } from "@/lib/qr";
 import { generatePatientPassword } from "@/lib/patient-password";
 import {
   notifyConfigured,
@@ -35,14 +35,14 @@ export async function POST(req: Request) {
   }
 
   const patientId = String(body.patientId || "").trim();
-  const regNo = Number(body.regNo);
+  const regNo = parseRegistrationNumber(body.regNo);
   const claimToken = String(body.claimToken || "").trim();
   const passwordRaw = body.password != null ? String(body.password) : "";
   const returnCredentials = body.returnCredentials === true;
   const doNotify = body.notify === true;
   const rate = checkRateLimit(req, {
     scope: "patient-account",
-    identifier: `${patientId}:${regNo}`,
+    identifier: `${patientId}:${regNo ?? "invalid"}`,
     limit: 12,
     windowMs: 10 * 60_000,
   });
@@ -56,14 +56,14 @@ export async function POST(req: Request) {
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       patientId,
     ) ||
-    !Number.isInteger(regNo) ||
-    regNo <= 0
+    regNo === null
   ) {
     return NextResponse.json(
       { error: "patientId and regNo required" },
       { status: 400 },
     );
   }
+  const safeRegNo = regNo;
 
   if (passwordRaw && passwordRaw.length < 12) {
     return NextResponse.json(
@@ -108,9 +108,9 @@ export async function POST(req: Request) {
     }
     return notifyPatient({
       phone: phoneOnFile,
-      message: registrationMessage(regNo, password),
+      message: registrationMessage(safeRegNo, password),
       template: "registration",
-      meta: { reg_no: regNo, patient_id: patientId },
+      meta: { reg_no: safeRegNo, patient_id: patientId },
     });
   }
 

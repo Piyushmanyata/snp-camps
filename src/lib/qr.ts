@@ -15,6 +15,26 @@ export function resolveOrigin(origin?: string | null): string {
 const UUID_RE =
   "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
+const REG_NO_MAX = 2_147_483_647;
+
+/** Parse a database-backed registration number without allowing overflow. */
+export function parseRegistrationNumber(
+  raw: string | number | null | undefined,
+): number | null {
+  if (typeof raw === "number") {
+    return Number.isSafeInteger(raw) && raw > 0 && raw <= REG_NO_MAX
+      ? raw
+      : null;
+  }
+
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  const value = Number(digits);
+  return Number.isSafeInteger(value) && value > 0 && value <= REG_NO_MAX
+    ? value
+    : null;
+}
+
 export function isPatientUuid(id: string): boolean {
   return new RegExp(`^${UUID_RE}$`, "i").test(id.trim());
 }

@@ -22,12 +22,14 @@ export function AdminCampDays({
   initialDays: CampDayStats[];
 }) {
   const router = useRouter();
-  const [days, setDays] = useState(initialDays);
-  const [prevDays, setPrevDays] = useState(initialDays);
-  if (initialDays !== prevDays) {
-    setPrevDays(initialDays);
-    setDays(initialDays);
-  }
+  const [localDays, setLocalDays] = useState<{
+    source: CampDayStats[];
+    days: CampDayStats[];
+  } | null>(null);
+  const days = localDays?.source === initialDays ? localDays.days : initialDays;
+
+  const isValidSeatLimit = (value: number) =>
+    Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
   const [dayDate, setDayDate] = useState("");
   const [seats, setSeats] = useState("100");
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,10 @@ export function AdminCampDays({
     const { data } = await supabase.rpc("camp_day_stats", {
       p_camp_id: campId,
     });
-    setDays((data as CampDayStats[]) || []);
+    setLocalDays({
+      source: initialDays,
+      days: (data as CampDayStats[]) || [],
+    });
     router.refresh();
   }
 
@@ -49,7 +54,7 @@ export function AdminCampDays({
     setLoading(true);
     setError(null);
     const limit = Number(seats);
-    if (!dayDate || Number.isNaN(limit) || limit < 0) {
+    if (!dayDate || !isValidSeatLimit(limit)) {
       setError("Enter a date and seat limit ≥ 0");
       setLoading(false);
       return;
@@ -74,7 +79,7 @@ export function AdminCampDays({
     if (savingId) return;
     setError(null);
     const limit = Number(editing[dayId] ?? "");
-    if (Number.isNaN(limit) || limit < 0) {
+    if (!isValidSeatLimit(limit)) {
       setError("Seat limit must be ≥ 0");
       return;
     }
