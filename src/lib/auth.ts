@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile, UserRole } from "@/lib/types";
+import { cache } from "react";
 
-export async function getSessionProfile(): Promise<{
+export const getSessionProfile = cache(async (): Promise<{
   userId: string | null;
   profile: Profile | null;
-}> {
+}> => {
+  const cookieStore = await cookies();
+  const hasSessionCookie = cookieStore
+    .getAll()
+    .some(
+      (cookie) =>
+        cookie.name.includes("auth-token") ||
+        (cookie.name.startsWith("sb-") && cookie.name.includes("auth")),
+    );
+  if (!hasSessionCookie) return { userId: null, profile: null };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -19,7 +31,7 @@ export async function getSessionProfile(): Promise<{
     .maybeSingle();
 
   return { userId: user.id, profile: profile as Profile | null };
-}
+});
 
 export function isStaff(role?: UserRole | null) {
   return role === "admin" || role === "volunteer" || role === "doctor";

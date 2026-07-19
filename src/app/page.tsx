@@ -1,30 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import type { CampDayStats } from "@/lib/types";
+import { getActiveCampSnapshot } from "@/lib/camp";
 import { SeatBoard } from "@/components/seat-board";
 import { ActionCard, Card, StepList } from "@/components/ui";
 
 export default async function HomePage() {
-  const { profile } = await getSessionProfile();
+  const [session, snapshot] = await Promise.all([
+    getSessionProfile(),
+    getActiveCampSnapshot(),
+  ]);
+  const { profile } = session;
   if (profile?.role === "admin") redirect("/admin");
   if (profile?.role === "volunteer") redirect("/volunteer");
   if (profile?.role === "doctor") redirect("/doctor");
   if (profile?.role === "patient") redirect("/patient");
 
-  const supabase = await createClient();
-  const { data: camp } = await supabase
-    .from("camps")
-    .select("id, name, venue")
-    .eq("is_active", true)
-    .maybeSingle();
-
-  const { data: dayStats } = camp
-    ? await supabase.rpc("camp_day_stats", { p_camp_id: camp.id })
-    : { data: [] as CampDayStats[] };
-
-  const days = (dayStats as CampDayStats[]) || [];
+  const camp = snapshot;
+  const days = snapshot?.days || [];
   const anyOpen = days.some((d) => !d.is_full);
 
   return (

@@ -23,7 +23,8 @@ const sqlFiles = [
   "fix-change-day-queue-lock.sql",
   "fix-ambiguous-and-delete-camp.sql",
   "lean-perf.sql",
-  "release-hardening.sql"
+  "release-hardening.sql",
+  "performance-snapshot.sql",
 ];
 
 async function main() {

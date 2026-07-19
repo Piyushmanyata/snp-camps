@@ -1,26 +1,18 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import type { CampDayStats } from "@/lib/types";
+import { getActiveCampSnapshot } from "@/lib/camp";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SeatBoard } from "@/components/seat-board";
 import { SignOutButton } from "@/components/sign-out";
 
 export default async function RegisterPage() {
-  const supabase = await createClient();
-  const { userId, profile } = await getSessionProfile();
-
-  const { data: camp } = await supabase
-    .from("camps")
-    .select("id, name, venue, camp_date")
-    .eq("is_active", true)
-    .maybeSingle();
-
-  const { data: dayStats } = camp
-    ? await supabase.rpc("camp_day_stats", { p_camp_id: camp.id })
-    : { data: [] as CampDayStats[] };
-  const days = (dayStats as CampDayStats[]) || [];
+  const [session, camp] = await Promise.all([
+    getSessionProfile(),
+    getActiveCampSnapshot(),
+  ]);
+  const { userId, profile } = session;
+  const days = camp?.days || [];
   const staff = isStaff(profile?.role);
   const role = profile?.role;
 
