@@ -35,6 +35,12 @@ export async function GET(req: Request) {
 
   const supabase = await createClient();
 
+  const { data: activeCamp } = await supabase
+    .from("camps")
+    .select("id")
+    .eq("is_active", true)
+    .maybeSingle();
+
   const { data: person, error: pErr } = await supabase
     .from("profiles")
     .select("id, full_name, email, phone, role, created_at")
@@ -58,25 +64,37 @@ export async function GET(req: Request) {
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
 
   if (role === "doctor") {
+    let totalQuery = supabase
+      .from("patients")
+      .select("id", { count: "exact", head: true })
+      .eq("seen_by", id)
+      .eq("queue_status", "seen");
+
+    let todayQuery = supabase
+      .from("patients")
+      .select("id", { count: "exact", head: true })
+      .eq("seen_by", id)
+      .eq("queue_status", "seen")
+      .gte("seen_at", startOfDay);
+
+    let patientsQuery = supabase
+      .from("patients")
+      .select("id, reg_no, full_name, phone, queue_status, seen_at, created_at")
+      .eq("seen_by", id)
+      .eq("queue_status", "seen")
+      .order("seen_at", { ascending: false })
+      .limit(40);
+
+    if (activeCamp) {
+      totalQuery = totalQuery.eq("camp_id", activeCamp.id);
+      todayQuery = todayQuery.eq("camp_id", activeCamp.id);
+      patientsQuery = patientsQuery.eq("camp_id", activeCamp.id);
+    }
+
     const [totalRes, todayRes, patientsRes] = await Promise.all([
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("seen_by", id)
-        .eq("queue_status", "seen"),
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("seen_by", id)
-        .eq("queue_status", "seen")
-        .gte("seen_at", startOfDay),
-      supabase
-        .from("patients")
-        .select("id, reg_no, full_name, phone, queue_status, seen_at, created_at")
-        .eq("seen_by", id)
-        .eq("queue_status", "seen")
-        .order("seen_at", { ascending: false })
-        .limit(40),
+      totalQuery,
+      todayQuery,
+      patientsQuery,
     ]);
 
     if (totalRes.error || todayRes.error || patientsRes.error) {
@@ -103,35 +121,53 @@ export async function GET(req: Request) {
     });
   }
 
+  let totalQuery = supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", id);
+
+  let todayQuery = supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", id)
+    .gte("created_at", startOfDay);
+
+  let waitingQuery = supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", id)
+    .eq("queue_status", "waiting");
+
+  let seenQuery = supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("created_by", id)
+    .eq("queue_status", "seen");
+
+  let patientsQuery = supabase
+    .from("patients")
+    .select(
+      "id, reg_no, full_name, phone, queue_status, seen_at, created_at",
+    )
+    .eq("created_by", id)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (activeCamp) {
+    totalQuery = totalQuery.eq("camp_id", activeCamp.id);
+    todayQuery = todayQuery.eq("camp_id", activeCamp.id);
+    waitingQuery = waitingQuery.eq("camp_id", activeCamp.id);
+    seenQuery = seenQuery.eq("camp_id", activeCamp.id);
+    patientsQuery = patientsQuery.eq("camp_id", activeCamp.id);
+  }
+
   const [totalRes, todayRes, waitingRes, seenRes, patientsRes] =
     await Promise.all([
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("created_by", id),
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("created_by", id)
-        .gte("created_at", startOfDay),
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("created_by", id)
-        .eq("queue_status", "waiting"),
-      supabase
-        .from("patients")
-        .select("id", { count: "exact", head: true })
-        .eq("created_by", id)
-        .eq("queue_status", "seen"),
-      supabase
-        .from("patients")
-        .select(
-          "id, reg_no, full_name, phone, queue_status, seen_at, created_at",
-        )
-        .eq("created_by", id)
-        .order("created_at", { ascending: false })
-        .limit(40),
+      totalQuery,
+      todayQuery,
+      waitingQuery,
+      seenQuery,
+      patientsQuery,
     ]);
 
   const err =
