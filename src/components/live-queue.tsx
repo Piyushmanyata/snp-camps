@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -50,8 +50,6 @@ export function LiveQueue({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const refreshGeneration = useRef(0);
   const mutationGeneration = useRef(0);
   const currentQueue =
     queueState?.source === initial
@@ -76,43 +74,15 @@ export function LiveQueue({
     );
   }
 
-  const refreshQueue = useCallback(async (isManual = false) => {
-    if (!campId) return true;
-    const requestGeneration = ++refreshGeneration.current;
-    const mutationAtStart = mutationGeneration.current;
-    setRefreshing(true);
-    const supabase = createClient();
-    const { data, count, error: refreshError } = await supabase
-      .from("patients")
-      .select("id, reg_no, full_name, phone", { count: "exact" })
-      .eq("camp_id", campId)
-      .eq("queue_status", "waiting")
-      .order("queued_at", { ascending: true, nullsFirst: false })
-      .range(0, 99);
-    setRefreshing(false);
-
-    if (refreshError) {
-      setError("Queue refresh failed. Showing the last successful list.");
-      return false;
-    }
-    if (
-      requestGeneration !== refreshGeneration.current ||
-      mutationAtStart !== mutationGeneration.current
-    ) {
-      return false;
-    }
-    const freshRows = (data || []) as LiveQueuePatient[];
-    setQueueState({
-      source: initial,
-      rows: freshRows,
-      total: count ?? data?.length ?? 0,
+  const [isPending, startTransition] = useTransition();
+  const refreshQueue = useCallback((isManual = false) => {
+    startTransition(() => {
+      router.refresh();
     });
-    setError(null);
     if (isManual) {
-      setToastMsg(`Queue updated: ${freshRows.length} patient(s) waiting`);
+      setToastMsg("Queue updated");
     }
-    return true;
-  }, [campId, initial]);
+  }, [router]);
 
   useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
@@ -194,10 +164,10 @@ export function LiveQueue({
         <button
           type="button"
           onClick={() => void refreshQueue(true)}
-          disabled={refreshing || !campId}
+          disabled={isPending || !campId}
           className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >
-          {refreshing ? <Spinner className="h-3 w-3" /> : null}
+          {isPending ? <Spinner className="h-3 w-3" /> : null}
           Refresh
         </button>
       </div>

@@ -24,8 +24,12 @@ export function AdminCampDays({
   const router = useRouter();
   const days = initialDays;
 
-  const isValidSeatLimit = (value: number) =>
-    Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
+  const isValidSeatLimitInput = (valueStr: string) => {
+    const trimmed = valueStr.trim();
+    if (!/^\d+$/.test(trimmed)) return false;
+    const value = Number(trimmed);
+    return Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
+  };
   const [dayDate, setDayDate] = useState("");
   const [seats, setSeats] = useState("100");
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +47,12 @@ export function AdminCampDays({
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const limit = Number(seats);
-    if (!dayDate || !isValidSeatLimit(limit)) {
+    if (!dayDate || !isValidSeatLimitInput(seats)) {
       setError("Enter a date and seat limit ≥ 0");
       setLoading(false);
       return;
     }
+    const limit = Number(seats);
     const supabase = createClient();
     const { error: err } = await supabase.rpc("upsert_camp_day", {
       p_camp_id: campId,
@@ -68,11 +72,12 @@ export function AdminCampDays({
   async function saveSeats(dayId: string, dayDateIso: string) {
     if (savingId) return;
     setError(null);
-    const limit = Number(editing[dayId] ?? "");
-    if (!isValidSeatLimit(limit)) {
-      setError("Seat limit must be ≥ 0");
+    const seatsVal = editing[dayId] ?? "";
+    if (!isValidSeatLimitInput(seatsVal)) {
+      setError("Seat limit must be a whole number ≥ 0");
       return;
     }
+    const limit = Number(seatsVal);
     setSavingId(dayId);
     const supabase = createClient();
     const { error: err } = await supabase.rpc("upsert_camp_day", {

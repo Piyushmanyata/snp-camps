@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Badge,
   Card,
   EmptyState,
-  ErrorBox,
   SectionTitle,
   Spinner,
 } from "@/components/ui";
@@ -28,34 +27,16 @@ export function SeatBoard({
   /** Auto-refresh interval; 0 = manual only. Default 2 min. */
   pollMs?: number;
 }) {
-  const [localSnapshot, setLocalSnapshot] = useState<{
-    source: CampDayStats[];
-    days: CampDayStats[];
-  } | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const days =
-    localSnapshot?.source === initialDays ? localSnapshot.days : initialDays;
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const refresh = useCallback(() => {
+    if (!campId) return;
+    startTransition(() => {
+      router.refresh();
+    });
+  }, [campId, router]);
 
-  const refresh = useCallback(async () => {
-    if (!campId) return true;
-    setRefreshing(true);
-    const supabase = createClient();
-    const { data, error } = await supabase.rpc("camp_day_stats", {
-      p_camp_id: campId,
-    });
-    setRefreshing(false);
-    if (error) {
-      setError("Seat refresh failed. Showing the last successful status.");
-      return false;
-    }
-    setError(null);
-    setLocalSnapshot({
-      source: initialDays,
-      days: (data as CampDayStats[]) || [],
-    });
-    return true;
-  }, [campId, initialDays]);
+  const days = initialDays;
 
   useFixedPoll(refresh, pollMs, Boolean(campId));
 
@@ -88,15 +69,14 @@ export function SeatBoard({
           <button
             type="button"
             onClick={() => void refresh()}
-            disabled={refreshing}
+            disabled={isPending}
             className="pressable inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
           >
-            {refreshing ? <Spinner className="h-3 w-3" /> : null}
+            {isPending ? <Spinner className="h-3 w-3" /> : null}
             Refresh
           </button>
         ) : null}
       </div>
-      <ErrorBox message={error} />
       <ul
         className={
           compact

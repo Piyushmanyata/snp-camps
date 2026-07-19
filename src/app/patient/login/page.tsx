@@ -149,6 +149,13 @@ export default function PatientLoginPage() {
       .update({ phone: phoneE164, role: "patient" })
       .eq("id", user.id);
 
+    if (profileErr) {
+      await supabase.auth.signOut();
+      setError(profileErr.message);
+      setLoading(false);
+      return;
+    }
+
     const { data: linked } = await supabase
       .from("patients")
       .select("id")
@@ -164,11 +171,10 @@ export default function PatientLoginPage() {
       "link_patient_phone",
       { p_phone: phoneE164 },
     );
-    if (profileErr || linkErr || !linkedId) {
+    if (linkErr || !linkedId) {
       await supabase.auth.signOut();
       setError(
         linkErr?.message ||
-          profileErr?.message ||
           "No unlinked registration was found for this phone number.",
       );
       setLoading(false);

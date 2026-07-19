@@ -69,12 +69,15 @@ export async function POST(request: Request) {
   const gender = ["M", "F", "O"].includes(String(body.gender))
     ? String(body.gender)
     : null;
+  const rawAge = body.age as unknown;
   const age =
-    body.age == null
+    rawAge == null
       ? null
-      : typeof body.age === "number"
-        ? body.age
-        : Number.NaN;
+      : typeof rawAge === "number" && Number.isInteger(rawAge)
+        ? rawAge
+        : typeof rawAge === "string" && /^\d+$/.test(rawAge.trim())
+          ? Number(rawAge)
+          : Number.NaN;
 
   const rate = checkRateLimit(request, {
     scope: "patient-register",

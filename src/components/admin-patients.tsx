@@ -143,8 +143,18 @@ export function AdminPatients({
   avgWaitMinutes?: number | null;
   showAttribution?: boolean;
 }) {
-  const [rows, setRows] = useState(initial);
-  const [total, setTotal] = useState(totalCount ?? initial.length);
+  const [snapshot, setSnapshot] = useState<{
+    source: AdminPatientRow[];
+    rows: AdminPatientRow[];
+    total: number;
+  } | null>(null);
+
+  const current = snapshot?.source === initial
+    ? snapshot
+    : { source: initial, rows: initial, total: totalCount ?? initial.length };
+
+  const rows = current.rows;
+  const total = current.total;
   const [loading, setLoading] = useState(false);
   const firstQuery = useRef(true);
   const requestId = useRef(0);
@@ -188,8 +198,7 @@ export function AdminPatients({
           }
           if (!filters.length) {
             setLoading(false);
-            setRows([]);
-            setTotal(0);
+            setSnapshot({ source: initial, rows: [], total: 0 });
             return;
           }
           query = query.or(filters.join(","));
@@ -212,15 +221,18 @@ export function AdminPatients({
       );
       if (currentRequest !== requestId.current) return;
       setLoading(false);
-      setRows(mapRows((data || []) as Record<string, unknown>[], names));
-      setTotal(count ?? 0);
+      setSnapshot({
+        source: initial,
+        rows: mapRows((data || []) as Record<string, unknown>[], names),
+        total: count ?? 0,
+      });
     }, 300);
 
     return () => {
       window.clearTimeout(timer);
       requestId.current += 1;
     };
-  }, [filter, page, q]);
+  }, [filter, initial, page, q]);
 
   async function removePatient(row: AdminPatientRow) {
     const ok = window.confirm(
@@ -242,8 +254,15 @@ export function AdminPatients({
       return;
     }
 
-    setRows((prev) => prev.filter((p) => p.id !== row.id));
-    setTotal((value) => Math.max(0, value - 1));
+    setSnapshot((prev) => {
+      const currentRows = prev?.source === initial ? prev.rows : initial;
+      const currentTotal = prev?.source === initial ? prev.total : (totalCount ?? initial.length);
+      return {
+        source: initial,
+        rows: currentRows.filter((p) => p.id !== row.id),
+        total: Math.max(0, currentTotal - 1),
+      };
+    });
     setDeletingId(null);
   }
 

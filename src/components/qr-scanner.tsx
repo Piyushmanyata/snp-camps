@@ -336,9 +336,15 @@ export function QrScanner({
     handledRef.current = false;
     const raw = manual.trim();
 
-    const asId = parsePatientIdFromQr(raw);
-    if (asId) {
-      await resolvePatient({ id: asId });
+    const cleanedRaw = raw.trim();
+    if (cleanedRaw && !/^\d+$/.test(cleanedRaw)) {
+      const asId = parsePatientIdFromQr(cleanedRaw);
+      if (asId) {
+        await resolvePatient({ id: asId });
+        setLooking(false);
+        return;
+      }
+      setError("Enter registration number (e.g. 1001) or paste QR link.");
       setLooking(false);
       return;
     }

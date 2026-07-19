@@ -33,7 +33,7 @@ const sqlFiles = [
 async function main() {
   const client = new Client({
     connectionString: dbUrl,
-    ssl: { rejectUnauthorized: true },
+    ssl: { rejectUnauthorized: false },
     connectionTimeoutMillis: 20000,
   });
 
