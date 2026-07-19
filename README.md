@@ -4,8 +4,8 @@ Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
 ## Camp flow (v3)
 
-1. **Self-register** with **Aadhaar only** → provider verification → account created → **auto sign-in**
-2. Patient sees **reg number + password** (also **SMS/WhatsApp** when configured)
+1. **Self-register** with **phone OTP** → details → account linked → **auto sign-in**
+2. Patient sees **reg number + optional backup password** (also **SMS/WhatsApp** when configured)
 3. On **logout**, reg number + new password are shown again (and re-sent via SMS/WhatsApp stubs)
 4. **Desk print** (optional) → joins FCFS **queue** (`waiting`)
 5. **Doctor scan** → **seen** (once only) — **no print required**
@@ -46,6 +46,10 @@ For the current production lineage, apply these SQL files in order. The other SQ
 13. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
 14. `supabase/fix-registration-contract.sql` (claim-token return-shape and indexed duplicate-check repair)
 15. `supabase/fix-qr-staff-scan.sql` (lookup + assign RPCs for volunteer QR scan)
+16. `supabase/optimization-hardening.sql` (RLS policy consolidation and RPC grants)
+17. `supabase/optimization-registration-guard.sql` (registration contract and capacity guard)
+18. `supabase/performance-snapshot.sql` (cached public camp snapshot)
+19. `supabase/deep-hardening.sql` (claim-token column isolation and duplicate-index cleanup)
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
@@ -74,7 +78,6 @@ configuration, and `AADHAAR_VERIFY_URL`; it returns 503 until all are ready.
 Copy `.env.example` → `.env.local`.
 
 ```
-ADMIN_INVITE_CODE=...
 VOLUNTEER_INVITE_CODE=...
 SUPABASE_SERVICE_ROLE_KEY=...   # create volunteers/doctors, patient accounts
 ```
@@ -82,7 +85,7 @@ SUPABASE_SERVICE_ROLE_KEY=...   # create volunteers/doctors, patient accounts
 Optional later:
 
 ```
-# Aadhaar eKYC / OTP provider (required for self-registration)
+# Optional Aadhaar eKYC / lookup provider
 # AADHAAR_VERIFY_URL=
 # AADHAAR_LOOKUP_URL=
 # SMS_WEBHOOK_URL=

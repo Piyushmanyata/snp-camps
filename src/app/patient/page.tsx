@@ -20,7 +20,7 @@ export default async function PatientHomePage() {
   if (!userId) redirect("/patient/login");
 
   const supabase = await createClient();
-  const { data: patient } = await supabase
+  const { data: patient, error: patientError } = await supabase
     .from("patients")
     .select(
       "id, reg_no, full_name, queue_status, gender, age, phone, address, aadhaar_last4, camp_id, camp_day_id, camp_days(day_date)",
@@ -29,11 +29,13 @@ export default async function PatientHomePage() {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (patientError) throw new Error("Patient profile could not be loaded");
 
   const campId = (patient?.camp_id as string | undefined) || null;
-  const { data: dayStats } = campId
+  const { data: dayStats, error: dayStatsError } = campId
     ? await supabase.rpc("camp_day_stats", { p_camp_id: campId })
-    : { data: [] as CampDayStats[] };
+    : { data: [] as CampDayStats[], error: null };
+  if (dayStatsError) throw new Error("Camp seat status could not be loaded");
   const days = (dayStats as CampDayStats[]) || [];
 
   const dayRel = patient?.camp_days as

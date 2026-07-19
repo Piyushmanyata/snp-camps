@@ -15,8 +15,8 @@ import {
   patientScanUrl,
 } from "../src/lib/qr.ts";
 import { generatePatientPassword } from "../src/lib/patient-password.ts";
-import { checkRateLimit } from "../src/lib/rate-limit.ts";
-import { normalizePhoneE164 } from "../src/lib/notify.ts";
+import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
+import { normalizePhoneE164 } from "../src/lib/phone.ts";
 
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
@@ -120,8 +120,10 @@ test("rate limits enforce both client and supplied subject", () => {
 
 test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164("9876543210"), "+919876543210");
+  assert.equal(normalizePhoneE164("09876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("+91 98765 43210"), "+919876543210");
   assert.equal(normalizePhoneE164("0919876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("919876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("12345"), null);
+  assert.equal(normalizePhoneE164("1234567890"), null);
 });

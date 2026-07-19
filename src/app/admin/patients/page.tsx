@@ -29,12 +29,12 @@ export default async function PatientDeskPage() {
       )
       .order("created_at", { ascending: false })
       .limit(50),
-    camp
-      ? supabase.rpc("camp_queue_counts", { p_camp_id: camp.id })
-      : Promise.resolve({ data: [] }),
+      camp
+        ? supabase.rpc("camp_queue_counts", { p_camp_id: camp.id })
+        : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (patientsRes.error) {
+  if (patientsRes.error || (camp && queueCountsRes.error)) {
     throw new Error("Patient desk data could not be loaded");
   }
 

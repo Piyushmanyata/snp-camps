@@ -37,7 +37,6 @@ async function connect() {
         ...(process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : {}),
       },
     },
-    { label: "tls-relaxed", ssl: { rejectUnauthorized: false } },
   ];
 
   for (const c of configs) {

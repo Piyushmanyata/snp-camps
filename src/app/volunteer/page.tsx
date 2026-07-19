@@ -132,7 +132,12 @@ export default async function VolunteerPage() {
         supabase.rpc("volunteer_my_counts", { p_since: startOfDay }),
       ]);
 
-    if (waitingRes.error || doctorsRes.error || myCountsRes.error) {
+    if (
+      waitingRes.error ||
+      doctorsRes.error ||
+      dayStatsRes.error ||
+      myCountsRes.error
+    ) {
       throw new Error("Volunteer desk data could not be loaded");
     }
 

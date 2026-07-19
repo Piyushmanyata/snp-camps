@@ -117,6 +117,13 @@ begin
     raise exception 'Patient not found';
   end if;
 
+  if not exists (
+    select 1 from public.camps c
+    where c.id = r.camp_id and c.is_active
+  ) then
+    raise exception 'Patient belongs to an inactive camp';
+  end if;
+
   -- Already seen: hard block (no update)
   if r.queue_status = 'seen' then
     select pr.full_name into v_doctor_name

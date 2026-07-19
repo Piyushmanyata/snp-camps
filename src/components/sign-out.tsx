@@ -34,7 +34,6 @@ export function SignOutButton({
     const supabase = createClient();
     await supabase.auth.signOut();
     router.replace("/");
-    router.refresh();
     setLoading(false);
   }
 
@@ -58,7 +57,6 @@ export function SignOutButton({
         await supabase.auth.signOut();
         setLoading(false);
         router.replace("/patient/login");
-        router.refresh();
         return;
       }
 

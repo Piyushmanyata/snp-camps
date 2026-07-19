@@ -322,7 +322,7 @@ export function Input({
         aria-describedby={
           [errorId, hintId].filter(Boolean).join(" ") || undefined
         }
-        className={`min-h-[3.25rem] w-full rounded-xl border bg-white px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted/55 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
+        className={`min-h-[3.25rem] w-full rounded-xl border bg-white px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
           error
             ? "border-danger focus:border-danger focus:ring-danger/20"
             : "border-border"

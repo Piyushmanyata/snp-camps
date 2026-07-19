@@ -40,7 +40,6 @@ async function connect() {
           : {}),
       },
     },
-    { label: "tls-relaxed", ssl: { rejectUnauthorized: false } },
   ];
 
   for (const c of configs) {

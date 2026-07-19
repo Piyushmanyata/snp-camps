@@ -12,7 +12,7 @@ import {
   isValidAadhaarNumber,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
-import { patientAuthEmail } from "@/lib/patient-auth";
+import { normalizePhoneE164 } from "@/lib/phone";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
@@ -48,14 +48,6 @@ type Created = {
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
-
-function normalizePhoneE164(raw: string): string | null {
-  const d = raw.replace(/\D/g, "");
-  if (d.length === 10) return `+91${d}`;
-  if (d.length === 12 && d.startsWith("91")) return `+${d}`;
-  if (d.length === 13 && d.startsWith("091")) return `+91${d.slice(3)}`;
-  return null;
-}
 
 export function PatientForm({
   campId,
@@ -304,7 +296,6 @@ export function PatientForm({
     );
     if (!linkErr && linkedId) {
       router.replace("/patient");
-      router.refresh();
       return;
     }
 
@@ -363,9 +354,9 @@ export function PatientForm({
       return;
     }
 
-    const phoneDigits = phone.replace(/\D/g, "");
-    const phone10 = phoneDigits.slice(-10);
-    if (phone10.length !== 10) {
+    const normalizedPhone = normalizePhoneE164(phone);
+    const phone10 = normalizedPhone?.slice(-10) || "";
+    if (!normalizedPhone) {
       setError("Phone is required (10-digit mobile).");
       setLoading(false);
       return;
@@ -475,13 +466,25 @@ export function PatientForm({
           notify: true,
         }),
       });
-      const acc = (await accRes.json()) as {
+      const acc = (await accRes.json().catch(() => ({}))) as {
         error?: string;
         password?: string;
         notify?: { sms?: string; whatsapp?: string };
         notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
         message?: string;
       };
+
+      if (!accRes.ok) {
+        setCreated({
+          ...base,
+          loggedIn: true,
+          notifyNote:
+            acc.error ||
+            "Registered and signed in. Backup password could not be issued; use phone OTP.",
+        });
+        setLoading(false);
+        return;
+      }
 
       const smsOn = acc.notifyConfigured?.sms;
       const waOn = acc.notifyConfigured?.whatsapp;
@@ -497,14 +500,6 @@ export function PatientForm({
           parts.push("WhatsApp failed");
         else if (!waOn) parts.push("WhatsApp not configured yet");
         if (parts.length) notifyNote = parts.join(" · ");
-      }
-
-      if (acc.password) {
-        // Link password login as backup without forcing re-auth
-        await supabase.auth.signInWithPassword({
-          email: patientAuthEmail(base.reg_no),
-          password: acc.password,
-        }).catch(() => undefined);
       }
 
       setCreated({
@@ -544,6 +539,18 @@ export function PatientForm({
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
+  }
+
+  function moveDay(currentId: string, direction: -1 | 1) {
+    const selectable = days.filter((d) => !d.is_full);
+    const currentIndex = selectable.findIndex((d) => d.id === currentId);
+    if (currentIndex < 0 || selectable.length < 2) return;
+    const next =
+      selectable[(currentIndex + direction + selectable.length) % selectable.length];
+    setCampDayId(next.id);
+    window.setTimeout(() => {
+      document.getElementById(`camp-day-${next.id}`)?.focus();
+    }, 0);
   }
 
   if (created) {
@@ -812,11 +819,25 @@ export function PatientForm({
             return (
               <button
                 key={d.id}
+                id={`camp-day-${d.id}`}
                 type="button"
                 role="radio"
                 aria-checked={active}
+                tabIndex={active ? 0 : -1}
                 disabled={d.is_full}
                 onClick={() => setCampDayId(d.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                    e.preventDefault();
+                    moveDay(d.id, 1);
+                  } else if (
+                    e.key === "ArrowLeft" ||
+                    e.key === "ArrowUp"
+                  ) {
+                    e.preventDefault();
+                    moveDay(d.id, -1);
+                  }
+                }}
                 className={`day-chip ${active ? "day-chip-active" : ""} ${
                   d.is_full ? "day-chip-full" : ""
                 }`}

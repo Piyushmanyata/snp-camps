@@ -45,7 +45,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
 
-  const adminCode = process.env.ADMIN_INVITE_CODE;
   const volunteerCode = process.env.VOLUNTEER_INVITE_CODE;
   const usable = (value: string | undefined, placeholder: string) =>
     Boolean(value && value.length >= 16 && value !== placeholder);
@@ -56,28 +55,19 @@ export async function POST(req: Request) {
     if (bufProvided.byteLength !== bufConfigured.byteLength) return false;
     return timingSafeEqual(bufProvided, bufConfigured);
   };
-  if (
-    !usable(adminCode, "change-me-admin") &&
-    !usable(volunteerCode, "change-me-volunteer")
-  ) {
+  if (!usable(volunteerCode, "change-me-volunteer")) {
     return NextResponse.json(
       { error: "Invite codes not configured on server" },
       { status: 500 },
     );
   }
 
-  let role: "admin" | "volunteer" | null = null;
-  if (usable(adminCode, "change-me-admin") && matches(invite, adminCode)) {
-    role = "admin";
-  } else if (
-    usable(volunteerCode, "change-me-volunteer") &&
-    matches(invite, volunteerCode)
-  ) {
-    role = "volunteer";
-  }
-  else {
+  // Public invite registration can only create the least-privileged staff
+  // role. Admin accounts are bootstrapped out-of-band or by an existing admin.
+  if (!matches(invite, volunteerCode)) {
     return NextResponse.json({ error: "Invalid invite code" }, { status: 403 });
   }
+  const role = "volunteer" as const;
 
   const admin = createServiceRoleClient();
   if (!admin) {

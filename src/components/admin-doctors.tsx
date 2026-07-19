@@ -47,35 +47,36 @@ export function AdminDoctors({
     setError(null);
     setOk(null);
 
-    const res = await fetch("/api/admin/doctors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, email, password }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error || "Failed to create doctor");
-      setLoading(false);
-      return;
-    }
+    try {
+      const res = await fetch("/api/admin/doctors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email, password }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        doctor?: Doctor;
+      };
+      if (!res.ok || !json.doctor) {
+        setError(json.error || "Failed to create doctor");
+        return;
+      }
 
-    setList((prev) => [
-      {
-        id: json.doctor.id,
-        full_name: json.doctor.full_name,
-        email: json.doctor.email,
-        phone: null,
-        role: "doctor",
-      },
-      ...prev,
-    ]);
-    setOk(`Created. Share login: ${email} + the password you set.`);
-    setFullName("");
-    setEmail("");
-    setPassword("");
-    setShowForm(false);
-    setLoading(false);
-    router.refresh();
+      setList((prev) => [
+        { ...json.doctor!, phone: null, role: "doctor" },
+        ...prev,
+      ]);
+      setOk(`Created. Share login: ${email} + the password you set.`);
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setShowForm(false);
+      router.refresh();
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function onDelete(d: Doctor) {
@@ -90,20 +91,25 @@ export function AdminDoctors({
     setDeletingId(d.id);
     setError(null);
     setOk(null);
-    const res = await fetch(
-      `/api/admin/doctors?id=${encodeURIComponent(d.id)}`,
-      { method: "DELETE" },
-    );
-    const json = await res.json().catch(() => ({}));
-    setDeletingId(null);
-    if (!res.ok) {
-      setError(json.error || "Failed to delete doctor");
-      return;
+    try {
+      const res = await fetch(
+        `/api/admin/doctors?id=${encodeURIComponent(d.id)}`,
+        { method: "DELETE" },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Failed to delete doctor");
+        return;
+      }
+      setList((prev) => prev.filter((x) => x.id !== d.id));
+      if (selectedId === d.id) setSelectedId(null);
+      setOk(`Deleted ${label}.`);
+      router.refresh();
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
+      setDeletingId(null);
     }
-    setList((prev) => prev.filter((x) => x.id !== d.id));
-    if (selectedId === d.id) setSelectedId(null);
-    setOk(`Deleted ${label}.`);
-    router.refresh();
   }
 
   return (

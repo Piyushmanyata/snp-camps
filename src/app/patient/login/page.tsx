@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { patientAuthEmail } from "@/lib/patient-auth";
+import { normalizePhoneE164 } from "@/lib/phone";
 import { parseRegistrationNumber } from "@/lib/qr";
 import {
   Button,
@@ -25,13 +26,6 @@ const LOGIN_ERRORS: Record<string, string> = {
   account: "Could not open your account. Try again or ask the desk.",
   session: "Could not start your session. Try again.",
 };
-
-function normalizePhone(raw: string) {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
-  return "";
-}
 
 type Mode = "password" | "otp";
 
@@ -91,14 +85,13 @@ export default function PatientLoginPage() {
     }
 
     router.replace("/patient");
-    router.refresh();
   }
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const phoneE164 = normalizePhone(phone);
+    const phoneE164 = normalizePhoneE164(phone);
     if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
       setLoading(false);
@@ -125,8 +118,8 @@ export default function PatientLoginPage() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const phoneE164 = normalizePhone(phone);
-    if (!phoneE164 || !/^\+91\d{10}$/.test(phoneE164)) {
+    const phoneE164 = normalizePhoneE164(phone);
+    if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
       setLoading(false);
       return;
@@ -164,7 +157,6 @@ export default function PatientLoginPage() {
 
     if (linked) {
       router.replace("/patient");
-      router.refresh();
       return;
     }
 
@@ -183,8 +175,7 @@ export default function PatientLoginPage() {
       return;
     }
 
-    router.replace("/patient");
-    router.refresh();
+      router.replace("/patient");
   }
 
   return (
@@ -278,7 +269,7 @@ export default function PatientLoginPage() {
             ) : (
               <form onSubmit={verifyOtp} className="space-y-4" noValidate>
                 <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
-                  OTP sent to <strong>{normalizePhone(phone)}</strong>
+                  OTP sent to <strong>{normalizePhoneE164(phone) || phone}</strong>
                 </p>
                 <Input
                   label="OTP"

@@ -39,7 +39,6 @@ async function connect() {
       },
     },
     // Local/dev TLS interception or missing system CA — still encrypted.
-    { label: "tls-relaxed", ssl: { rejectUnauthorized: false } },
   ];
 
   for (const c of configs) {

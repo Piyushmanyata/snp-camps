@@ -4,7 +4,14 @@ import { useCallback, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
-import { Badge, Card, EmptyState, SectionTitle, Spinner } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ErrorBox,
+  SectionTitle,
+  Spinner,
+} from "@/components/ui";
 
 /** Seat board. Auto-refresh every pollMs (default 2 min) or manual Refresh. */
 export function SeatBoard({
@@ -26,6 +33,7 @@ export function SeatBoard({
     days: CampDayStats[];
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const days =
     localSnapshot?.source === initialDays ? localSnapshot.days : initialDays;
 
@@ -37,7 +45,11 @@ export function SeatBoard({
       p_camp_id: campId,
     });
     setRefreshing(false);
-    if (error) return false;
+    if (error) {
+      setError("Seat refresh failed. Showing the last successful status.");
+      return false;
+    }
+    setError(null);
     setLocalSnapshot({
       source: initialDays,
       days: (data as CampDayStats[]) || [],
@@ -84,6 +96,7 @@ export function SeatBoard({
           </button>
         ) : null}
       </div>
+      <ErrorBox message={error} />
       <ul
         className={
           compact

@@ -25,7 +25,7 @@ export default async function PrintPage({
 
   if (!uuidOk) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-10">
+      <main id="main" className="mx-auto max-w-lg px-4 py-10">
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
           <p className="text-lg font-semibold">Invalid patient link</p>
           <p className="mt-1 text-sm text-muted">
@@ -48,7 +48,7 @@ export default async function PrintPage({
 
   if (patientErr || !patient) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-10">
+      <main id="main" className="mx-auto max-w-lg px-4 py-10">
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
           <p className="text-lg font-semibold">Patient not found</p>
           <p className="mt-1 text-sm text-muted">
@@ -68,7 +68,7 @@ export default async function PrintPage({
     });
     if (queueErr) {
       return (
-        <main className="mx-auto max-w-lg px-4 py-10">
+        <main id="main" className="mx-auto max-w-lg px-4 py-10">
           <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
             <p className="text-lg font-semibold text-red-950">Could not join queue</p>
             <p className="mt-1 text-sm text-red-900">
@@ -95,7 +95,7 @@ export default async function PrintPage({
   }).format(new Date());
 
   return (
-    <main className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
+    <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
       <PrintActions
         className="no-print mb-4"
         regNo={patient.reg_no}

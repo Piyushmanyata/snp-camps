@@ -53,6 +53,7 @@ export function QrScanner({
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [active, setActive] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [manual, setManual] = useState("");
   const [looking, setLooking] = useState(false);
   const [lookup, setLookup] = useState<LookupRow | null>(null);
@@ -63,12 +64,14 @@ export function QrScanner({
   const autoScanDone = useRef(false);
   const badScanAt = useRef(0);
   const isMounted = useRef(true);
+  const scannerGeneration = useRef(0);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
   } | null>(null);
 
   const stopScanner = useCallback(async () => {
+    scannerGeneration.current += 1;
     const scanner = scannerRef.current;
     scannerRef.current = null;
     try {
@@ -82,6 +85,7 @@ export function QrScanner({
         /* ignore */
       }
       setActive(false);
+      setStarting(false);
     }
   }, []);
 
@@ -232,28 +236,29 @@ export function QrScanner({
   }, [resolvePatient, router]);
 
   async function start() {
+    if (starting || active) return;
+    const generation = ++scannerGeneration.current;
     setError(null);
     setLookup(null);
     setAssigned(null);
     handledRef.current = false;
     badScanAt.current = 0;
+    setStarting(true);
     setActive(true);
     await new Promise((r) => setTimeout(r, 50));
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
-      if (!isMounted.current) return;
-      if (scannerRef.current) {
-        await stopScanner();
-        if (!isMounted.current) return;
-        setActive(true);
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      if (!isMounted.current) return;
+      if (!isMounted.current || generation !== scannerGeneration.current) return;
       const scanner = new Html5Qrcode(regionId, { verbose: false });
       scannerRef.current = scanner;
 
       const cameras = await Html5Qrcode.getCameras().catch(() => []);
-      if (!isMounted.current) {
+      if (!isMounted.current || generation !== scannerGeneration.current) {
+        try {
+          await scanner.stop();
+        } catch {
+          /* scanner was not started */
+        }
         try {
           scanner.clear();
         } catch { /* ignore */ }
@@ -295,7 +300,21 @@ export function QrScanner({
         },
         () => undefined,
       );
+      if (generation !== scannerGeneration.current) {
+        try {
+          await scanner.stop();
+        } catch {
+          /* ignore */
+        }
+        try {
+          scanner.clear();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
     } catch (e) {
+      if (generation !== scannerGeneration.current || !isMounted.current) return;
       await stopScanner();
       setError(
         e instanceof Error
@@ -303,6 +322,8 @@ export function QrScanner({
           : "Camera failed — allow permission, or use reg number below.",
       );
       setActive(false);
+    } finally {
+      if (generation === scannerGeneration.current) setStarting(false);
     }
   }
 
@@ -589,7 +610,7 @@ export function QrScanner({
           disabled={Boolean(disabledReason)}
           onClick={() => void start()}
         >
-          Open camera scanner
+          {starting ? "Opening camera…" : "Open camera scanner"}
         </Button>
       ) : (
         <Button

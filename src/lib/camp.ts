@@ -31,10 +31,10 @@ function parseSnapshot(data: unknown): ActiveCampSnapshot | null {
 
 async function fetchCachedSnapshot() {
   const supabase = createServiceRoleClient();
-  if (!supabase) return null;
+  if (!supabase) throw new Error("Camp service is not configured");
 
   const { data, error } = await supabase.rpc("active_camp_snapshot");
-  if (error) return null;
+  if (error) throw new Error("Active camp data could not be loaded");
   return parseSnapshot(data);
 }
 
@@ -52,6 +52,6 @@ export async function getActiveCampSnapshot() {
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("active_camp_snapshot");
-  if (error) return null;
+  if (error) throw new Error("Active camp data could not be loaded");
   return parseSnapshot(data);
 }

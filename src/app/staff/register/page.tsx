@@ -25,36 +25,51 @@ export default function StaffRegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    try {
+      const res = await fetch("/api/staff-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email, password, invite }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(json.error || "Failed to create volunteer account");
+        return;
+      }
 
-    const res = await fetch("/api/staff-register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, email, password, invite }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error || "Failed");
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError(
+          "Account created, but automatic sign-in failed. Use Staff login.",
+        );
+        return;
+      }
+      router.replace("/volunteer");
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const supabase = createClient();
-    await supabase.auth.signInWithPassword({ email, password });
-    router.replace(json.role === "admin" ? "/admin" : "/volunteer");
-    router.refresh();
   }
 
   return (
     <Shell
       title="Staff setup"
-      subtitle="First-time account with invite code"
+      subtitle="First-time volunteer account with invite code"
       backHref="/"
       roleLabel="Staff"
     >
       <Card>
         <InfoBox>
-          Prefer admin to add you? Ask them from Admin → Volunteers. Otherwise
-          use the invite code from your organizer.
+          Admin accounts are created out-of-band. Ask an admin to add doctors
+          or volunteers from Admin → Volunteers, or use the volunteer invite
+          code from your organizer.
         </InfoBox>
         <form onSubmit={onSubmit} className="mt-4 space-y-4" noValidate>
           <Input
@@ -97,7 +112,7 @@ export default function StaffRegisterPage() {
             spellCheck={false}
             value={invite}
             onChange={(e) => setInvite(e.target.value)}
-            hint="Admin or volunteer code from your organizer"
+            hint="Volunteer code from your organizer"
             placeholder="Invite code"
           />
           <ErrorBox message={error} />

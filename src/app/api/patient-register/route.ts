@@ -3,6 +3,7 @@ import { readJsonBody } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 type Body = {
   /** Aadhaar path (kept for later integration). */
@@ -43,8 +44,7 @@ function publicError(message?: string) {
 }
 
 function normalizePhone10(raw: string | null | undefined) {
-  const digits = String(raw || "").replace(/\D/g, "");
-  return digits.slice(-10);
+  return normalizePhoneE164(String(raw || ""))?.slice(-10) || "";
 }
 
 export async function POST(request: Request) {
@@ -69,7 +69,12 @@ export async function POST(request: Request) {
   const gender = ["M", "F", "O"].includes(String(body.gender))
     ? String(body.gender)
     : null;
-  const age = body.age == null ? null : Number(body.age);
+  const age =
+    body.age == null
+      ? null
+      : typeof body.age === "number"
+        ? body.age
+        : Number.NaN;
 
   const rate = checkRateLimit(request, {
     scope: "patient-register",

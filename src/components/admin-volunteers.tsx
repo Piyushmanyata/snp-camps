@@ -46,35 +46,36 @@ export function AdminVolunteers({
     setError(null);
     setOk(null);
 
-    const res = await fetch("/api/admin/volunteers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, email, password }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error || "Failed to create volunteer");
-      setLoading(false);
-      return;
-    }
+    try {
+      const res = await fetch("/api/admin/volunteers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email, password }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        volunteer?: Volunteer;
+      };
+      if (!res.ok || !json.volunteer) {
+        setError(json.error || "Failed to create volunteer");
+        return;
+      }
 
-    setList((prev) => [
-      {
-        id: json.volunteer.id,
-        full_name: json.volunteer.full_name,
-        email: json.volunteer.email,
-        phone: null,
-        role: "volunteer",
-      },
-      ...prev,
-    ]);
-    setOk(`Created. Share login: ${email} + the password you set.`);
-    setFullName("");
-    setEmail("");
-    setPassword("");
-    setShowForm(false);
-    setLoading(false);
-    router.refresh();
+      setList((prev) => [
+        { ...json.volunteer!, phone: null, role: "volunteer" },
+        ...prev,
+      ]);
+      setOk(`Created. Share login: ${email} + the password you set.`);
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setShowForm(false);
+      router.refresh();
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function onDelete(v: Volunteer) {
@@ -89,20 +90,25 @@ export function AdminVolunteers({
     setDeletingId(v.id);
     setError(null);
     setOk(null);
-    const res = await fetch(
-      `/api/admin/volunteers?id=${encodeURIComponent(v.id)}`,
-      { method: "DELETE" },
-    );
-    const json = await res.json().catch(() => ({}));
-    setDeletingId(null);
-    if (!res.ok) {
-      setError(json.error || "Failed to delete volunteer");
-      return;
+    try {
+      const res = await fetch(
+        `/api/admin/volunteers?id=${encodeURIComponent(v.id)}`,
+        { method: "DELETE" },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Failed to delete volunteer");
+        return;
+      }
+      setList((prev) => prev.filter((x) => x.id !== v.id));
+      if (selectedId === v.id) setSelectedId(null);
+      setOk(`Deleted ${label}.`);
+      router.refresh();
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
+      setDeletingId(null);
     }
-    setList((prev) => prev.filter((x) => x.id !== v.id));
-    if (selectedId === v.id) setSelectedId(null);
-    setOk(`Deleted ${label}.`);
-    router.refresh();
   }
 
   return (

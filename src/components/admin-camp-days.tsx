@@ -22,11 +22,7 @@ export function AdminCampDays({
   initialDays: CampDayStats[];
 }) {
   const router = useRouter();
-  const [localDays, setLocalDays] = useState<{
-    source: CampDayStats[];
-    days: CampDayStats[];
-  } | null>(null);
-  const days = localDays?.source === initialDays ? localDays.days : initialDays;
+  const days = initialDays;
 
   const isValidSeatLimit = (value: number) =>
     Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
@@ -38,14 +34,8 @@ export function AdminCampDays({
   const [editing, setEditing] = useState<Record<string, string>>({});
 
   async function refresh() {
-    const supabase = createClient();
-    const { data } = await supabase.rpc("camp_day_stats", {
-      p_camp_id: campId,
-    });
-    setLocalDays({
-      source: initialDays,
-      days: (data as CampDayStats[]) || [],
-    });
+    // The server page is the single source of truth; avoid a duplicate RPC
+    // followed immediately by the same RSC request.
     router.refresh();
   }
 

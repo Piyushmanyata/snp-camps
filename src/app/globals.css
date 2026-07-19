@@ -417,7 +417,9 @@ h3 {
   border-radius: 2rem;
   box-shadow: var(--shadow-lift);
   pointer-events: none;
-  white-space: nowrap;
+  max-width: calc(100vw - 1rem);
+  overflow-wrap: anywhere;
+  text-align: center;
   animation: toast-in 0.2s ease forwards;
 }
 
@@ -517,6 +519,5 @@ h3 {
     display: none !important;
   }
 }
-
 
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { generatePatientPassword } from "@/lib/patient-password";
 import {
   credentialsMessage,
@@ -15,24 +16,41 @@ import { patientAuthEmail } from "@/lib/patient-auth";
  * Used after self-registration and on logout so the patient can log back in.
  * Password is returned once in the response; also sent via SMS/WhatsApp stubs.
  */
-export async function POST() {
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
+function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return NextResponse.json(body, {
+    status,
+    headers: { ...NO_STORE, ...headers },
+  });
+}
+
+export async function POST(req: Request) {
   const { userId, profile } = await getSessionProfile();
   if (!userId) {
-    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    return json({ error: "Not signed in" }, 401);
   }
   if (profile?.role && profile.role !== "patient") {
-    return NextResponse.json(
-      { error: "Patient accounts only" },
-      { status: 403 },
+    return json({ error: "Patient accounts only" }, 403);
+  }
+
+  const rate = checkRateLimit(req, {
+    scope: "patient-credentials",
+    identifier: userId,
+    limit: 3,
+    windowMs: 10 * 60_000,
+  });
+  if (!rate.allowed) {
+    return json(
+      { error: "Too many credential resets. Try again later." },
+      429,
+      rate.headers,
     );
   }
 
   const admin = createServiceRoleClient();
   if (!admin) {
-    return NextResponse.json(
-      { error: "Patient account service is unavailable" },
-      { status: 500 },
-    );
+    return json({ error: "Patient account service is unavailable" }, 500);
   }
 
   const { data: patient, error: pErr } = await admin
@@ -44,10 +62,7 @@ export async function POST() {
     .maybeSingle();
 
   if (pErr || !patient) {
-    return NextResponse.json(
-      { error: "No registration linked to this login." },
-      { status: 404 },
-    );
+    return json({ error: "No registration linked to this login." }, 404);
   }
 
   const password = generatePatientPassword();
@@ -73,7 +88,7 @@ export async function POST() {
     email_confirm: true,
   });
   if (updErr) {
-    return NextResponse.json({ error: updErr.message }, { status: 400 });
+    return json({ error: "Could not issue new credentials." }, 400);
   }
 
   await admin
@@ -98,7 +113,7 @@ export async function POST() {
 
   const configured = notifyConfigured();
 
-  return NextResponse.json({
+  return json({
     ok: true,
     regNo: regNoToReturn,
     password,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -51,6 +51,8 @@ export function LiveQueue({
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const refreshGeneration = useRef(0);
+  const mutationGeneration = useRef(0);
   const currentQueue =
     queueState?.source === initial
       ? queueState
@@ -76,6 +78,8 @@ export function LiveQueue({
 
   const refreshQueue = useCallback(async (isManual = false) => {
     if (!campId) return true;
+    const requestGeneration = ++refreshGeneration.current;
+    const mutationAtStart = mutationGeneration.current;
     setRefreshing(true);
     const supabase = createClient();
     const { data, count, error: refreshError } = await supabase
@@ -89,6 +93,12 @@ export function LiveQueue({
 
     if (refreshError) {
       setError("Queue refresh failed. Showing the last successful list.");
+      return false;
+    }
+    if (
+      requestGeneration !== refreshGeneration.current ||
+      mutationAtStart !== mutationGeneration.current
+    ) {
       return false;
     }
     const freshRows = (data || []) as LiveQueuePatient[];
@@ -107,6 +117,7 @@ export function LiveQueue({
   useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
   async function assign(patientId: string, chosen: string | null) {
+    mutationGeneration.current += 1;
     setError(null);
     setBusyId(patientId);
     const supabase = createClient();

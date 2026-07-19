@@ -23,14 +23,8 @@ export type NotifyResult = {
   detail?: string;
 };
 
-export function normalizePhoneE164(raw: string): string | null {
-  const d = raw.replace(/\D/g, "");
-  if (d.length === 10) return `+91${d}`;
-  if (d.length === 12 && d.startsWith("91")) return `+${d}`;
-  if (d.length === 13 && d.startsWith("091")) return `+91${d.slice(3)}`;
-  if (raw.startsWith("+") && d.length >= 10 && d.length <= 15) return `+${d}`;
-  return null;
-}
+export { normalizePhoneE164 } from "@/lib/phone";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 async function postWebhook(
   url: string | undefined,
