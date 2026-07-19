@@ -160,7 +160,7 @@ export default async function AdminPage() {
 
         {active ? (
           <div className="space-y-3">
-            <SeatBoard days={days} campId={active.id} title="Seat board" />
+            <SeatBoard days={days} campId={active.id} title="Seat board" pollMs={0} />
             <CollapsibleSection
               title="Camps & camp days"
               hint={`${camps?.length ?? 0} camp${(camps?.length ?? 0) === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}

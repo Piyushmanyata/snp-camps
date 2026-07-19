@@ -232,6 +232,7 @@ export default async function VolunteerPage() {
             campId={camp.id}
             title="Seat board"
             compact
+            pollMs={0}
           />
         ) : null}
 
