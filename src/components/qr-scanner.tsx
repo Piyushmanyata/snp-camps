@@ -98,13 +98,13 @@ export function QrScanner({
   }, [stopScanner]);
 
   const assignDoctor = useCallback(
-    async (patientId: string, chosenDoctorId: string | null) => {
+    async (opts: { id?: string; regNo?: number }, chosenDoctorId: string | null) => {
       setAssigning(true);
       setError(null);
       const supabase = createClient();
       const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
-        p_patient_id: patientId,
-        p_reg_no: null,
+        p_patient_id: opts.id ?? null,
+        p_reg_no: opts.regNo ?? null,
         p_doctor_id: chosenDoctorId,
       });
       setAssigning(false);
@@ -120,6 +120,20 @@ export function QrScanner({
         handledRef.current = false;
         setError("Could not assign doctor.");
         return null;
+      }
+
+      if (row.error_code === "already_seen" || row.already_seen) {
+        setError(
+          row.doctor_name
+            ? `Already seen by ${row.doctor_name}`
+            : "Already seen"
+        );
+        setAssigned(row);
+        setLookup(null);
+        handledRef.current = true;
+        await stopScanner();
+        router.refresh();
+        return row;
       }
 
       if (row.error_code === "doctor_required") {
@@ -150,6 +164,11 @@ export function QrScanner({
       setError(null);
       setLookup(null);
       setAssigned(null);
+
+      if (mode === "doctor") {
+        const row = await assignDoctor(opts, null);
+        return row;
+      }
 
       const supabase = createClient();
       const { data, error: err } = await supabase.rpc("lookup_patient_scan", {
@@ -183,12 +202,6 @@ export function QrScanner({
       if (row.queue_status === "seen") {
         setLookup(row);
         handledRef.current = true;
-        return row;
-      }
-
-      // Doctor: scan = mark seen (no print required), even if only "registered"
-      if (mode === "doctor") {
-        await assignDoctor(row.id, null);
         return row;
       }
 
@@ -503,7 +516,7 @@ export function QrScanner({
                     type="button"
                     disabled={!doctorId || assigning}
                     loading={assigning}
-                    onClick={() => void assignDoctor(lookup.id, doctorId)}
+                    onClick={() => void assignDoctor({ id: lookup.id }, doctorId)}
                   >
                     {assigning ? "Assigning…" : "Assign doctor · mark seen"}
                   </Button>
@@ -589,7 +602,7 @@ export function QrScanner({
                     type="button"
                     disabled={!doctorId || assigning}
                     loading={assigning}
-                    onClick={() => void assignDoctor(lookup.id, doctorId)}
+                    onClick={() => void assignDoctor({ id: lookup.id }, doctorId)}
                   >
                     {assigning ? "Assigning…" : "Assign doctor · mark seen"}
                   </Button>
