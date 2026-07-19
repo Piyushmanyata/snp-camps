@@ -23,11 +23,11 @@ export type NotifyResult = {
   detail?: string;
 };
 
-function phoneE164(raw: string): string | null {
+export function normalizePhoneE164(raw: string): string | null {
   const d = raw.replace(/\D/g, "");
   if (d.length === 10) return `+91${d}`;
   if (d.length === 12 && d.startsWith("91")) return `+${d}`;
-  if (d.length === 13 && d.startsWith("91")) return null;
+  if (d.length === 13 && d.startsWith("091")) return `+91${d.slice(3)}`;
   if (raw.startsWith("+") && d.length >= 10 && d.length <= 15) return `+${d}`;
   return null;
 }
@@ -60,7 +60,7 @@ async function postWebhook(
 export async function notifyPatient(
   payload: NotifyPayload,
 ): Promise<NotifyResult> {
-  const phone = phoneE164(payload.phone);
+  const phone = normalizePhoneE164(payload.phone);
   if (!phone) {
     return {
       sms: "skipped",

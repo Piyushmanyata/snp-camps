@@ -15,6 +15,8 @@ import {
   patientScanUrl,
 } from "../src/lib/qr.ts";
 import { generatePatientPassword } from "../src/lib/patient-password.ts";
+import { checkRateLimit } from "../src/lib/rate-limit.ts";
+import { normalizePhoneE164 } from "../src/lib/notify.ts";
 
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
@@ -94,4 +96,32 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
   for (const password of generated) {
     assert.match(password, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
   }
+});
+
+test("rate limits enforce both client and supplied subject", () => {
+  const request = new Request("https://camp.example/api", {
+    headers: { "x-forwarded-for": "198.51.100.10" },
+  });
+  const options = {
+    scope: "test-subject-limit-" + Math.random(),
+    identifier: "patient-123",
+    limit: 2,
+    windowMs: 60_000,
+  };
+  assert.equal(checkRateLimit(request, options).allowed, true);
+  assert.equal(checkRateLimit(request, options).allowed, true);
+  assert.equal(checkRateLimit(request, options).allowed, false);
+
+  const rotatedIp = new Request("https://camp.example/api", {
+    headers: { "x-forwarded-for": "198.51.100.11" },
+  });
+  assert.equal(checkRateLimit(rotatedIp, options).allowed, false);
+});
+
+test("notification phone normalization accepts common Indian formats", () => {
+  assert.equal(normalizePhoneE164("9876543210"), "+919876543210");
+  assert.equal(normalizePhoneE164("+91 98765 43210"), "+919876543210");
+  assert.equal(normalizePhoneE164("0919876543210"), "+919876543210");
+  assert.equal(normalizePhoneE164("919876543210"), "+919876543210");
+  assert.equal(normalizePhoneE164("12345"), null);
 });

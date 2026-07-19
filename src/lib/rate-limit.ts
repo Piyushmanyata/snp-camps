@@ -50,6 +50,30 @@ function sweepExpired(now: number) {
   }
 }
 
+function hashValue(value: string) {
+  return createHash("sha256")
+    .update(value)
+    .digest("base64url")
+    .slice(0, 20);
+}
+
+function recordLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now: number,
+) {
+  const current = store.get(key);
+  const entry =
+    current && current.resetAt > now
+      ? current
+      : { count: 0, resetAt: now + windowMs };
+
+  entry.count += 1;
+  store.set(key, entry);
+  return entry;
+}
+
 /**
  * Per-instance burst protection. Production must also enforce a distributed
  * limit at the CDN/WAF because serverless instances do not share memory.
@@ -59,24 +83,36 @@ export function checkRateLimit(request: Request, options: Options) {
   sweepExpired(now);
 
   const address = clientAddress(request);
-  const addressHash = createHash("sha256")
-    .update(address)
-    .digest("base64url")
-    .slice(0, 20);
-  const key = options.scope + ":" + addressHash;
-  const current = store.get(key);
-  const entry =
-    current && current.resetAt > now
-      ? current
-      : { count: 0, resetAt: now + options.windowMs };
+  const keys = [options.scope + ":ip:" + hashValue(address)];
+  const identifier = options.identifier?.trim();
+  if (identifier) {
+    keys.push(options.scope + ":subject:" + hashValue(identifier));
+  }
 
-  entry.count += 1;
-  store.set(key, entry);
-
-  const remaining = Math.max(0, options.limit - entry.count);
-  const retryAfter = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+  // Keep both protections: an attacker cannot rotate identifiers from one IP,
+  // and one patient/token cannot bypass the limit by rotating IPs.
+  const entries = keys.map((key) =>
+    recordLimit(key, options.limit, options.windowMs, now),
+  );
+  const entry = entries.reduce(
+    (current, candidate) =>
+      candidate.count > current.count ||
+      (candidate.count === current.count && candidate.resetAt > current.resetAt)
+        ? candidate
+        : current,
+    entries[0],
+  );
+  const remaining = Math.min(
+    ...entries.map((item) => Math.max(0, options.limit - item.count)),
+  );
+  const retryAfter = Math.max(
+    1,
+    ...entries
+      .filter((item) => item.count > options.limit)
+      .map((item) => Math.ceil((item.resetAt - now) / 1000)),
+  );
   return {
-    allowed: entry.count <= options.limit,
+    allowed: entries.every((item) => item.count <= options.limit),
     headers: {
       "RateLimit-Limit": String(options.limit),
       "RateLimit-Remaining": String(remaining),

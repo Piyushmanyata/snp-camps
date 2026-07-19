@@ -26,6 +26,9 @@ to `origin/main`.
   security-definer boundaries, accessibility semantics, and current UI.
 - Apply only idempotent, evidence-backed SQL to project
   `ruklmrzpyutvefancsgo` through the repository's existing script lineage.
+- Enforce identifier-aware burst protection in addition to per-client limits,
+  normalize legacy Indian phone input consistently, and close anonymous RPC
+  execution/policy drift found in the live database.
 
 ### Out of Scope
 
@@ -49,8 +52,9 @@ to `origin/main`.
 
 ## Verified Baseline and Findings
 
-- Git baseline was clean on `main` at `7c5b2a6`.
-- `npm run verify` passed: lint, 5 core tests, and the Next production build.
+- Git baseline was clean on `main` at `16d6087`.
+- `npm run verify` passed: lint, 8 core tests, and the Next production build;
+  `npm audit --omit=dev` reported zero vulnerabilities.
 - `next experimental-analyze --output` completed successfully.
 - Graphify found central shared nodes in `getSessionProfile`, Supabase client
   creation, `isStaff`, `checkRateLimit`, `SeatBoard`, `LiveQueue`, and QR
@@ -68,6 +72,14 @@ to `origin/main`.
   normalized-column indexes.
 - `doctor_my_counts` counts `seen_total` across all camps while the doctor page
   displays it as the active-camp total.
+- The live `register_patient`, `camp_day_stats`, and camp-day mutation grants
+  had anonymous/public execution drift despite the intended authenticated API;
+  overlapping camp, camp-day, patient, and profile policies also triggered
+  Supabase advisor findings.
+- `checkRateLimit` accepted `identifier` at every caller but ignored it, so
+  subject limits were not enforced across rotating IPs and clients shared only
+  one per-IP bucket.
+- Notification normalization rejected the common `091xxxxxxxxxx` Indian form.
 
 ## Acceptance Criteria
 
@@ -89,6 +101,10 @@ to `origin/main`.
    critical-path checks pass.
 9. The final diff contains only planned files, is reviewed for security,
    accessibility, performance, and scope, and is pushed to `origin/main`.
+10. Anonymous execution is closed for registration, aggregate day stats, and
+    camp-day mutation RPCs; RLS policies use request-stable auth expressions.
+11. Rate limits enforce both client and supplied subject keys, and all supported
+    Indian phone forms normalize to the same E.164 value.
 
 ## Skill Manifest
 
@@ -153,6 +169,13 @@ Run final clean-state checks, confirm database/code compatibility, use the
 GitHub push workflow to commit and push `main`, inspect remote/Vercel status,
 then report commit, DB, graph, test, and visual evidence.
 
+### Batch 5 — Deep live drift hardening
+
+Owned files: `src/lib/rate-limit.ts`, `src/lib/notify.ts`, focused regression
+tests, and the checked-in SQL lineage. Reconcile live grants and overlapping
+RLS policies, guard the registration wrapper against anonymous execution,
+verify advisor output, and keep the migration replayable.
+
 ## Adversarial Pre-mortem
 
 | Failure mode | Why plausible | Mitigation |
@@ -164,6 +187,8 @@ then report commit, DB, graph, test, and visual evidence.
 | Queue UI becomes stale | Removing the duplicate queue fetch could stale dashboard stats | Keep one authoritative `router.refresh()` after optimistic local removal |
 | Stale props overwrite a user action | Local state and server props can diverge | Derive server props when the source identity changes and use server refresh as the source of truth |
 | Tiny live DB misleads index decisions | Current table has only four rows | Do not drop uncertain indexes; use predicate/index alignment and EXPLAIN with planner caveat |
+| Security fixes break the current flow | Old SQL files re-grant anonymous RPC access | Apply a transaction, preserve authenticated/service-role paths, and probe effective privileges and function source |
+| Subject rate limiting locks out users | IP and subject buckets can trigger independently | Keep one shared limit/window, expose the most restrictive remaining/reset headers, and test IP rotation |
 | Visual or auth regression escapes build | Next build does not exercise browser state/cookies | Run browser critical paths, keyboard/error checks, and inspect console/network output |
 
 ## Rollback
@@ -183,7 +208,9 @@ then report commit, DB, graph, test, and visual evidence.
 - [x] SQL predicate/index and doctor KPI verification passes.
 - [x] `npm run verify` and `next experimental-analyze` pass after changes.
 - [x] `npm audit --omit=dev` is clean after the PostCSS override.
-- [x] Browser critical paths, responsive checks, HAR status checks, and HTTP health checks pass; direct console capture was unavailable in the installed CLI.
+- [x] Browser critical paths, responsive checks, console/network checks, and HTTP health checks pass with Chrome; mobile register has no horizontal overflow.
 - [x] Graphify refreshed after structural changes.
-- [x] Final diff reviewed; commit `7d40751` pushed to `origin/main`; Vercel
-  production deployment reached Ready.
+- [x] Live migrations `optimization_security_rls_v1` and
+  `optimization_registration_guard_v1` applied and privilege/policy probes
+  pass; the remaining advisor warnings are intentional public aggregate access
+  plus the project-level leaked-password setting.

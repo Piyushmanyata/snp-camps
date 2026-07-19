@@ -1,6 +1,5 @@
 -- Final release hardening. Apply once before the frontend deployment.
--- The anonymous grant remains temporarily for the old frontend and is removed
--- by verified-registration-revoke-anon.sql after the new API is live.
+-- Patient self-registration now goes through the authenticated API route.
 
 drop function if exists public.register_patient_authorized_impl(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
@@ -55,7 +54,7 @@ begin
   if v_request_role = 'authenticated' and not public.is_staff() then
     raise exception 'staff only';
   end if;
-  if v_request_role not in ('anon', 'authenticated', 'service_role') then
+  if v_request_role not in ('authenticated', 'service_role') then
     raise exception 'API role required';
   end if;
 
@@ -82,7 +81,7 @@ revoke all on function public.register_patient(
 ) from public, anon, authenticated, service_role;
 grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
-) to anon, authenticated, service_role;
+) to authenticated, service_role;
 
 -- Contains-search on normalized patient names needs trigram indexing; a normal
 -- B-tree cannot accelerate ILIKE '%term%'.

@@ -25,6 +25,8 @@ const sqlFiles = [
   "lean-perf.sql",
   "release-hardening.sql",
   "fix-registration-contract.sql",
+  "optimization-hardening.sql",
+  "optimization-registration-guard.sql",
   "performance-snapshot.sql",
 ];
 

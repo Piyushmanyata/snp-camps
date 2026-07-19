@@ -55,7 +55,7 @@ begin
     current_setting('request.jwt.claim.role', true),
     ''
   );
-  if v_request_role not in ('anon', 'authenticated', 'service_role') then
+  if v_request_role not in ('authenticated', 'service_role') then
     raise exception 'API role required';
   end if;
 
@@ -303,7 +303,7 @@ begin
   if v_request_role = 'authenticated' and not public.is_staff() then
     raise exception 'staff only';
   end if;
-  if v_request_role not in ('anon', 'authenticated', 'service_role') then
+  if v_request_role not in ('authenticated', 'service_role') then
     raise exception 'API role required';
   end if;
 
@@ -330,7 +330,7 @@ revoke all on function public.register_patient(
 ) from public, anon, authenticated, service_role;
 grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
-) to anon, authenticated, service_role;
+) to authenticated, service_role;
 
 commit;
 

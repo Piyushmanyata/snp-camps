@@ -26,10 +26,10 @@ begin
 end;
 $$;
 
-grant execute on function public.camp_day_stats(uuid) to anon, authenticated;
+grant execute on function public.camp_day_stats(uuid) to authenticated, service_role;
 grant execute on function public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
-) to anon, authenticated;
+) to authenticated, service_role;
 
 grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_admin() to authenticated;
