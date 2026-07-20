@@ -361,6 +361,13 @@ begin
     return;
   end if;
 
+  if r.queue_status = 'registered' then
+    return query
+    select r.id, r.reg_no, r.full_name, r.queue_status,
+      null::uuid, null::text, false, 'must_print_first'::text;
+    return;
+  end if;
+
   if v_caller_role = 'doctor' then
     v_doctor_id := auth.uid();
   elsif p_doctor_id is not null then
