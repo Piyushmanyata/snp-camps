@@ -37,6 +37,41 @@ type AssignRow = {
   error_code: string | null;
 };
 
+interface DetectedBarcode {
+  rawValue: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect: (
+    image: HTMLVideoElement | HTMLCanvasElement | ImageBitmap,
+  ) => Promise<DetectedBarcode[]>;
+}
+
+type BarcodeDetectorConstructor = new (options?: {
+  formats: string[];
+}) => BarcodeDetectorInstance;
+
+function getBarcodeDetectorClass(): BarcodeDetectorConstructor | null {
+  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+    return (window as unknown as Record<string, unknown>)
+      .BarcodeDetector as BarcodeDetectorConstructor;
+  }
+  return null;
+}
+
+type Html5QrcodeInstance = {
+  stop: () => Promise<void>;
+  clear: () => void;
+};
+
+let html5QrcodePromise: Promise<typeof import("html5-qrcode")> | null = null;
+function getHtml5QrcodeModule() {
+  if (!html5QrcodePromise) {
+    html5QrcodePromise = import("html5-qrcode");
+  }
+  return html5QrcodePromise;
+}
+
 export function QrScanner({
   mode = "volunteer",
   doctors = [],
@@ -60,11 +95,18 @@ export function QrScanner({
   const [assigned, setAssigned] = useState<AssignRow | null>(null);
   const [doctorId, setDoctorId] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [useNative, setUseNative] = useState(false);
+
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
   const badScanAt = useRef(0);
   const isMounted = useRef(true);
   const scannerGeneration = useRef(0);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const html5QrcodeRef = useRef<Html5QrcodeInstance | null>(null);
   const scannerRef = useRef<{
     stop: () => Promise<void>;
     clear: () => void;
@@ -72,21 +114,58 @@ export function QrScanner({
 
   const stopScanner = useCallback(async () => {
     scannerGeneration.current += 1;
-    const scanner = scannerRef.current;
-    scannerRef.current = null;
-    try {
-      await scanner?.stop();
-    } catch {
-      /* ignore */
-    } finally {
+
+    if (animFrameRef.current !== null) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+
+    if (streamRef.current) {
       try {
-        scanner?.clear();
+        streamRef.current.getTracks().forEach((track) => track.stop());
       } catch {
         /* ignore */
       }
-      setActive(false);
-      setStarting(false);
+      streamRef.current = null;
     }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    const html5Scanner = html5QrcodeRef.current;
+    html5QrcodeRef.current = null;
+    if (html5Scanner) {
+      try {
+        await html5Scanner.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        html5Scanner.clear();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const legacyScanner = scannerRef.current;
+    scannerRef.current = null;
+    if (legacyScanner) {
+      try {
+        await legacyScanner.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        legacyScanner.clear();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setActive(false);
+    setStarting(false);
+    setUseNative(false);
   }, []);
 
   useEffect(() => {
@@ -257,11 +336,98 @@ export function QrScanner({
     badScanAt.current = 0;
     setStarting(true);
     setActive(true);
-    await new Promise((r) => setTimeout(r, 50));
+
+    const BarcodeDetectorClass = getBarcodeDetectorClass();
+
+    if (BarcodeDetectorClass) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        if (!isMounted.current || generation !== scannerGeneration.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        const detector = new BarcodeDetectorClass({
+          formats: ["qr_code"],
+        });
+        streamRef.current = stream;
+        setUseNative(true);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+
+        const processFrame = async () => {
+          if (
+            generation !== scannerGeneration.current ||
+            !isMounted.current ||
+            !videoRef.current
+          ) {
+            return;
+          }
+
+          const video = videoRef.current;
+          if (video.readyState >= 2 && !handledRef.current) {
+            try {
+              const barcodes = await detector.detect(video);
+              if (barcodes && barcodes.length > 0 && !handledRef.current) {
+                for (const barcode of barcodes) {
+                  if (barcode.rawValue) {
+                    const id = parsePatientIdFromQr(barcode.rawValue);
+                    if (id) {
+                      handledRef.current = true;
+                      void resolvePatient({ id });
+                      return;
+                    }
+                    const now = Date.now();
+                    if (now - badScanAt.current > 2500) {
+                      badScanAt.current = now;
+                      setError(
+                        "That QR is not a patient staff-scan code. Use the paper form or reg no.",
+                      );
+                    }
+                  }
+                }
+              }
+            } catch {
+              /* ignore frame error */
+            }
+          }
+
+          if (
+            generation === scannerGeneration.current &&
+            isMounted.current &&
+            !handledRef.current
+          ) {
+            animFrameRef.current = requestAnimationFrame(processFrame);
+          }
+        };
+
+        animFrameRef.current = requestAnimationFrame(processFrame);
+        setStarting(false);
+        return;
+      } catch {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+        setUseNative(false);
+      }
+    }
+
     try {
-      const { Html5Qrcode } = await import("html5-qrcode");
+      const { Html5Qrcode } = await getHtml5QrcodeModule();
       if (!isMounted.current || generation !== scannerGeneration.current) return;
       const scanner = new Html5Qrcode(regionId, { verbose: false });
+      html5QrcodeRef.current = scanner;
       scannerRef.current = scanner;
 
       const cameras = await Html5Qrcode.getCameras().catch(() => []);
@@ -284,7 +450,7 @@ export function QrScanner({
       await scanner.start(
         cameraId,
         {
-          fps: 12,
+          fps: 25,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const edge = Math.min(viewfinderWidth, viewfinderHeight);
             const size = Math.max(180, Math.floor(edge * 0.72));
@@ -410,11 +576,22 @@ export function QrScanner({
 
       <div
         id={regionId}
-        className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
+        className={`relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
           active ? "min-h-[280px]" : "min-h-[4.5rem]"
         }`}
         aria-label={active ? "Camera scanner active" : "Camera preview area"}
       >
+        <video
+          ref={videoRef}
+          playsInline
+          autoPlay
+          muted
+          className={
+            active && useNative
+              ? "h-full w-full object-cover rounded-2xl"
+              : "hidden"
+          }
+        />
         {!active ? (
           <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
             Camera preview appears here
@@ -669,3 +846,4 @@ export function QrScanner({
     </div>
   );
 }
+

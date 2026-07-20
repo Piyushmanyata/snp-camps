@@ -14,7 +14,6 @@ import {
 import type { DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
-import { AdminVolunteers } from "@/components/admin-volunteers";
 import { SeatBoard } from "@/components/seat-board";
 
 const QrScanner = dynamic(
@@ -23,6 +22,18 @@ const QrScanner = dynamic(
   {
     loading: () => (
       <p className="py-6 text-center text-sm text-muted">Loading scanner…</p>
+    ),
+  },
+);
+
+const AdminVolunteers = dynamic(
+  () =>
+    import("@/components/admin-volunteers").then((m) => ({
+      default: m.AdminVolunteers,
+    })),
+  {
+    loading: () => (
+      <p className="py-4 text-xs text-muted">Loading volunteers…</p>
     ),
   },
 );

@@ -131,7 +131,9 @@ export function LiveQueue({
         rows: current.rows.filter((r) => r.id !== patientId),
         total: Math.max(0, current.total - 1),
       }));
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
       return;
     }
 
@@ -143,7 +145,9 @@ export function LiveQueue({
     }));
     setPickId(null);
     setDoctorId("");
-    router.refresh();
+    startTransition(() => {
+      router.refresh();
+    });
   }
 
   return (

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +15,53 @@ import { SignOutButton } from "@/components/sign-out";
 import { ChangeDay } from "@/components/change-day";
 import { SeatBoard } from "@/components/seat-board";
 import { patientScanUrl } from "@/lib/qr";
+
+async function PatientSeatBoardSection({
+  campId,
+  patientId,
+  currentDayId,
+  queueStatus,
+}: {
+  campId: string | null;
+  patientId?: string;
+  currentDayId?: string | null;
+  queueStatus?: string;
+}) {
+  const supabase = await createClient();
+  const { data: dayStats, error: dayStatsError } = campId
+    ? await supabase.rpc("camp_day_stats", { p_camp_id: campId })
+    : { data: [] as CampDayStats[], error: null };
+  if (dayStatsError) throw new Error("Camp seat status could not be loaded");
+  const days = (dayStats as CampDayStats[]) || [];
+
+  if (!patientId) {
+    return days.length ? (
+      <div className="mt-4">
+        <SeatBoard days={days} campId={campId} title="Available days" compact />
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <p className="mb-2 text-sm font-semibold">Camp day</p>
+        <p className="prose-help mb-3 text-xs text-muted">
+          {queueStatus === "waiting" || queueStatus === "seen"
+            ? "Your day is fixed once you are in the queue."
+            : "One day per registration. You can switch while seats remain, until you join the queue."}
+        </p>
+        <ChangeDay
+          patientId={patientId}
+          currentDayId={currentDayId ?? null}
+          days={days}
+          queueStatus={queueStatus}
+        />
+      </Card>
+      <SeatBoard days={days} campId={campId} title="Seat availability" compact />
+    </div>
+  );
+}
 
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
@@ -32,11 +80,6 @@ export default async function PatientHomePage() {
   if (patientError) throw new Error("Patient profile could not be loaded");
 
   const campId = (patient?.camp_id as string | undefined) || null;
-  const { data: dayStats, error: dayStatsError } = campId
-    ? await supabase.rpc("camp_day_stats", { p_camp_id: campId })
-    : { data: [] as CampDayStats[], error: null };
-  if (dayStatsError) throw new Error("Camp seat status could not be loaded");
-  const days = (dayStats as CampDayStats[]) || [];
 
   const dayRel = patient?.camp_days as
     | { day_date: string }
@@ -79,11 +122,15 @@ export default async function PatientHomePage() {
               Register with phone OTP for a camp day with open seats.
             </p>
             <NavLink href="/register">Register now</NavLink>
-            {days.length ? (
-              <div className="mt-4">
-                <SeatBoard days={days} campId={campId} title="Available days" compact />
-              </div>
-            ) : null}
+            <Suspense
+              fallback={
+                <Card className="mt-4 p-4 text-xs text-muted">
+                  Loading seat board…
+                </Card>
+              }
+            >
+              <PatientSeatBoardSection campId={campId} />
+            </Suspense>
           </Card>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
@@ -135,24 +182,20 @@ export default async function PatientHomePage() {
                 />
               )}
             </div>
-            <div className="space-y-4">
-              <Card>
-                <p className="mb-2 text-sm font-semibold">Camp day</p>
-                <p className="prose-help mb-3 text-xs text-muted">
-                  {patient.queue_status === "waiting" ||
-                  patient.queue_status === "seen"
-                    ? "Your day is fixed once you are in the queue."
-                    : "One day per registration. You can switch while seats remain, until you join the queue."}
-                </p>
-                <ChangeDay
-                  patientId={patient.id}
-                  currentDayId={patient.camp_day_id}
-                  days={days}
-                  queueStatus={patient.queue_status}
-                />
-              </Card>
-              <SeatBoard days={days} campId={campId} title="Seat availability" compact />
-            </div>
+            <Suspense
+              fallback={
+                <Card className="p-6 text-sm text-muted">
+                  Loading seat availability…
+                </Card>
+              }
+            >
+              <PatientSeatBoardSection
+                campId={campId}
+                patientId={patient.id}
+                currentDayId={patient.camp_day_id}
+                queueStatus={patient.queue_status}
+              />
+            </Suspense>
           </div>
         )}
       </div>

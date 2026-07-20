@@ -1,10 +1,28 @@
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
-import { PrintActions } from "@/components/print-actions";
-import { PrintSheet } from "@/components/print-sheet";
 import { patientScanUrl } from "@/lib/qr";
+
+const PrintActions = dynamic(
+  () =>
+    import("@/components/print-actions").then((m) => ({
+      default: m.PrintActions,
+    })),
+);
+
+const PrintSheet = dynamic(
+  () =>
+    import("@/components/print-sheet").then((m) => ({
+      default: m.PrintSheet,
+    })),
+  {
+    loading: () => (
+      <p className="py-6 text-center text-sm text-muted">Loading print sheet…</p>
+    ),
+  },
+);
 
 export default async function PrintPage({
   params,

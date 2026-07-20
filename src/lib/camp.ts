@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -45,7 +46,7 @@ const getCachedSnapshot = unstable_cache(
 );
 
 /** Public-only camp data; registration capacity is still enforced in Postgres. */
-export async function getActiveCampSnapshot() {
+export const getActiveCampSnapshot = cache(async () => {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return getCachedSnapshot();
   }
@@ -54,4 +55,5 @@ export async function getActiveCampSnapshot() {
   const { data, error } = await supabase.rpc("active_camp_snapshot");
   if (error) throw new Error("Active camp data could not be loaded");
   return parseSnapshot(data);
-}
+});
+

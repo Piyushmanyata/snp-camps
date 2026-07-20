@@ -1,7 +1,9 @@
+import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
-import type { CampDayStats } from "@/lib/types";
+import type { CampDayStats, Camp } from "@/lib/types";
 import {
   Card,
   CollapsibleSection,
@@ -11,11 +13,183 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import { AdminCamps } from "@/components/admin-camps";
-import { AdminCampDays } from "@/components/admin-camp-days";
 import { SeatBoard } from "@/components/seat-board";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
 import type { DoctorOption } from "@/components/qr-scanner";
+
+const AdminCamps = dynamic(
+  () => import("@/components/admin-camps").then((m) => ({ default: m.AdminCamps })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading camps…</p>,
+  },
+);
+
+const AdminCampDays = dynamic(
+  () =>
+    import("@/components/admin-camp-days").then((m) => ({
+      default: m.AdminCampDays,
+    })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading camp days…</p>,
+  },
+);
+
+async function AdminHeaderStats({ campId }: { campId: string | null }) {
+  if (!campId) {
+    return (
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Stat label="Registered" value={0} />
+        <Stat label="In queue" value={0} tone="wait" />
+        <Stat label="Doctor seen" value={0} tone="ok" />
+      </div>
+    );
+  }
+  const supabase = await createClient();
+  const { data: queueCountsRes, error } = await supabase.rpc(
+    "camp_queue_counts",
+    { p_camp_id: campId },
+  );
+  if (error) throw new Error("Admin queue counts could not be loaded");
+  const queueCounts = Array.isArray(queueCountsRes)
+    ? queueCountsRes[0]
+    : queueCountsRes;
+  const registered = Number(queueCounts?.registered_count ?? 0);
+  const inQueue = Number(queueCounts?.waiting_count ?? 0);
+  const doctorSeen = Number(queueCounts?.seen_count ?? 0);
+
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <Stat label="Registered" value={registered} />
+      <Stat label="In queue" value={inQueue} tone="wait" />
+      <Stat label="Doctor seen" value={doctorSeen} tone="ok" />
+    </div>
+  );
+}
+
+async function ActiveCampAvgWait({ campId }: { campId: string }) {
+  const supabase = await createClient();
+  const { data: queueCountsRes } = await supabase.rpc("camp_queue_counts", {
+    p_camp_id: campId,
+  });
+  const queueCounts = Array.isArray(queueCountsRes)
+    ? queueCountsRes[0]
+    : queueCountsRes;
+  const avgWaitMin =
+    queueCounts?.avg_wait_minutes != null
+      ? Number(queueCounts.avg_wait_minutes)
+      : null;
+  if (avgWaitMin == null || Number.isNaN(avgWaitMin)) return null;
+  return (
+    <p className="mt-2 text-[0.8125rem] text-muted">
+      Avg wait (queued → doctor seen):{" "}
+      <span className="font-semibold tabular text-foreground">
+        {avgWaitMin < 1 ? "< 1 min" : `${Math.round(avgWaitMin)} min`}
+      </span>
+    </p>
+  );
+}
+
+async function AdminSeatBoardSection({
+  camps,
+  active,
+}: {
+  camps: Camp[];
+  active?: Camp;
+}) {
+  if (!active) {
+    return (
+      <CollapsibleSection
+        title="Camps"
+        hint={`${camps.length} total`}
+        defaultOpen
+      >
+        <AdminCamps camps={camps} />
+      </CollapsibleSection>
+    );
+  }
+
+  const supabase = await createClient();
+  const { data: dayStatsRes, error } = await supabase.rpc("camp_day_stats", {
+    p_camp_id: active.id,
+  });
+  if (error) throw new Error("Admin day stats could not be loaded");
+  const days = (dayStatsRes as CampDayStats[]) || [];
+
+  return (
+    <div className="space-y-3">
+      <SeatBoard days={days} campId={active.id} title="Seat board" pollMs={0} />
+      <CollapsibleSection
+        title="Camps & camp days"
+        hint={`${camps.length} camp${camps.length === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}
+        defaultOpen={!days.length}
+      >
+        <div className="space-y-6">
+          <div>
+            <p className="mb-2 text-sm font-semibold text-foreground">
+              Camp days — {active.name}
+            </p>
+            <AdminCampDays
+              campId={active.id}
+              campName={active.name}
+              initialDays={days}
+            />
+          </div>
+          <div className="border-t border-border pt-4">
+            <p className="mb-2 text-sm font-semibold text-foreground">
+              All camps
+            </p>
+            <AdminCamps camps={camps} />
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+async function AdminQueueSection({ campId }: { campId: string }) {
+  const supabase = await createClient();
+  const [waitingRes, doctorsRes] = await Promise.all([
+    supabase
+      .from("patients")
+      .select("id, reg_no, full_name, phone, queued_at", {
+        count: "exact",
+      })
+      .eq("camp_id", campId)
+      .eq("queue_status", "waiting")
+      .order("queued_at", { ascending: true, nullsFirst: false })
+      .limit(100),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "doctor")
+      .order("full_name", { ascending: true }),
+  ]);
+
+  if (waitingRes.error || doctorsRes.error) {
+    throw new Error("Admin queue data could not be loaded");
+  }
+
+  const waiting = (waitingRes.data || []) as LiveQueuePatient[];
+  const waitingCount = waitingRes.count ?? waiting.length;
+  const doctors = (doctorsRes.data || []) as DoctorOption[];
+
+  return (
+    <Card padding="sm" id="queue">
+      <div className="px-1 pt-1">
+        <SectionTitle hint="FCFS · assign doctor · auto-refresh">
+          Queue
+        </SectionTitle>
+      </div>
+      <LiveQueue
+        initial={waiting}
+        initialTotal={waitingCount}
+        campId={campId}
+        doctors={doctors}
+        mode="admin"
+      />
+    </Card>
+  );
+}
 
 export default async function AdminPage() {
   const { profile } = await getSessionProfile();
@@ -28,59 +202,11 @@ export default async function AdminPage() {
     .select("id, name, venue, camp_date, is_active, created_at")
     .order("created_at", { ascending: false });
 
-  const active = camps?.find((c) => c.is_active);
-
-  const [dayStatsRes, queueCountsRes, waitingRes, doctorsRes] =
-    await Promise.all([
-      active
-        ? supabase.rpc("camp_day_stats", { p_camp_id: active.id })
-        : Promise.resolve({ data: [] as CampDayStats[] }),
-      active
-        ? supabase.rpc("camp_queue_counts", { p_camp_id: active.id })
-        : Promise.resolve({ data: [] }),
-      active
-        ? supabase
-            .from("patients")
-            .select("id, reg_no, full_name, phone, queued_at", {
-              count: "exact",
-            })
-            .eq("camp_id", active.id)
-            .eq("queue_status", "waiting")
-            .order("queued_at", { ascending: true, nullsFirst: false })
-            .limit(100)
-        : Promise.resolve({ data: [] as LiveQueuePatient[], count: 0 }),
-      supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("role", "doctor")
-        .order("full_name", { ascending: true }),
-    ]);
-
-  if (
-    Boolean(campError) ||
-    [queueCountsRes, waitingRes, doctorsRes].some(
-      (result) => "error" in result && Boolean(result.error),
-    ) ||
-    (active && "error" in dayStatsRes && Boolean(dayStatsRes.error))
-  ) {
+  if (campError) {
     throw new Error("Admin data could not be loaded");
   }
 
-  const days = (dayStatsRes.data as CampDayStats[]) || [];
-  const waiting = (waitingRes.data || []) as LiveQueuePatient[];
-  const waitingCount = waitingRes.count ?? waiting.length;
-  const doctors = (doctorsRes.data || []) as DoctorOption[];
-
-  const queueCounts = Array.isArray(queueCountsRes.data)
-    ? queueCountsRes.data[0]
-    : queueCountsRes.data;
-  const registered = Number(queueCounts?.registered_count ?? 0);
-  const inQueue = Number(queueCounts?.waiting_count ?? 0);
-  const doctorSeen = Number(queueCounts?.seen_count ?? 0);
-  const avgWaitMin =
-    queueCounts?.avg_wait_minutes != null
-      ? Number(queueCounts.avg_wait_minutes)
-      : null;
+  const active = camps?.find((c) => c.is_active);
 
   return (
     <Shell
@@ -97,11 +223,17 @@ export default async function AdminPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4 lg:space-y-5">
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <Stat label="Registered" value={registered} />
-          <Stat label="In queue" value={inQueue} tone="wait" />
-          <Stat label="Doctor seen" value={doctorSeen} tone="ok" />
-        </div>
+        <Suspense
+          fallback={
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 opacity-60">
+              <Stat label="Registered" value="…" />
+              <Stat label="In queue" value="…" tone="wait" />
+              <Stat label="Doctor seen" value="…" tone="ok" />
+            </div>
+          }
+        >
+          <AdminHeaderStats campId={active?.id ?? null} />
+        </Suspense>
 
         <Card className="bg-gradient-to-br from-brand-soft/80 to-card !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
@@ -115,17 +247,11 @@ export default async function AdminPage() {
               {active.venue}
             </p>
           ) : null}
-          {avgWaitMin != null && !Number.isNaN(avgWaitMin) ? (
-            <p className="mt-2 text-[0.8125rem] text-muted">
-              Avg wait (queued → doctor seen):{" "}
-              <span className="font-semibold tabular text-foreground">
-                {avgWaitMin < 1
-                  ? "< 1 min"
-                  : `${Math.round(avgWaitMin)} min`}
-              </span>
-            </p>
+          {active ? (
+            <Suspense fallback={null}>
+              <ActiveCampAvgWait campId={active.id} />
+            </Suspense>
           ) : null}
-          {/* Phone: primary paths always visible (desk-inline is desktop-only) */}
           <div className="mt-3 grid gap-2 lg:hidden">
             <NavLink href="/register" variant="primary">
               Register patient
@@ -158,59 +284,24 @@ export default async function AdminPage() {
           </div>
         </Card>
 
-        {active ? (
-          <div className="space-y-3">
-            <SeatBoard days={days} campId={active.id} title="Seat board" pollMs={0} />
-            <CollapsibleSection
-              title="Camps & camp days"
-              hint={`${camps?.length ?? 0} camp${(camps?.length ?? 0) === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}
-              defaultOpen={!days.length}
-            >
-              <div className="space-y-6">
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-foreground">
-                    Camp days — {active.name}
-                  </p>
-                  <AdminCampDays
-                    campId={active.id}
-                    campName={active.name}
-                    initialDays={days}
-                  />
-                </div>
-                <div className="border-t border-border pt-4">
-                  <p className="mb-2 text-sm font-semibold text-foreground">
-                    All camps
-                  </p>
-                  <AdminCamps camps={camps || []} />
-                </div>
-              </div>
-            </CollapsibleSection>
-          </div>
-        ) : (
-          <CollapsibleSection
-            title="Camps"
-            hint={`${camps?.length ?? 0} total`}
-            defaultOpen
-          >
-            <AdminCamps camps={camps || []} />
-          </CollapsibleSection>
-        )}
+        <Suspense
+          fallback={
+            <Card className="p-6 text-sm text-muted">
+              Loading seat board & camp days…
+            </Card>
+          }
+        >
+          <AdminSeatBoardSection camps={camps || []} active={active} />
+        </Suspense>
 
         {active ? (
-          <Card padding="sm" id="queue">
-            <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · assign doctor · auto-refresh">
-                Queue
-              </SectionTitle>
-            </div>
-            <LiveQueue
-              initial={waiting}
-              initialTotal={waitingCount}
-              campId={active.id}
-              doctors={doctors}
-              mode="admin"
-            />
-          </Card>
+          <Suspense
+            fallback={
+              <Card className="p-6 text-sm text-muted">Loading queue…</Card>
+            }
+          >
+            <AdminQueueSection campId={active.id} />
+          </Suspense>
         ) : null}
       </div>
     </Shell>

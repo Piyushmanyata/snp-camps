@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +13,6 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import { AdminDoctors } from "@/components/admin-doctors";
 
 const QrScanner = dynamic(
   () =>
@@ -23,6 +23,121 @@ const QrScanner = dynamic(
     ),
   },
 );
+
+const AdminDoctors = dynamic(
+  () =>
+    import("@/components/admin-doctors").then((m) => ({
+      default: m.AdminDoctors,
+    })),
+  {
+    loading: () => (
+      <p className="py-4 text-xs text-muted">Loading doctors…</p>
+    ),
+  },
+);
+
+async function DoctorStatsSection({
+  campId,
+}: {
+  campId: string;
+}) {
+  const supabase = await createClient();
+  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
+
+  const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
+    p_camp_id: campId,
+    p_since: startOfDay.toISOString(),
+  });
+  if (error) throw new Error("Doctor counts could not be loaded");
+
+  const counts = countsRes?.[0];
+  const seenToday = Number(counts?.seen_today ?? 0);
+  const myTotal = Number(counts?.seen_total ?? 0);
+
+  return (
+    <div className="grid w-full grid-cols-2 gap-2">
+      <Stat label="You saw today" value={seenToday} tone="ok" />
+      <Stat label="Total doctor seen" value={myTotal} />
+    </div>
+  );
+}
+
+async function DoctorSeenSection({
+  campId,
+  userId,
+}: {
+  campId: string;
+  userId: string;
+}) {
+  const supabase = await createClient();
+  const { data: mySeenRes, error } = await supabase
+    .from("patients")
+    .select("id, reg_no, full_name, seen_at, phone")
+    .eq("camp_id", campId)
+    .eq("seen_by", userId)
+    .eq("queue_status", "seen")
+    .order("seen_at", { ascending: false })
+    .limit(50);
+
+  if (error) throw new Error("Doctor desk patients seen could not be loaded");
+  const mySeen = mySeenRes || [];
+
+  return (
+    <div id="seen">
+      <CollapsibleSection
+        title="Patients you saw"
+        hint={`${mySeen.length} recent`}
+        defaultOpen
+      >
+        {mySeen.length ? (
+          <ul className="divide-y divide-border">
+            {mySeen.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-2 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    <span className="tabular text-brand">#{p.reg_no}</span>{" "}
+                    {p.full_name}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {p.seen_at
+                      ? new Date(p.seen_at).toLocaleString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          day: "numeric",
+                          month: "short",
+                        })
+                      : "—"}
+                    {p.phone ? ` · ${p.phone}` : ""}
+                  </p>
+                </div>
+                <a
+                  href={`/print/${p.id}`}
+                  className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
+                >
+                  Form
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState>
+            No patients assigned to you yet. Scan a registered patient or enter
+            their reg number when they arrive.
+          </EmptyState>
+        )}
+      </CollapsibleSection>
+    </div>
+  );
+}
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -83,49 +198,7 @@ export default async function DoctorPage() {
     .eq("is_active", true)
     .maybeSingle();
 
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
-
-  let seenToday = 0;
-  let myTotal = 0;
-  let mySeen: {
-    id: string;
-    reg_no: number;
-    full_name: string;
-    seen_at: string | null;
-    phone: string | null;
-  }[] = [];
-
-  if (camp) {
-    const [countsRes, mySeenRes] = await Promise.all([
-      supabase.rpc("doctor_my_counts", {
-        p_camp_id: camp.id,
-        p_since: startOfDay.toISOString(),
-      }),
-      supabase
-        .from("patients")
-        .select("id, reg_no, full_name, seen_at, phone")
-        .eq("camp_id", camp.id)
-        .eq("seen_by", userId)
-        .eq("queue_status", "seen")
-        .order("seen_at", { ascending: false })
-        .limit(50),
-    ]);
-
-    if (countsRes.error || mySeenRes.error) {
-      throw new Error("Doctor desk data could not be loaded");
-    }
-
-    const counts = countsRes.data?.[0];
-    seenToday = Number(counts?.seen_today ?? 0);
-    myTotal = Number(counts?.seen_total ?? 0);
-    mySeen = mySeenRes.data || [];
-  } else if (campError) {
+  if (campError) {
     throw new Error("Doctor desk data could not be loaded");
   }
 
@@ -162,10 +235,23 @@ export default async function DoctorPage() {
                 </p>
               ) : null}
             </div>
-            <div className="grid w-full grid-cols-2 gap-2">
-              <Stat label="You saw today" value={seenToday} tone="ok" />
-              <Stat label="Total doctor seen" value={myTotal} />
-            </div>
+            {camp ? (
+              <Suspense
+                fallback={
+                  <div className="grid w-full grid-cols-2 gap-2 opacity-60">
+                    <Stat label="You saw today" value="…" tone="ok" />
+                    <Stat label="Total doctor seen" value="…" />
+                  </div>
+                }
+              >
+                <DoctorStatsSection campId={camp.id} />
+              </Suspense>
+            ) : (
+              <div className="grid w-full grid-cols-2 gap-2">
+                <Stat label="You saw today" value={0} tone="ok" />
+                <Stat label="Total doctor seen" value={0} />
+              </div>
+            )}
           </div>
           <div className="jump-chip-row mt-3 lg:hidden" aria-label="Jump">
             <a href="#scan" className="jump-chip">
@@ -195,53 +281,17 @@ export default async function DoctorPage() {
           />
         </Card>
 
-        <div id="seen">
-        <CollapsibleSection
-          title="Patients you saw"
-          hint={`${mySeen.length} recent`}
-          defaultOpen
-        >
-          {mySeen.length ? (
-            <ul className="divide-y divide-border">
-              {mySeen.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      <span className="tabular text-brand">#{p.reg_no}</span>{" "}
-                      {p.full_name}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {p.seen_at
-                        ? new Date(p.seen_at).toLocaleString("en-IN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            day: "numeric",
-                            month: "short",
-                          })
-                        : "—"}
-                      {p.phone ? ` · ${p.phone}` : ""}
-                    </p>
-                  </div>
-                  <a
-                    href={`/print/${p.id}`}
-                    className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
-                  >
-                    Form
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState>
-              No patients assigned to you yet. Scan a registered patient or enter
-              their reg number when they arrive.
-            </EmptyState>
-          )}
-        </CollapsibleSection>
-        </div>
+        {camp ? (
+          <Suspense
+            fallback={
+              <Card className="p-6 text-sm text-muted">
+                Loading patients seen…
+              </Card>
+            }
+          >
+            <DoctorSeenSection campId={camp.id} userId={userId} />
+          </Suspense>
+        ) : null}
       </div>
     </Shell>
   );
