@@ -31,6 +31,10 @@ const configs = [
 async function connect() {
   const sslModes = [
     {
+      label: "permissive",
+      ssl: { rejectUnauthorized: false },
+    },
+    {
       label: "strict",
       ssl: {
         rejectUnauthorized: true,
