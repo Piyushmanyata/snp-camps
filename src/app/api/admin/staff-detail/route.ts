@@ -25,7 +25,6 @@ export async function GET(req: Request) {
     );
   }
 
-  // Non-admins may only see their own KPIs (not fellow staff).
   if (!isAdmin(profile?.role) && id !== userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -62,133 +61,67 @@ export async function GET(req: Request) {
     day: "2-digit",
   }).format(new Date());
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
+  const campId = activeCamp?.id ?? null;
 
-  if (role === "doctor") {
-    let totalQuery = supabase
-      .from("patients")
-      .select("id", { count: "exact", head: true })
-      .eq("seen_by", id)
-      .eq("queue_status", "seen");
+  const { data: kpiRows, error: kpiErr } = await supabase.rpc(
+    "staff_person_kpis",
+    {
+      p_user_id: id,
+      p_role: role,
+      p_camp_id: campId,
+      p_since: startOfDay,
+    },
+  );
 
-    let todayQuery = supabase
-      .from("patients")
-      .select("id", { count: "exact", head: true })
-      .eq("seen_by", id)
-      .eq("queue_status", "seen")
-      .gte("seen_at", startOfDay);
-
-    let patientsQuery = supabase
-      .from("patients")
-      .select("id, reg_no, full_name, phone, queue_status, seen_at, created_at")
-      .eq("seen_by", id)
-      .eq("queue_status", "seen")
-      .order("seen_at", { ascending: false })
-      .limit(40);
-
-    if (activeCamp) {
-      totalQuery = totalQuery.eq("camp_id", activeCamp.id);
-      todayQuery = todayQuery.eq("camp_id", activeCamp.id);
-      patientsQuery = patientsQuery.eq("camp_id", activeCamp.id);
-    }
-
-    const [totalRes, todayRes, patientsRes] = await Promise.all([
-      totalQuery,
-      todayQuery,
-      patientsQuery,
-    ]);
-
-    if (totalRes.error || todayRes.error || patientsRes.error) {
-      return NextResponse.json(
-        {
-          error:
-            totalRes.error?.message ||
-            todayRes.error?.message ||
-            patientsRes.error?.message ||
-            "Failed to load KPIs",
-        },
-        { status: 400 },
-      );
-    }
-
-    return NextResponse.json({
-      person,
-      kpis: {
-        total: totalRes.count ?? 0,
-        today: todayRes.count ?? 0,
-        label: "Patients seen",
-      },
-      patients: patientsRes.data || [],
-    });
+  if (kpiErr) {
+    return NextResponse.json({ error: kpiErr.message }, { status: 400 });
   }
 
-  let totalQuery = supabase
-    .from("patients")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", id);
-
-  let todayQuery = supabase
-    .from("patients")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", id)
-    .gte("created_at", startOfDay);
-
-  let waitingQuery = supabase
-    .from("patients")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", id)
-    .eq("queue_status", "waiting");
-
-  let seenQuery = supabase
-    .from("patients")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", id)
-    .eq("queue_status", "seen");
+  const kpiRow = (Array.isArray(kpiRows) ? kpiRows[0] : kpiRows) as {
+    total?: number;
+    today?: number;
+    waiting?: number;
+    seen?: number;
+    label?: string;
+  } | null;
 
   let patientsQuery = supabase
     .from("patients")
     .select(
       "id, reg_no, full_name, phone, queue_status, seen_at, created_at",
     )
-    .eq("created_by", id)
-    .order("created_at", { ascending: false })
     .limit(40);
 
-  if (activeCamp) {
-    totalQuery = totalQuery.eq("camp_id", activeCamp.id);
-    todayQuery = todayQuery.eq("camp_id", activeCamp.id);
-    waitingQuery = waitingQuery.eq("camp_id", activeCamp.id);
-    seenQuery = seenQuery.eq("camp_id", activeCamp.id);
-    patientsQuery = patientsQuery.eq("camp_id", activeCamp.id);
+  if (role === "doctor") {
+    patientsQuery = patientsQuery
+      .eq("seen_by", id)
+      .eq("queue_status", "seen")
+      .order("seen_at", { ascending: false });
+  } else {
+    patientsQuery = patientsQuery
+      .eq("created_by", id)
+      .order("created_at", { ascending: false });
+  }
+  if (campId) {
+    patientsQuery = patientsQuery.eq("camp_id", campId);
   }
 
-  const [totalRes, todayRes, waitingRes, seenRes, patientsRes] =
-    await Promise.all([
-      totalQuery,
-      todayQuery,
-      waitingQuery,
-      seenQuery,
-      patientsQuery,
-    ]);
-
-  const err =
-    totalRes.error ||
-    todayRes.error ||
-    waitingRes.error ||
-    seenRes.error ||
-    patientsRes.error;
-  if (err) {
-    return NextResponse.json({ error: err.message }, { status: 400 });
+  const { data: patients, error: patientsErr } = await patientsQuery;
+  if (patientsErr) {
+    return NextResponse.json({ error: patientsErr.message }, { status: 400 });
   }
 
   return NextResponse.json({
     person,
     kpis: {
-      total: totalRes.count ?? 0,
-      today: todayRes.count ?? 0,
-      waiting: waitingRes.count ?? 0,
-      seen: seenRes.count ?? 0,
-      label: "Patients registered",
+      total: Number(kpiRow?.total ?? 0),
+      today: Number(kpiRow?.today ?? 0),
+      waiting: Number(kpiRow?.waiting ?? 0),
+      seen: Number(kpiRow?.seen ?? 0),
+      label:
+        kpiRow?.label ||
+        (role === "doctor" ? "Patients seen" : "Patients registered"),
     },
-    patients: patientsRes.data || [],
+    patients: patients || [],
   });
 }

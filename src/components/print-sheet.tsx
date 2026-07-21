@@ -58,7 +58,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
             <Line label="Contact No." value={patient.phone || ""} />
           </div>
 
-          <div className="flex w-[7.2rem] flex-col items-end gap-1 sm:w-32">
+          <div className="flex w-[7.8rem] flex-col items-end gap-1 sm:w-36">
             <div className="w-full rounded border border-[#1a3a8a] px-1.5 py-1 text-right">
               <p className="text-[8px] font-semibold uppercase leading-none">
                 Reg. No.
@@ -79,7 +79,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
               <div className="rounded border border-[#1a3a8a] bg-white p-1">
                 <QrCode
                   value={qr}
-                  size={96}
+                  size={112}
                   level="H"
                   includeMargin
                   fgColor="#1a3a8a"

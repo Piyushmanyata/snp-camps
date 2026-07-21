@@ -112,19 +112,16 @@ test("parseRegistrationNumber — boundary and overflow protection", () => {
 
 test("patientScanUrl & patientPrintUrl — url generation format", () => {
   const origin = "https://camps.snp.org";
-  assert.equal(
-    patientScanUrl(VALID_UUID, origin),
-    `https://camps.snp.org/p/${VALID_UUID}`
-  );
+  assert.equal(patientScanUrl(VALID_UUID, origin), `snp:${VALID_UUID}`);
   assert.equal(
     patientPrintUrl(VALID_UUID, origin),
     `https://camps.snp.org/print/${VALID_UUID}`
   );
 
-  // Trailing slash origin normalization
+  // Compact snp: payload (origin ignored; denser paper QR)
   assert.equal(
     patientScanUrl(VALID_UUID, "https://camps.snp.org/"),
-    `https://camps.snp.org/p/${VALID_UUID}`
+    `snp:${VALID_UUID}`
   );
 
   // Non-UUID fallback

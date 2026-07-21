@@ -82,10 +82,10 @@ export function patientScanUrl(
 ): string {
   const id = patientId.trim().toLowerCase();
   if (!isPatientUuid(id)) return patientId.trim();
-  const clean = resolveOrigin(origin);
-  // Bare UUID still parses in the in-app scanner when site URL is missing.
-  if (!clean) return id;
-  return `${clean}/p/${id}`;
+  // Compact scheme = larger modules on paper, faster / blur-tolerant scans.
+  // Full /p/<uuid> URLs still parse if someone embeds them.
+  void origin;
+  return `snp:${id}`;
 }
 
 /**
@@ -132,3 +132,15 @@ export function parsePatientIdFromQr(raw: string): string | null {
   return null;
 }
 
+
+/** HTTP form of staff-scan link (deep link / share). Prefer patientScanUrl for printed QR. */
+export function patientScanUrlHttp(
+  patientId: string,
+  origin?: string | null,
+): string {
+  const id = patientId.trim().toLowerCase();
+  if (!isPatientUuid(id)) return patientId.trim();
+  const clean = resolveOrigin(origin);
+  if (!clean) return id;
+  return `${clean}/p/${id}`;
+}

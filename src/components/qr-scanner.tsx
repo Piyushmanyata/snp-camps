@@ -344,9 +344,11 @@ export function QrScanner({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            // Higher res helps blurry/small paper QR modules
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
+          audio: false,
         });
 
         if (!isMounted.current || generation !== scannerGeneration.current) {
@@ -360,12 +362,68 @@ export function QrScanner({
         streamRef.current = stream;
         setUseNative(true);
 
+        // Best-effort continuous autofocus / torch-off for outdoor desks
+        try {
+          const track = stream.getVideoTracks()[0];
+          const caps = track?.getCapabilities?.() as
+            | { focusMode?: string[]; zoom?: { min: number; max: number } }
+            | undefined;
+          const constraints: Record<string, unknown> = {};
+          if (caps?.focusMode?.includes("continuous")) {
+            constraints.focusMode = "continuous";
+          }
+          if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
+            // Slight zoom improves distant paper QR without losing FOV entirely
+            constraints.zoom = Math.min(
+              caps.zoom.max,
+              Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.35),
+            );
+          }
+          if (Object.keys(constraints).length && track) {
+            await track.applyConstraints({ advanced: [constraints] } as unknown as MediaTrackConstraints);
+          }
+        } catch {
+          /* ignore unsupported constraints */
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute("playsinline", "true");
           await videoRef.current.play().catch(() => {});
         }
 
+        // Offscreen canvases for multi-scale detect (helps blurry frames)
+        const canvasFull = document.createElement("canvas");
+        const canvasHalf = document.createElement("canvas");
+        const ctxFull = canvasFull.getContext("2d", { willReadFrequently: true });
+        const ctxHalf = canvasHalf.getContext("2d", { willReadFrequently: true });
         let lastFrameTime = 0;
+        let scaleTick = 0;
+
+        const tryDecode = async (
+          source: HTMLVideoElement | HTMLCanvasElement,
+        ): Promise<boolean> => {
+          const barcodes = await detector.detect(source);
+          if (!barcodes?.length || handledRef.current) return false;
+          for (const barcode of barcodes) {
+            if (!barcode.rawValue) continue;
+            const id = parsePatientIdFromQr(barcode.rawValue);
+            if (id) {
+              handledRef.current = true;
+              void resolvePatient({ id });
+              return true;
+            }
+            const badNow = Date.now();
+            if (badNow - badScanAt.current > 2500) {
+              badScanAt.current = badNow;
+              setError(
+                "That QR is not a patient staff-scan code. Use the paper form or reg no.",
+              );
+            }
+          }
+          return false;
+        };
+
         const processFrame = async () => {
           if (
             generation !== scannerGeneration.current ||
@@ -376,29 +434,46 @@ export function QrScanner({
           }
 
           const now = performance.now();
-          if (now - lastFrameTime >= 40) {
+          // ~30fps decode cadence
+          if (now - lastFrameTime >= 33) {
             lastFrameTime = now;
             const video = videoRef.current;
             if (video.readyState >= 2 && !handledRef.current) {
               try {
-                const barcodes = await detector.detect(video);
-                if (barcodes && barcodes.length > 0 && !handledRef.current) {
-                  for (const barcode of barcodes) {
-                    if (barcode.rawValue) {
-                      const id = parsePatientIdFromQr(barcode.rawValue);
-                      if (id) {
-                        handledRef.current = true;
-                        void resolvePatient({ id });
-                        return;
-                      }
-                      const badNow = Date.now();
-                      if (badNow - badScanAt.current > 2500) {
-                        badScanAt.current = badNow;
-                        setError(
-                          "That QR is not a patient staff-scan code. Use the paper form or reg no.",
-                        );
-                      }
-                    }
+                // 1) Full video frame (fast path)
+                if (await tryDecode(video)) return;
+
+                // 2) Multi-scale canvas every other tick — recovers soft/blurry QR
+                if (ctxFull && ctxHalf && video.videoWidth > 0) {
+                  scaleTick += 1;
+                  if (scaleTick % 2 === 0) {
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    // Center crop ~70% then upscale — larger modules for detector
+                    const cw = Math.floor(vw * 0.72);
+                    const ch = Math.floor(vh * 0.72);
+                    const sx = Math.floor((vw - cw) / 2);
+                    const sy = Math.floor((vh - ch) / 2);
+                    canvasFull.width = cw;
+                    canvasFull.height = ch;
+                    ctxFull.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
+                    if (await tryDecode(canvasFull)) return;
+
+                    // Half-res pass can help some detectors lock on low-contrast codes
+                    canvasHalf.width = Math.max(320, Math.floor(cw / 2));
+                    canvasHalf.height = Math.max(240, Math.floor(ch / 2));
+                    ctxHalf.drawImage(
+                      canvasFull,
+                      0,
+                      0,
+                      cw,
+                      ch,
+                      0,
+                      0,
+                      canvasHalf.width,
+                      canvasHalf.height,
+                    );
+                    if (await tryDecode(canvasHalf)) return;
                   }
                 }
               } catch {
@@ -455,14 +530,27 @@ export function QrScanner({
       await scanner.start(
         cameraId,
         {
-          fps: 25,
+          fps: 30,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const edge = Math.min(viewfinderWidth, viewfinderHeight);
-            const size = Math.max(180, Math.floor(edge * 0.72));
+            // Large box = more modules in FOV for blurry paper QR
+            const size = Math.max(220, Math.floor(edge * 0.88));
             return { width: size, height: size };
           },
           aspectRatio: 1,
           disableFlip: false,
+          // html5-qrcode types omit experimental + videoConstraints; runtime supports them
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          videoConstraints: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        } as {
+          fps: number;
+          qrbox: (w: number, h: number) => { width: number; height: number };
+          aspectRatio: number;
+          disableFlip: boolean;
         },
         (decoded) => {
           if (handledRef.current) return;

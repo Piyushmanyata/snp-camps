@@ -78,16 +78,13 @@ test("registration number parser rejects overflow and malformed values", () => {
 
 test("patient URLs are staff-scan canonical and passwords avoid ambiguous characters", () => {
   const id = "a0b1c2d3-e4f5-4678-9abc-def012345678";
-  assert.equal(
-    patientScanUrl(id, "https://camp.example/"),
-    "https://camp.example/p/" + id,
-  );
+  assert.equal(patientScanUrl(id, "https://camp.example/"), "snp:" + id);
   assert.equal(
     patientPrintUrl(id, "https://camp.example/"),
     "https://camp.example/print/" + id,
   );
-  // No origin → bare uuid (still scannable in-app)
-  assert.equal(patientScanUrl(id, ""), id);
+  // Compact snp: payload (denser paper QR) regardless of origin
+  assert.equal(patientScanUrl(id, ""), "snp:" + id);
 
   const generated = new Set(
     Array.from({ length: 20 }, () => generatePatientPassword(12)),

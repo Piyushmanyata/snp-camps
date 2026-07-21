@@ -50,7 +50,7 @@ export default async function RegisterPage() {
       title={staff ? "Register walk-in" : "Register patient"}
       subtitle={
         staff
-          ? "Desk registration · phone required · no OTP"
+          ? "Desk registration · age & address required · phone optional"
           : "Phone OTP · choose a day with open seats"
       }
       backHref={staff ? deskHref : "/"}
@@ -87,7 +87,7 @@ export default async function RegisterPage() {
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
               {staff
-                ? "One person, one day. Save → registered. Print joins the FCFS queue (optional). Doctors can scan without printing."
+                ? "One person, one day. Age and address required; phone optional. Print joins the FCFS queue. Doctors can scan without printing."
                 : "Self-registration uses phone OTP. After verify you complete details, get a reg number, and stay signed in."}
             </p>
             <PatientForm

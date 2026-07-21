@@ -4,6 +4,23 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 
+function normalizeInvite(value: string) {
+  return value.normalize("NFC").trim();
+}
+
+function usableInvite(value: string | undefined, placeholder: string) {
+  return Boolean(value && value.length >= 12 && value !== placeholder);
+}
+
+/** Case-insensitive timing-safe compare of invite codes. */
+function matchesInvite(provided: string, configured: string | undefined) {
+  if (!configured) return false;
+  const a = Buffer.from(normalizeInvite(provided).toLowerCase());
+  const b = Buffer.from(normalizeInvite(configured).toLowerCase());
+  if (a.byteLength !== b.byteLength) return false;
+  return timingSafeEqual(a, b);
+}
+
 export async function POST(req: Request) {
   const body = await readJsonBody<{
     fullName?: string;
@@ -18,7 +35,7 @@ export async function POST(req: Request) {
   const fullName = String(body.fullName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const invite = String(body.invite || "").trim();
+  const invite = normalizeInvite(String(body.invite || ""));
   const rate = checkRateLimit(req, {
     scope: "staff-register",
     identifier: email || "missing-email",
@@ -46,26 +63,24 @@ export async function POST(req: Request) {
   }
 
   const volunteerCode = process.env.VOLUNTEER_INVITE_CODE;
-  const usable = (value: string | undefined, placeholder: string) =>
-    Boolean(value && value.length >= 16 && value !== placeholder);
-  const matches = (provided: string, configured: string | undefined) => {
-    if (!configured) return false;
-    const bufProvided = Buffer.from(provided);
-    const bufConfigured = Buffer.from(configured);
-    if (bufProvided.byteLength !== bufConfigured.byteLength) return false;
-    return timingSafeEqual(bufProvided, bufConfigured);
-  };
-  if (!usable(volunteerCode, "change-me-volunteer")) {
+  if (!usableInvite(volunteerCode, "change-me-volunteer")) {
     return NextResponse.json(
-      { error: "Invite codes not configured on server" },
+      {
+        error:
+          "Invite codes are not configured on the server. Ask an admin to create your account and share login credentials instead.",
+      },
       { status: 500 },
     );
   }
 
-  // Public invite registration can only create the least-privileged staff
-  // role. Admin accounts are bootstrapped out-of-band or by an existing admin.
-  if (!matches(invite, volunteerCode)) {
-    return NextResponse.json({ error: "Invalid invite code" }, { status: 403 });
+  if (!matchesInvite(invite, volunteerCode)) {
+    return NextResponse.json(
+      {
+        error:
+          "Invalid invite code. Check for typos, or ask admin to create your account and share email + invite password.",
+      },
+      { status: 403 },
+    );
   }
   const role = "volunteer" as const;
 
@@ -86,7 +101,10 @@ export async function POST(req: Request) {
 
   if (error) {
     return NextResponse.json(
-      { error: "Could not create account. The email may already be in use." },
+      {
+        error:
+          "Could not create account. The email may already be in use — ask admin to share your invite password for that email, then sign in and change the password.",
+      },
       { status: 400 },
     );
   }
@@ -97,8 +115,7 @@ export async function POST(req: Request) {
 
   const { error: profileErr } = await admin
     .from("profiles")
-    .update({ role, full_name: fullName, email })
-    .eq("id", data.user.id);
+    .upsert({ id: data.user.id, role, full_name: fullName, email });
   if (profileErr) {
     await admin.auth.admin.deleteUser(data.user.id);
     return NextResponse.json(

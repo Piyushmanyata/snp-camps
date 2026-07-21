@@ -67,9 +67,9 @@ export default function StaffRegisterPage() {
     >
       <Card>
         <InfoBox>
-          Admin accounts are created out-of-band. Ask an admin to add doctors
-          or volunteers from Admin → Volunteers, or use the volunteer invite
-          code from your organizer.
+          Preferred: admin creates you on Volunteer desk and shares an invite
+          password for your email — sign in, then change password. Alternate:
+          use the shared volunteer invite code below for a brand-new account.
         </InfoBox>
         <form onSubmit={onSubmit} className="mt-4 space-y-4" noValidate>
           <Input

@@ -354,26 +354,44 @@ export function PatientForm({
       return;
     }
 
-    const normalizedPhone = normalizePhoneE164(phone);
+    const phoneRaw = phone.trim();
+    const normalizedPhone = phoneRaw ? normalizePhoneE164(phoneRaw) : null;
     const phone10 = normalizedPhone?.slice(-10) || "";
-    if (!normalizedPhone) {
-      setError("Phone is required (10-digit mobile).");
-      setLoading(false);
-      return;
-    }
 
-    if (!isStaff && !phoneVerified) {
-      setError("Verify your phone with OTP first.");
-      setLoading(false);
-      return;
+    if (isStaff) {
+      // Desk: phone optional; if provided must be valid
+      if (phoneRaw && !normalizedPhone) {
+        setError("Phone must be a valid 10-digit Indian mobile, or leave blank.");
+        setLoading(false);
+        return;
+      }
+    } else {
+      if (!normalizedPhone) {
+        setError("Phone is required (10-digit mobile).");
+        setLoading(false);
+        return;
+      }
+      if (!phoneVerified) {
+        setError("Verify your phone with OTP first.");
+        setLoading(false);
+        return;
+      }
     }
 
     const ageValue = age === "" ? null : Number(age);
     if (
-      ageValue !== null &&
-      (!Number.isInteger(ageValue) || ageValue < 0 || ageValue >= 150)
+      ageValue === null ||
+      !Number.isInteger(ageValue) ||
+      ageValue < 0 ||
+      ageValue >= 150
     ) {
-      setError("Age must be a whole number from 0 to 149.");
+      setError("Age is required (whole number from 0 to 149).");
+      setLoading(false);
+      return;
+    }
+
+    if (!address.trim()) {
+      setError("Address is required.");
       setLoading(false);
       return;
     }
@@ -800,7 +818,7 @@ export function PatientForm({
         </div>
       ) : (
         <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
-          Desk mode · no OTP · phone still required
+          Desk mode — no OTP — phone optional; age & address required
         </div>
       )}
 
@@ -881,11 +899,11 @@ export function PatientForm({
         onChange={(e) => setFullName(e.target.value)}
         placeholder="Patient full name"
       />
-      <Input
-        label="Phone *"
+            <Input
+        label={isStaff ? "Phone (optional)" : "Phone *"}
         inputMode="tel"
         autoComplete="tel"
-        required
+        required={!isStaff}
         enterKeyHint="next"
         value={phone}
         onChange={(e) => {
@@ -893,10 +911,10 @@ export function PatientForm({
           setPhone(e.target.value);
         }}
         readOnly={!isStaff && phoneVerified}
-        placeholder="10-digit mobile"
+        placeholder={isStaff ? "10-digit mobile (optional)" : "10-digit mobile"}
         hint={
           isStaff
-            ? "One registration per phone · used for later claim"
+            ? "Optional — used later if the patient claims their record"
             : "Locked after OTP verification"
         }
       />
@@ -918,12 +936,13 @@ export function PatientForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input
-          label="Age"
+          label="Age *"
           type="number"
           min={0}
           max={149}
+          required
           inputMode="numeric"
           enterKeyHint="next"
           value={age}
@@ -931,11 +950,12 @@ export function PatientForm({
           placeholder="Years"
         />
         <Input
-          label="Address"
+          label="Address *"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
-          placeholder="Area"
+          placeholder="Area / locality"
           enterKeyHint="next"
+          required
         />
       </div>
 

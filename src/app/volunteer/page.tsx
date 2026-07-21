@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import type { DoctorOption } from "@/components/qr-scanner";
 import { SignOutButton } from "@/components/sign-out";
+import { ChangePasswordCard } from "@/components/change-password";
 import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
 import { SeatBoard } from "@/components/seat-board";
 
@@ -186,6 +187,7 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
+        <ChangePasswordCard />
         <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>

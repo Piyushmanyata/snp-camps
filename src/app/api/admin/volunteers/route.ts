@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody, requireAdmin } from "@/lib/auth";
+
+/** Shareable invite password: 14 chars, no ambiguous glyphs. */
+function generateInvitePassword(length = 14): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet[bytes[i]! % alphabet.length];
+  }
+  return out;
+}
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -36,11 +48,21 @@ export async function POST(req: Request) {
 
   const fullName = String(body.fullName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
-  const password = String(body.password || "");
+  let password = String(body.password || "");
+  const autoPassword = !password;
+  if (autoPassword) {
+    password = generateInvitePassword(14);
+  }
 
-  if (!fullName || !email || password.length < 12) {
+  if (!fullName || !email) {
     return NextResponse.json(
-      { error: "Name, email, and password (min 12) required" },
+      { error: "Name and email are required" },
+      { status: 400 },
+    );
+  }
+  if (password.length < 12) {
+    return NextResponse.json(
+      { error: "Password must be at least 12 characters (or leave blank to auto-generate)" },
       { status: 400 },
     );
   }
@@ -64,14 +86,21 @@ export async function POST(req: Request) {
   });
 
   if (createErr) {
-    return NextResponse.json({ error: createErr.message }, { status: 400 });
+    const msg = createErr.message.toLowerCase();
+    return NextResponse.json(
+      {
+        error: msg.includes("already")
+          ? "That email is already registered. Share their existing login or use a different email."
+          : createErr.message,
+      },
+      { status: 400 },
+    );
   }
 
   if (!created.user) {
     return NextResponse.json({ error: "No user created" }, { status: 400 });
   }
 
-  // Ensure profile is volunteer (trigger may have created patient role first)
   const { error: profileErr } = await admin.from("profiles").upsert({
     id: created.user.id,
     role: "volunteer",
@@ -89,6 +118,8 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    invitePassword: password,
+    autoPassword,
     volunteer: {
       id: created.user.id,
       full_name: fullName,

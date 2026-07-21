@@ -38,7 +38,7 @@ function publicError(message?: string) {
     return "The selected camp or day is no longer available.";
   }
   if (/phone/i.test(message)) {
-    return "A valid phone number is required for registration.";
+    return "Enter a valid phone number, or leave phone blank at the desk.";
   }
   return "Registration failed. Try again or ask the desk.";
 }
@@ -108,9 +108,15 @@ export async function POST(request: Request) {
       { status: 400, headers },
     );
   }
-  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 149)) {
+  if (age === null || !Number.isInteger(age) || age < 0 || age > 149) {
     return NextResponse.json(
-      { error: "Age must be a whole number from 0 to 149." },
+      { error: "Age is required (whole number from 0 to 149)." },
+      { status: 400, headers },
+    );
+  }
+  if (!address || address.length < 2) {
+    return NextResponse.json(
+      { error: "Address is required." },
       { status: 400, headers },
     );
   }
