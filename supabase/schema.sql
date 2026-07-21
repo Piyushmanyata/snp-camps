@@ -405,3 +405,123 @@ end;
 $$;
 
 grant execute on function public.mark_patient_seen(uuid) to authenticated;
+
+-- Staff checkin queue helper
+create or replace function public.checkin_patient_queue(
+  p_patient_id uuid default null,
+  p_reg_no integer default null
+)
+returns table (
+  id uuid,
+  reg_no integer,
+  full_name text,
+  queue_status public.queue_status,
+  already_in_queue boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.patients%rowtype;
+  v_already boolean := false;
+begin
+  if not public.is_staff() then
+    raise exception 'staff only';
+  end if;
+
+  if p_patient_id is not null then
+    select * into r from public.patients where patients.id = p_patient_id for update;
+  elsif p_reg_no is not null then
+    select * into r from public.patients where patients.reg_no = p_reg_no for update;
+  else
+    raise exception 'Provide patient id or reg no';
+  end if;
+
+  if r.id is null then
+    raise exception 'Patient not found';
+  end if;
+
+  if r.queue_status = 'seen' then
+    return query
+    select r.id, r.reg_no, r.full_name, r.queue_status, true;
+    return;
+  end if;
+
+  if r.queue_status = 'waiting' then
+    v_already := true;
+    if r.checked_in_by is null then
+      update public.patients
+      set checked_in_by = coalesce(checked_in_by, auth.uid())
+      where patients.id = r.id
+      returning * into r;
+    end if;
+  else
+    update public.patients
+    set queue_status = 'waiting',
+        queued_at = coalesce(queued_at, now()),
+        checked_in_by = coalesce(checked_in_by, auth.uid())
+    where patients.id = r.id
+    returning * into r;
+  end if;
+
+  return query
+  select r.id, r.reg_no, r.full_name, r.queue_status, v_already;
+end;
+$$;
+
+grant execute on function public.checkin_patient_queue(uuid, integer) to authenticated;
+
+-- Assign patient to doctor
+create or replace function public.assign_patient_doctor(
+  p_patient_id uuid,
+  p_doctor_id uuid default null
+)
+returns table (
+  id uuid,
+  reg_no integer,
+  full_name text,
+  queue_status public.queue_status,
+  seen_by uuid,
+  seen_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_target_doctor uuid;
+  r public.patients%rowtype;
+begin
+  if not public.is_staff() then
+    raise exception 'staff only';
+  end if;
+
+  v_target_doctor := coalesce(p_doctor_id, auth.uid());
+
+  select * into r from public.patients where patients.id = p_patient_id for update;
+  if r.id is null then
+    raise exception 'Patient not found';
+  end if;
+
+  if r.queue_status = 'seen' then
+    return query
+    select r.id, r.reg_no, r.full_name, r.queue_status, r.seen_by, r.seen_at;
+    return;
+  end if;
+
+  update public.patients
+  set queue_status = 'seen',
+      seen_by = v_target_doctor,
+      seen_at = coalesce(seen_at, now()),
+      queued_at = coalesce(queued_at, now())
+  where patients.id = p_patient_id
+  returning * into r;
+
+  return query
+  select r.id, r.reg_no, r.full_name, r.queue_status, r.seen_by, r.seen_at;
+end;
+$$;
+
+grant execute on function public.assign_patient_doctor(uuid, uuid) to authenticated;
+
