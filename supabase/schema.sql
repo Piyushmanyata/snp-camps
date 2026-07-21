@@ -44,6 +44,7 @@ create table public.patients (
   printed_at timestamptz,
   seen_at timestamptz,
   seen_by uuid references public.profiles (id) on delete set null,
+  checked_in_by uuid references public.profiles (id) on delete set null,
   created_by uuid references auth.users (id) on delete set null,
   account_claim_token text,
   account_claim_expires_at timestamptz,
@@ -60,6 +61,9 @@ create unique index patients_account_claim_token_idx
 create index patients_seen_by_camp_seen_at_idx
   on public.patients (camp_id, seen_by, seen_at desc)
   where queue_status = 'seen' and seen_by is not null;
+create index patients_checked_in_by_idx
+  on public.patients (checked_in_by)
+  where checked_in_by is not null;
 
 -- auto profile on signup
 create or replace function public.handle_new_user()
@@ -359,10 +363,17 @@ begin
 
   if r.queue_status = 'waiting' then
     v_already := true;
+    if r.checked_in_by is null then
+      update public.patients
+      set checked_in_by = coalesce(checked_in_by, auth.uid())
+      where patients.id = r.id
+      returning * into r;
+    end if;
   else
     update public.patients
     set queue_status = 'waiting',
-        queued_at = coalesce(queued_at, now())
+        queued_at = coalesce(queued_at, now()),
+        checked_in_by = coalesce(checked_in_by, auth.uid())
     where patients.id = r.id
     returning * into r;
   end if;

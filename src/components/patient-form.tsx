@@ -33,6 +33,7 @@ type Props = {
   createdBy?: string | null;
   /** Volunteer/admin desk registration — print only, no on-screen QR */
   isStaff?: boolean;
+  userRole?: string | null;
 };
 
 type Created = {
@@ -56,6 +57,7 @@ export function PatientForm({
   userId = null,
   createdBy = null,
   isStaff = false,
+  userRole = null,
 }: Props) {
   const router = useRouter();
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
@@ -700,10 +702,20 @@ export function PatientForm({
         <div className="flex flex-col gap-2 sm:flex-row">
           {isStaff ? (
             <Link
-              href="/volunteer"
+              href={
+                userRole === "admin"
+                  ? "/admin"
+                  : userRole === "doctor"
+                    ? "/doctor"
+                    : "/volunteer"
+              }
               className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft sm:flex-1"
             >
-              Back to volunteer desk
+              {userRole === "admin"
+                ? "Back to admin"
+                : userRole === "doctor"
+                  ? "Back to doctor desk"
+                  : "Back to volunteer desk"}
             </Link>
           ) : (
             <Link

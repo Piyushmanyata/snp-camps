@@ -16,9 +16,16 @@ alter table public.patients
 alter table public.patients
   add column if not exists seen_by uuid references public.profiles (id) on delete set null;
 
+alter table public.patients
+  add column if not exists checked_in_by uuid references public.profiles (id) on delete set null;
+
 create index if not exists patients_seen_by_idx
   on public.patients (seen_by)
   where seen_by is not null;
+
+create index if not exists patients_checked_in_by_idx
+  on public.patients (checked_in_by)
+  where checked_in_by is not null;
 
 -- 3) Staff includes doctors
 create or replace function public.is_staff()
@@ -84,10 +91,11 @@ begin
   -- Already printed or further along: keep status; ensure printed_at set
   if r.queue_status in ('waiting', 'seen') then
     v_already := true;
-    if r.printed_at is null then
+    if r.printed_at is null or r.checked_in_by is null then
       update public.patients
       set printed_at = coalesce(printed_at, now()),
-          queued_at = coalesce(queued_at, now())
+          queued_at = coalesce(queued_at, now()),
+          checked_in_by = coalesce(checked_in_by, auth.uid())
       where patients.id = r.id
       returning * into r;
     end if;
@@ -100,7 +108,8 @@ begin
   update public.patients
   set queue_status = 'waiting',
       queued_at = coalesce(queued_at, now()),
-      printed_at = coalesce(printed_at, now())
+      printed_at = coalesce(printed_at, now()),
+      checked_in_by = coalesce(checked_in_by, auth.uid())
   where patients.id = r.id
   returning * into r;
 
@@ -156,10 +165,11 @@ begin
 
   if r.queue_status = 'waiting' then
     v_already := true;
-    if r.printed_at is null or r.queued_at is null then
+    if r.printed_at is null or r.queued_at is null or r.checked_in_by is null then
       update public.patients
       set printed_at = coalesce(printed_at, now()),
-          queued_at = coalesce(queued_at, now())
+          queued_at = coalesce(queued_at, now()),
+          checked_in_by = coalesce(checked_in_by, auth.uid())
       where patients.id = r.id
       returning * into r;
     end if;
@@ -167,7 +177,8 @@ begin
     update public.patients
     set queue_status = 'waiting',
         queued_at = coalesce(queued_at, now()),
-        printed_at = coalesce(printed_at, now())
+        printed_at = coalesce(printed_at, now()),
+        checked_in_by = coalesce(checked_in_by, auth.uid())
     where patients.id = r.id
     returning * into r;
   end if;
@@ -296,7 +307,8 @@ begin
       seen_at = coalesce(seen_at, now()),
       seen_by = v_doctor_id,
       queued_at = coalesce(queued_at, now()),
-      printed_at = coalesce(printed_at, now())
+      printed_at = coalesce(printed_at, now()),
+      checked_in_by = coalesce(checked_in_by, auth.uid())
   where patients.id = r.id
   returning * into r;
 

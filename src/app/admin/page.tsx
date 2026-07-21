@@ -13,9 +13,24 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import { SeatBoard } from "@/components/seat-board";
-import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
-import type { DoctorOption } from "@/components/qr-scanner";
+import type { LiveQueuePatient } from "@/components/live-queue";
+import { getCampsList, getDoctorsList } from "@/lib/metadata";
+
+const SeatBoard = dynamic(
+  () =>
+    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+  },
+);
+
+const LiveQueue = dynamic(
+  () =>
+    import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading queue…</p>,
+  },
+);
 
 const AdminCamps = dynamic(
   () => import("@/components/admin-camps").then((m) => ({ default: m.AdminCamps })),
@@ -148,7 +163,7 @@ async function AdminSeatBoardSection({
 
 async function AdminQueueSection({ campId }: { campId: string }) {
   const supabase = await createClient();
-  const [waitingRes, doctorsRes] = await Promise.all([
+  const [waitingRes, doctors] = await Promise.all([
     supabase
       .from("patients")
       .select("id, reg_no, full_name, phone, queued_at", {
@@ -158,20 +173,15 @@ async function AdminQueueSection({ campId }: { campId: string }) {
       .eq("queue_status", "waiting")
       .order("queued_at", { ascending: true, nullsFirst: false })
       .limit(100),
-    supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("role", "doctor")
-      .order("full_name", { ascending: true }),
+    getDoctorsList(),
   ]);
 
-  if (waitingRes.error || doctorsRes.error) {
+  if (waitingRes.error) {
     throw new Error("Admin queue data could not be loaded");
   }
 
   const waiting = (waitingRes.data || []) as LiveQueuePatient[];
   const waitingCount = waitingRes.count ?? waiting.length;
-  const doctors = (doctorsRes.data || []) as DoctorOption[];
 
   return (
     <Card padding="sm" id="queue">
@@ -195,16 +205,7 @@ export default async function AdminPage() {
   const { profile } = await getSessionProfile();
   if (profile?.role !== "admin") redirect("/login");
 
-  const supabase = await createClient();
-
-  const { data: camps, error: campError } = await supabase
-    .from("camps")
-    .select("id, name, venue, camp_date, is_active, created_at")
-    .order("created_at", { ascending: false });
-
-  if (campError) {
-    throw new Error("Admin data could not be loaded");
-  }
+  const camps = await getCampsList();
 
   const active = camps?.find((c) => c.is_active);
 

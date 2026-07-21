@@ -13,7 +13,16 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import { ChangePasswordCard } from "@/components/change-password";
+
+const ChangePasswordCard = dynamic(
+  () =>
+    import("@/components/change-password").then((m) => ({
+      default: m.ChangePasswordCard,
+    })),
+  {
+    loading: () => <p className="py-2 text-xs text-muted">Loading...</p>,
+  },
+);
 
 const QrScanner = dynamic(
   () =>

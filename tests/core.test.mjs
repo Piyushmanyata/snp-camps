@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import {
   aadhaarLast4,
   digitsOnly,
@@ -124,3 +126,35 @@ test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164("12345"), null);
   assert.equal(normalizePhoneE164("1234567890"), null);
 });
+
+test("R1: PatientForm userRole='admin' generates href='/admin' with text 'Back to admin'", () => {
+  const componentPath = path.join(process.cwd(), "src/components/patient-form.tsx");
+  const content = fs.readFileSync(componentPath, "utf-8");
+
+  assert.ok(content.includes('userRole === "admin"'), "PatientForm must check userRole === 'admin'");
+  assert.ok(content.includes('? "/admin"'), "PatientForm must set href to '/admin' for admin role");
+  assert.ok(content.includes('? "Back to admin"'), "PatientForm must display label 'Back to admin' for admin role");
+});
+
+test("R2: SQL migration 20260721000000_volunteer_checked_in_kpi.sql correctly aggregates created_by OR checked_in_by", () => {
+  const sqlPath = path.join(process.cwd(), "supabase/migrations/20260721000000_volunteer_checked_in_kpi.sql");
+  const sqlContent = fs.readFileSync(sqlPath, "utf-8");
+
+  assert.ok(
+    sqlContent.includes("ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS checked_in_by uuid"),
+    "Migration must add checked_in_by column"
+  );
+  assert.ok(
+    sqlContent.includes("checked_in_by = coalesce(checked_in_by, auth.uid())"),
+    "RPCs must set checked_in_by with fallback to auth.uid()"
+  );
+  assert.ok(
+    sqlContent.includes("(p.created_by = auth.uid() or p.checked_in_by = auth.uid())"),
+    "volunteer_my_counts must filter on created_by OR checked_in_by"
+  );
+  assert.ok(
+    sqlContent.includes("(p.created_by = p_user_id or p.checked_in_by = p_user_id)"),
+    "staff_person_kpis must filter on created_by OR checked_in_by for volunteers"
+  );
+});
+

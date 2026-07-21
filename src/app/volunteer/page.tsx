@@ -13,10 +13,35 @@ import {
   Stat,
 } from "@/components/ui";
 import type { DoctorOption } from "@/components/qr-scanner";
+import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
-import { ChangePasswordCard } from "@/components/change-password";
-import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
-import { SeatBoard } from "@/components/seat-board";
+import { getDoctorsList } from "@/lib/metadata";
+
+const ChangePasswordCard = dynamic(
+  () =>
+    import("@/components/change-password").then((m) => ({
+      default: m.ChangePasswordCard,
+    })),
+  {
+    loading: () => <p className="py-2 text-xs text-muted">Loading...</p>,
+  },
+);
+
+const LiveQueue = dynamic(
+  () =>
+    import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading queue…</p>,
+  },
+);
+
+const SeatBoard = dynamic(
+  () =>
+    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+  },
+);
 
 const QrScanner = dynamic(
   () =>
@@ -127,7 +152,7 @@ export default async function VolunteerPage() {
   let mySeen = 0;
 
   if (camp) {
-    const [waitingRes, doctorsRes, dayStatsRes, myCountsRes] =
+    const [waitingRes, doctorsList, dayStatsRes, myCountsRes] =
       await Promise.all([
         supabase
           .from("patients")
@@ -138,18 +163,13 @@ export default async function VolunteerPage() {
           .eq("queue_status", "waiting")
           .order("queued_at", { ascending: true, nullsFirst: false })
           .limit(100),
-        supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("role", "doctor")
-          .order("full_name", { ascending: true }),
+        getDoctorsList(),
         supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
         supabase.rpc("volunteer_my_counts", { p_since: startOfDay }),
       ]);
 
     if (
       waitingRes.error ||
-      doctorsRes.error ||
       dayStatsRes.error ||
       myCountsRes.error
     ) {
@@ -158,7 +178,7 @@ export default async function VolunteerPage() {
 
     waiting = (waitingRes.data || []) as LiveQueuePatient[];
     waitingCount = waitingRes.count ?? waiting.length;
-    doctors = (doctorsRes.data || []) as DoctorOption[];
+    doctors = doctorsList;
     days = (dayStatsRes.data as CampDayStats[]) || [];
     const myCounts = myCountsRes.data?.[0];
     myTotal = Number(myCounts?.total ?? 0);

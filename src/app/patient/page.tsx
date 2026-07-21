@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -13,8 +14,15 @@ import { Badge, Card, NavLink, Shell } from "@/components/ui";
 import { QrCard } from "@/components/qr-card";
 import { SignOutButton } from "@/components/sign-out";
 import { ChangeDay } from "@/components/change-day";
-import { SeatBoard } from "@/components/seat-board";
 import { patientScanUrl } from "@/lib/qr";
+
+const SeatBoard = dynamic(
+  () =>
+    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+  },
+);
 
 async function PatientSeatBoardSection({
   campId,

@@ -1,10 +1,18 @@
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
-import { SeatBoard } from "@/components/seat-board";
 import { SignOutButton } from "@/components/sign-out";
+
+const SeatBoard = dynamic(
+  () =>
+    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
+  {
+    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+  },
+);
 
 export default async function RegisterPage() {
   const [session, camp] = await Promise.all([
@@ -96,6 +104,7 @@ export default async function RegisterPage() {
               userId={profile?.role === "patient" ? userId : null}
               createdBy={staff ? userId : null}
               isStaff={staff}
+              userRole={role}
               defaultPhone={profile?.phone || ""}
             />
           </Card>

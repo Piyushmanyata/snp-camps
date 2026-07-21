@@ -20,7 +20,7 @@ as $$
     count(*) filter (where p.queue_status = 'waiting')::bigint,
     count(*) filter (where p.queue_status = 'seen')::bigint
   from public.patients p
-  where p.created_by = auth.uid()
+  where (p.created_by = auth.uid() or p.checked_in_by = auth.uid())
     and (
       -- Prefer active camp when one exists; else all camps
       not exists (select 1 from public.camps c where c.is_active)
@@ -126,7 +126,7 @@ begin
       count(*) filter (where p.queue_status = 'seen')::bigint as seen,
       'Patients registered'::text as label
     from public.patients p
-    where p.created_by = p_user_id
+    where (p.created_by = p_user_id or p.checked_in_by = p_user_id)
       and (p_camp_id is null or p.camp_id = p_camp_id);
   else
     raise exception 'invalid role';
