@@ -33,14 +33,14 @@ export default async function HomePage() {
         <div className="space-y-5 text-center lg:text-left">
           <div className="space-y-3">
             <div
-              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-xl font-bold tracking-tight text-white shadow-md lg:mx-0"
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-[0.8125rem] font-bold tracking-widest text-white shadow-md lg:mx-0"
               aria-hidden="true"
             >
               SNP
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand">
-                Sikar Nagarik Parishad · Kolkata
+                Sikar Nagarik Parishad &middot; Kolkata
               </p>
               <h1 className="mt-1 text-[2rem] font-bold tracking-tight text-foreground sm:text-4xl">
                 Medical Camp Desk
@@ -55,7 +55,7 @@ export default async function HomePage() {
           {camp ? (
             <Card
               padding="sm"
-              className="bg-gradient-to-br from-brand-soft/80 to-card text-left"
+              className="bg-gradient-to-br from-brand-soft to-card"
             >
               <p className="text-[11px] font-bold uppercase tracking-wide text-brand">
                 Active camp
@@ -125,7 +125,7 @@ export default async function HomePage() {
           ) : null}
 
           <div className="pt-1 text-left">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
               How it works
             </p>
             <StepList

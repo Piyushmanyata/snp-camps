@@ -98,10 +98,12 @@ export function Shell({
           {backHref ? (
             <Link
               href={backHref}
-              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-lg font-semibold text-foreground shadow-sm hover:border-brand/25 hover:bg-brand-soft sm:h-12 sm:w-12"
+              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm hover:border-brand/30 hover:bg-brand-soft sm:h-12 sm:w-12"
               aria-label="Go back"
             >
-              <span aria-hidden="true">←</span>
+              <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M10 4L6 8l4 4" />
+              </svg>
             </Link>
           ) : null}
           <div className="min-w-0 flex-1">
@@ -159,7 +161,7 @@ export function Card({
   return (
     <div
       id={id}
-      className={`rounded-xl border border-border/90 bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
+      className={`rounded-xl border border-border bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
     >
       {children}
     </div>
@@ -200,7 +202,7 @@ export function CollapsibleSection({
   return (
     <details
       open={defaultOpen || undefined}
-      className="group rounded-2xl border border-border/90 bg-card shadow-[var(--shadow-card)]"
+      className="group rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="text-lg font-semibold tracking-tight text-foreground">
@@ -211,10 +213,12 @@ export function CollapsibleSection({
             <span className="text-[0.8125rem] text-muted">{hint}</span>
           ) : null}
           <span
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted transition group-open:rotate-180"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted transition-transform duration-150 group-open:rotate-180"
             aria-hidden="true"
           >
-            ▾
+            <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
           </span>
         </span>
       </summary>
@@ -322,7 +326,7 @@ export function Input({
         aria-describedby={
           [errorId, hintId].filter(Boolean).join(" ") || undefined
         }
-        className={`min-h-[3.25rem] w-full rounded-xl border bg-white px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
+        className={`min-h-[3.25rem] w-full rounded-xl border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted/60 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
           error
             ? "border-danger focus:border-danger focus:ring-danger/20"
             : "border-border"
@@ -369,7 +373,7 @@ export function Select({
       <select
         id={selectId}
         aria-describedby={hintId}
-        className="min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-white px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
+        className="min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
         {...props}
       >
         {children}
@@ -467,13 +471,13 @@ export function Stat({
         ? "text-amber-700"
         : "text-brand-dark";
   return (
-    <div className="rounded-xl border border-border/80 bg-card px-2 py-2.5 text-center shadow-[var(--shadow-card)] sm:rounded-2xl sm:p-3.5">
+    <div className="rounded-xl border border-border bg-card px-2 py-2.5 text-center shadow-[var(--shadow-card)] sm:rounded-2xl sm:p-3.5">
       <p
         className={`tabular text-[1.5rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[0.625rem] font-semibold uppercase leading-tight tracking-wide text-muted sm:text-xs">
+      <p className="mt-0.5 text-[0.75rem] font-semibold uppercase leading-tight tracking-wide text-muted sm:text-[0.8125rem]">
         {label}
       </p>
     </div>
@@ -524,7 +528,7 @@ export function ActionCard({
   if (disabled) {
     return (
       <div
-        className="flex min-h-[5rem] flex-col items-center justify-center rounded-2xl border border-border/80 bg-background/80 px-4 py-4 text-center opacity-70 sm:items-start sm:text-left"
+        className="flex min-h-[5rem] flex-col items-center justify-center rounded-2xl border border-border bg-card/60 px-4 py-4 text-center opacity-60 sm:items-start sm:text-left"
         aria-disabled="true"
       >
         <span className="text-xl font-bold text-muted">{title}</span>
@@ -612,7 +616,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={label || "Options"}
-      className="grid gap-1 rounded-xl bg-background p-1"
+      className="grid gap-1 rounded-xl border border-border bg-background p-1"
       style={{
         gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
       }}
@@ -629,7 +633,7 @@ export function SegmentedControl<T extends string>({
             className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
               selected
                 ? "bg-card text-brand shadow-sm ring-1 ring-border"
-                : "text-muted hover:text-foreground"
+                : "text-muted hover:text-foreground hover:bg-card/60"
             }`}
           >
             {opt.label}
@@ -651,10 +655,10 @@ export function StepList({
       {steps.map((s, i) => (
         <li
           key={s.title}
-          className="flex gap-3 rounded-xl border border-border/70 bg-card/80 px-3 py-2.5"
+          className="flex gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-card)]"
         >
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand ring-1 ring-brand/15"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white"
             aria-hidden="true"
           >
             {i + 1}

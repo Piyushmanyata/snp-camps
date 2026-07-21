@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #eef5f1;
+  --background: #edf4f0;
   --foreground: #07120e;
   --brand: #0a5c3a;
   --brand-dark: #053722;
@@ -9,17 +9,19 @@
   --brand-mid: #178a57;
   --accent: #a67c12;
   --card: #ffffff;
-  /* Darker muted for outdoor glare readability */
-  --muted: #3d4f46;
-  --border: #6f8e7e;
+  /* Outdoor glare: muted must be readable, not too washed */
+  --muted: #445c52;
+  --border: #c6d9cf;
+  --border-strong: #8aaa99;
   --danger: #a11c12;
   --danger-soft: #fef3f2;
   --success: #0a5c3a;
   --success-soft: #e3f2eb;
   --warning: #7a3508;
   --warning-soft: #fffbeb;
-  --shadow: 0 1px 2px rgb(10 22 17 / 5%), 0 6px 20px rgb(10 22 17 / 6%);
-  --shadow-lift: 0 2px 4px rgb(10 22 17 / 6%), 0 12px 28px rgb(10 22 17 / 8%);
+  --shadow: 0 1px 2px rgb(10 22 17 / 4%), 0 4px 14px rgb(10 22 17 / 5%);
+  --shadow-card: 0 1px 2px rgb(10 22 17 / 4%), 0 4px 14px rgb(10 22 17 / 5%);
+  --shadow-lift: 0 2px 6px rgb(10 22 17 / 6%), 0 14px 32px rgb(10 22 17 / 8%);
   --radius: 1rem;
   --print-ink: #1a3a8a;
   --ring: #0a5c3a;
@@ -48,6 +50,7 @@
   --color-card: var(--card);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
@@ -55,7 +58,7 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --font-sans: var(--font-geist-sans);
-  --shadow-card: var(--shadow);
+  --shadow-card: var(--shadow-card);
   --shadow-lift: var(--shadow-lift);
 }
 
@@ -104,8 +107,8 @@ body {
     background:
       linear-gradient(
         180deg,
-        color-mix(in srgb, var(--brand-soft) 75%, transparent) 0%,
-        var(--background) 22rem
+        color-mix(in srgb, var(--brand-soft) 60%, transparent) 0%,
+        var(--background) 18rem
       );
   }
 }
@@ -212,10 +215,10 @@ h3 {
   bottom: 0;
   z-index: 40;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--card) 96%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 -8px 28px rgb(10 22 17 / 10%);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 -6px 24px rgb(10 22 17 / 8%);
   padding:
     0.5rem
     max(0.6rem, var(--safe-right))
@@ -276,7 +279,7 @@ h3 {
   align-items: center;
   justify-content: center;
   border-radius: 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--card);
   padding: 0.4rem 0.65rem;
   font-size: 0.8125rem;
@@ -319,7 +322,7 @@ h3 {
   justify-content: center;
   gap: 0.1rem;
   border-radius: 0.9rem;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   background: var(--card);
   padding: 0.55rem 0.8rem;
   text-align: left;
@@ -421,14 +424,14 @@ h3 {
 /* Cards that should feel pressable */
 .pressable {
   transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    background-color 0.15s ease,
-    border-color 0.15s ease;
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .pressable:active:not(:disabled) {
-  transform: scale(0.99);
+  transform: scale(0.985);
 }
 
 /* Toast notification */
