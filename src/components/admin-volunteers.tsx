@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
@@ -31,10 +31,11 @@ export function AdminVolunteers({
 }) {
   const router = useRouter();
   const [list, setList] = useState(initial);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
     setList(initial);
-  }, [initial]);
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");

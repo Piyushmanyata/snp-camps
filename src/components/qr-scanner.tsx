@@ -300,12 +300,14 @@ export function QrScanner({
     if (!id) {
       const err = params.get("error");
       if (err === "not_found" || err === "scan_lookup" || err === "server") {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setError(
-          err === "not_found"
-            ? "Patient not found for that QR."
-            : "Could not look up that QR. Try again or use reg number.",
-        );
+        const timer = setTimeout(() => {
+          setError(
+            err === "not_found"
+              ? "Patient not found for that QR."
+              : "Could not look up that QR. Try again or use reg number.",
+          );
+        }, 0);
+        return () => clearTimeout(timer);
       }
       return;
     }

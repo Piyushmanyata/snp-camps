@@ -154,7 +154,7 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
                     {row}
                   </td>
                   {Array.from({ length: 8 }).map((_, i) => (
-                    <td key={i} className="border border-[#1a3a8a] py-2">
+                    <td key={`col-${i}`} className="border border-[#1a3a8a] py-2">
                       &nbsp;
                     </td>
                   ))}
