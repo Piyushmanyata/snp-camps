@@ -1,6 +1,20 @@
 -- Doctors may scan registered patients without print first.
 -- Desk print still joins the queue for volunteers; doctor scan → seen directly.
 
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'patients_created_by_profiles_fkey'
+  ) then
+    alter table public.patients
+      add constraint patients_created_by_profiles_fkey
+      foreign key (created_by) references public.profiles(id) on delete set null;
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
 create or replace function public.assign_patient_doctor(
   p_patient_id uuid default null,
   p_reg_no integer default null,

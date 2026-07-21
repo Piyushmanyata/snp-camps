@@ -34,7 +34,7 @@ export default async function PatientDeskPage() {
     supabase
       .from("patients")
       .select(
-        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date)",
+        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -46,23 +46,6 @@ export default async function PatientDeskPage() {
 
   if (patientsRes.error || (camp && queueCountsRes.error)) {
     throw new Error("Patient desk data could not be loaded");
-  }
-
-  const profileIds = new Set<string>();
-  for (const p of patientsRes.data || []) {
-    if (p.created_by) profileIds.add(p.created_by as string);
-    if (p.seen_by) profileIds.add(p.seen_by as string);
-  }
-
-  const nameMap = new Map<string, string>();
-  if (profileIds.size) {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", [...profileIds]);
-    for (const pr of profiles || []) {
-      nameMap.set(pr.id as string, (pr.full_name as string) || "—");
-    }
   }
 
   const patients: AdminPatientRow[] = (patientsRes.data || []).map((p) => {
@@ -77,6 +60,20 @@ export default async function PatientDeskPage() {
     const dayDate = Array.isArray(dayRel)
       ? dayRel[0]?.day_date ?? null
       : dayRel?.day_date ?? null;
+    const volunteerRel = p.volunteer as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
+    const doctorRel = p.doctor as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
+    const volunteerName = Array.isArray(volunteerRel)
+      ? volunteerRel[0]?.full_name ?? null
+      : volunteerRel?.full_name ?? null;
+    const doctorName = Array.isArray(doctorRel)
+      ? doctorRel[0]?.full_name ?? null
+      : doctorRel?.full_name ?? null;
     const createdBy = (p.created_by as string | null) ?? null;
     const seenBy = (p.seen_by as string | null) ?? null;
     return {
@@ -95,8 +92,8 @@ export default async function PatientDeskPage() {
       seen_by: seenBy,
       queued_at: (p.queued_at as string | null) ?? null,
       seen_at: (p.seen_at as string | null) ?? null,
-      volunteer_name: createdBy ? nameMap.get(createdBy) ?? null : null,
-      doctor_name: seenBy ? nameMap.get(seenBy) ?? null : null,
+      volunteer_name: volunteerName,
+      doctor_name: doctorName,
     };
   });
 

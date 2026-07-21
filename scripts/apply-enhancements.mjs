@@ -23,6 +23,7 @@ const sqlFiles = [
   "fix-change-day-queue-lock.sql",
   "fix-ambiguous-and-delete-camp.sql",
   "fix-print-queue-doctor.sql",
+  "fix-doctor-scan-no-print.sql",
   "lean-perf.sql",
   "release-hardening.sql",
   "fix-registration-contract.sql",

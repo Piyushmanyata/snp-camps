@@ -66,33 +66,8 @@ function waitMinutes(
   return Math.round((end - start) / 60_000);
 }
 
-async function resolveNames(
-  rows: {
-    created_by?: string | null;
-    seen_by?: string | null;
-  }[],
-): Promise<Map<string, string>> {
-  const ids = new Set<string>();
-  for (const r of rows) {
-    if (r.created_by) ids.add(r.created_by);
-    if (r.seen_by) ids.add(r.seen_by);
-  }
-  const map = new Map<string, string>();
-  if (!ids.size) return map;
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .in("id", [...ids]);
-  for (const p of data || []) {
-    map.set(p.id as string, (p.full_name as string) || "—");
-  }
-  return map;
-}
-
 function mapRows(
   data: Record<string, unknown>[],
-  names: Map<string, string>,
 ): AdminPatientRow[] {
   return data.map((patient) => {
     const camp = patient.camps as
@@ -103,8 +78,22 @@ function mapRows(
       | { day_date: string }
       | { day_date: string }[]
       | null;
+    const volunteer = patient.volunteer as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
+    const doctor = patient.doctor as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
     const createdBy = (patient.created_by as string | null) ?? null;
     const seenBy = (patient.seen_by as string | null) ?? null;
+    const volunteerName = Array.isArray(volunteer)
+      ? volunteer[0]?.full_name ?? null
+      : volunteer?.full_name ?? null;
+    const doctorName = Array.isArray(doctor)
+      ? doctor[0]?.full_name ?? null
+      : doctor?.full_name ?? null;
     return {
       id: patient.id as string,
       reg_no: patient.reg_no as number,
@@ -123,14 +112,14 @@ function mapRows(
       seen_by: seenBy,
       queued_at: (patient.queued_at as string | null) ?? null,
       seen_at: (patient.seen_at as string | null) ?? null,
-      volunteer_name: createdBy ? names.get(createdBy) ?? null : null,
-      doctor_name: seenBy ? names.get(seenBy) ?? null : null,
+      volunteer_name: volunteerName,
+      doctor_name: doctorName,
     };
   });
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -216,14 +205,10 @@ export function AdminPatients({
         return;
       }
 
-      const names = await resolveNames(
-        (data || []) as { created_by?: string | null; seen_by?: string | null }[],
-      );
-      if (currentRequest !== requestId.current) return;
       setLoading(false);
       setSnapshot({
         source: initial,
-        rows: mapRows((data || []) as Record<string, unknown>[], names),
+        rows: mapRows((data || []) as Record<string, unknown>[]),
         total: count ?? 0,
       });
     }, 300);

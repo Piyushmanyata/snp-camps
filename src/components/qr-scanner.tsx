@@ -365,6 +365,7 @@ export function QrScanner({
           await videoRef.current.play().catch(() => {});
         }
 
+        let lastFrameTime = 0;
         const processFrame = async () => {
           if (
             generation !== scannerGeneration.current ||
@@ -374,31 +375,35 @@ export function QrScanner({
             return;
           }
 
-          const video = videoRef.current;
-          if (video.readyState >= 2 && !handledRef.current) {
-            try {
-              const barcodes = await detector.detect(video);
-              if (barcodes && barcodes.length > 0 && !handledRef.current) {
-                for (const barcode of barcodes) {
-                  if (barcode.rawValue) {
-                    const id = parsePatientIdFromQr(barcode.rawValue);
-                    if (id) {
-                      handledRef.current = true;
-                      void resolvePatient({ id });
-                      return;
-                    }
-                    const now = Date.now();
-                    if (now - badScanAt.current > 2500) {
-                      badScanAt.current = now;
-                      setError(
-                        "That QR is not a patient staff-scan code. Use the paper form or reg no.",
-                      );
+          const now = performance.now();
+          if (now - lastFrameTime >= 40) {
+            lastFrameTime = now;
+            const video = videoRef.current;
+            if (video.readyState >= 2 && !handledRef.current) {
+              try {
+                const barcodes = await detector.detect(video);
+                if (barcodes && barcodes.length > 0 && !handledRef.current) {
+                  for (const barcode of barcodes) {
+                    if (barcode.rawValue) {
+                      const id = parsePatientIdFromQr(barcode.rawValue);
+                      if (id) {
+                        handledRef.current = true;
+                        void resolvePatient({ id });
+                        return;
+                      }
+                      const badNow = Date.now();
+                      if (badNow - badScanAt.current > 2500) {
+                        badScanAt.current = badNow;
+                        setError(
+                          "That QR is not a patient staff-scan code. Use the paper form or reg no.",
+                        );
+                      }
                     }
                   }
                 }
+              } catch {
+                /* ignore frame error */
               }
-            } catch {
-              /* ignore frame error */
             }
           }
 

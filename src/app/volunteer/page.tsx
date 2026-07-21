@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -92,7 +93,9 @@ export default async function VolunteerPage() {
             </div>
           </Card>
           <Card>
-            <AdminVolunteers initial={volunteers || []} canManage />
+            <Suspense fallback={<p className="py-4 text-xs text-muted">Loading volunteers…</p>}>
+              <AdminVolunteers initial={volunteers || []} canManage />
+            </Suspense>
           </Card>
         </div>
       </Shell>
@@ -252,15 +255,17 @@ export default async function VolunteerPage() {
             <SectionTitle hint="Scan paper or phone QR · pick doctor">
               Scan / assign doctor
             </SectionTitle>
-            <QrScanner
-              mode="volunteer"
-              doctors={doctors}
-              disabledReason={
-                camp
-                  ? undefined
-                  : "No active camp. Ask an admin to activate a camp first."
-              }
-            />
+            <Suspense fallback={<p className="py-6 text-center text-sm text-muted">Loading scanner…</p>}>
+              <QrScanner
+                mode="volunteer"
+                doctors={doctors}
+                disabledReason={
+                  camp
+                    ? undefined
+                    : "No active camp. Ask an admin to activate a camp first."
+                }
+              />
+            </Suspense>
           </Card>
 
           <Card padding="sm" id="queue">
