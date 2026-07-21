@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, cache } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -49,6 +49,15 @@ const AdminCampDays = dynamic(
   },
 );
 
+const getCampQueueCounts = cache(async (campId: string) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("camp_queue_counts", {
+    p_camp_id: campId,
+  });
+  if (error) throw new Error("Admin queue counts could not be loaded");
+  return (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+});
+
 async function AdminHeaderStats({ campId }: { campId: string | null }) {
   if (!campId) {
     return (
@@ -59,15 +68,7 @@ async function AdminHeaderStats({ campId }: { campId: string | null }) {
       </div>
     );
   }
-  const supabase = await createClient();
-  const { data: queueCountsRes, error } = await supabase.rpc(
-    "camp_queue_counts",
-    { p_camp_id: campId },
-  );
-  if (error) throw new Error("Admin queue counts could not be loaded");
-  const queueCounts = Array.isArray(queueCountsRes)
-    ? queueCountsRes[0]
-    : queueCountsRes;
+  const queueCounts = await getCampQueueCounts(campId);
   const registered = Number(queueCounts?.registered_count ?? 0);
   const inQueue = Number(queueCounts?.waiting_count ?? 0);
   const doctorSeen = Number(queueCounts?.seen_count ?? 0);
@@ -82,13 +83,7 @@ async function AdminHeaderStats({ campId }: { campId: string | null }) {
 }
 
 async function ActiveCampAvgWait({ campId }: { campId: string }) {
-  const supabase = await createClient();
-  const { data: queueCountsRes } = await supabase.rpc("camp_queue_counts", {
-    p_camp_id: campId,
-  });
-  const queueCounts = Array.isArray(queueCountsRes)
-    ? queueCountsRes[0]
-    : queueCountsRes;
+  const queueCounts = await getCampQueueCounts(campId);
   const avgWaitMin =
     queueCounts?.avg_wait_minutes != null
       ? Number(queueCounts.avg_wait_minutes)
