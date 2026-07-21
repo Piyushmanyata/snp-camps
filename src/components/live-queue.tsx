@@ -75,14 +75,16 @@ export function LiveQueue({
   }
 
   const [isPending, startTransition] = useTransition();
-  const refreshQueue = useCallback((isManual = false) => {
+  const refreshQueue = useCallback(() => {
     startTransition(() => {
       router.refresh();
     });
-    if (isManual) {
-      setToastMsg("Queue updated");
-    }
   }, [router]);
+
+  function manualRefresh() {
+    refreshQueue();
+    setToastMsg("Queue updated");
+  }
 
   useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
@@ -167,7 +169,7 @@ export function LiveQueue({
         </span>
         <button
           type="button"
-          onClick={() => void refreshQueue(true)}
+          onClick={manualRefresh}
           disabled={isPending || !campId}
           className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >

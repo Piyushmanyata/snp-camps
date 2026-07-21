@@ -70,6 +70,8 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Reserve space so anchored content clears the sticky header */
+  scroll-padding-top: 0.75rem;
 }
 
 body {
@@ -375,6 +377,15 @@ h3 {
 #register-action {
   scroll-margin-top: 0.75rem;
   scroll-margin-bottom: calc(var(--dock-height) + 1rem);
+}
+
+/* Defer rendering of below-fold sections on capable browsers */
+@supports (content-visibility: auto) {
+  #queue,
+  #seen {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
+  }
 }
 
 /* Scanner viewport: larger hit target on phone cameras */

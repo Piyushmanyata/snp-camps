@@ -107,11 +107,6 @@ export default async function VolunteerPage() {
               Tap a volunteer for their KPIs and patients. Scanner and queue
               live on the main admin dashboard.
             </p>
-            <div className="mt-3 grid gap-2 lg:hidden">
-              <NavLink href="/admin" variant="soft">
-                Back to admin
-              </NavLink>
-            </div>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
                 Back to admin

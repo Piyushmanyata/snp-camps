@@ -29,6 +29,11 @@ export const metadata: Metadata = {
     siteName: "SNP Camps",
   },
   robots: { index: false, follow: false },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SNP Camps",
+  },
 };
 
 export const viewport: Viewport = {

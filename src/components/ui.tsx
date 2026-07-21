@@ -591,9 +591,10 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
-            aria-pressed={selected}
+            role="radio"
+            aria-checked={selected}
             onClick={() => onChange(opt.value)}
-            className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 ${
+            className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
               selected
                 ? "bg-card text-brand shadow-sm ring-1 ring-border"
                 : "text-muted hover:text-foreground"
