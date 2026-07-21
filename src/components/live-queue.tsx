@@ -186,7 +186,7 @@ export function LiveQueue({
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-start gap-2.5">
                 <span
-                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-[11px] font-bold tabular-nums text-amber-900 ring-1 ring-amber-200/80"
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-[11px] font-bold tabular-nums text-warning ring-1 ring-amber-300/60"
                   aria-label={`Position ${index + 1}`}
                 >
                   {index + 1}

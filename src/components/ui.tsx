@@ -432,14 +432,16 @@ export function Badge({
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "ok" | "wait";
+  tone?: "default" | "ok" | "wait" | "danger";
 }) {
   const c =
     tone === "ok"
       ? "bg-brand-soft text-brand ring-1 ring-brand/15"
       : tone === "wait"
         ? "bg-amber-50 text-amber-900 ring-1 ring-amber-200/80"
-        : "bg-gray-100 text-gray-700 ring-1 ring-gray-200/80";
+        : tone === "danger"
+          ? "bg-danger-soft text-danger ring-1 ring-danger/20"
+          : "bg-background text-muted ring-1 ring-border/80";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold ${c}`}
@@ -522,11 +524,11 @@ export function ActionCard({
   if (disabled) {
     return (
       <div
-        className="flex min-h-[5rem] flex-col items-center justify-center rounded-2xl border border-border bg-gray-100 px-4 py-4 text-center opacity-80 sm:items-start sm:text-left"
+        className="flex min-h-[5rem] flex-col items-center justify-center rounded-2xl border border-border/80 bg-background/80 px-4 py-4 text-center opacity-70 sm:items-start sm:text-left"
         aria-disabled="true"
       >
-        <span className="text-xl font-bold text-gray-500">{title}</span>
-        <span className="mt-0.5 text-[0.8125rem] font-medium text-gray-500">
+        <span className="text-xl font-bold text-muted">{title}</span>
+        <span className="mt-0.5 text-[0.8125rem] font-medium text-muted">
           {disabledReason || description}
         </span>
       </div>
@@ -556,10 +558,40 @@ export function ActionCard({
   );
 }
 
-export function EmptyState({ children }: { children: ReactNode }) {
+export function EmptyState({
+  children,
+  title,
+  action,
+}: {
+  children: ReactNode;
+  title?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-border bg-background/70 px-4 py-6 text-center">
-      <p className="text-sm text-muted">{children}</p>
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/90 bg-background/60 px-4 py-8 text-center">
+      <div
+        className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-muted shadow-xs"
+        aria-hidden="true"
+      >
+        <svg
+          className="h-5 w-5 opacity-70"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="1.75"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+          />
+        </svg>
+      </div>
+      {title ? (
+        <p className="text-base font-semibold text-foreground">{title}</p>
+      ) : null}
+      <p className="max-w-xs text-sm text-muted">{children}</p>
+      {action ? <div className="mt-3">{action}</div> : null}
     </div>
   );
 }

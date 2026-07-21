@@ -110,6 +110,22 @@ body {
   }
 }
 
+/* Clean scrollbars for scrollable lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
 ::selection {
   background: color-mix(in srgb, var(--brand) 22%, white);
   color: var(--foreground);
@@ -270,8 +286,10 @@ h3 {
   box-shadow: var(--shadow);
 }
 
-.jump-chip:active {
-  background: var(--brand-soft);
+.jump-chip:focus-visible,
+.day-chip:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* Camp day picker chips (registration) */
