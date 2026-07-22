@@ -47,9 +47,7 @@ begin
       ('patients', 'seen_by', 'uuid'::regtype),
       ('patients', 'checked_in_by', 'uuid'::regtype),
       ('patients', 'registration_request_id', 'uuid'::regtype),
-      ('patients', 'account_provisioning_token', 'text'::regtype),
-      ('patients', 'account_claim_token', 'text'::regtype),
-      ('patients', 'account_claim_expires_at', 'timestamptz'::regtype)
+      ('patients', 'account_provisioning_token', 'text'::regtype)
   ) as e(table_name, column_name, type_oid)
   left join pg_catalog.pg_namespace n
     on n.nspname = 'public'
@@ -75,17 +73,13 @@ begin
     'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid)',
     'public.doctor_recent_patients(uuid,integer)',
     'public.app_database_contract()',
-    'public.register_patient(uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid)',
-    'public.register_patient_authorized_impl(uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid)',
     'public.change_camp_day(uuid,uuid)',
     'public.assign_patient_doctor(uuid,integer,uuid)',
     'public.mark_patient_printed(uuid)',
     'public.lookup_patient_scan(uuid,integer)',
     'public.doctor_my_counts(uuid,timestamptz)',
     'public.volunteer_my_counts(timestamptz)',
-    'public.staff_person_kpis(uuid,text,uuid,timestamptz)',
-    'public.join_queue(uuid,integer)',
-    'public.mark_patient_seen(uuid)'
+    'public.staff_person_kpis(uuid,text,uuid,timestamptz)'
   ] loop
     if to_regprocedure(v_signature) is null then
       raise exception 'Production hardening preflight failed: missing function %', v_signature;
@@ -296,10 +290,10 @@ grant delete on table public.patients to authenticated;
 -- Contract the legacy non-idempotent registration/claim surface only after
 -- the matching app deployment. The expand migration's idempotent RPC remains
 -- the sole supported registration mutation.
-drop function public.register_patient(
+drop function if exists public.register_patient(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
 );
-drop function public.register_patient_authorized_impl(
+drop function if exists public.register_patient_authorized_impl(
   uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid
 );
 
@@ -309,8 +303,8 @@ drop index if exists public.patients_camp_name_age_unique_idx;
 drop index if exists public.patients_camp_aadhaar_name_unique_idx;
 
 alter table public.patients
-  drop column account_claim_token,
-  drop column account_claim_expires_at;
+  drop column if exists account_claim_token,
+  drop column if exists account_claim_expires_at;
 create or replace function public.change_camp_day(
   p_patient_id uuid,
   p_new_day_id uuid

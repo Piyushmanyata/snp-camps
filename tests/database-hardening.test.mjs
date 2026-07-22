@@ -44,7 +44,7 @@ test("hardening migration is transactional and refuses schema drift", () => {
   assert.match(sql, /pg_advisory_xact_lock/i);
   assert.match(sql, /Production hardening preflight failed/g);
   assert.match(sql, /to_regprocedure\(v_signature\)/i);
-  assert.match(sql, /public\.register_patient\(uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid\)/i);
+  assert.match(sql, /public\.register_patient\(\s*uuid,\s*text,\s*text,\s*integer,\s*text,\s*text,\s*text,\s*text,\s*uuid,\s*uuid,\s*uuid\s*\)/i);
   assert.match(sql, /public\.change_camp_day\(uuid,uuid\)/i);
   assert.match(sql, /public\.mark_patient_printed\(uuid\)/i);
   assert.match(sql, /notify pgrst, 'reload schema'/i);
@@ -99,7 +99,7 @@ test("patient credentials cannot be selected by authenticated clients", () => {
   );
   assert.match(
     sql,
-    /alter table public\.patients\s*drop column account_claim_token,\s*drop column account_claim_expires_at/i
+    /alter table public\.patients\s*drop column (?:if exists )?account_claim_token,\s*drop column (?:if exists )?account_claim_expires_at/i
   );
 
   const safeGrant = sql.match(
@@ -161,11 +161,11 @@ test("registration is limited to service role or active admins and volunteers", 
   );
   assert.match(
     sql,
-    /drop function public\.register_patient\(/i
+    /drop function (?:if exists )?public\.register_patient\(/i
   );
   assert.match(
     sql,
-    /drop function public\.register_patient_authorized_impl\(/i
+    /drop function (?:if exists )?public\.register_patient_authorized_impl\(/i
   );
 });
 

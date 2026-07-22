@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 const source = (relativePath) =>
-  fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
+  fs.readFileSync(path.join(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
 
 const patientForm = source("src/components/patient-form.tsx");
 const scanner = source("src/components/qr-scanner.tsx");
