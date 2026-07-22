@@ -16,16 +16,6 @@ import { SignOutButton } from "@/components/sign-out";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { getCampsList, getDoctorsList } from "@/lib/metadata";
 
-const ChangePasswordCard = dynamic(
-  () =>
-    import("@/components/change-password").then((m) => ({
-      default: m.ChangePasswordCard,
-    })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading account settings…</p>,
-  },
-);
-
 const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
@@ -274,8 +264,6 @@ export default async function AdminPage() {
         >
           <AdminHeaderStats campId={active?.id ?? null} />
         </Suspense>
-
-        <ChangePasswordCard />
 
         <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">

@@ -94,18 +94,53 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
         setConfirmPassword("");
         setShowPasswordModal(true);
       }}
-      className="text-[11px] font-medium text-muted hover:text-foreground underline decoration-muted/40 underline-offset-2 transition"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted/90 transition hover:text-foreground hover:underline decoration-muted/40 underline-offset-2"
     >
+      <svg
+        className="h-3 w-3 opacity-70"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 0121 9z"
+        />
+      </svg>
       Change password
     </button>
   );
 
   const passwordModal = showPasswordModal ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-6">
-        <h3 className="text-base font-bold text-foreground">Change password</h3>
-        <p className="mt-1 text-xs text-muted">
-          Set a new password for your account. Default is 1234.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setShowPasswordModal(false);
+      }}
+    >
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-soft text-brand">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 0121 9z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-base font-bold text-foreground">Change password</h3>
+        </div>
+        <p className="mt-1.5 text-xs text-muted">
+          Update the login password for your account. Next time you sign in, use your new password.
         </p>
 
         <form onSubmit={handleChangePassword} className="mt-4 space-y-3">
@@ -120,7 +155,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
             hint="At least 4 characters"
           />
           <Input
-            label="Confirm password"
+            label="Confirm new password"
             type="password"
             autoComplete="new-password"
             required
@@ -136,7 +171,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
             </p>
           ) : null}
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-5 flex gap-2">
             <Button
               type="submit"
               loading={passwordLoading}
@@ -199,3 +234,4 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
     </div>
   );
 }
+

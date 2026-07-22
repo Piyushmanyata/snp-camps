@@ -14,16 +14,6 @@ import {
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 
-const ChangePasswordCard = dynamic(
-  () =>
-    import("@/components/change-password").then((m) => ({
-      default: m.ChangePasswordCard,
-    })),
-  {
-    loading: () => <p role="status" className="py-2 text-xs text-muted">Loading…</p>,
-  },
-);
-
 const QrScanner = dynamic(
   () =>
     import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
@@ -246,7 +236,6 @@ export default async function DoctorPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
-        <ChangePasswordCard />
         <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>

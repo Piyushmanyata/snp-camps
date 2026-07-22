@@ -24,6 +24,7 @@ import {
 } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import { ChangeDay } from "@/components/change-day";
+import type { DuplicatePatientMatch } from "@/app/api/check-duplicate-patient/route";
 
 type Props = {
   campId: string;
@@ -122,6 +123,92 @@ export function PatientForm({
   const lastLookedUp = useRef<string>("");
   const lookupRequest = useRef(0);
   const lookupAbort = useRef<AbortController | null>(null);
+
+  // Soft duplicate warning state for desk mode
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicatePatientMatch[]>([]);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [bypassedDuplicates, setBypassedDuplicates] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const duplicateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDuplicateQuery = useRef<string>("");
+
+  const checkDuplicates = useCallback(
+    async (
+      nameStr: string,
+      phoneStr: string,
+      ageStr: string,
+      addressStr: string,
+      aadhaarStr: string,
+    ) => {
+      if (!isStaff || !campId) return;
+      const p10 = normalizePhoneE164(phoneStr)?.slice(-10) || "";
+      const nameTrim = nameStr.trim();
+      const ageVal = ageStr === "" ? null : Number(ageStr);
+      const last4 = aadhaarLast4(aadhaarStr);
+
+      if (!p10 && nameTrim.length < 2 && !last4) {
+        setDuplicateMatches([]);
+        return;
+      }
+
+      const queryKey = `${campId}:${nameTrim.toLowerCase()}:${p10}:${ageVal}:${addressStr.trim().toLowerCase()}:${last4}`;
+      if (lastDuplicateQuery.current === queryKey) return;
+      lastDuplicateQuery.current = queryKey;
+
+      setCheckingDuplicates(true);
+      try {
+        const res = await fetch("/api/check-duplicate-patient", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campId,
+            fullName: nameTrim,
+            phone: p10,
+            age: ageVal,
+            address: addressStr.trim(),
+            aadhaarLast4: last4,
+          }),
+        });
+        if (res.ok) {
+          const json = (await res.json()) as {
+            duplicates?: DuplicatePatientMatch[];
+          };
+          setDuplicateMatches(json.duplicates || []);
+        }
+      } catch {
+        // silent
+      } finally {
+        setCheckingDuplicates(false);
+      }
+    },
+    [campId, isStaff],
+  );
+
+  useEffect(() => {
+    if (!isStaff) return;
+    if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
+    duplicateTimer.current = setTimeout(() => {
+      void checkDuplicates(fullName, phone, age, address, aadhaar);
+    }, 400);
+    return () => {
+      if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
+    };
+  }, [isStaff, fullName, phone, age, address, aadhaar, checkDuplicates]);
+
+  function loadExistingRegistration(match: DuplicatePatientMatch) {
+    setCreated({
+      id: match.id,
+      reg_no: match.reg_no,
+      full_name: match.full_name,
+      camp_day_id: match.camp_day_id || undefined,
+      day_date: match.day_date || undefined,
+      phone: match.phone,
+      loginRegNo: match.reg_no,
+      password: "1234",
+      notifyNote: `Existing patient registration record #${match.reg_no} loaded for print or queue management.`,
+    });
+    setShowDuplicateModal(false);
+  }
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
     if (profile.full_name) setFullName(profile.full_name);
@@ -465,6 +552,12 @@ export function PatientForm({
         "patient-email",
         "Enter a valid email address or leave it blank.",
       );
+      return;
+    }
+
+    if (isStaff && duplicateMatches.length > 0 && !bypassedDuplicates) {
+      setLoading(false);
+      setShowDuplicateModal(true);
       return;
     }
 
@@ -1225,6 +1318,100 @@ export function PatientForm({
         ) : null}
       </div>
 
+      {isStaff && duplicateMatches.length > 0 ? (
+        <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white shadow-sm">
+              ⚠️
+            </span>
+            <div>
+              <p className="text-sm font-bold text-amber-950">
+                Soft Warning: {duplicateMatches.length} matching patient
+                {duplicateMatches.length > 1 ? "s" : ""} found
+              </p>
+              <p className="text-xs text-amber-800">
+                A patient with matching details is already registered for this camp.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {duplicateMatches.map((m) => (
+              <div
+                key={m.id}
+                className="flex flex-col gap-2 rounded-xl border border-amber-200/90 bg-white p-3 shadow-2xs sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="tabular font-bold text-brand" translate="no">
+                      #{m.reg_no}
+                    </span>
+                    <span className="font-bold text-foreground">{m.full_name}</span>
+                    {m.age != null ? (
+                      <span className="text-xs text-muted">
+                        ({m.age} yrs{m.gender ? `, ${m.gender}` : ""})
+                      </span>
+                    ) : null}
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                      {m.queue_status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {m.phone ? `Phone: ${m.phone} · ` : ""}
+                    {m.address ? `Address: ${m.address} · ` : ""}
+                    {m.day_date ? `Day: ${formatCampDay(m.day_date)}` : ""}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {m.match_reasons.map((r, idx) => (
+                      <span
+                        key={idx}
+                        className="rounded bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => loadExistingRegistration(m)}
+                    className="pressable inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark"
+                  >
+                    🖨️ View / Print Slip
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-amber-200/80 pt-2 text-xs">
+            <span className="font-medium text-amber-900">
+              {bypassedDuplicates
+                ? "✓ Duplicate warning acknowledged — proceed permitted"
+                : "Check if this walk-in is already registered"}
+            </span>
+            {!bypassedDuplicates ? (
+              <button
+                type="button"
+                onClick={() => setBypassedDuplicates(true)}
+                className="font-bold text-amber-900 hover:underline"
+              >
+                Ignore & Register New
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setBypassedDuplicates(false)}
+                className="text-amber-800 underline"
+              >
+                Re-enable warning
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
           ? "After save they stay registered. Print to join the queue, or a doctor can scan them directly (seen)."
@@ -1246,6 +1433,83 @@ export function PatientForm({
               : "Register for selected day"}
         </Button>
       </div>
+
+      {showDuplicateModal && duplicateMatches.length > 0 ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 font-bold text-lg">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Possible Duplicate Patient
+                </h3>
+                <p className="text-xs text-muted">
+                  A patient with matching details already exists in this camp.
+                </p>
+              </div>
+            </div>
+
+            <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+              {duplicateMatches.map((m) => (
+                <div
+                  key={m.id}
+                  className="space-y-1 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-foreground">
+                      #{m.reg_no} — {m.full_name}
+                    </span>
+                    <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                      {m.queue_status}
+                    </span>
+                  </div>
+                  <p className="text-muted">
+                    {m.age != null ? `Age: ${m.age} · ` : ""}
+                    {m.phone ? `Phone: ${m.phone} · ` : ""}
+                    {m.address ? `Address: ${m.address}` : ""}
+                  </p>
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {m.match_reasons.map((r, idx) => (
+                      <span
+                        key={idx}
+                        className="rounded border border-amber-200 bg-white px-1.5 py-0.5 text-[10px] text-amber-900"
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted">
+              Would you like to open their existing registration to view/print their slip, or proceed creating a brand new registration?
+            </p>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                onClick={() => loadExistingRegistration(duplicateMatches[0])}
+                className="flex-1"
+              >
+                🖨️ View Existing Reg #{duplicateMatches[0]?.reg_no}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setBypassedDuplicates(true);
+                  setShowDuplicateModal(false);
+                }}
+              >
+                Register New Patient
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }
