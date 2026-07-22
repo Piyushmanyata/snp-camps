@@ -82,11 +82,21 @@ export default async function VolunteerPage() {
   const admin = isAdmin(profile?.role);
 
   if (admin) {
-    const { data: volunteers, error } = await supabase
+    let { data: volunteers, error } = await supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "volunteer")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      const fallback = await supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at")
+        .eq("role", "volunteer")
+        .order("created_at", { ascending: false });
+      volunteers = fallback.data as typeof volunteers;
+      error = fallback.error;
+    }
     if (error) throw new Error("Volunteer desk data could not be loaded");
     const activeVolunteers =
       volunteers?.filter((volunteer) => !volunteer.disabled_at).length ?? 0;

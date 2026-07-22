@@ -158,11 +158,21 @@ export default async function DoctorPage() {
   const admin = isAdmin(profile?.role);
 
   if (admin) {
-    const { data: doctorsFull, error } = await supabase
+    let { data: doctorsFull, error } = await supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "doctor")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      const fallback = await supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at")
+        .eq("role", "doctor")
+        .order("created_at", { ascending: false });
+      doctorsFull = fallback.data as typeof doctorsFull;
+      error = fallback.error;
+    }
     if (error) throw new Error("Doctor desk data could not be loaded");
     const activeDoctors = doctorsFull?.filter((doctor) => !doctor.disabled_at).length ?? 0;
     const disabledDoctors = (doctorsFull?.length ?? 0) - activeDoctors;

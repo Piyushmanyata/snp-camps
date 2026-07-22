@@ -49,11 +49,11 @@ export default function StaffLoginPage() {
       // Must filter by user id — staff can read multiple profiles via RLS.
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, disabled_at")
         .eq("id", userId)
         .maybeSingle();
 
-      if (profileError || !profile) {
+      if (profileError || !profile || (profile as { disabled_at?: string | null }).disabled_at) {
         await supabase.auth.signOut();
         setError("This staff account is unavailable. Ask an admin for help.");
         return;
