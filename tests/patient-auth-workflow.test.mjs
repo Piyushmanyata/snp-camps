@@ -61,15 +61,10 @@ test("OTP login performs a bounded linked-patient lookup and fails closed", () =
 
 test("backup credentials use the account API login reg number", () => {
   assert.match(accountSource, /regNo: regNoToReturn,/);
-  assert.match(accountSource, /queueNotification\(password,\s*regNoToReturn\)/);
+  assert.match(accountSource, /queueNotification\(regNoToReturn\)/);
   assert.match(
     registrationSource,
     /loginRegNo:\s*typeof acc\.regNo === "number" \? acc\.regNo : base\.reg_no/,
-  );
-  assert.match(registrationSource, /Login reg number[\s\S]*#\{loginRegNo\}/);
-  assert.match(
-    registrationSource,
-    /`Reg #\$\{regNo\}\\nPassword: \$\{password\}`/,
   );
   assert.match(
     registrationSource,

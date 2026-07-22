@@ -103,14 +103,14 @@ export async function POST(req: Request) {
   const configured = notifyConfigured();
   const phoneOnFile = patient.phone;
 
-  function queueNotification(password: string, loginRegNo = safeRegNo) {
+  function queueNotification(loginRegNo = safeRegNo) {
     if (!doNotify || !phoneOnFile) {
       return false;
     }
     after(async () => {
       await notifyPatient({
         phone: phoneOnFile,
-        message: registrationMessage(loginRegNo, password),
+        message: registrationMessage(loginRegNo),
         template: "registration",
         meta: { reg_no: loginRegNo, patient_id: patientId },
       });
@@ -178,7 +178,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Patient profile could not be updated." }, { status: 500 });
     }
 
-    const notificationQueued = queueNotification(password, regNoToReturn);
+    const notificationQueued = queueNotification(regNoToReturn);
     return NextResponse.json({
       ok: true,
       linked: true,
@@ -376,7 +376,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const notificationQueued = queueNotification(password);
+  const notificationQueued = queueNotification(regNo);
 
   return NextResponse.json({
     ok: true,

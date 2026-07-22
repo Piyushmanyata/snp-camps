@@ -22,9 +22,7 @@ import {
   SuccessBox,
   WarningBox,
 } from "@/components/ui";
-import { Toast } from "@/components/toast";
 import { ChangeDay } from "@/components/change-day";
-import type { DuplicatePatientMatch } from "@/app/api/check-duplicate-patient/route";
 
 type Props = {
   campId: string;
@@ -44,7 +42,6 @@ type Created = {
   camp_day_id?: string;
   day_date?: string;
   claim_token?: string | null;
-  password?: string;
   loggedIn?: boolean;
   notifyNote?: string;
   loginRegNo?: number;
@@ -76,8 +73,6 @@ export function PatientForm({
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
   const firstOpen = openDays[0]?.id || "";
   const lookupEnabled = isAadhaarLookupEnabledClient();
-  // hasVerifiedPatientSession: userId supplied means the patient already completed OTP
-  const isStaffDesk = isStaff || userRole === "admin" || userRole === "volunteer" || Boolean(createdBy);
   const hasVerifiedPatientSession = Boolean(userId && !isStaff);
 
   const [campDayId, setCampDayId] = useState(firstOpen);
@@ -104,11 +99,11 @@ export function PatientForm({
       document.getElementById(elementId)?.focus();
     });
   }
+
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Self-reg: phone OTP gate (primary). Aadhaar kept for later.
+  // Self-reg: phone OTP gate (primary).
   const [otpStep, setOtpStep] = useState<"phone" | "otp" | "form">(
     isStaff || hasVerifiedPatientSession ? "form" : "phone",
   );
@@ -124,96 +119,6 @@ export function PatientForm({
   const lastLookedUp = useRef<string>("");
   const lookupRequest = useRef(0);
   const lookupAbort = useRef<AbortController | null>(null);
-
-  // Soft duplicate warning state for desk mode
-  const [duplicateMatches, setDuplicateMatches] = useState<DuplicatePatientMatch[]>([]);
-  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
-  const [bypassedDuplicates, setBypassedDuplicates] = useState(false);
-  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const duplicateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastDuplicateQuery = useRef<string>("");
-
-  const checkDuplicates = useCallback(
-    async (
-      nameStr: string,
-      phoneStr: string,
-      ageStr: string,
-      addressStr: string,
-      aadhaarStr: string,
-      forceQuery = false,
-    ): Promise<DuplicatePatientMatch[]> => {
-      if (!isStaffDesk || !campId) return [];
-      const p10 = digitsOnly(phoneStr).slice(-10);
-      const nameTrim = nameStr.trim();
-      const ageVal = ageStr === "" ? null : Number(ageStr);
-      const last4 = aadhaarLast4(aadhaarStr);
-
-      if (!p10 && nameTrim.length < 2 && !last4) {
-        setDuplicateMatches([]);
-        return [];
-      }
-
-      const queryKey = `${campId}:${nameTrim.toLowerCase()}:${p10}:${ageVal}:${addressStr.trim().toLowerCase()}:${last4}`;
-      if (!forceQuery && lastDuplicateQuery.current === queryKey) return duplicateMatches;
-      lastDuplicateQuery.current = queryKey;
-
-      setCheckingDuplicates(true);
-      try {
-        const res = await fetch("/api/check-duplicate-patient", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            campId,
-            fullName: nameTrim,
-            phone: p10,
-            age: ageVal,
-            address: addressStr.trim(),
-            aadhaarLast4: last4,
-          }),
-        });
-        if (res.ok) {
-          const json = (await res.json()) as {
-            duplicates?: DuplicatePatientMatch[];
-          };
-          const matches = json.duplicates || [];
-          setDuplicateMatches(matches);
-          return matches;
-        }
-      } catch {
-        // silent
-      } finally {
-        setCheckingDuplicates(false);
-      }
-      return [];
-    },
-    [campId, isStaffDesk, duplicateMatches],
-  );
-
-  useEffect(() => {
-    if (!isStaffDesk) return;
-    if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
-    duplicateTimer.current = setTimeout(() => {
-      void checkDuplicates(fullName, phone, age, address, aadhaar);
-    }, 300);
-    return () => {
-      if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
-    };
-  }, [isStaffDesk, fullName, phone, age, address, aadhaar, checkDuplicates]);
-
-  function loadExistingRegistration(match: DuplicatePatientMatch) {
-    setCreated({
-      id: match.id,
-      reg_no: match.reg_no,
-      full_name: match.full_name,
-      camp_day_id: match.camp_day_id || undefined,
-      day_date: match.day_date || undefined,
-      phone: match.phone,
-      loginRegNo: match.reg_no,
-      password: "1234",
-      notifyNote: `Existing patient registration record #${match.reg_no} loaded for print or queue management.`,
-    });
-    setShowDuplicateModal(false);
-  }
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
     if (profile.full_name) setFullName(profile.full_name);
@@ -403,7 +308,6 @@ export function PatientForm({
         return;
       }
 
-      // If desk already registered this phone, link and open profile
       const { data: linkedId, error: linkErr } = await supabase.rpc(
         "link_patient_phone",
         { p_phone: phoneE164 },
@@ -502,7 +406,6 @@ export function PatientForm({
     const phone10 = normalizedPhone?.slice(-10) || "";
 
     if (isStaff) {
-      // Desk: phone optional; if provided must be valid
       if (phoneRaw && !normalizedPhone) {
         failValidation(
           "phone",
@@ -558,18 +461,6 @@ export function PatientForm({
         "Enter a valid email address or leave it blank.",
       );
       return;
-    }
-
-    if (isStaffDesk && !bypassedDuplicates) {
-      let matches = duplicateMatches;
-      if (matches.length === 0) {
-        matches = await checkDuplicates(fullName, phone, age, address, aadhaar, true);
-      }
-      if (matches.length > 0) {
-        setLoading(false);
-        setShowDuplicateModal(true);
-        return;
-      }
     }
 
     const supabase = createClient();
@@ -663,38 +554,34 @@ export function PatientForm({
         });
         const acc = (await accRes.json().catch(() => ({}))) as {
           error?: string;
-          password?: string;
           regNo?: number;
           notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
         };
-        const pass = acc.password || "1234";
         const smsOn = acc.notifyConfigured?.sms;
         const notifyMsg = (phone10 || base.phone)
-          ? (smsOn ? "SMS sent with login details." : "SMS details queued (SMS gateway pending configuration).")
-          : `No phone provided — patient can log in using Reg #${base.reg_no} and password ${pass}.`;
+          ? (smsOn ? "SMS sent with reg details." : "SMS details queued (SMS gateway pending configuration).")
+          : `No phone provided — patient can log in using Reg #${base.reg_no}.`;
 
         setCreated({
           ...base,
-          password: pass,
           loginRegNo: acc.regNo || base.reg_no,
           notifyNote: notifyMsg,
         });
         setQueueNote(
-          `Registered at desk. Patient password: ${pass}. Print prescription to join queue.`,
+          `Registered at desk. Patient Reg #${base.reg_no}. Print prescription to join queue.`,
         );
       } catch {
         setCreated({
           ...base,
-          password: "1234",
-          notifyNote: "Default login password: 1234",
+          notifyNote: `Patient Reg #${base.reg_no}`,
         });
-        setQueueNote("Registered at desk. Default password: 1234.");
+        setQueueNote(`Registered at desk. Reg #${base.reg_no}.`);
       }
       setLoading(false);
       return;
     }
 
-    // Phone OTP self-reg: already signed in — optional password fallback
+    // Phone OTP self-reg: already signed in
     try {
       const accRes = await fetch("/api/patient-account", {
         method: "POST",
@@ -709,7 +596,6 @@ export function PatientForm({
       });
       const acc = (await accRes.json().catch(() => ({}))) as {
         error?: string;
-        password?: string;
         regNo?: number;
         notify?: { sms?: string; whatsapp?: string };
         notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
@@ -718,21 +604,19 @@ export function PatientForm({
 
       const derived = {
         loginRegNo: typeof acc.regNo === "number" ? acc.regNo : base.reg_no,
-        password: acc.password || "1234",
         notify: acc.notify,
         notifyConfigured: acc.notifyConfigured,
         error: acc.error,
       };
-      const { loginRegNo, password: accPassword, notify: accNotify, notifyConfigured: accNotifyConfigured, error: accError } = derived;
+      const { loginRegNo, notify: accNotify, notifyConfigured: accNotifyConfigured, error: accError } = derived;
 
       if (!accRes.ok) {
         setCreated({
           ...base,
-          password: "1234",
           loggedIn: true,
           notifyNote:
             accError ||
-            "Registered and signed in. Default login password is 1234.",
+            `Registered and signed in. Log in anytime with Reg #${loginRegNo}.`,
         });
         setLoading(false);
         return;
@@ -740,7 +624,7 @@ export function PatientForm({
 
       const smsOn = accNotifyConfigured?.sms;
       const waOn = accNotifyConfigured?.whatsapp;
-      let notifyNote = `Login reg number: #${loginRegNo}. Signed in with phone OTP. Password: ${accPassword}.`;
+      let notifyNote = `Login reg number: #${loginRegNo}. Signed in with phone OTP.`;
       if (accNotify) {
         const parts: string[] = [];
         if (accNotify.sms === "sent") parts.push("SMS sent");
@@ -756,14 +640,13 @@ export function PatientForm({
 
       setCreated({
         ...base,
-        password: accPassword,
         loggedIn: true,
         notifyNote,
         loginRegNo,
       });
       router.refresh();
     } catch {
-      setCreated({ ...base, password: "1234", loggedIn: true });
+      setCreated({ ...base, loggedIn: true });
     }
     setLoading(false);
   }
@@ -808,7 +691,6 @@ export function PatientForm({
 
   if (created) {
     const loginRegNo = created.loginRegNo ?? created.reg_no;
-    const displayPassword = created.password || "1234";
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
@@ -829,70 +711,12 @@ export function PatientForm({
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
             {isStaff
-              ? "Registered at desk — patient login created with password " + displayPassword
+              ? `Registered at desk — patient can log in anytime using Reg #${loginRegNo}`
               : "You are logged in with phone OTP"}
           </p>
         </div>
 
-        {displayPassword ? (
-          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <p className="text-sm font-bold text-amber-950">
-              Patient login details
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Login reg number
-                </p>
-                <p className="tabular text-2xl font-bold text-brand" translate="no">
-                  #{loginRegNo}
-                </p>
-              </div>
-              <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Password
-                </p>
-                <p
-                  className="font-mono text-2xl font-bold tracking-wider text-foreground"
-                  translate="no"
-                >
-                  {displayPassword}
-                </p>
-              </div>
-            </div>
-            <p className="text-xs text-amber-900/90">
-              {created.notifyNote ||
-                "Patient can log in with their Reg # and password, or via Phone OTP. Password can be changed after login."}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {!isStaff ? (
-                <Link
-                  href="/patient"
-                  className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
-                >
-                  Go to my profile
-                </Link>
-              ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  const regNo = loginRegNo;
-                  const password = displayPassword;
-                  void navigator.clipboard?.writeText(
-                    `Reg #${regNo}\nPassword: ${password}`,
-                  );
-                  setToastMsg("Login details copied to clipboard");
-                }}
-              >
-                Copy login details
-              </Button>
-            </div>
-            {toastMsg ? (
-              <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-            ) : null}
-          </div>
-        ) : !isStaff ? (
+        {!isStaff ? (
           <Link
             href="/patient"
             className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
@@ -1340,100 +1164,6 @@ export function PatientForm({
         ) : null}
       </div>
 
-      {isStaffDesk && duplicateMatches.length > 0 ? (
-        <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white shadow-sm">
-              ⚠️
-            </span>
-            <div>
-              <p className="text-sm font-bold text-amber-950">
-                Soft Warning: {duplicateMatches.length} matching patient
-                {duplicateMatches.length > 1 ? "s" : ""} found
-              </p>
-              <p className="text-xs text-amber-800">
-                A patient with matching details is already registered for this camp.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {duplicateMatches.map((m) => (
-              <div
-                key={m.id}
-                className="flex flex-col gap-2 rounded-xl border border-amber-200/90 bg-white p-3 shadow-2xs sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="tabular font-bold text-brand" translate="no">
-                      #{m.reg_no}
-                    </span>
-                    <span className="font-bold text-foreground">{m.full_name}</span>
-                    {m.age != null ? (
-                      <span className="text-xs text-muted">
-                        ({m.age} yrs{m.gender ? `, ${m.gender}` : ""})
-                      </span>
-                    ) : null}
-                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">
-                      {m.queue_status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    {m.phone ? `Phone: ${m.phone} · ` : ""}
-                    {m.address ? `Address: ${m.address} · ` : ""}
-                    {m.day_date ? `Day: ${formatCampDay(m.day_date)}` : ""}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {m.match_reasons.map((r, idx) => (
-                      <span
-                        key={idx}
-                        className="rounded bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
-                      >
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => loadExistingRegistration(m)}
-                    className="pressable inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-brand-dark"
-                  >
-                    🖨️ View / Print Slip
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between border-t border-amber-200/80 pt-2 text-xs">
-            <span className="font-medium text-amber-900">
-              {bypassedDuplicates
-                ? "✓ Duplicate warning acknowledged — proceed permitted"
-                : "Check if this walk-in is already registered"}
-            </span>
-            {!bypassedDuplicates ? (
-              <button
-                type="button"
-                onClick={() => setBypassedDuplicates(true)}
-                className="font-bold text-amber-900 hover:underline"
-              >
-                Ignore & Register New
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setBypassedDuplicates(false)}
-                className="text-amber-800 underline"
-              >
-                Re-enable warning
-              </button>
-            )}
-          </div>
-        </div>
-      ) : null}
-
       <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
         {isStaff
           ? "After save they stay registered. Print to join the queue, or a doctor can scan them directly (seen)."
@@ -1455,83 +1185,6 @@ export function PatientForm({
               : "Register for selected day"}
         </Button>
       </div>
-
-      {showDuplicateModal && duplicateMatches.length > 0 ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 font-bold text-lg">
-                ⚠️
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-foreground">
-                  Possible Duplicate Patient
-                </h3>
-                <p className="text-xs text-muted">
-                  A patient with matching details already exists in this camp.
-                </p>
-              </div>
-            </div>
-
-            <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-              {duplicateMatches.map((m) => (
-                <div
-                  key={m.id}
-                  className="space-y-1 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-foreground">
-                      #{m.reg_no} — {m.full_name}
-                    </span>
-                    <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-                      {m.queue_status}
-                    </span>
-                  </div>
-                  <p className="text-muted">
-                    {m.age != null ? `Age: ${m.age} · ` : ""}
-                    {m.phone ? `Phone: ${m.phone} · ` : ""}
-                    {m.address ? `Address: ${m.address}` : ""}
-                  </p>
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {m.match_reasons.map((r, idx) => (
-                      <span
-                        key={idx}
-                        className="rounded border border-amber-200 bg-white px-1.5 py-0.5 text-[10px] text-amber-900"
-                      >
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-xs text-muted">
-              Would you like to open their existing registration to view/print their slip, or proceed creating a brand new registration?
-            </p>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                onClick={() => loadExistingRegistration(duplicateMatches[0])}
-                className="flex-1"
-              >
-                🖨️ View Existing Reg #{duplicateMatches[0]?.reg_no}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setBypassedDuplicates(true);
-                  setShowDuplicateModal(false);
-                }}
-              >
-                Register New Patient
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </form>
   );
 }

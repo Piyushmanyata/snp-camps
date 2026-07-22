@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { patientAuthEmail } from "@/lib/patient-auth";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { parseRegistrationNumber } from "@/lib/qr";
 import {
@@ -27,14 +26,13 @@ const LOGIN_ERRORS: Record<string, string> = {
   session: "Could not start your session. Try again.",
 };
 
-type Mode = "password" | "otp";
+type Mode = "regno" | "otp";
 
 export default function PatientLoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("password");
+  const [mode, setMode] = useState<Mode>("regno");
 
   const [regNo, setRegNo] = useState("");
-  const [password, setPassword] = useState("");
 
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -50,7 +48,7 @@ export default function PatientLoginPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function loginWithPassword(e: React.FormEvent) {
+  async function loginWithRegNo(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -59,26 +57,36 @@ export default function PatientLoginPage() {
       setError("Enter your registration number.");
       return;
     }
-    if (!password || password.length < 4) {
-      setError("Enter your password (default is 1234).");
-      return;
-    }
 
     setLoading(true);
     try {
+      const res = await fetch("/api/patient-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regNo: n }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        email?: string;
+        password?: string;
+      };
+
+      if (!res.ok || !data.ok || !data.email || !data.password) {
+        setError(
+          data.error || "Patient not found. Check your registration number.",
+        );
+        return;
+      }
+
       const supabase = createClient();
       const { error: err } = await supabase.auth.signInWithPassword({
-        email: patientAuthEmail(n),
-        password,
+        email: data.email,
+        password: data.password,
       });
 
       if (err) {
-        const msg = err.message.toLowerCase();
-        setError(
-          msg.includes("invalid") || msg.includes("credentials")
-            ? "Wrong reg no or password. Default password is 1234."
-            : err.message,
-        );
+        setError("Could not start your session. Try again.");
         return;
       }
 
@@ -109,7 +117,7 @@ export default function PatientLoginPage() {
       if (err) {
         setError(
           err.message +
-            " — Phone OTP needs SMS configured in Supabase. Use reg no + password for now.",
+            " — Phone OTP needs SMS configured in Supabase. Use reg no login above for now.",
         );
         return;
       }
@@ -206,10 +214,8 @@ export default function PatientLoginPage() {
     >
       <Card>
         <InfoBox>
-          Use the <strong className="text-foreground">reg number and password</strong>{" "}
-          from registration (also sent by SMS/WhatsApp when configured). Save the
-          one-time backup password when it is shown; it is not displayed again
-          after sign out. QR codes are for camp staff only.
+          Enter your <strong className="text-foreground">Registration Number</strong>{" "}
+          (e.g., 1001) to sign in directly. QR codes are for camp staff only.
         </InfoBox>
 
         <div className="mt-4 mb-4">
@@ -221,14 +227,14 @@ export default function PatientLoginPage() {
               setError(null);
             }}
             options={[
-              { value: "password", label: "Reg no + password" },
+              { value: "regno", label: "Reg number" },
               { value: "otp", label: "Phone OTP" },
             ]}
           />
         </div>
 
-        {mode === "password" ? (
-          <form method="post" onSubmit={loginWithPassword} className="space-y-4">
+        {mode === "regno" ? (
+          <form method="post" onSubmit={loginWithRegNo} className="space-y-4">
             <Input
               label="Registration number"
               name="reg_no"
@@ -239,17 +245,7 @@ export default function PatientLoginPage() {
               placeholder="e.g. 1001"
               autoComplete="username"
               spellCheck={false}
-              hint="On your registration slip or confirmation screen"
-            />
-            <Input
-              label="Password"
-              name="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="If set by desk or admin"
-              autoComplete="current-password"
+              hint="Found on your registration slip or confirmation screen"
             />
             <ErrorBox message={error} />
             <Button type="submit" loading={loading} disabled={loading}>
@@ -259,8 +255,8 @@ export default function PatientLoginPage() {
         ) : (
           <div className="space-y-4">
             <WarningBox>
-              Phone OTP requires SMS delivery. If a code does not arrive, use{" "}
-              <strong>reg no + password</strong> or ask the camp desk.
+              Phone OTP is for self-registration when SMS is configured. If a code does not arrive, use{" "}
+              <strong>Reg number login</strong> above or ask the camp desk.
             </WarningBox>
             {otpStep === "phone" ? (
               <form method="post" onSubmit={sendOtp} className="space-y-4">

@@ -155,10 +155,10 @@ test("queue only announces completion after refreshed props replace the source",
   assert.match(queue, /isPending \? "Refreshing…" : "Refresh"/);
 });
 
-test("patient login accurately describes one-time backup credentials", () => {
-  assert.match(patientLogin, /one-time backup password/);
-  assert.match(patientLogin, /not displayed again[\s\S]*after sign out/);
-  assert.doesNotMatch(patientLogin, /On sign\s*out we show them again/);
+test("patient login accurately describes passwordless reg number sign in", () => {
+  assert.match(patientLogin, /Registration Number/);
+  assert.match(patientLogin, /sign in directly/);
+  assert.doesNotMatch(patientLogin, /type="password"/);
 });
 
 test("volunteer dashboard labels registration and check-in credit as handled", () => {

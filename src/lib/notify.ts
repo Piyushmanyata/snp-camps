@@ -83,10 +83,10 @@ export async function notifyPatient(
   return { sms, whatsapp };
 }
 
-export function registrationMessage(regNo: number, password: string): string {
+export function registrationMessage(regNo: number): string {
   return (
     `SNP Camp: Registered. Reg no #${regNo}. ` +
-    `Password: ${password}. Keep this to log in. ` +
+    `Keep this number to view your queue status. ` +
     `Show your reg no at the desk if needed.`
   );
 }
