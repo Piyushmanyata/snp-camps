@@ -77,6 +77,7 @@ export function PatientForm({
   const firstOpen = openDays[0]?.id || "";
   const lookupEnabled = isAadhaarLookupEnabledClient();
   // hasVerifiedPatientSession: userId supplied means the patient already completed OTP
+  const isStaffDesk = isStaff || userRole === "admin" || userRole === "volunteer" || Boolean(createdBy);
   const hasVerifiedPatientSession = Boolean(userId && !isStaff);
 
   const [campDayId, setCampDayId] = useState(firstOpen);
@@ -139,20 +140,21 @@ export function PatientForm({
       ageStr: string,
       addressStr: string,
       aadhaarStr: string,
-    ) => {
-      if (!isStaff || !campId) return;
-      const p10 = normalizePhoneE164(phoneStr)?.slice(-10) || "";
+      forceQuery = false,
+    ): Promise<DuplicatePatientMatch[]> => {
+      if (!isStaffDesk || !campId) return [];
+      const p10 = digitsOnly(phoneStr).slice(-10);
       const nameTrim = nameStr.trim();
       const ageVal = ageStr === "" ? null : Number(ageStr);
       const last4 = aadhaarLast4(aadhaarStr);
 
       if (!p10 && nameTrim.length < 2 && !last4) {
         setDuplicateMatches([]);
-        return;
+        return [];
       }
 
       const queryKey = `${campId}:${nameTrim.toLowerCase()}:${p10}:${ageVal}:${addressStr.trim().toLowerCase()}:${last4}`;
-      if (lastDuplicateQuery.current === queryKey) return;
+      if (!forceQuery && lastDuplicateQuery.current === queryKey) return duplicateMatches;
       lastDuplicateQuery.current = queryKey;
 
       setCheckingDuplicates(true);
@@ -173,27 +175,30 @@ export function PatientForm({
           const json = (await res.json()) as {
             duplicates?: DuplicatePatientMatch[];
           };
-          setDuplicateMatches(json.duplicates || []);
+          const matches = json.duplicates || [];
+          setDuplicateMatches(matches);
+          return matches;
         }
       } catch {
         // silent
       } finally {
         setCheckingDuplicates(false);
       }
+      return [];
     },
-    [campId, isStaff],
+    [campId, isStaffDesk, duplicateMatches],
   );
 
   useEffect(() => {
-    if (!isStaff) return;
+    if (!isStaffDesk) return;
     if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
     duplicateTimer.current = setTimeout(() => {
       void checkDuplicates(fullName, phone, age, address, aadhaar);
-    }, 400);
+    }, 300);
     return () => {
       if (duplicateTimer.current) clearTimeout(duplicateTimer.current);
     };
-  }, [isStaff, fullName, phone, age, address, aadhaar, checkDuplicates]);
+  }, [isStaffDesk, fullName, phone, age, address, aadhaar, checkDuplicates]);
 
   function loadExistingRegistration(match: DuplicatePatientMatch) {
     setCreated({
@@ -555,10 +560,16 @@ export function PatientForm({
       return;
     }
 
-    if (isStaff && duplicateMatches.length > 0 && !bypassedDuplicates) {
-      setLoading(false);
-      setShowDuplicateModal(true);
-      return;
+    if (isStaffDesk && !bypassedDuplicates) {
+      let matches = duplicateMatches;
+      if (matches.length === 0) {
+        matches = await checkDuplicates(fullName, phone, age, address, aadhaar, true);
+      }
+      if (matches.length > 0) {
+        setLoading(false);
+        setShowDuplicateModal(true);
+        return;
+      }
     }
 
     const supabase = createClient();
@@ -924,6 +935,17 @@ export function PatientForm({
             currentDayId={created.camp_day_id || campDayId}
             days={days}
             queueStatus="registered"
+            onDayChanged={(newDayId, newDayDate) => {
+              setCreated((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      camp_day_id: newDayId,
+                      day_date: newDayDate || prev.day_date,
+                    }
+                  : null,
+              );
+            }}
           />
         </div>
 
@@ -1318,7 +1340,7 @@ export function PatientForm({
         ) : null}
       </div>
 
-      {isStaff && duplicateMatches.length > 0 ? (
+      {isStaffDesk && duplicateMatches.length > 0 ? (
         <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white shadow-sm">

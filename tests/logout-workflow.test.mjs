@@ -44,6 +44,6 @@ test("logout never rotates or reveals patient credentials", () => {
   assert.deepEqual(references, []);
   assert.doesNotMatch(
     readFileSync(signOutPath, "utf8"),
-    /patientMode|password|credentials|navigator\.clipboard|fetch\(/i,
+    /patientMode|credentials|navigator\.clipboard|fetch\(/i,
   );
 });

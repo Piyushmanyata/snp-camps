@@ -107,9 +107,9 @@ for (const { role, route, component, page } of staff) {
 }
 
 test("admin can change their own password", () => {
-  const page = read("src/app/admin/page.tsx");
-  assert.match(page, /(?:import \{ ChangePasswordCard \}|ChangePasswordCard = dynamic\()/);
-  assert.match(page, /<ChangePasswordCard \/>/);
+  const component = read("src/components/sign-out.tsx");
+  assert.match(component, /Change password/);
+  assert.match(component, /handleChangePassword/);
 });
 
 test("patient one-time credentials block mutations and require confirmed dismissal", () => {
