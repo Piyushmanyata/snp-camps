@@ -23,7 +23,7 @@ async function fetchCachedDoctorsList(): Promise<DoctorOption[]> {
     .from("profiles")
     .select("id, full_name")
     .eq("role", "doctor")
-    .is("disabled_at", null)
+    
     .order("full_name", { ascending: true });
   if (error) throw new Error("Doctor list could not be loaded");
   return (data || []) as DoctorOption[];
@@ -45,7 +45,7 @@ export const getDoctorsList = cache(async (): Promise<DoctorOption[]> => {
     .from("profiles")
     .select("id, full_name")
     .eq("role", "doctor")
-    .is("disabled_at", null)
+    
     .order("full_name", { ascending: true });
   if (error) throw new Error("Doctor list could not be loaded");
   return (data || []) as DoctorOption[];
