@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
+import { getSessionProfile, isAdmin, isStaff, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { parseRegistrationNumber, patientScanUrl } from "@/lib/qr";
 import { generatePatientPassword } from "@/lib/patient-password";
@@ -20,7 +20,7 @@ type Body = {
   returnCredentials?: boolean;
   /** Send reg+password via SMS/WhatsApp stubs when phone on file. */
   notify?: boolean;
-  /** Admin-only: provision a login for a desk-created, unlinked registration. */
+  /** Staff-only: provision a login for a desk-created registration. */
   adminProvision?: boolean;
 };
 
@@ -66,9 +66,9 @@ export async function POST(req: Request) {
   }
   const safeRegNo = regNo;
 
-  if (passwordRaw && passwordRaw.length < 12) {
+  if (passwordRaw && passwordRaw.length < 4) {
     return NextResponse.json(
-      { error: "Password must be at least 12 characters" },
+      { error: "Password must be at least 4 characters" },
       { status: 400 },
     );
   }
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
   const phoneOnFile = patient.phone;
 
   function queueNotification(password: string, loginRegNo = safeRegNo) {
-    if (!doNotify || !phoneOnFile || (!configured.sms && !configured.whatsapp)) {
+    if (!doNotify || !phoneOnFile) {
       return false;
     }
     after(async () => {
@@ -118,10 +118,10 @@ export async function POST(req: Request) {
     return true;
   }
 
-  // Already linked — only the patient session or an admin may provision credentials.
+  // Already linked — only the patient session or staff may provision credentials.
   if (patient.user_id) {
     const { userId, profile } = await getSessionProfile();
-    const allowed = userId === patient.user_id || isAdmin(profile?.role);
+    const allowed = userId === patient.user_id || isStaff(profile?.role);
     if (!allowed) {
       return NextResponse.json(
         { error: "Login already exists for this patient." },
@@ -192,11 +192,10 @@ export async function POST(req: Request) {
     });
   }
 
-  // Unlinked rows are desk-created. Public claiming was removed because every
-  // reachable self-registration row is already linked to its verified session.
+  // Unlinked rows are desk-created.
   const { profile } = await getSessionProfile();
-  if (!adminProvisionRequested || !isAdmin(profile?.role)) {
-    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  if (!adminProvisionRequested || !isStaff(profile?.role)) {
+    return NextResponse.json({ error: "Staff authorization required" }, { status: 403 });
   }
   if (!returnCredentials) {
     return NextResponse.json(

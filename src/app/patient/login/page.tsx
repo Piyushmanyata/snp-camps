@@ -59,8 +59,8 @@ export default function PatientLoginPage() {
       setError("Enter your registration number.");
       return;
     }
-    if (password.length < 6) {
-      setError("Enter your password (at least 6 characters).");
+    if (!password || password.length < 4) {
+      setError("Enter your password (default is 1234).");
       return;
     }
 
@@ -76,7 +76,7 @@ export default function PatientLoginPage() {
         const msg = err.message.toLowerCase();
         setError(
           msg.includes("invalid") || msg.includes("credentials")
-            ? "Wrong reg no or password. Ask the desk if you never set a password."
+            ? "Wrong reg no or password. Default password is 1234."
             : err.message,
         );
         return;

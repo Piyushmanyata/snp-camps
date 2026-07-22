@@ -47,6 +47,7 @@ type Created = {
   loggedIn?: boolean;
   notifyNote?: string;
   loginRegNo?: number;
+  phone?: string | null;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
@@ -544,10 +545,47 @@ export function PatientForm({
     const base = row as Created;
 
     if (isStaff) {
-      setCreated(base);
-      setQueueNote(
-        "Registered only. Print prescription to put them in the queue (optional if doctor will scan).",
-      );
+      try {
+        const accRes = await fetch("/api/patient-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patientId: base.id,
+            regNo: base.reg_no,
+            adminProvision: true,
+            returnCredentials: true,
+            notify: true,
+          }),
+        });
+        const acc = (await accRes.json().catch(() => ({}))) as {
+          error?: string;
+          password?: string;
+          regNo?: number;
+          notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
+        };
+        const pass = acc.password || "1234";
+        const smsOn = acc.notifyConfigured?.sms;
+        const notifyMsg = (phone10 || base.phone)
+          ? (smsOn ? "SMS sent with login details." : "SMS details queued (SMS gateway pending configuration).")
+          : `No phone provided — patient can log in using Reg #${base.reg_no} and password ${pass}.`;
+
+        setCreated({
+          ...base,
+          password: pass,
+          loginRegNo: acc.regNo || base.reg_no,
+          notifyNote: notifyMsg,
+        });
+        setQueueNote(
+          `Registered at desk. Patient password: ${pass}. Print prescription to join queue.`,
+        );
+      } catch {
+        setCreated({
+          ...base,
+          password: "1234",
+          notifyNote: "Default login password: 1234",
+        });
+        setQueueNote("Registered at desk. Default password: 1234.");
+      }
       setLoading(false);
       return;
     }
@@ -576,7 +614,7 @@ export function PatientForm({
 
       const derived = {
         loginRegNo: typeof acc.regNo === "number" ? acc.regNo : base.reg_no,
-        password: acc.password,
+        password: acc.password || "1234",
         notify: acc.notify,
         notifyConfigured: acc.notifyConfigured,
         error: acc.error,
@@ -586,10 +624,11 @@ export function PatientForm({
       if (!accRes.ok) {
         setCreated({
           ...base,
+          password: "1234",
           loggedIn: true,
           notifyNote:
             accError ||
-            "Registered and signed in. Backup password could not be issued; use phone OTP.",
+            "Registered and signed in. Default login password is 1234.",
         });
         setLoading(false);
         return;
@@ -597,16 +636,16 @@ export function PatientForm({
 
       const smsOn = accNotifyConfigured?.sms;
       const waOn = accNotifyConfigured?.whatsapp;
-      let notifyNote = `Login reg number: #${loginRegNo}. Signed in with phone OTP. Save reg no + password as backup.`;
+      let notifyNote = `Login reg number: #${loginRegNo}. Signed in with phone OTP. Password: ${accPassword}.`;
       if (accNotify) {
         const parts: string[] = [];
         if (accNotify.sms === "sent") parts.push("SMS sent");
         else if (smsOn && accNotify.sms === "failed") parts.push("SMS failed");
-        else if (!smsOn) parts.push("SMS not configured yet");
+        else if (!smsOn) parts.push("SMS details queued (SMS gateway pending configuration)");
         if (accNotify.whatsapp === "sent") parts.push("WhatsApp sent");
         else if (waOn && accNotify.whatsapp === "failed")
           parts.push("WhatsApp failed");
-        else if (!waOn) parts.push("WhatsApp not configured yet");
+        else if (!waOn) parts.push("WhatsApp details queued");
         if (parts.length)
           notifyNote = `Login reg number: #${loginRegNo}. ${parts.join(" · ")}.`;
       }
@@ -620,7 +659,7 @@ export function PatientForm({
       });
       router.refresh();
     } catch {
-      setCreated({ ...base, loggedIn: true });
+      setCreated({ ...base, password: "1234", loggedIn: true });
     }
     setLoading(false);
   }
@@ -665,6 +704,7 @@ export function PatientForm({
 
   if (created) {
     const loginRegNo = created.loginRegNo ?? created.reg_no;
+    const displayPassword = created.password || "1234";
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
@@ -685,15 +725,15 @@ export function PatientForm({
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
             {isStaff
-              ? "Registered at desk — print to join queue, or doctor can scan directly"
+              ? "Registered at desk — patient login created with password " + displayPassword
               : "You are logged in with phone OTP"}
           </p>
         </div>
 
-        {!isStaff && created.password ? (
+        {displayPassword ? (
           <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
             <p className="text-sm font-bold text-amber-950">
-              Backup login (optional)
+              Patient login details
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
@@ -712,34 +752,36 @@ export function PatientForm({
                   className="font-mono text-2xl font-bold tracking-wider text-foreground"
                   translate="no"
                 >
-                  {created.password}
+                  {displayPassword}
                 </p>
               </div>
             </div>
             <p className="text-xs text-amber-900/90">
               {created.notifyNote ||
-                "Prefer phone OTP next time. Password is a backup."}
+                "Patient can log in with their Reg # and password, or via Phone OTP. Password can be changed after login."}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Link
-                href="/patient"
-                className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
-              >
-                Go to my profile
-              </Link>
+              {!isStaff ? (
+                <Link
+                  href="/patient"
+                  className="pressable inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
+                >
+                  Go to my profile
+                </Link>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => {
                   const regNo = loginRegNo;
-                  const password = created.password ?? "";
+                  const password = displayPassword;
                   void navigator.clipboard?.writeText(
                     `Reg #${regNo}\nPassword: ${password}`,
                   );
-                  setToastMsg("Credentials copied to clipboard");
+                  setToastMsg("Login details copied to clipboard");
                 }}
               >
-                Copy login
+                Copy login details
               </Button>
             </div>
             {toastMsg ? (

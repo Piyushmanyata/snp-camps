@@ -635,21 +635,18 @@ begin
     raise exception 'Use the Indian phone number verified for this account';
   end if;
 
-  select count(*)::int, (array_agg(p.id order by p.id))[1]
+  select count(*)::int, (array_agg(p.id order by p.created_at desc))[1]
   into v_count, v_patient_id
   from public.patients p
   join public.camps c on c.id = p.camp_id and c.is_active
-  where p.user_id is null
-    and p.phone_normalized = v_phone10;
+  where p.phone_normalized = v_phone10;
+
   if v_count = 0 then return null; end if;
-  if v_count > 1 then
-    raise exception 'Multiple registrations found; ask the desk to link your account';
-  end if;
 
   update public.patients
   set user_id = auth.uid()
-  where id = v_patient_id and user_id is null;
-  if not found then raise exception 'Registration was already linked'; end if;
+  where id = v_patient_id;
+
   return v_patient_id;
 end;
 $$;

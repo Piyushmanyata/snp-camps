@@ -17,8 +17,8 @@ export function ChangePasswordCard() {
     e.preventDefault();
     setError(null);
     setOk(null);
-    if (password.length < 12) {
-      setError("Password must be at least 12 characters.");
+    if (password.length < 4) {
+      setError("Password must be at least 4 characters.");
       return;
     }
     if (password !== confirm) {
@@ -51,7 +51,7 @@ export function ChangePasswordCard() {
           <div>
             <p className="text-sm font-semibold text-foreground">Password</p>
             <p className="text-xs text-muted">
-              Change invite password after first login
+              Change password (default is 1234)
             </p>
           </div>
           <Button type="button" variant="ghost" size="sm" className="w-auto" onClick={() => setOpen(true)}>
@@ -83,17 +83,17 @@ export function ChangePasswordCard() {
         type="password"
         autoComplete="new-password"
         required
-        minLength={12}
+        minLength={4}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        hint="At least 12 characters"
+        hint="At least 4 characters"
       />
       <Input
         label="Confirm password"
         type="password"
         autoComplete="new-password"
         required
-        minLength={12}
+        minLength={4}
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
       />
