@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { getSessionProfile, isAdmin, isStaff, readJsonBody } from "@/lib/auth";
+import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { parseRegistrationNumber, patientScanUrl } from "@/lib/qr";
 import { generatePatientPassword } from "@/lib/patient-password";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
@@ -29,12 +29,12 @@ export function ChangeDay({
   const [ok, setOk] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (currentDayId) {
-      setActiveDayId(currentDayId);
-      setDayId(currentDayId);
-    }
-  }, [currentDayId]);
+  const [prevDayId, setPrevDayId] = useState(currentDayId);
+  if (currentDayId !== prevDayId) {
+    setPrevDayId(currentDayId);
+    setActiveDayId(currentDayId || "");
+    setDayId(currentDayId || "");
+  }
 
   const locked =
     !campActive || queueStatus === "waiting" || queueStatus === "seen";

@@ -9,9 +9,7 @@ import { readJsonBody, requireAdmin } from "@/lib/auth";
 function generateTemporaryPassword(length = 14): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   let out = "";
-  for (let i = 0; i < length; i++) {
-    out += alphabet.charAt(randomInt(alphabet.length));
-  }
+  for (let i = 0; i < length; i++) out += alphabet.charAt(randomInt(alphabet.length));
   return out;
 }
 
