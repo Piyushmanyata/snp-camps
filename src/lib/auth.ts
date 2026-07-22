@@ -28,11 +28,11 @@ export const getSessionProfile = cache(async (): Promise<{
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, role, full_name, phone, email, disabled_at")
+    .select("id, role, full_name, phone, email")
     .eq("id", userId)
     .maybeSingle();
 
-  if (!profile || profile.disabled_at) {
+  if (!profile) {
     return { userId: null, profile: null };
   }
 
