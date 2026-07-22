@@ -821,38 +821,17 @@ CREATE FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gend
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'public'
     AS $$
-declare
-  v_request_role text;
 begin
-  v_request_role := coalesce(
-    nullif(auth.role(), ''),
-    nullif(current_setting('request.jwt.claim.role', true), '')
-  );
-
-  -- Current PostgREST exposes a consolidated claims object. The legacy
-  -- implementation below still reads the per-claim setting, so bridge the
-  -- verified JWT role for this transaction before calling it.
-  perform set_config('request.jwt.claim.role', coalesce(v_request_role, ''), true);
-
-  if v_request_role = 'service_role' then
-    null;
-  elsif v_request_role = 'authenticated' then
-    if not exists (
-      select 1
-      from public.profiles p
-      where p.id = (select auth.uid())
-        and p.role in ('admin', 'volunteer')
-        and p.disabled_at is null
-    ) then
-      raise exception 'active admin or volunteer required';
-    end if;
-  else
-    raise exception 'authenticated registration required';
-  end if;
-
   return query
-  select r.*
-  from public.register_patient_authorized_impl(
+  select
+    r.id,
+    r.reg_no,
+    r.full_name,
+    r.camp_day_id,
+    r.day_date,
+    null::text as claim_token
+  from public.register_patient_idempotent(
+    p_request_id => gen_random_uuid(),
     p_camp_id => p_camp_id,
     p_full_name => p_full_name,
     p_gender => p_gender,
@@ -861,14 +840,8 @@ begin
     p_phone => p_phone,
     p_email => p_email,
     p_aadhaar_last4 => p_aadhaar_last4,
-    p_user_id => case
-      when v_request_role = 'service_role' then p_user_id
-      else null::uuid
-    end,
-    p_created_by => case
-      when v_request_role = 'service_role' then p_created_by
-      else (select auth.uid())
-    end,
+    p_user_id => p_user_id,
+    p_created_by => p_created_by,
     p_camp_day_id => p_camp_day_id
   ) r;
 end;

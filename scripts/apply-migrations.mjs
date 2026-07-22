@@ -4,7 +4,18 @@ import path from "node:path";
 
 const { Client } = pg;
 
-const pass = encodeURIComponent(process.env.SUPABASE_DB_PASSWORD || "");
+let dbPassword = process.env.SUPABASE_DB_PASSWORD || "";
+if (!dbPassword) {
+  try {
+    const envLocal = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
+    const match = envLocal.match(/SUPABASE_DB_PASSWORD=(.*)/);
+    if (match) {
+      dbPassword = match[1].trim();
+    }
+  } catch {}
+}
+
+const pass = encodeURIComponent(dbPassword);
 const ref = "ruklmrzpyutvefancsgo";
 const user = `postgres.${ref}`;
 const host = "aws-1-ap-south-1.pooler.supabase.com";

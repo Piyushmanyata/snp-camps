@@ -473,7 +473,12 @@ export function PatientForm({
 
     if (isStaff) {
       try {
-        const result = await supabase.rpc("register_patient", {
+        const requestId =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : undefined;
+        const result = await supabase.rpc("register_patient_idempotent", {
+          p_request_id: requestId,
           p_camp_id: campId,
           p_full_name: fullName.trim(),
           p_gender: gender || null,
