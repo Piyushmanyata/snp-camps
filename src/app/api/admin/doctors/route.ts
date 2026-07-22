@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
+import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody, requireAdmin } from "@/lib/auth";
+
+/** Shareable temporary password: 14 chars, no ambiguous glyphs. */
+function generateTemporaryPassword(length = 14): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet.charAt(randomInt(alphabet.length));
+  }
+  return out;
+}
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -10,7 +22,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, phone, role, created_at")
+    .select("id, full_name, email, phone, role, created_at, disabled_at")
     .eq("role", "doctor")
     .order("created_at", { ascending: false });
 
@@ -28,7 +40,6 @@ export async function POST(req: Request) {
   const body = await readJsonBody<{
     fullName?: string;
     email?: string;
-    password?: string;
   }>(req);
   if (!body) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -36,17 +47,17 @@ export async function POST(req: Request) {
 
   const fullName = String(body.fullName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
-  const password = String(body.password || "");
 
-  if (!fullName || !email || password.length < 12) {
+  if (!fullName || !email) {
     return NextResponse.json(
-      { error: "Name, email, and password (min 12) required" },
+      { error: "Name and email are required" },
       { status: 400 },
     );
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
+  const password = generateTemporaryPassword();
 
   const admin = createServiceRoleClient();
   if (!admin) {
@@ -64,7 +75,15 @@ export async function POST(req: Request) {
   });
 
   if (createErr) {
-    return NextResponse.json({ error: createErr.message }, { status: 400 });
+    const msg = createErr.message.toLowerCase();
+    return NextResponse.json(
+      {
+        error: msg.includes("already")
+          ? "That email is already registered. Share their existing login or use a different email."
+          : createErr.message,
+      },
+      { status: 400 },
+    );
   }
 
   if (!created.user) {
@@ -86,15 +105,141 @@ export async function POST(req: Request) {
     );
   }
 
+  revalidateTag("doctors-list", { expire: 0 });
+
   return NextResponse.json({
     ok: true,
+    temporaryPassword: password,
     doctor: {
       id: created.user.id,
       full_name: fullName,
       email,
       role: "doctor",
     },
+  }, {
+    headers: { "Cache-Control": "no-store" },
   });
+}
+
+export async function PATCH(req: Request) {
+  const auth = await requireAdmin();
+  if ("error" in auth && auth.error) return auth.error;
+
+  const body = await readJsonBody<{
+    id?: string;
+    action?: "reset_password" | "reactivate";
+  }>(req);
+  const id = String(body?.id || "").trim();
+  const action = body?.action ?? "reset_password";
+  if (
+    !id ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id,
+    )
+  ) {
+    return NextResponse.json({ error: "Valid doctor id required" }, { status: 400 });
+  }
+  if (action !== "reset_password" && action !== "reactivate") {
+    return NextResponse.json({ error: "Invalid doctor action" }, { status: 400 });
+  }
+
+  const admin = createServiceRoleClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Account service is unavailable" },
+      { status: 500 },
+    );
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("id, full_name, email, role, disabled_at")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (profileError) {
+    return NextResponse.json(
+      { error: "Doctor account could not be checked." },
+      { status: 500 },
+    );
+  }
+  if (!profile || profile.role !== "doctor") {
+    return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
+  }
+
+  if (action === "reactivate") {
+    const disabledAt = profile.disabled_at;
+    const { error: unbanError } = await admin.auth.admin.updateUserById(id, {
+      ban_duration: "none",
+    });
+    if (unbanError) {
+      return NextResponse.json(
+        { error: "Doctor sign-in could not be reactivated. Try again." },
+        { status: 500 },
+      );
+    }
+
+    if (!disabledAt) {
+      return NextResponse.json({
+        ok: true,
+        doctor: { ...profile, disabled_at: null },
+      });
+    }
+
+    const { data: reactivated, error: reactivateError } = await admin
+      .from("profiles")
+      .update({ disabled_at: null })
+      .eq("id", id)
+      .eq("role", "doctor")
+      .eq("disabled_at", disabledAt)
+      .select("id, full_name, email, phone, role, created_at, disabled_at")
+      .maybeSingle();
+
+    if (reactivateError || !reactivated) {
+      const { error: rebanError } = await admin.auth.admin.updateUserById(id, {
+        ban_duration: "876000h",
+      });
+      return NextResponse.json(
+        {
+          error: rebanError
+            ? "Doctor profile stayed disabled, but the sign-in ban could not be restored. Retry deactivation immediately."
+            : "Doctor account changed during reactivation. Refresh and retry.",
+        },
+        { status: reactivateError || rebanError ? 500 : 409 },
+      );
+    }
+
+    revalidateTag("doctors-list", { expire: 0 });
+    return NextResponse.json({ ok: true, doctor: reactivated });
+  }
+
+  if (profile.disabled_at) {
+    return NextResponse.json({ error: "Active doctor not found" }, { status: 404 });
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const { error: resetError } = await admin.auth.admin.updateUserById(id, {
+    password: temporaryPassword,
+  });
+  if (resetError) {
+    return NextResponse.json(
+      { error: "Doctor password could not be reset. Try again." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      temporaryPassword,
+      doctor: {
+        id: profile.id,
+        full_name: profile.full_name,
+        email: profile.email,
+      },
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 export async function DELETE(req: Request) {
@@ -119,7 +264,7 @@ export async function DELETE(req: Request) {
 
   if (id === auth.userId) {
     return NextResponse.json(
-      { error: "You cannot delete your own account" },
+      { error: "You cannot deactivate your own account" },
       { status: 400 },
     );
   }
@@ -134,7 +279,7 @@ export async function DELETE(req: Request) {
 
   const { data: profile, error: pErr } = await admin
     .from("profiles")
-    .select("id, role")
+    .select("id, role, disabled_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -145,10 +290,58 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Doctor not found" }, { status: 404 });
   }
 
-  const { error: delErr } = await admin.auth.admin.deleteUser(id);
-  if (delErr) {
-    return NextResponse.json({ error: delErr.message }, { status: 400 });
+  let disabledAt = profile.disabled_at;
+  let changedByThisRequest = false;
+  if (!disabledAt) {
+    const candidate = new Date().toISOString();
+    const { data: disabled, error: disableErr } = await admin
+      .from("profiles")
+      .update({ disabled_at: candidate })
+      .eq("id", id)
+      .eq("role", "doctor")
+      .is("disabled_at", null)
+      .select("disabled_at")
+      .maybeSingle();
+    if (disableErr) {
+      return NextResponse.json(
+        { error: "Doctor account could not be deactivated." },
+        { status: 500 },
+      );
+    }
+    disabledAt = disabled?.disabled_at ?? null;
+    changedByThisRequest = Boolean(disabledAt);
+    if (!disabledAt) {
+      return NextResponse.json(
+        { error: "Doctor account changed during deactivation. Refresh and retry." },
+        { status: 409 },
+      );
+    }
   }
 
-  return NextResponse.json({ ok: true, id });
+  const { error: banErr } = await admin.auth.admin.updateUserById(id, {
+    ban_duration: "876000h",
+  });
+  if (banErr) {
+    let rollbackFailed = false;
+    if (changedByThisRequest) {
+      const { error: rollbackError } = await admin
+        .from("profiles")
+        .update({ disabled_at: null })
+        .eq("id", id)
+        .eq("disabled_at", disabledAt);
+      rollbackFailed = Boolean(rollbackError);
+    }
+    return NextResponse.json(
+      {
+        error:
+          changedByThisRequest && !rollbackFailed
+            ? "Doctor sign-in could not be disabled; the profile change was rolled back."
+            : "Doctor remains deactivated, but the sign-in ban could not be confirmed. Retry to enforce the ban.",
+      },
+      { status: 500 },
+    );
+  }
+
+  revalidateTag("doctors-list", { expire: 0 });
+  return NextResponse.json({ ok: true, id, disabledAt });
 }

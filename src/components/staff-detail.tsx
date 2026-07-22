@@ -17,6 +17,7 @@ export type StaffPerson = {
   phone: string | null;
   role: string;
   created_at?: string;
+  disabled_at?: string | null;
 };
 
 type PatientRow = {
@@ -50,6 +51,13 @@ export function StaffDetailPanel({
   const [error, setError] = useState<string | null>(null);
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [patients, setPatients] = useState<PatientRow[]>([]);
+
+  function closeAndRestoreFocus() {
+    onClose();
+    window.requestAnimationFrame(() => {
+      document.getElementById(`staff-detail-trigger-${person.id}`)?.focus();
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +105,7 @@ export function StaffDetailPanel({
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeAndRestoreFocus}
           className="pressable shrink-0 rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-muted hover:bg-background"
         >
           Close
@@ -105,7 +113,10 @@ export function StaffDetailPanel({
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted">
+        <div
+          className="flex items-center justify-center gap-2 py-6 text-sm text-muted"
+          role="status"
+        >
           <Spinner /> Loading KPIs…
         </div>
       ) : error ? (
@@ -118,7 +129,10 @@ export function StaffDetailPanel({
             }`}
           >
             <Stat label={kpis?.label || "Total"} value={kpis?.total ?? 0} tone="ok" />
-            <Stat label="Today" value={kpis?.today ?? 0} />
+            <Stat
+              label={role === "volunteer" ? "Handled today" : "Seen today"}
+              value={kpis?.today ?? 0}
+            />
             {role === "volunteer" ? (
               <>
                 <Stat label="In queue" value={kpis?.waiting ?? 0} tone="wait" />
@@ -129,7 +143,7 @@ export function StaffDetailPanel({
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-              {role === "doctor" ? "Patients seen" : "Patients registered"}
+              {role === "doctor" ? "Patients seen" : "Patients handled"}
             </p>
             {patients.length ? (
               <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border bg-white">

@@ -2,36 +2,43 @@
   "name": "snp-camps",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --no-warnings --test tests/*.test.mjs",
+    "test:e2e": "node e2e/run-local.mjs",
     "verify": "npm run lint && npm test && npm run build",
-    "load:smoke": "node scripts/load-test.mjs"
+    "load:smoke": "node scripts/load-test.mjs",
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
-    "@supabase/supabase-js": "^2.110.7",
+    "@supabase/supabase-js": "^2.110.8",
     "html5-qrcode": "^2.3.8",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "qrcode.react": "^4.2.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "^8.5.19"
+    "postcss": "^8.5.19",
+    "sharp": "^0.35.3"
   }
 }

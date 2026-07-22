@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { parseRegistrationNumber } from "@/lib/qr";
 import { formatCampDay, queueLabel, queueTone } from "@/lib/types";
@@ -12,10 +13,12 @@ import {
   ErrorBox,
   Input,
   Stat,
+  SuccessBox,
 } from "@/components/ui";
 
 export type AdminPatientRow = {
   id: string;
+  user_id: string | null;
   reg_no: number;
   full_name: string;
   phone: string | null;
@@ -34,16 +37,18 @@ export type AdminPatientRow = {
   doctor_name?: string | null;
 };
 
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function fmtTs(iso: string | null | undefined) {
   if (!iso) return null;
   try {
-    return new Date(iso).toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return TIMESTAMP_FORMATTER.format(new Date(iso));
   } catch {
     return null;
   }
@@ -96,6 +101,7 @@ function mapRows(
       : doctor?.full_name ?? null;
     return {
       id: patient.id as string,
+      user_id: (patient.user_id as string | null) ?? null,
       reg_no: patient.reg_no as number,
       full_name: patient.full_name as string,
       phone: (patient.phone as string | null) ?? null,
@@ -119,7 +125,7 @@ function mapRows(
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -132,123 +138,244 @@ export function AdminPatients({
   avgWaitMinutes?: number | null;
   showAttribution?: boolean;
 }) {
-  const [snapshot, setSnapshot] = useState<{
-    source: AdminPatientRow[];
-    rows: AdminPatientRow[];
-    total: number;
-  } | null>(null);
-
-  const current = snapshot?.source === initial
-    ? snapshot
-    : { source: initial, rows: initial, total: totalCount ?? initial.length };
-
-  const rows = current.rows;
-  const total = current.total;
-  const [loading, setLoading] = useState(false);
-  const firstQuery = useRef(true);
-  const requestId = useRef(0);
-
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<
     "all" | "registered" | "waiting" | "seen"
   >("all");
   const [page, setPage] = useState(0);
+  const isDefaultView = !q.trim() && filter === "all" && page === 0;
+  const [snapshot, setSnapshot] = useState<{
+    source: AdminPatientRow[];
+    rows: AdminPatientRow[];
+    total: number;
+    isDefault: boolean;
+  } | null>(null);
+
+  const current =
+    snapshot?.source === initial && (!isDefaultView || snapshot.isDefault)
+      ? snapshot
+      : {
+          source: initial,
+          rows: initial,
+          total: totalCount ?? initial.length,
+          isDefault: true,
+        };
+
+  const rows = current.rows;
+  const total = current.total;
+  const [loading, setLoading] = useState(false);
+  const isSearching = loading && !isDefaultView;
+  const requestId = useRef(0);
+
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
+  const [credential, setCredential] = useState<{
+    rowId: string;
+    regNo: number;
+    password: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const credentialHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mutationBusy =
+    deletingId !== null || accountBusyId !== null || credential !== null;
 
   useEffect(() => {
-    if (firstQuery.current) {
-      firstQuery.current = false;
-      return;
-    }
+    if (credential) credentialHeadingRef.current?.focus();
+  }, [credential]);
 
+  useEffect(() => {
+    if (isDefaultView) return;
+
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       const currentRequest = ++requestId.current;
       setLoading(true);
       setError(null);
-      const supabase = createClient();
-      let query = supabase
-        .from("patients")
-        .select(SELECT, { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(page * 50, page * 50 + 49);
+      try {
+        const supabase = createClient();
+        let query = supabase
+          .from("patients")
+          .select(SELECT, { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(page * 50, page * 50 + 49);
 
-      if (filter !== "all") query = query.eq("queue_status", filter);
+        if (filter !== "all") query = query.eq("queue_status", filter);
 
-      const term = q.trim().toLowerCase();
-      if (term) {
-        if (/^\d+$/.test(term)) {
-          const regNo = parseRegistrationNumber(term);
-          const phone = term.slice(-10);
-          const filters = [];
-          if (regNo !== null) filters.push("reg_no.eq." + regNo);
-          if (phone.length === 10) {
-            filters.push("phone_normalized.eq." + phone);
+        const term = q.trim().toLowerCase();
+        if (term) {
+          if (/^\d+$/.test(term)) {
+            const regNo = parseRegistrationNumber(term);
+            const phone = term.slice(-10);
+            const filters = [];
+            if (regNo !== null) filters.push("reg_no.eq." + regNo);
+            if (phone.length === 10) {
+              filters.push("phone_normalized.eq." + phone);
+            }
+            if (!filters.length) {
+              setSnapshot({
+                source: initial,
+                rows: [],
+                total: 0,
+                isDefault: false,
+              });
+              return;
+            }
+            query = query.or(filters.join(","));
+          } else {
+            const escaped = term.replace(/[%_]/g, "\\$&");
+            query = query.ilike("full_name_normalized", "%" + escaped + "%");
           }
-          if (!filters.length) {
-            setLoading(false);
-            setSnapshot({ source: initial, rows: [], total: 0 });
-            return;
-          }
-          query = query.or(filters.join(","));
-        } else {
-          const escaped = term.replace(/[%_]/g, "\\$&");
-          query = query.ilike("full_name_normalized", "%" + escaped + "%");
         }
-      }
 
-      const { data, count, error: queryError } = await query;
-      if (currentRequest !== requestId.current) return;
-      if (queryError) {
-        setLoading(false);
-        setError("Patient search failed. Try again.");
-        return;
-      }
+        query = query.abortSignal(controller.signal);
+        const { data, count, error: queryError } = await query;
+        if (currentRequest !== requestId.current) return;
+        if (queryError) {
+          setError("Patient search failed. Try again.");
+          return;
+        }
 
-      setLoading(false);
-      setSnapshot({
-        source: initial,
-        rows: mapRows((data || []) as Record<string, unknown>[]),
-        total: count ?? 0,
-      });
+        setSnapshot({
+          source: initial,
+          rows: mapRows((data || []) as Record<string, unknown>[]),
+          total: count ?? 0,
+          isDefault: false,
+        });
+      } catch {
+        if (currentRequest === requestId.current && !controller.signal.aborted) {
+          setError("Patient search failed. Check your connection and try again.");
+        }
+      } finally {
+        if (currentRequest === requestId.current) setLoading(false);
+      }
     }, 300);
 
     return () => {
       window.clearTimeout(timer);
+      controller.abort();
       requestId.current += 1;
     };
-  }, [filter, initial, page, q]);
+  }, [filter, initial, isDefaultView, page, q]);
 
   async function removePatient(row: AdminPatientRow) {
+    if (mutationBusy) return;
     const ok = window.confirm(
-      `Remove patient #${row.reg_no} ${row.full_name}?\nThis cannot be undone.`,
+      `Remove registration #${row.reg_no} for ${row.full_name}?\nThe registration is permanently deleted; any login account is preserved.`,
     );
     if (!ok) return;
 
     setDeletingId(row.id);
     setError(null);
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("patients")
-      .delete()
-      .eq("id", row.id);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase
+        .from("patients")
+        .delete()
+        .eq("id", row.id);
 
-    if (err) {
-      setError(err.message);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+
+      setSnapshot((prev) => {
+        const usePrevious =
+          prev?.source === initial && (!isDefaultView || prev.isDefault);
+        const currentRows = usePrevious ? prev.rows : initial;
+        const currentTotal = usePrevious
+          ? prev.total
+          : (totalCount ?? initial.length);
+        return {
+          source: initial,
+          rows: currentRows.filter((p) => p.id !== row.id),
+          total: Math.max(0, currentTotal - 1),
+          isDefault: isDefaultView,
+        };
+      });
+      router.refresh();
+    } catch {
+      setError("Could not remove this patient. Check your connection and try again.");
+    } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function provisionLogin(row: AdminPatientRow) {
+    if (mutationBusy) return;
+    const action = row.user_id ? "reset" : "create";
+    if (
+      !window.confirm(
+        `${action === "reset" ? "Reset" : "Create"} login credentials for #${row.reg_no} ${row.full_name}?`,
+      )
+    ) {
       return;
     }
-
-    setSnapshot((prev) => {
-      const currentRows = prev?.source === initial ? prev.rows : initial;
-      const currentTotal = prev?.source === initial ? prev.total : (totalCount ?? initial.length);
-      return {
-        source: initial,
-        rows: currentRows.filter((p) => p.id !== row.id),
-        total: Math.max(0, currentTotal - 1),
+    setAccountBusyId(row.id);
+    setError(null);
+    try {
+      const response = await fetch("/api/patient-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: row.id,
+          regNo: row.reg_no,
+          adminProvision: true,
+          returnCredentials: true,
+          notify: false,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        password?: string;
+        userId?: string;
+        regNo?: number;
       };
-    });
-    setDeletingId(null);
+      if (!response.ok || !result.password) {
+        setError(result.error || "Patient login could not be created or reset.");
+        return;
+      }
+      setCredential({
+        rowId: row.id,
+        regNo: result.regNo ?? row.reg_no,
+        password: result.password,
+      });
+      setCopied(false);
+      if (result.userId) {
+        setSnapshot((prev) => {
+          const sourceRows = prev?.source === initial ? prev.rows : initial;
+          return {
+            source: initial,
+            rows: sourceRows.map((patient) =>
+              patient.id === row.id
+                ? { ...patient, user_id: result.userId ?? patient.user_id }
+                : patient,
+            ),
+            total: prev?.source === initial ? prev.total : (totalCount ?? initial.length),
+            isDefault: prev?.source === initial ? prev.isDefault : isDefaultView,
+          };
+        });
+      }
+    } catch {
+      setError("Could not manage this login. Check your connection and try again.");
+    } finally {
+      setAccountBusyId(null);
+    }
+  }
+
+  async function copyCredential() {
+    if (!credential) return;
+    try {
+      await navigator.clipboard.writeText(
+        `Patient login\nReg #${credential.regNo}\nTemporary password: ${credential.password}`,
+      );
+      setCopied(true);
+      setError(null);
+    } catch {
+      setCopied(false);
+      setError("Could not copy. Select the temporary password manually.");
+    }
   }
 
   return (
@@ -274,6 +401,7 @@ export function AdminPatients({
           onChange={(e) => {
             setQ(e.target.value);
             setPage(0);
+            setError(null);
           }}
           placeholder="Name, 10-digit phone, or exact reg no"
         />
@@ -297,6 +425,7 @@ export function AdminPatients({
               onClick={() => {
                 setFilter(key);
                 setPage(0);
+                setError(null);
               }}
               className={`pressable min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                 filter === key
@@ -311,21 +440,63 @@ export function AdminPatients({
       </div>
 
       <ErrorBox message={error} />
+      {credential ? (
+        <section
+          aria-labelledby="patient-credential-heading"
+          className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
+        >
+          <SuccessBox message="One-time patient login is ready. Save it before dismissing." />
+          <h3
+            id="patient-credential-heading"
+            ref={credentialHeadingRef}
+            tabIndex={-1}
+            className="text-sm font-bold text-amber-950"
+          >
+            Share temporary patient login (shown once)
+          </h3>
+          <p className="text-sm text-amber-950">
+            Reg <strong>#{credential.regNo}</strong> · temporary password{" "}
+            <strong className="font-mono" translate="no">{credential.password}</strong>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" className="w-auto" onClick={() => void copyCredential()}>
+              {copied ? "Copied" : "Copy login"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="w-auto"
+              onClick={() => {
+                if (window.confirm("Have you securely saved or shared this temporary password?")) {
+                  setCredential(null);
+                  setCopied(false);
+                }
+              }}
+            >
+              I saved it
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
-      {loading ? (
+      {isSearching ? (
         <p className="py-8 text-center text-sm text-muted" role="status">
           Searching patients…
         </p>
       ) : !rows.length ? (
         <EmptyState>
-          {total === 0
+          {isDefaultView
             ? "No patients registered yet."
-            : "No patients match this filter."}
+            : "No patients match your search or filter."}
         </EmptyState>
       ) : (
         <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
           {rows.map((r) => {
             const wait = waitMinutes(r.queued_at, r.seen_at, r.created_at);
+            const createdAt = showAttribution ? fmtTs(r.created_at) : null;
+            const queuedAt = showAttribution ? fmtTs(r.queued_at) : null;
+            const seenAt = showAttribution ? fmtTs(r.seen_at) : null;
             return (
               <li
                 key={r.id}
@@ -353,9 +524,7 @@ export function AdminPatients({
                         <span className="font-semibold text-foreground/70">
                           Registered
                         </span>
-                        {fmtTs(r.created_at)
-                          ? ` · ${fmtTs(r.created_at)}`
-                          : ""}
+                        {createdAt ? ` · ${createdAt}` : ""}
                         {r.volunteer_name
                           ? ` · by ${r.volunteer_name}`
                           : r.created_by
@@ -367,7 +536,7 @@ export function AdminPatients({
                           <span className="font-semibold text-foreground/70">
                             Queued
                           </span>
-                          {` · ${fmtTs(r.queued_at)}`}
+                          {queuedAt ? ` · ${queuedAt}` : ""}
                         </p>
                       ) : null}
                       {r.queue_status === "seen" || r.seen_at ? (
@@ -375,7 +544,7 @@ export function AdminPatients({
                           <span className="font-semibold text-foreground/70">
                             Doctor seen
                           </span>
-                          {fmtTs(r.seen_at) ? ` · ${fmtTs(r.seen_at)}` : ""}
+                          {seenAt ? ` · ${seenAt}` : ""}
                           {r.doctor_name
                             ? ` · Dr ${r.doctor_name}`
                             : r.seen_by
@@ -399,14 +568,29 @@ export function AdminPatients({
                   </Link>
                   <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="w-auto"
+                    disabled={mutationBusy}
+                    loading={accountBusyId === r.id}
+                    onClick={() => void provisionLogin(r)}
+                  >
+                    {accountBusyId === r.id
+                      ? "Working…"
+                      : r.user_id
+                        ? "Reset login"
+                        : "Create login"}
+                  </Button>
+                  <Button
+                    type="button"
                     variant="danger"
                     size="sm"
                     className="w-auto"
-                    disabled={deletingId === r.id}
+                    disabled={mutationBusy}
                     loading={deletingId === r.id}
                     onClick={() => removePatient(r)}
                   >
-                    {deletingId === r.id ? "…" : "Remove"}
+                    {deletingId === r.id ? "Removing…" : "Remove registration"}
                   </Button>
                 </div>
               </li>
@@ -421,8 +605,11 @@ export function AdminPatients({
             size="sm"
             variant="secondary"
             className="w-auto"
-            disabled={page === 0 || loading}
-            onClick={() => setPage((value) => Math.max(0, value - 1))}
+            disabled={page === 0 || isSearching}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setError(null);
+            }}
           >
             Previous
           </Button>
@@ -434,8 +621,11 @@ export function AdminPatients({
             size="sm"
             variant="secondary"
             className="w-auto"
-            disabled={(page + 1) * 50 >= total || loading}
-            onClick={() => setPage((value) => value + 1)}
+            disabled={(page + 1) * 50 >= total || isSearching}
+            onClick={() => {
+              setPage((value) => value + 1);
+              setError(null);
+            }}
           >
             Next
           </Button>

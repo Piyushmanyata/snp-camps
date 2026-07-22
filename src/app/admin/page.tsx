@@ -2,7 +2,7 @@ import { Suspense, cache } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile } from "@/lib/auth";
+import { getSessionProfile, roleHome } from "@/lib/auth";
 import type { CampDayStats, Camp } from "@/lib/types";
 import {
   Card,
@@ -16,11 +16,21 @@ import { SignOutButton } from "@/components/sign-out";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { getCampsList, getDoctorsList } from "@/lib/metadata";
 
+const ChangePasswordCard = dynamic(
+  () =>
+    import("@/components/change-password").then((m) => ({
+      default: m.ChangePasswordCard,
+    })),
+  {
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading account settings…</p>,
+  },
+);
+
 const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
   },
 );
 
@@ -28,14 +38,24 @@ const LiveQueue = dynamic(
   () =>
     import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading queue…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading queue…</p>,
+  },
+);
+
+const QrScanner = dynamic(
+  () =>
+    import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
+  {
+    loading: () => (
+      <p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>
+    ),
   },
 );
 
 const AdminCamps = dynamic(
   () => import("@/components/admin-camps").then((m) => ({ default: m.AdminCamps })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading camps…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading camps…</p>,
   },
 );
 
@@ -45,7 +65,7 @@ const AdminCampDays = dynamic(
       default: m.AdminCampDays,
     })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading camp days…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading camp days…</p>,
   },
 );
 
@@ -156,7 +176,7 @@ async function AdminSeatBoardSection({
   );
 }
 
-async function AdminQueueSection({ campId }: { campId: string }) {
+async function AdminOperationsSection({ campId }: { campId: string }) {
   const supabase = await createClient();
   const [waitingRes, doctors] = await Promise.all([
     supabase
@@ -179,26 +199,37 @@ async function AdminQueueSection({ campId }: { campId: string }) {
   const waitingCount = waitingRes.count ?? waiting.length;
 
   return (
-    <Card padding="sm" id="queue">
-      <div className="px-1 pt-1">
-        <SectionTitle hint="FCFS · assign doctor · auto-refresh">
-          Queue
+    <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
+      <Card id="scan" className="!p-4 sm:!p-5">
+        <SectionTitle hint="Scan QR or type reg number · review and assign">
+          Scan / assign doctor
         </SectionTitle>
-      </div>
-      <LiveQueue
-        initial={waiting}
-        initialTotal={waitingCount}
-        campId={campId}
-        doctors={doctors}
-        mode="admin"
-      />
-    </Card>
+        <QrScanner mode="admin" doctors={doctors} />
+      </Card>
+
+      <Card padding="sm" id="queue">
+        <div className="px-1 pt-1">
+          <SectionTitle hint="FCFS · assign doctor · auto-refresh">
+            Queue
+          </SectionTitle>
+        </div>
+        <LiveQueue
+          initial={waiting}
+          initialTotal={waitingCount}
+          campId={campId}
+          doctors={doctors}
+          mode="admin"
+        />
+      </Card>
+    </div>
   );
 }
 
 export default async function AdminPage() {
   const { profile } = await getSessionProfile();
-  if (profile?.role !== "admin") redirect("/login");
+  if (profile?.role !== "admin") {
+    redirect(roleHome(profile?.role) || "/login");
+  }
 
   const camps = await getCampsList();
 
@@ -211,17 +242,30 @@ export default async function AdminPage() {
       width="xl"
       roleLabel="Admin"
       actions={<SignOutButton place="header" />}
-      dock={[
-        { href: "/register", label: "Register", primary: true },
-        { href: "/admin/patients", label: "Patients" },
-        { href: "/volunteer", label: "Volunteers" },
-        { href: "/doctor", label: "Doctors" },
-      ]}
+      dock={
+        active
+          ? [
+              { href: "#scan", label: "Scan", primary: true },
+              { href: "/register", label: "Register" },
+              { href: "#queue", label: "Queue" },
+              { href: "/admin/patients", label: "Patients" },
+            ]
+          : [
+              { href: "/register", label: "Register", primary: true },
+              { href: "/admin/patients", label: "Patients" },
+              { href: "/volunteer", label: "Volunteers" },
+              { href: "/doctor", label: "Doctors" },
+            ]
+      }
     >
       <div className="space-y-3 sm:space-y-4 lg:space-y-5">
         <Suspense
           fallback={
-            <div className="grid grid-cols-3 gap-2 sm:gap-3 opacity-60">
+            <div
+              className="grid grid-cols-3 gap-2 sm:gap-3 opacity-60"
+              role="status"
+              aria-label="Loading dashboard statistics"
+            >
               <Stat label="Registered" value="…" />
               <Stat label="In queue" value="…" tone="wait" />
               <Stat label="Doctor seen" value="…" tone="ok" />
@@ -230,6 +274,8 @@ export default async function AdminPage() {
         >
           <AdminHeaderStats campId={active?.id ?? null} />
         </Suspense>
+
+        <ChangePasswordCard />
 
         <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
@@ -283,7 +329,7 @@ export default async function AdminPage() {
         <Suspense
           fallback={
             <Card className="p-6 text-sm text-muted">
-              Loading seat board & camp days…
+              <p role="status">Loading seat board & camp days…</p>
             </Card>
           }
         >
@@ -293,10 +339,12 @@ export default async function AdminPage() {
         {active ? (
           <Suspense
             fallback={
-              <Card className="p-6 text-sm text-muted">Loading queue…</Card>
+              <Card className="p-6 text-sm text-muted">
+                <p role="status">Loading scanner & queue…</p>
+              </Card>
             }
           >
-            <AdminQueueSection campId={active.id} />
+            <AdminOperationsSection campId={active.id} />
           </Suspense>
         ) : null}
       </div>

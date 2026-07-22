@@ -59,7 +59,13 @@ export function ChangePasswordCard() {
           </Button>
         </div>
         {ok ? (
-          <p className="mt-2 text-xs font-medium text-brand">{ok}</p>
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-2 text-xs font-medium text-brand"
+          >
+            {ok}
+          </p>
         ) : null}
       </div>
     );
@@ -67,6 +73,7 @@ export function ChangePasswordCard() {
 
   return (
     <form
+      method="post"
       onSubmit={onSubmit}
       className="space-y-3 rounded-xl border border-border bg-card px-3.5 py-3"
     >
@@ -103,6 +110,8 @@ export function ChangePasswordCard() {
           onClick={() => {
             setOpen(false);
             setError(null);
+            setPassword("");
+            setConfirm("");
           }}
         >
           Cancel

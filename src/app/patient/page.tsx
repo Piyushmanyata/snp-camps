@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isStaff } from "@/lib/auth";
+import { getSessionProfile, roleHome } from "@/lib/auth";
 import {
   formatCampDay,
   queueLabel,
@@ -20,7 +20,7 @@ const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
   },
 );
 
@@ -29,11 +29,13 @@ async function PatientSeatBoardSection({
   patientId,
   currentDayId,
   queueStatus,
+  campActive,
 }: {
   campId: string | null;
   patientId?: string;
   currentDayId?: string | null;
   queueStatus?: string;
+  campActive?: boolean;
 }) {
   const supabase = await createClient();
   const { data: dayStats, error: dayStatsError } = campId
@@ -55,7 +57,9 @@ async function PatientSeatBoardSection({
       <Card>
         <p className="mb-2 text-sm font-semibold">Camp day</p>
         <p className="prose-help mb-3 text-xs text-muted">
-          {queueStatus === "waiting" || queueStatus === "seen"
+          {!campActive
+            ? "This camp is no longer active, so the booked day is locked."
+            : queueStatus === "waiting" || queueStatus === "seen"
             ? "Your day is fixed once you are in the queue."
             : "One day per registration. You can switch while seats remain, until you join the queue."}
         </p>
@@ -64,6 +68,7 @@ async function PatientSeatBoardSection({
           currentDayId={currentDayId ?? null}
           days={days}
           queueStatus={queueStatus}
+          campActive={campActive}
         />
       </Card>
       <SeatBoard days={days} campId={campId} title="Seat availability" compact />
@@ -74,12 +79,15 @@ async function PatientSeatBoardSection({
 export default async function PatientHomePage() {
   const { userId, profile } = await getSessionProfile();
   if (!userId) redirect("/patient/login");
+  if (profile?.role !== "patient") {
+    redirect(roleHome(profile?.role) || "/patient/login");
+  }
 
   const supabase = await createClient();
   const { data: patient, error: patientError } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, queue_status, gender, age, phone, address, aadhaar_last4, camp_id, camp_day_id, camp_days(day_date)",
+      "id, reg_no, full_name, queue_status, gender, age, phone, address, aadhaar_last4, camp_id, camp_day_id, camp_days(day_date), camps(is_active)",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -88,6 +96,14 @@ export default async function PatientHomePage() {
   if (patientError) throw new Error("Patient profile could not be loaded");
 
   const campId = (patient?.camp_id as string | undefined) || null;
+  const campRel = patient?.camps as
+    | { is_active: boolean }
+    | { is_active: boolean }[]
+    | null
+    | undefined;
+  const campActive = Array.isArray(campRel)
+    ? Boolean(campRel[0]?.is_active)
+    : Boolean(campRel?.is_active);
 
   const dayRel = patient?.camp_days as
     | { day_date: string }
@@ -118,7 +134,7 @@ export default async function PatientHomePage() {
       subtitle="Your camp registration"
       width="lg"
       roleLabel="Patient"
-      actions={<SignOutButton place="header" patientMode />}
+      actions={<SignOutButton place="header" />}
     >
       <div className="space-y-4">
         {!patient ? (
@@ -133,7 +149,7 @@ export default async function PatientHomePage() {
             <Suspense
               fallback={
                 <Card className="mt-4 p-4 text-xs text-muted">
-                  Loading seat board…
+                  <p role="status">Loading seat board…</p>
                 </Card>
               }
             >
@@ -156,7 +172,7 @@ export default async function PatientHomePage() {
                       {[
                         dayDate ? formatCampDay(dayDate) : null,
                         patient.gender,
-                        patient.age ? `${patient.age} yrs` : null,
+                        patient.age != null ? `${patient.age} yrs` : null,
                         patient.phone,
                       ]
                         .filter(Boolean)
@@ -178,22 +194,16 @@ export default async function PatientHomePage() {
                   </p>
                 ) : null}
               </Card>
-              {isStaff(profile?.role) ? (
-                <NavLink href={`/print/${patient.id}`} variant="soft">
-                  Open print form (join queue)
-                </NavLink>
-              ) : (
-                <QrCard
-                  value={patientScanUrl(patient.id, origin)}
-                  regNo={patient.reg_no}
-                  patientId={patient.id}
-                />
-              )}
+              <QrCard
+                value={patientScanUrl(patient.id, origin)}
+                regNo={patient.reg_no}
+                patientId={patient.id}
+              />
             </div>
             <Suspense
               fallback={
                 <Card className="p-6 text-sm text-muted">
-                  Loading seat availability…
+                  <p role="status">Loading seat availability…</p>
                 </Card>
               }
             >
@@ -202,6 +212,7 @@ export default async function PatientHomePage() {
                 patientId={patient.id}
                 currentDayId={patient.camp_day_id}
                 queueStatus={patient.queue_status}
+                campActive={campActive}
               />
             </Suspense>
           </div>

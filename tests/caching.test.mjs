@@ -3,49 +3,42 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 
-test("Static Query Caching Verification (R3): src/lib/metadata.ts", () => {
-  const filePath = path.join(process.cwd(), "src/lib/metadata.ts");
-  const content = fs.readFileSync(filePath, "utf-8");
-
-  // Check 1: React cache import
-  assert.ok(
-    content.includes('import { cache } from "react";'),
-    "metadata.ts must import React.cache"
+test("metadata caching is scoped to its consistency requirements", () => {
+  const content = fs.readFileSync(
+    path.join(process.cwd(), "src/lib/metadata.ts"),
+    "utf-8",
+  );
+  const campsBlock = content.slice(
+    content.indexOf("export const getCampsList"),
+    content.indexOf("async function fetchCachedDoctorsList"),
+  );
+  const doctorsBlock = content.slice(
+    content.indexOf("async function fetchCachedDoctorsList"),
   );
 
-  // Check 2: Next.js unstable_cache import
-  assert.ok(
-    content.includes('import { unstable_cache } from "next/cache.js";') ||
-      content.includes('import { unstable_cache } from "next/cache";'),
-    "metadata.ts must import Next.js unstable_cache"
+  assert.match(content, /import \{ unstable_cache \} from "next\/cache";/);
+  assert.doesNotMatch(content, /next\/cache\.js/);
+  assert.match(campsBlock, /export const getCampsList = cache\(/);
+  assert.match(campsBlock, /await createClient\(\)/);
+  assert.doesNotMatch(campsBlock, /unstable_cache|createServiceRoleClient/);
+  assert.match(doctorsBlock, /doctors-list-metadata-v1/);
+  assert.match(doctorsBlock, /revalidate: 60, tags: \["doctors-list"\]/);
+  assert.match(doctorsBlock, /export const getDoctorsList = cache\(/);
+  assert.match(doctorsBlock, /if \(error\) throw new Error/);
+});
+
+test("public active camp snapshot has a short tagged cache", () => {
+  const content = fs.readFileSync(
+    path.join(process.cwd(), "src/lib/camp.ts"),
+    "utf-8",
   );
 
-  // Check 3: getCampsList uses unstable_cache and cache
-  assert.ok(
-    content.includes('unstable_cache(\n  fetchCachedCampsList') ||
-      content.includes('unstable_cache(') && content.includes('camps-list-metadata-v1'),
-    "fetchCachedCampsList must be wrapped with unstable_cache"
+  assert.match(content, /import \{ unstable_cache \} from "next\/cache";/);
+  assert.match(content, /active-camp-snapshot-v1/);
+  assert.match(
+    content,
+    /revalidate: 5, tags: \["active-camp-snapshot"\]/,
   );
-  assert.ok(
-    content.includes("export const getCampsList = cache("),
-    "getCampsList must be exported and wrapped with React.cache()"
-  );
-
-  // Check 4: getDoctorsList uses unstable_cache and cache
-  assert.ok(
-    content.includes('doctors-list-metadata-v1') && content.includes('tags: ["doctors-list"]'),
-    "fetchCachedDoctorsList must be wrapped with unstable_cache and tag 'doctors-list'"
-  );
-  assert.ok(
-    content.includes("export const getDoctorsList = cache("),
-    "getDoctorsList must be exported and wrapped with React.cache()"
-  );
-
-  // Check 5: Revalidation parameters check
-  assert.ok(
-    content.includes("revalidate: 60"),
-    "unstable_cache must configure revalidate: 60"
-  );
-
-  console.log("[CACHING VERIFICATION] React.cache() and unstable_cache() verified in src/lib/metadata.ts!");
+  assert.match(content, /export const getActiveCampSnapshot = cache\(/);
+  assert.match(content, /if \(error\) throw new Error/);
 });

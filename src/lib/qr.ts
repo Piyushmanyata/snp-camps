@@ -3,15 +3,6 @@
  * Never used for patient login — patients sign in with reg no + password.
  */
 
-/** Absolute origin for QR links. Prefer NEXT_PUBLIC_SITE_URL. */
-export function resolveOrigin(origin?: string | null): string {
-  const base =
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SITE_URL) ||
-    origin ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-  return String(base || "").replace(/\/$/, "");
-}
-
 const UUID_RE =
   "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
@@ -60,15 +51,11 @@ export function isPatientUuid(id: string): boolean {
   return IS_PATIENT_UUID_RE.test(trimmed);
 }
 
-/** Direct print form URL (staff). Opening joins the queue. */
-export function patientPrintUrl(
-  patientId: string,
-  origin?: string | null,
-): string {
-  const id = patientId.trim().toLowerCase();
-  const clean = resolveOrigin(origin);
-  if (!clean) return id;
-  return `${clean}/print/${id}`;
+export function resolveOrigin(origin?: string | null): string {
+  if (!origin || typeof origin !== "string") return "";
+  const trimmed = origin.trim();
+  if (!trimmed) return "";
+  return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
 }
 
 /**
@@ -86,6 +73,16 @@ export function patientScanUrl(
   // Full /p/<uuid> URLs still parse if someone embeds them.
   void origin;
   return `snp:${id}`;
+}
+
+export function patientPrintUrl(
+  patientId: string,
+  origin?: string | null,
+): string {
+  const id = patientId.trim().toLowerCase();
+  if (!isPatientUuid(id)) return patientId.trim();
+  const base = resolveOrigin(origin);
+  return base ? `${base}/print/${id}` : `/print/${id}`;
 }
 
 /**
@@ -130,17 +127,4 @@ export function parsePatientIdFromQr(raw: string): string | null {
   }
 
   return null;
-}
-
-
-/** HTTP form of staff-scan link (deep link / share). Prefer patientScanUrl for printed QR. */
-export function patientScanUrlHttp(
-  patientId: string,
-  origin?: string | null,
-): string {
-  const id = patientId.trim().toLowerCase();
-  if (!isPatientUuid(id)) return patientId.trim();
-  const clean = resolveOrigin(origin);
-  if (!clean) return id;
-  return `${clean}/p/${id}`;
 }

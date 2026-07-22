@@ -4,7 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { CampDayStats } from "@/lib/types";
 
-export type ActiveCampSnapshot = {
+type ActiveCampSnapshot = {
   id: string;
   name: string;
   venue: string | null;
@@ -42,7 +42,7 @@ async function fetchCachedSnapshot() {
 const getCachedSnapshot = unstable_cache(
   fetchCachedSnapshot,
   ["active-camp-snapshot-v1"],
-  { revalidate: 5 },
+  { revalidate: 5, tags: ["active-camp-snapshot"] },
 );
 
 /** Public-only camp data; registration capacity is still enforced in Postgres. */
@@ -56,4 +56,3 @@ export const getActiveCampSnapshot = cache(async () => {
   if (error) throw new Error("Active camp data could not be loaded");
   return parseSnapshot(data);
 });
-

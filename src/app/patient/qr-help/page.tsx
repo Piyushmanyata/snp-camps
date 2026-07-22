@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { Card, InfoBox, Shell } from "@/components/ui";
+import { Card, InfoBox, Shell, WarningBox } from "@/components/ui";
 
 export default async function QrHelpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string }>;
+  searchParams: Promise<{ id?: string; invalid?: string }>;
 }) {
-  const { id } = await searchParams;
+  const { id, invalid } = await searchParams;
 
   return (
     <Shell
@@ -16,6 +16,12 @@ export default async function QrHelpPage({
       width="md"
     >
       <Card className="space-y-4 text-center">
+        {invalid === "1" ? (
+          <WarningBox>
+            This QR link is incomplete or invalid. Ask camp staff to scan the
+            original QR or look up your registration number.
+          </WarningBox>
+        ) : null}
         <p className="text-base font-semibold tracking-tight">
           This QR does not log you in.
         </p>

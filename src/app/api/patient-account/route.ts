@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isAdmin, readJsonBody } from "@/lib/auth";
@@ -15,12 +15,13 @@ import { checkRateLimit } from "@/lib/rate-limit";
 type Body = {
   patientId?: string;
   regNo?: number | string;
-  claimToken?: string;
   password?: string;
-  /** Return plaintext password once (self-reg first link only). */
+  /** Return plaintext password once to the authenticated patient or admin. */
   returnCredentials?: boolean;
   /** Send reg+password via SMS/WhatsApp stubs when phone on file. */
   notify?: boolean;
+  /** Admin-only: provision a login for a desk-created, unlinked registration. */
+  adminProvision?: boolean;
 };
 
 /**
@@ -36,10 +37,10 @@ export async function POST(req: Request) {
 
   const patientId = String(body.patientId || "").trim();
   const regNo = parseRegistrationNumber(body.regNo);
-  const claimToken = String(body.claimToken || "").trim();
   const passwordRaw = body.password != null ? String(body.password) : "";
   const returnCredentials = body.returnCredentials === true;
   const doNotify = body.notify === true;
+  const adminProvisionRequested = body.adminProvision === true;
   const rate = checkRateLimit(req, {
     scope: "patient-account",
     identifier: `${patientId}:${regNo ?? "invalid"}`,
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
   const { data: patient, error: pErr } = await admin
     .from("patients")
     .select(
-      "id, reg_no, full_name, user_id, phone, account_claim_token, account_claim_expires_at",
+      "id, reg_no, full_name, user_id, phone, account_provisioning_token",
     )
     .eq("id", patientId)
     .maybeSingle();
@@ -102,16 +103,19 @@ export async function POST(req: Request) {
   const configured = notifyConfigured();
   const phoneOnFile = patient.phone;
 
-  async function maybeNotify(password: string) {
-    if (!doNotify || !phoneOnFile) {
-      return { sms: "skipped" as const, whatsapp: "skipped" as const };
+  function queueNotification(password: string, loginRegNo = safeRegNo) {
+    if (!doNotify || !phoneOnFile || (!configured.sms && !configured.whatsapp)) {
+      return false;
     }
-    return notifyPatient({
-      phone: phoneOnFile,
-      message: registrationMessage(safeRegNo, password),
-      template: "registration",
-      meta: { reg_no: safeRegNo, patient_id: patientId },
+    after(async () => {
+      await notifyPatient({
+        phone: phoneOnFile,
+        message: registrationMessage(loginRegNo, password),
+        template: "registration",
+        meta: { reg_no: loginRegNo, patient_id: patientId },
+      });
     });
+    return true;
   }
 
   // Already linked — only the patient session or an admin may provision credentials.
@@ -137,7 +141,14 @@ export async function POST(req: Request) {
       });
     }
 
-    const { data: userAuth } = await admin.auth.admin.getUserById(patient.user_id);
+    const { data: userAuth, error: userAuthError } =
+      await admin.auth.admin.getUserById(patient.user_id);
+    if (userAuthError || !userAuth.user) {
+      return NextResponse.json(
+        { error: "Patient login could not be loaded." },
+        { status: 500 },
+      );
+    }
     const currentEmail = userAuth?.user?.email;
     const isOtpUser = Boolean(userAuth?.user?.phone);
 
@@ -167,7 +178,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Patient profile could not be updated." }, { status: 500 });
     }
 
-    const notify = await maybeNotify(password);
+    const notificationQueued = queueNotification(password, regNoToReturn);
     return NextResponse.json({
       ok: true,
       linked: true,
@@ -176,52 +187,55 @@ export async function POST(req: Request) {
       userId: patient.user_id,
       regNo: regNoToReturn,
       ...(returnCredentials ? { password } : {}),
-      notify,
+      notificationQueued,
       notifyConfigured: configured,
     });
   }
 
-  // First-time account for unlinked registration
-  if (
-    !/^[0-9a-f]{48}$/i.test(claimToken) ||
-    patient.account_claim_token !== claimToken ||
-    !patient.account_claim_expires_at ||
-    new Date(patient.account_claim_expires_at).getTime() <= Date.now()
-  ) {
+  // Unlinked rows are desk-created. Public claiming was removed because every
+  // reachable self-registration row is already linked to its verified session.
+  const { profile } = await getSessionProfile();
+  if (!adminProvisionRequested || !isAdmin(profile?.role)) {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
+  if (!returnCredentials) {
     return NextResponse.json(
-      { error: "Registration claim expired or invalid" },
-      { status: 403 },
+      { error: "One-time credentials must be returned for admin provisioning." },
+      { status: 400 },
     );
   }
 
-  // Atomically reserve the single-use claim before touching Supabase Auth.
-  // This prevents two concurrent requests from creating/linking/deleting each
-  // other's user across the database/Auth transaction boundary.
+  // Atomically reserve this row before crossing the database/Auth transaction
+  // boundary. Only one admin request may create or link its Auth user.
+  const originalProvisioningToken = patient.account_provisioning_token;
   const reservationToken = randomBytes(24).toString("hex");
-  const { data: reserved, error: reserveError } = await admin
+  let reservation = admin
     .from("patients")
-    .update({ account_claim_token: reservationToken })
+    .update({ account_provisioning_token: reservationToken })
     .eq("id", patientId)
-    .is("user_id", null)
-    .eq("account_claim_token", claimToken)
-    .gt("account_claim_expires_at", new Date().toISOString())
+    .is("user_id", null);
+  reservation = originalProvisioningToken
+    ? reservation.eq("account_provisioning_token", originalProvisioningToken)
+    : reservation.is("account_provisioning_token", null);
+
+  const { data: reserved, error: reserveError } = await reservation
     .select("id")
     .maybeSingle();
   if (reserveError || !reserved) {
     return NextResponse.json(
-      { error: "Registration claim expired or was already used" },
+      { error: "Patient login is already being provisioned. Refresh and retry." },
       { status: 409 },
     );
   }
 
-  async function restoreClaim() {
+  async function restoreProvisioningReservation() {
     if (!admin) return;
     await admin
       .from("patients")
-      .update({ account_claim_token: claimToken })
+      .update({ account_provisioning_token: originalProvisioningToken })
       .eq("id", patientId)
       .is("user_id", null)
-      .eq("account_claim_token", reservationToken);
+      .eq("account_provisioning_token", reservationToken);
   }
 
   const password = passwordRaw || generatePatientPassword();
@@ -250,7 +264,7 @@ export async function POST(req: Request) {
           email,
         });
         if (existingProfileError) {
-          await restoreClaim();
+          await restoreProvisioningReservation();
           return NextResponse.json(
             { error: "Patient login could not be provisioned. Try again." },
             { status: 500 },
@@ -260,19 +274,36 @@ export async function POST(req: Request) {
           .from("patients")
           .update({
             user_id: existingProfile.id,
-            account_claim_token: null,
-            account_claim_expires_at: null,
+            account_provisioning_token: null,
           })
           .eq("id", patientId)
           .is("user_id", null)
-          .eq("account_claim_token", reservationToken)
+          .eq("account_provisioning_token", reservationToken)
           .select("id")
           .maybeSingle();
         if (linkErr || !linked) {
-          await restoreClaim();
+          await restoreProvisioningReservation();
           return NextResponse.json(
-            { error: "Registration claim was already used" },
+            { error: "Patient login was already provisioned" },
             { status: 409 },
+          );
+        }
+        const { error: resetError } = await admin.auth.admin.updateUserById(
+          existingProfile.id,
+          { password, email_confirm: true },
+        );
+        if (resetError) {
+          await admin
+            .from("patients")
+            .update({
+              user_id: null,
+              account_provisioning_token: originalProvisioningToken,
+            })
+            .eq("id", patientId)
+            .eq("user_id", existingProfile.id);
+          return NextResponse.json(
+            { error: "Patient login could not be reset." },
+            { status: 500 },
           );
         }
         return NextResponse.json({
@@ -282,13 +313,13 @@ export async function POST(req: Request) {
           patientId,
           userId: existingProfile.id,
           regNo,
-          // No password — account already existed
+          password,
           notifyConfigured: configured,
           message:
-            "Account already existed. Sign in with your previous password, or use Sign out → show credentials after logging in.",
+            "Patient login linked and reset. Share the one-time password securely.",
         });
       }
-      await restoreClaim();
+      await restoreProvisioningReservation();
       return NextResponse.json(
         {
           error:
@@ -297,7 +328,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    await restoreClaim();
+    await restoreProvisioningReservation();
     return NextResponse.json(
       { error: "Patient login could not be created. Try again." },
       { status: 400 },
@@ -305,7 +336,7 @@ export async function POST(req: Request) {
   }
 
   if (!created.user) {
-    await restoreClaim();
+    await restoreProvisioningReservation();
     return NextResponse.json({ error: "No user created" }, { status: 400 });
   }
 
@@ -318,7 +349,7 @@ export async function POST(req: Request) {
   });
   if (profileError) {
     await admin.auth.admin.deleteUser(created.user.id);
-    await restoreClaim();
+    await restoreProvisioningReservation();
     return NextResponse.json(
       { error: "Patient login could not be provisioned. Try again." },
       { status: 500 },
@@ -329,25 +360,24 @@ export async function POST(req: Request) {
     .from("patients")
     .update({
       user_id: created.user.id,
-      account_claim_token: null,
-      account_claim_expires_at: null,
+      account_provisioning_token: null,
     })
     .eq("id", patientId)
     .is("user_id", null)
-    .eq("account_claim_token", reservationToken)
+    .eq("account_provisioning_token", reservationToken)
     .select("id")
     .maybeSingle();
 
   if (linkErr || !linked) {
     await admin.auth.admin.deleteUser(created.user.id);
-    await restoreClaim();
+    await restoreProvisioningReservation();
     return NextResponse.json(
-      { error: linkErr?.message || "Registration claim was already used" },
+      { error: linkErr?.message || "Patient login was already provisioned" },
       { status: linkErr ? 400 : 409 },
     );
   }
 
-  const notify = await maybeNotify(password);
+  const notificationQueued = queueNotification(password);
 
   return NextResponse.json({
     ok: true,
@@ -356,7 +386,7 @@ export async function POST(req: Request) {
     patientId,
     regNo,
     ...(returnCredentials ? { password } : {}),
-    notify,
+    notificationQueued,
     notifyConfigured: configured,
   });
 }

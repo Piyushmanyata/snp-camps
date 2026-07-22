@@ -1,9 +1,12 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSessionProfile, isStaff } from "@/lib/auth";
+import dynamic from "next/dynamic";
+import { getSessionProfile } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
-import { SeatBoard } from "@/components/seat-board";
 import { ActionCard, Card, StepList } from "@/components/ui";
+
+const SeatBoard = dynamic(() =>
+  import("@/components/seat-board").then((mod) => mod.SeatBoard),
+);
 
 export default async function HomePage() {
   const [session, snapshot] = await Promise.all([
@@ -111,18 +114,8 @@ export default async function HomePage() {
           </div>
 
           <p className="text-center text-xs text-muted lg:text-left">
-            First-time staff?{" "}
-            <Link
-              href="/staff/register"
-              className="font-semibold text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
-            >
-              Set up with invite code
-            </Link>
+            First-time staff? Ask an admin to create your account.
           </p>
-
-          {isStaff(profile?.role) ? (
-            <p className="text-sm text-muted">Signed in as staff.</p>
-          ) : null}
 
           <div className="pt-1 text-left">
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">

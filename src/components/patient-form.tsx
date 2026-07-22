@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -46,9 +46,19 @@ type Created = {
   password?: string;
   loggedIn?: boolean;
   notifyNote?: string;
+  loginRegNo?: number;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
+type FormField =
+  | "campDay"
+  | "aadhaar"
+  | "fullName"
+  | "phone"
+  | "age"
+  | "address"
+  | "email";
+type FormFieldErrors = Partial<Record<FormField, string>>;
 
 export function PatientForm({
   campId,
@@ -60,9 +70,12 @@ export function PatientForm({
   userRole = null,
 }: Props) {
   const router = useRouter();
+  const optionalDetailsId = `patient-optional-details-${useId().replace(/:/g, "")}`;
   const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
   const firstOpen = openDays[0]?.id || "";
   const lookupEnabled = isAadhaarLookupEnabledClient();
+  // hasVerifiedPatientSession: userId supplied means the patient already completed OTP
+  const hasVerifiedPatientSession = Boolean(userId && !isStaff);
 
   const [campDayId, setCampDayId] = useState(firstOpen);
   const [aadhaar, setAadhaar] = useState("");
@@ -73,14 +86,28 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
+
+  function failValidation(
+    field: FormField,
+    elementId: string,
+    message: string,
+  ) {
+    setFieldErrors({ [field]: message });
+    setError(message);
+    setLoading(false);
+    requestAnimationFrame(() => {
+      document.getElementById(elementId)?.focus();
+    });
+  }
   const [created, setCreated] = useState<Created | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Self-reg: phone OTP gate (primary). Aadhaar kept for later.
   const [otpStep, setOtpStep] = useState<"phone" | "otp" | "form">(
-    isStaff ? "form" : "phone",
+    isStaff || hasVerifiedPatientSession ? "form" : "phone",
   );
   const [otp, setOtp] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(isStaff);
@@ -226,104 +253,116 @@ export function PatientForm({
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     const phoneE164 = normalizePhoneE164(phone);
     if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
-      setLoading(false);
       return;
     }
-    const supabase = createClient();
-    const { error: err } = await supabase.auth.signInWithOtp({
-      phone: phoneE164,
-    });
-    if (err) {
-      setError(
-        err.message +
-          " — Phone OTP needs SMS configured in Supabase Auth. Ask the desk to register you if SMS is unavailable.",
-      );
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.auth.signInWithOtp({
+        phone: phoneE164,
+        options: { shouldCreateUser: true },
+      });
+      if (err) {
+        setError(
+          err.message +
+            " — Phone OTP needs SMS configured in Supabase Auth. Ask the desk to register you if SMS is unavailable.",
+        );
+        return;
+      }
+      setOtpStep("otp");
+    } catch {
+      setError("Could not send an OTP. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setOtpStep("otp");
-    setLoading(false);
   }
 
   async function verifyOtp(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     const phoneE164 = normalizePhoneE164(phone);
     if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
-      setLoading(false);
       return;
     }
+    setLoading(true);
     const supabase = createClient();
-    const { error: err } = await supabase.auth.verifyOtp({
-      phone: phoneE164,
-      token: otp,
-      type: "sms",
-    });
-    if (err) {
-      setError(err.message);
+    try {
+      const { error: err } = await supabase.auth.verifyOtp({
+        phone: phoneE164,
+        token: otp,
+        type: "sms",
+      });
+      if (err) {
+        setError(err.message);
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setError("OTP verified but no session was created. Try again.");
+        return;
+      }
+
+      // If desk already registered this phone, link and open profile
+      const { data: linkedId, error: linkErr } = await supabase.rpc(
+        "link_patient_phone",
+        { p_phone: phoneE164 },
+      );
+      if (linkErr) {
+        await supabase.auth.signOut();
+        setOtpStep("phone");
+        setError(
+          linkErr.message || "Could not link your phone to a registration. Try again.",
+        );
+        return;
+      }
+      if (linkedId) {
+        router.replace("/patient");
+        return;
+      }
+
+      setSessionUserId(user.id);
+      setPhoneVerified(true);
+      setOtpStep("form");
+      setPhone(phoneE164.replace(/\D/g, "").slice(-10));
+    } catch {
+      await supabase.auth.signOut().catch(() => undefined);
+      setError("Could not verify OTP. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError("OTP verified but no session was created. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ role: "patient", phone: phoneE164 })
-      .eq("id", user.id);
-    if (profileError) {
-      setError("Could not save your patient profile. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    // If desk already registered this phone, link and open profile
-    const { data: linkedId, error: linkErr } = await supabase.rpc(
-      "link_patient_phone",
-      { p_phone: phoneE164 },
-    );
-    if (!linkErr && linkedId) {
-      router.replace("/patient");
-      return;
-    }
-
-    setSessionUserId(user.id);
-    setPhoneVerified(true);
-    setOtpStep("form");
-    setPhone(phoneE164.replace(/\D/g, "").slice(-10));
-    setLoading(false);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setFieldErrors({});
     setQueueNote(null);
 
     if (!campDayId) {
-      setError("Select a camp day with open seats.");
-      setLoading(false);
+      failValidation(
+        "campDay",
+        `camp-day-${firstOpen}`,
+        "Select a camp day with open seats.",
+      );
       return;
     }
 
     const selected = days.find((d) => d.id === campDayId);
     if (selected?.is_full) {
-      setError("That day is full. Choose another day.");
-      setLoading(false);
+      failValidation(
+        "campDay",
+        `camp-day-${campDayId}`,
+        "That day is full. Choose another day.",
+      );
       return;
     }
 
@@ -332,27 +371,36 @@ export function PatientForm({
 
     if (aadhaar.trim()) {
       if (aDigits.length === 12 && !isValidAadhaarNumber(aDigits)) {
-        setError("Aadhaar number looks invalid. Correct it or clear the field.");
-        setLoading(false);
+        setShowAadhaarLater(true);
+        failValidation(
+          "aadhaar",
+          "patient-aadhaar",
+          "Aadhaar number looks invalid. Correct it or clear the field.",
+        );
         return;
       }
       if (aDigits.length > 0 && aDigits.length < 4) {
-        setError("Aadhaar: enter full 12 digits or last 4 only.");
-        setLoading(false);
+        setShowAadhaarLater(true);
+        failValidation(
+          "aadhaar",
+          "patient-aadhaar",
+          "Aadhaar: enter full 12 digits or last 4 only.",
+        );
         return;
       }
       if (last4.length !== 4 && aDigits.length > 0) {
-        setError(
+        setShowAadhaarLater(true);
+        failValidation(
+          "aadhaar",
+          "patient-aadhaar",
           "Aadhaar: enter full number or last 4 digits (only last 4 is stored).",
         );
-        setLoading(false);
         return;
       }
     }
 
     if (!fullName.trim()) {
-      setError("Full name is required.");
-      setLoading(false);
+      failValidation("fullName", "patient-full-name", "Full name is required.");
       return;
     }
 
@@ -363,19 +411,28 @@ export function PatientForm({
     if (isStaff) {
       // Desk: phone optional; if provided must be valid
       if (phoneRaw && !normalizedPhone) {
-        setError("Phone must be a valid 10-digit Indian mobile, or leave blank.");
-        setLoading(false);
+        failValidation(
+          "phone",
+          "patient-phone",
+          "Phone must be a valid 10-digit Indian mobile, or leave blank.",
+        );
         return;
       }
     } else {
       if (!normalizedPhone) {
-        setError("Phone is required (10-digit mobile).");
-        setLoading(false);
+        failValidation(
+          "phone",
+          "patient-phone",
+          "Phone is required (10-digit mobile).",
+        );
         return;
       }
       if (!phoneVerified) {
-        setError("Verify your phone with OTP first.");
-        setLoading(false);
+        failValidation(
+          "phone",
+          "patient-phone",
+          "Verify your phone with OTP first.",
+        );
         return;
       }
     }
@@ -387,14 +444,26 @@ export function PatientForm({
       ageValue < 0 ||
       ageValue >= 150
     ) {
-      setError("Age is required (whole number from 0 to 149).");
-      setLoading(false);
+      failValidation(
+        "age",
+        "patient-age",
+        "Age is required (whole number from 0 to 149).",
+      );
       return;
     }
 
     if (!address.trim()) {
-      setError("Address is required.");
-      setLoading(false);
+      failValidation("address", "patient-address", "Address is required.");
+      return;
+    }
+
+    if (email.trim() && !/^[^\s@]+@[^\s@]+$/.test(email.trim())) {
+      if (isStaff) setShowAadhaarLater(true);
+      failValidation(
+        "email",
+        "patient-email",
+        "Enter a valid email address or leave it blank.",
+      );
       return;
     }
 
@@ -403,21 +472,26 @@ export function PatientForm({
     let registrationError: string | null = null;
 
     if (isStaff) {
-      const result = await supabase.rpc("register_patient", {
-        p_camp_id: campId,
-        p_full_name: fullName.trim(),
-        p_gender: gender || null,
-        p_age: ageValue,
-        p_address: address.trim() || null,
-        p_phone: phone10 || null,
-        p_email: email.trim() || null,
-        p_aadhaar_last4: last4 || null,
-        p_user_id: userId,
-        p_created_by: createdBy,
-        p_camp_day_id: campDayId,
-      });
-      data = result.data;
-      registrationError = result.error?.message || null;
+      try {
+        const result = await supabase.rpc("register_patient", {
+          p_camp_id: campId,
+          p_full_name: fullName.trim(),
+          p_gender: gender || null,
+          p_age: ageValue,
+          p_address: address.trim() || null,
+          p_phone: phone10 || null,
+          p_email: email.trim() || null,
+          p_aadhaar_last4: last4 || null,
+          p_user_id: userId,
+          p_created_by: createdBy,
+          p_camp_day_id: campDayId,
+        });
+        data = result.data;
+        registrationError = result.error?.message || null;
+      } catch {
+        registrationError =
+          "Registration service is unavailable. Check your connection and try again.";
+      }
     } else {
       try {
         const response = await fetch("/api/patient-register", {
@@ -489,44 +563,55 @@ export function PatientForm({
       const acc = (await accRes.json().catch(() => ({}))) as {
         error?: string;
         password?: string;
+        regNo?: number;
         notify?: { sms?: string; whatsapp?: string };
         notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
         message?: string;
       };
+
+      const derived = {
+        loginRegNo: typeof acc.regNo === "number" ? acc.regNo : base.reg_no,
+        password: acc.password,
+        notify: acc.notify,
+        notifyConfigured: acc.notifyConfigured,
+        error: acc.error,
+      };
+      const { loginRegNo, password: accPassword, notify: accNotify, notifyConfigured: accNotifyConfigured, error: accError } = derived;
 
       if (!accRes.ok) {
         setCreated({
           ...base,
           loggedIn: true,
           notifyNote:
-            acc.error ||
+            accError ||
             "Registered and signed in. Backup password could not be issued; use phone OTP.",
         });
         setLoading(false);
         return;
       }
 
-      const smsOn = acc.notifyConfigured?.sms;
-      const waOn = acc.notifyConfigured?.whatsapp;
-      let notifyNote =
-        "You are signed in with phone OTP. Save reg no + password as backup when shown.";
-      if (acc.notify) {
+      const smsOn = accNotifyConfigured?.sms;
+      const waOn = accNotifyConfigured?.whatsapp;
+      let notifyNote = `Login reg number: #${loginRegNo}. Signed in with phone OTP. Save reg no + password as backup.`;
+      if (accNotify) {
         const parts: string[] = [];
-        if (acc.notify.sms === "sent") parts.push("SMS sent");
-        else if (smsOn && acc.notify.sms === "failed") parts.push("SMS failed");
+        if (accNotify.sms === "sent") parts.push("SMS sent");
+        else if (smsOn && accNotify.sms === "failed") parts.push("SMS failed");
         else if (!smsOn) parts.push("SMS not configured yet");
-        if (acc.notify.whatsapp === "sent") parts.push("WhatsApp sent");
-        else if (waOn && acc.notify.whatsapp === "failed")
+        if (accNotify.whatsapp === "sent") parts.push("WhatsApp sent");
+        else if (waOn && accNotify.whatsapp === "failed")
           parts.push("WhatsApp failed");
         else if (!waOn) parts.push("WhatsApp not configured yet");
-        if (parts.length) notifyNote = parts.join(" · ");
+        if (parts.length)
+          notifyNote = `Login reg number: #${loginRegNo}. ${parts.join(" · ")}.`;
       }
 
       setCreated({
         ...base,
-        password: acc.password,
+        password: accPassword,
         loggedIn: true,
         notifyNote,
+        loginRegNo,
       });
       router.refresh();
     } catch {
@@ -574,6 +659,7 @@ export function PatientForm({
   }
 
   if (created) {
+    const loginRegNo = created.loginRegNo ?? created.reg_no;
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
@@ -607,10 +693,10 @@ export function PatientForm({
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Reg number
+                  Login reg number
                 </p>
                 <p className="tabular text-2xl font-bold text-brand" translate="no">
-                  #{created.reg_no}
+                  #{loginRegNo}
                 </p>
               </div>
               <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-amber-200/80">
@@ -640,8 +726,10 @@ export function PatientForm({
                 type="button"
                 variant="secondary"
                 onClick={() => {
+                  const regNo = loginRegNo;
+                  const password = created.password ?? "";
                   void navigator.clipboard?.writeText(
-                    `Reg #${created.reg_no}\nPassword: ${created.password}`,
+                    `Reg #${regNo}\nPassword: ${password}`,
                   );
                   setToastMsg("Credentials copied to clipboard");
                 }}
@@ -822,7 +910,7 @@ export function PatientForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3.5 sm:space-y-4">
+    <form onSubmit={onSubmit} className="space-y-3.5 sm:space-y-4" noValidate>
       {!isStaff ? (
         <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-brand">
           Phone verified
@@ -843,6 +931,8 @@ export function PatientForm({
           className="day-chip-row"
           role="radiogroup"
           aria-label="Camp day"
+          aria-invalid={fieldErrors.campDay ? true : undefined}
+          aria-describedby={fieldErrors.campDay ? "patient-camp-day-error" : undefined}
         >
           {days.map((d) => {
             const active = campDayId === d.id;
@@ -898,11 +988,22 @@ export function PatientForm({
             </option>
           ))}
         </select>
+        {fieldErrors.campDay ? (
+          <p
+            id="patient-camp-day-error"
+            role="alert"
+            className="mt-1.5 text-[0.8125rem] font-medium text-danger"
+          >
+            {fieldErrors.campDay}
+          </p>
+        ) : null}
       </div>
 
       {/* Critical fields first on phone: name + phone */}
       <Input
+        id="patient-full-name"
         label="Full name *"
+        error={fieldErrors.fullName}
         required
         autoComplete="name"
         autoFocus={isStaff}
@@ -911,8 +1012,10 @@ export function PatientForm({
         onChange={(e) => setFullName(e.target.value)}
         placeholder="Patient full name"
       />
-            <Input
+      <Input
+        id="patient-phone"
         label={isStaff ? "Phone (optional)" : "Phone *"}
+        error={fieldErrors.phone}
         inputMode="tel"
         autoComplete="tel"
         required={!isStaff}
@@ -950,7 +1053,9 @@ export function PatientForm({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input
+          id="patient-age"
           label="Age *"
+          error={fieldErrors.age}
           type="number"
           min={0}
           max={149}
@@ -962,7 +1067,9 @@ export function PatientForm({
           placeholder="Years"
         />
         <Input
+          id="patient-address"
           label="Address *"
+          error={fieldErrors.address}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="Area / locality"
@@ -973,7 +1080,9 @@ export function PatientForm({
 
       {!isStaff ? (
         <Input
+          id="patient-email"
           label="Email"
+          error={fieldErrors.email}
           type="email"
           autoComplete="email"
           value={email}
@@ -986,6 +1095,8 @@ export function PatientForm({
       <div className="rounded-xl border border-dashed border-border bg-background/80 sm:rounded-2xl">
         <button
           type="button"
+          aria-expanded={showAadhaarLater}
+          aria-controls={optionalDetailsId}
           className="flex min-h-12 w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left sm:px-4 sm:py-3"
           onClick={() => setShowAadhaarLater((v) => !v)}
         >
@@ -1004,7 +1115,7 @@ export function PatientForm({
           </span>
         </button>
         {showAadhaarLater ? (
-          <div className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
+          <div id={optionalDetailsId} className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
             {isStaff ? (
               <Input
                 label="Email"
@@ -1016,11 +1127,13 @@ export function PatientForm({
               />
             ) : null}
             <Input
+              id="patient-aadhaar"
               label={
                 isStaff && lookupEnabled
                   ? "Aadhaar number"
                   : "Aadhaar (optional)"
               }
+              error={fieldErrors.aadhaar}
               inputMode="numeric"
               autoComplete="off"
               placeholder="XXXX XXXX 1234"

@@ -32,10 +32,16 @@ export function AdminCampDays({
   };
   const [dayDate, setDayDate] = useState("");
   const [seats, setSeats] = useState("100");
-  const [error, setError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [dayError, setDayError] = useState<{
+    dayId: string;
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
+  const mutationBusy = loading || savingId !== null || deletingId !== null;
 
   async function refresh() {
     // The server page is the single source of truth; avoid a duplicate RPC
@@ -45,70 +51,109 @@ export function AdminCampDays({
 
   async function addDay(e: React.FormEvent) {
     e.preventDefault();
+    if (mutationBusy) return;
     setLoading(true);
-    setError(null);
+    setAddError(null);
     if (!dayDate || !isValidSeatLimitInput(seats)) {
-      setError("Enter a date and seat limit ≥ 0");
+      setAddError("Enter a date and seat limit ≥ 0");
       setLoading(false);
       return;
     }
     const limit = Number(seats);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("upsert_camp_day", {
-      p_camp_id: campId,
-      p_day_date: dayDate,
-      p_seat_limit: limit,
-      p_day_id: null,
-    });
-    if (err) setError(err.message);
-    else {
-      setDayDate("");
-      setSeats("100");
-      await refresh();
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("upsert_camp_day", {
+        p_camp_id: campId,
+        p_day_date: dayDate,
+        p_seat_limit: limit,
+        p_day_id: null,
+      });
+      if (err) setAddError(err.message);
+      else {
+        setDayDate("");
+        setSeats("100");
+        await refresh();
+      }
+    } catch {
+      setAddError("Could not save this camp day. Check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
-  async function saveSeats(dayId: string, dayDateIso: string) {
-    if (savingId) return;
-    setError(null);
+  async function saveSeats(
+    dayId: string,
+    dayDateIso: string,
+    seatsTaken: number,
+  ) {
+    if (mutationBusy) return;
+    setDayError(null);
     const seatsVal = editing[dayId] ?? "";
     if (!isValidSeatLimitInput(seatsVal)) {
-      setError("Seat limit must be a whole number ≥ 0");
+      setDayError({
+        dayId,
+        message: "Seat limit must be a whole number ≥ 0",
+      });
       return;
     }
     const limit = Number(seatsVal);
-    setSavingId(dayId);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("upsert_camp_day", {
-      p_camp_id: campId,
-      p_day_date: dayDateIso,
-      p_seat_limit: limit,
-      p_day_id: dayId,
-    });
-    if (err) setError(err.message);
-    else {
-      setEditing((prev) => {
-        const next = { ...prev };
-        delete next[dayId];
-        return next;
+    if (limit < seatsTaken) {
+      setDayError({
+        dayId,
+        message: `Seat limit cannot be below ${seatsTaken} existing bookings`,
       });
-      await refresh();
+      return;
     }
-    setSavingId(null);
+    setSavingId(dayId);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("upsert_camp_day", {
+        p_camp_id: campId,
+        p_day_date: dayDateIso,
+        p_seat_limit: limit,
+        p_day_id: dayId,
+      });
+      if (err) setDayError({ dayId, message: err.message });
+      else {
+        setEditing((prev) => {
+          const next = { ...prev };
+          delete next[dayId];
+          return next;
+        });
+        await refresh();
+      }
+    } catch {
+      setDayError({
+        dayId,
+        message: "Could not update the seat limit. Check your connection and try again.",
+      });
+    } finally {
+      setSavingId(null);
+    }
   }
 
   async function removeDay(dayId: string) {
+    if (mutationBusy) return;
     if (!window.confirm("Delete this camp day? Only empty days can be deleted.")) {
       return;
     }
-    setError(null);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("delete_camp_day", {
-      p_day_id: dayId,
-    });
-    if (err) setError(err.message);
-    else await refresh();
+    setDeletingId(dayId);
+    setDayError(null);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("delete_camp_day", {
+        p_day_id: dayId,
+      });
+      if (err) setDayError({ dayId, message: err.message });
+      else await refresh();
+    } catch {
+      setDayError({
+        dayId,
+        message: "Could not delete this camp day. Check your connection and try again.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -138,6 +183,7 @@ export function AdminCampDays({
                   label="Seat limit"
                   type="number"
                   min={d.seats_taken}
+                  disabled={mutationBusy}
                   value={editing[d.id] ?? String(d.seat_limit)}
                   onChange={(e) =>
                     setEditing((prev) => ({ ...prev, [d.id]: e.target.value }))
@@ -149,9 +195,9 @@ export function AdminCampDays({
                 variant="secondary"
                 size="sm"
                 className="w-auto"
-                disabled={savingId === d.id}
+                disabled={mutationBusy}
                 loading={savingId === d.id}
-                onClick={() => saveSeats(d.id, d.day_date)}
+                onClick={() => saveSeats(d.id, d.day_date, d.seats_taken)}
               >
                 {savingId === d.id ? "Saving…" : "Save"}
               </Button>
@@ -160,11 +206,16 @@ export function AdminCampDays({
                 variant="ghost"
                 size="sm"
                 className="w-auto text-danger"
+                disabled={mutationBusy}
+                loading={deletingId === d.id}
                 onClick={() => removeDay(d.id)}
               >
-                Delete
+                {deletingId === d.id ? "Deleting…" : "Delete"}
               </Button>
             </div>
+            <ErrorBox
+              message={dayError?.dayId === d.id ? dayError.message : null}
+            />
           </li>
         ))}
         {!days.length ? (
@@ -180,6 +231,7 @@ export function AdminCampDays({
           label="Date"
           type="date"
           required
+          disabled={mutationBusy}
           value={dayDate}
           onChange={(e) => setDayDate(e.target.value)}
         />
@@ -188,11 +240,12 @@ export function AdminCampDays({
           type="number"
           min={0}
           required
+          disabled={mutationBusy}
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
         />
-        <ErrorBox message={error} />
-        <Button type="submit" variant="secondary" disabled={loading}>
+        <ErrorBox message={addError} />
+        <Button type="submit" variant="secondary" disabled={mutationBusy}>
           {loading ? "Saving…" : "Add / update day"}
         </Button>
       </form>

@@ -25,40 +25,52 @@ export default function StaffLoginPage() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const { data: signIn, error: err } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    });
-    if (err) {
-      const msg = err.message.toLowerCase();
-      setError(
-        msg.includes("invalid") || msg.includes("credentials")
-          ? "Wrong email or password. Check and try again."
-          : err.message,
-      );
+    try {
+      const { data: signIn, error: err } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (err) {
+        const msg = err.message.toLowerCase();
+        setError(
+          msg.includes("invalid") || msg.includes("credentials")
+            ? "Wrong email or password. Check and try again."
+            : err.message,
+        );
+        return;
+      }
+
+      const userId = signIn.user?.id;
+      if (!userId) {
+        setError("Sign-in succeeded but no user session. Try again.");
+        return;
+      }
+
+      // Must filter by user id — staff can read multiple profiles via RLS.
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role, disabled_at")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (profileError || !profile || profile.disabled_at) {
+        await supabase.auth.signOut();
+        setError("This staff account is unavailable. Ask an admin for help.");
+        return;
+      }
+
+      if (profile.role === "admin") router.replace("/admin");
+      else if (profile.role === "volunteer") router.replace("/volunteer");
+      else if (profile.role === "doctor") router.replace("/doctor");
+      else {
+        await supabase.auth.signOut();
+        setError("Use Patient login for a patient account.");
+      }
+    } catch {
+      setError("Could not sign in. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const userId = signIn.user?.id;
-    if (!userId) {
-      setError("Sign-in succeeded but no user session. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    // Must filter by user id — staff can read multiple profiles via RLS
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (profile?.role === "admin") router.replace("/admin");
-    else if (profile?.role === "volunteer") router.replace("/volunteer");
-    else if (profile?.role === "doctor") router.replace("/doctor");
-    else if (profile?.role === "patient") router.replace("/patient");
-    else router.replace("/patient");
   }
 
   return (
@@ -70,7 +82,7 @@ export default function StaffLoginPage() {
       roleLabel="Staff"
     >
       <Card>
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <form method="post" onSubmit={onSubmit} className="space-y-4">
           <Input
             label="Email"
             type="email"
@@ -101,14 +113,7 @@ export default function StaffLoginPage() {
 
       <div className="mt-4 space-y-3">
         <InfoBox>
-          Need an account? Ask admin to add you, or{" "}
-          <Link
-            href="/staff/register"
-            className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
-          >
-            use an invite code
-          </Link>
-          .
+          Need an account? Ask an admin to create one for you.
         </InfoBox>
         <p className="text-center text-sm text-muted">
           Patient?{" "}

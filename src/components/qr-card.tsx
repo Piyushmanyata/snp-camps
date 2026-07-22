@@ -1,6 +1,3 @@
-"use client";
-
-import { useMemo } from "react";
 import { QrCode } from "@/components/qr-code";
 import { patientScanUrl } from "@/lib/qr";
 
@@ -14,11 +11,12 @@ export function QrCard({
   regNo: number;
   patientId?: string;
 }) {
-  const payload = useMemo(() => {
-    if (value && value.length > 8) return value;
-    if (patientId) return patientScanUrl(patientId);
-    return value || "";
-  }, [value, patientId]);
+  const payload =
+    value && value.length > 8
+      ? value
+      : patientId
+        ? patientScanUrl(patientId)
+        : value || "";
 
   if (!payload) {
     return (

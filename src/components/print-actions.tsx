@@ -1,26 +1,84 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
+import type { QueueStatus } from "@/lib/types";
 
 export function PrintActions({
   className = "",
+  patientId,
   regNo,
   name,
-  autoPrint = false,
+  queueStatus: initialQueueStatus,
+  deskHref,
+  deskLabel,
 }: {
   className?: string;
+  patientId: string;
   regNo?: number;
   name?: string;
-  /** Open the browser print dialog once after load (desk no-phone path). */
-  autoPrint?: boolean;
+  queueStatus: QueueStatus;
+  deskHref: "/admin" | "/volunteer";
+  deskLabel: "Admin dashboard" | "Volunteer desk";
 }) {
-  useEffect(() => {
-    if (!autoPrint) return;
-    const t = window.setTimeout(() => window.print(), 400);
-    return () => window.clearTimeout(t);
-  }, [autoPrint]);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [queueStatus, setQueueStatus] = useState(initialQueueStatus);
+  const [message, setMessage] = useState<{
+    tone: "error" | "success";
+    text: string;
+  } | null>(null);
+
+  async function handlePrint() {
+    setIsPrinting(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch(`/api/patients/${patientId}/print`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        alreadyPrinted?: boolean;
+        queueStatus?: QueueStatus;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Could not add the patient to the queue.");
+      }
+
+      const nextStatus =
+        payload.queueStatus === "seen" || payload.queueStatus === "waiting"
+          ? payload.queueStatus
+          : queueStatus === "seen"
+            ? "seen"
+            : "waiting";
+      setQueueStatus(nextStatus);
+      setMessage({
+        tone: "success",
+        text:
+          nextStatus === "seen"
+            ? "Completed consultation confirmed. The print dialog is open."
+            : payload.alreadyPrinted
+              ? "Queue confirmed. The print dialog is open."
+              : "Patient added to the queue. The print dialog is open.",
+      });
+      window.print();
+    } catch (error) {
+      setMessage({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Could not prepare the print. Please try again.",
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  }
 
   return (
     <div
@@ -28,29 +86,57 @@ export function PrintActions({
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-          Ready to print · now in queue
+          {queueStatus === "seen"
+            ? "Ready to print · consultation complete"
+            : queueStatus === "waiting"
+              ? "Ready to reprint · already in queue"
+              : "Ready to print · queue not updated yet"}
         </p>
         <p className="truncate text-base font-semibold">
           {regNo != null ? `#${regNo}` : "Prescription"}
           {name ? ` · ${name}` : ""}
         </p>
         <p className="text-xs text-muted">
-          Print = join queue · later scan assigns doctor (seen) · one A4 page
+          {queueStatus === "seen"
+            ? "Reprinting keeps the completed consultation status unchanged."
+            : queueStatus === "waiting"
+              ? "The patient is already waiting for a doctor."
+              : "The queue updates only after you press the print button."}
         </p>
+        {message ? (
+          <p
+            id="print-action-status"
+            className={`mt-2 text-sm font-medium ${
+              message.tone === "error" ? "text-red-700" : "text-emerald-700"
+            }`}
+            role={message.tone === "error" ? "alert" : "status"}
+          >
+            {message.text}
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           className="w-auto min-w-[9rem]"
-          onClick={() => window.print()}
+          disabled={isPrinting}
+          aria-busy={isPrinting}
+          aria-describedby={message ? "print-action-status" : undefined}
+          onClick={handlePrint}
         >
-          Print (1 page)
+          {isPrinting
+            ? "Preparing print…"
+            : queueStatus === "seen"
+              ? "Print completed form"
+              : queueStatus === "waiting"
+                ? "Reprint (1 page)"
+                : "Join queue & print"}
         </Button>
         <Link
-          href="/volunteer"
+          href={deskHref}
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-brand-soft px-4 text-sm font-semibold text-brand transition hover:bg-white"
         >
-          Volunteer desk
+          {deskLabel}
         </Link>
         <Link
           href="/register"

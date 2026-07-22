@@ -161,11 +161,14 @@ test("SQL Syntax & Guard Verification: Parse and inspect supabase/*.sql files", 
       .replace(/\/\*[\s\S]*?\*\//g, "");
 
     const secDefinerMatches = cleanContent.match(/security\s+definer/gi) || [];
-    const searchPathMatches = cleanContent.match(/set\s+search_path\s*=\s*[^;\n]*public/gi) || [];
+    const searchPathMatches =
+      cleanContent.match(
+        /set\s+search_path\s*(?:=|to)\s*[^;\n]*['"]?public/gi
+      ) || [];
     if (secDefinerMatches.length > 0) {
       assert.ok(
         searchPathMatches.length >= secDefinerMatches.length,
-        `File ${file} has SECURITY DEFINER functions (${secDefinerMatches.length}) without explicit 'SET search_path = public' (${searchPathMatches.length})`
+        `File ${file} has SECURITY DEFINER functions (${secDefinerMatches.length}) without an explicit safe search_path (${searchPathMatches.length})`
       );
     }
 

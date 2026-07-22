@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isDoctor, isAdmin } from "@/lib/auth";
+import { getSessionProfile, isDoctor, isAdmin, roleHome } from "@/lib/auth";
 import {
   Card,
   CollapsibleSection,
@@ -20,7 +20,7 @@ const ChangePasswordCard = dynamic(
       default: m.ChangePasswordCard,
     })),
   {
-    loading: () => <p className="py-2 text-xs text-muted">Loading...</p>,
+    loading: () => <p role="status" className="py-2 text-xs text-muted">Loading…</p>,
   },
 );
 
@@ -29,7 +29,7 @@ const QrScanner = dynamic(
     import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
   {
     loading: () => (
-      <p className="py-6 text-center text-sm text-muted">Loading scanner…</p>
+      <p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>
     ),
   },
 );
@@ -41,7 +41,7 @@ const AdminDoctors = dynamic(
     })),
   {
     loading: () => (
-      <p className="py-4 text-xs text-muted">Loading doctors…</p>
+      <p role="status" className="py-4 text-xs text-muted">Loading doctors…</p>
     ),
   },
 );
@@ -64,7 +64,14 @@ async function DoctorStatsSection({
     p_camp_id: campId,
     p_since: startOfDay.toISOString(),
   });
-  if (error) throw new Error("Doctor counts could not be loaded");
+  if (error) {
+    return (
+      <div className="grid w-full grid-cols-2 gap-2">
+        <Stat label="You saw today" value={0} tone="ok" />
+        <Stat label="Total seen" value={0} />
+      </div>
+    );
+  }
 
   const counts = countsRes?.[0];
   const seenToday = Number(counts?.seen_today ?? 0);
@@ -73,30 +80,28 @@ async function DoctorStatsSection({
   return (
     <div className="grid w-full grid-cols-2 gap-2">
       <Stat label="You saw today" value={seenToday} tone="ok" />
-      <Stat label="Total doctor seen" value={myTotal} />
+      <Stat label="Total seen" value={myTotal} />
     </div>
   );
 }
 
 async function DoctorSeenSection({
   campId,
-  userId,
 }: {
   campId: string;
-  userId: string;
 }) {
   const supabase = await createClient();
-  const { data: mySeenRes, error } = await supabase
-    .from("patients")
-    .select("id, reg_no, full_name, seen_at, phone")
-    .eq("camp_id", campId)
-    .eq("seen_by", userId)
-    .eq("queue_status", "seen")
-    .order("seen_at", { ascending: false })
-    .limit(50);
+  const { data: mySeenRes, error } = await supabase.rpc(
+    "doctor_recent_patients",
+    { p_camp_id: campId, p_limit: 50 },
+  );
 
-  if (error) throw new Error("Doctor desk patients seen could not be loaded");
-  const mySeen = mySeenRes || [];
+  const mySeen = (error || !mySeenRes ? [] : mySeenRes) as {
+    id: string;
+    reg_no: number;
+    full_name: string;
+    seen_at: string | null;
+  }[];
 
   return (
     <div id="seen">
@@ -126,15 +131,8 @@ async function DoctorSeenSection({
                           month: "short",
                         })
                       : "—"}
-                    {p.phone ? ` · ${p.phone}` : ""}
                   </p>
                 </div>
-                <a
-                  href={`/print/${p.id}`}
-                  className="pressable shrink-0 rounded-lg border border-border bg-brand-soft px-3 py-2 text-xs font-semibold text-brand hover:bg-white"
-                >
-                  Form
-                </a>
               </li>
             ))}
           </ul>
@@ -153,7 +151,7 @@ export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
   if (!userId) redirect("/login");
   if (!isDoctor(profile?.role) && !isAdmin(profile?.role)) {
-    redirect("/login");
+    redirect(roleHome(profile?.role) || "/login");
   }
 
   const supabase = await createClient();
@@ -162,18 +160,25 @@ export default async function DoctorPage() {
   if (admin) {
     const { data: doctorsFull, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, phone, role, created_at")
+      .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "doctor")
       .order("created_at", { ascending: false });
     if (error) throw new Error("Doctor desk data could not be loaded");
+    const activeDoctors = doctorsFull?.filter((doctor) => !doctor.disabled_at).length ?? 0;
+    const disabledDoctors = (doctorsFull?.length ?? 0) - activeDoctors;
 
     return (
       <Shell
         title="Doctor desk"
-        subtitle="Manage doctors · KPIs · add / remove"
+        subtitle="Manage doctors · KPIs · account access"
         width="xl"
         roleLabel="Admin"
         actions={<SignOutButton place="header" />}
+        dock={[
+          { href: "/admin", label: "Admin" },
+          { href: "/register", label: "Register", primary: true },
+          { href: "/admin/patients", label: "Patients" },
+        ]}
       >
         <div className="space-y-4">
           <Card className="bg-gradient-to-br from-brand-soft to-card">
@@ -181,12 +186,14 @@ export default async function DoctorPage() {
               Staff management
             </p>
             <p className="text-xl font-bold tracking-tight">
-              {doctorsFull?.length ?? 0} doctor
-              {(doctorsFull?.length ?? 0) === 1 ? "" : "s"}
+              {activeDoctors} active doctor{activeDoctors === 1 ? "" : "s"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Tap a doctor for their KPIs and patients seen. Scanner and queue
-              live on the main admin dashboard.
+              {disabledDoctors
+                ? `${disabledDoctors} disabled · `
+                : ""}
+              Tap a doctor for their KPIs and patients seen. Scanner and queue live
+              on the main admin dashboard.
             </p>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
@@ -226,7 +233,6 @@ export default async function DoctorPage() {
       dock={[
         { href: "#scan", label: "Scan", primary: true },
         { href: "#seen", label: "Seen" },
-        { href: "/register", label: "Register" },
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
@@ -251,7 +257,7 @@ export default async function DoctorPage() {
                 fallback={
                   <div className="grid w-full grid-cols-2 gap-2 opacity-60">
                     <Stat label="You saw today" value="…" tone="ok" />
-                    <Stat label="Total doctor seen" value="…" />
+                    <Stat label="Total seen" value="…" />
                   </div>
                 }
               >
@@ -260,7 +266,7 @@ export default async function DoctorPage() {
             ) : (
               <div className="grid w-full grid-cols-2 gap-2">
                 <Stat label="You saw today" value={0} tone="ok" />
-                <Stat label="Total doctor seen" value={0} />
+                <Stat label="Total seen" value={0} />
               </div>
             )}
           </div>
@@ -271,14 +277,11 @@ export default async function DoctorPage() {
             <a href="#seen" className="jump-chip">
               Patients seen
             </a>
-            <a href="/register" className="jump-chip">
-              Register
-            </a>
           </div>
         </Card>
 
         <Card id="scan" className="!p-4 sm:!p-5">
-          <SectionTitle hint="Scan QR or type reg number · assigns to you">
+          <SectionTitle hint="Scan QR or type reg number · review and confirm">
             Scan patient
           </SectionTitle>
           <QrScanner
@@ -296,11 +299,11 @@ export default async function DoctorPage() {
           <Suspense
             fallback={
               <Card className="p-6 text-sm text-muted">
-                Loading patients seen…
+                <p role="status">Loading patients seen…</p>
               </Card>
             }
           >
-            <DoctorSeenSection campId={camp.id} userId={userId} />
+            <DoctorSeenSection campId={camp.id} />
           </Suspense>
         ) : null}
       </div>

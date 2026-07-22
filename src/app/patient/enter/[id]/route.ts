@@ -1,14 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 
 /**
  * Staff-scan QR entry — never logs patients in.
  *
- * Staff (volunteer / doctor / admin):
- * - registered → print (joins queue)
- * - waiting / seen → desk with ?scan= for assign UI
+ * Staff (volunteer / doctor / admin) are routed to their own desk. The scanner
+ * performs a read-only lookup; patient state changes only after confirmation.
  *
  * Anyone else → “show this at the desk” help page.
  */
@@ -21,7 +19,7 @@ export async function GET(
   const origin = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
 
   if (!isPatientUuid(id)) {
-    return NextResponse.redirect(new URL("/?notice=invalid_qr", origin));
+    return NextResponse.redirect(new URL("/patient/qr-help?invalid=1", origin));
   }
 
   const { profile } = await getSessionProfile();
@@ -31,31 +29,12 @@ export async function GET(
     );
   }
 
-  const deskBase = profile?.role === "doctor" ? "/doctor" : "/volunteer";
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("lookup_patient_scan", {
-    p_patient_id: id,
-    p_reg_no: null,
-  });
-
-  if (error) {
-    return NextResponse.redirect(
-      new URL(`${deskBase}?error=scan_lookup`, origin),
-    );
-  }
-
-  const row = Array.isArray(data) ? data[0] : data;
-  const status = row?.queue_status ?? null;
-
-  if (!status) {
-    return NextResponse.redirect(
-      new URL(`${deskBase}?error=not_found`, origin),
-    );
-  }
-
-  if (status === "registered" && profile?.role !== "doctor") {
-    return NextResponse.redirect(new URL(`/print/${id}`, origin));
-  }
+  const deskBase =
+    profile?.role === "admin"
+      ? "/admin"
+      : profile?.role === "doctor"
+        ? "/doctor"
+        : "/volunteer";
 
   return NextResponse.redirect(new URL(`${deskBase}?scan=${id}`, origin));
 }

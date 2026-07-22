@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/components/qr-scanner";
+import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 
 export type LiveQueuePatient = {
   id: string;
@@ -41,6 +42,9 @@ export function LiveQueue({
 }) {
   const router = useRouter();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [refreshSource, setRefreshSource] = useState<LiveQueuePatient[] | null>(
+    null,
+  );
   const [queueState, setQueueState] = useState<{
     source: LiveQueuePatient[];
     rows: LiveQueuePatient[];
@@ -50,13 +54,17 @@ export function LiveQueue({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
-  const mutationGeneration = useRef(0);
   const currentQueue =
     queueState?.source === initial
       ? queueState
       : { source: initial, rows: initial, total: initialTotal ?? initial.length };
   const rows = currentQueue.rows;
   const total = currentQueue.total;
+  const refreshMessage = refreshSource
+    ? refreshSource === initial
+      ? "Refreshing queue…"
+      : "Queue updated"
+    : null;
 
   function updateQueue(
     update: (current: typeof currentQueue) => typeof currentQueue,
@@ -82,74 +90,95 @@ export function LiveQueue({
   }, [router]);
 
   function manualRefresh() {
+    setToastMsg(null);
+    setRefreshSource(initial);
     refreshQueue();
-    setToastMsg("Queue updated");
   }
 
   useFixedPoll(refreshQueue, pollMs, Boolean(campId));
 
   async function assign(patientId: string, chosen: string | null) {
-    mutationGeneration.current += 1;
+    if (busyId) return;
     setError(null);
     setBusyId(patientId);
-    const supabase = createClient();
-    const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
-      p_patient_id: patientId,
-      p_reg_no: null,
-      p_doctor_id: chosen,
-    });
-    setBusyId(null);
-
-    if (err) {
-      setError(err.message);
-      return;
-    }
-
-    const row = (Array.isArray(data) ? data[0] : data) as {
-      already_seen?: boolean;
-      error_code?: string | null;
-      doctor_name?: string | null;
-    } | null;
-
-    if (row?.error_code === "doctor_required") {
-      setError("Select a doctor.");
-      return;
-    }
     try {
-      if (typeof window !== "undefined" && "vibrate" in navigator) {
-        navigator.vibrate([100, 30, 100]);
+      const supabase = createClient();
+      const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
+        p_patient_id: patientId,
+        p_reg_no: null,
+        p_doctor_id: chosen,
+      });
+
+      if (err) {
+        setError(err.message);
+        return;
       }
-    } catch {
-      /* ignore */
-    }
-    if (row?.error_code === "already_seen" || row?.already_seen) {
-      setError(
-        row.doctor_name
-          ? `Already seen by ${row.doctor_name}`
-          : "Already seen",
-      );
+
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        already_seen: boolean;
+        doctor_id: string | null;
+        doctor_name?: string | null;
+        error_code: string | null;
+        queue_status: string;
+      } | null;
+
+      if (row?.error_code === "doctor_required") {
+        setError("Select a doctor.");
+        return;
+      }
+      if (row?.error_code === "already_seen" || row?.already_seen) {
+        setError(
+          row.doctor_name
+            ? `Already seen by ${row.doctor_name}`
+            : "Already seen",
+        );
+        updateQueue((current) => ({
+          ...current,
+          rows: current.rows.filter((r) => r.id !== patientId),
+          total: Math.max(0, current.total - 1),
+        }));
+        startTransition(() => {
+          router.refresh();
+        });
+        return;
+      }
+
+      if (!row || !isSuccessfulAssignment(row)) {
+        setError(
+          row?.error_code
+            ? "Could not assign this patient. Refresh and try again."
+            : "Doctor assignment did not complete. No success was recorded.",
+        );
+        return;
+      }
+
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate([100, 30, 100]);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      setRefreshSource(null);
+      setToastMsg("Patient assignment complete");
       updateQueue((current) => ({
         ...current,
         rows: current.rows.filter((r) => r.id !== patientId),
         total: Math.max(0, current.total - 1),
       }));
+      setPickId(null);
+      setDoctorId("");
       startTransition(() => {
         router.refresh();
       });
-      return;
+    } catch {
+      setError(
+        "Could not assign this patient. Check the connection and try again.",
+      );
+    } finally {
+      setBusyId(null);
     }
-
-    setToastMsg("Patient assignment complete");
-    updateQueue((current) => ({
-      ...current,
-      rows: current.rows.filter((r) => r.id !== patientId),
-      total: Math.max(0, current.total - 1),
-    }));
-    setPickId(null);
-    setDoctorId("");
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
   return (
@@ -157,6 +186,12 @@ export function LiveQueue({
       <ErrorBox message={error} />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+      ) : null}
+      {refreshMessage ? (
+        <Toast
+          message={refreshMessage}
+          onClose={() => setRefreshSource(null)}
+        />
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
         <span aria-live="polite">
@@ -174,7 +209,7 @@ export function LiveQueue({
           className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >
           {isPending ? <Spinner className="h-3 w-3" /> : null}
-          Refresh
+          {isPending ? "Refreshing…" : "Refresh"}
         </button>
       </div>
       <ul
@@ -212,7 +247,7 @@ export function LiveQueue({
                 {mode === "doctor" ? (
                   <button
                     type="button"
-                    disabled={busyId === p.id}
+                    disabled={busyId !== null}
                     onClick={() => void assign(p.id, null)}
                     className="pressable rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
                   >
@@ -221,6 +256,7 @@ export function LiveQueue({
                 ) : (
                   <button
                     type="button"
+                    disabled={busyId !== null}
                     aria-expanded={pickId === p.id}
                     onClick={() => {
                       setPickId(pickId === p.id ? null : p.id);

@@ -1,16 +1,25 @@
 import type { NextConfig } from "next";
 import path from "path";
 
-const SUPABASE_HOST = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host
-  : "*.supabase.co";
+const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL)
+  : null;
+const supabaseHttpOrigin =
+  configuredSupabaseUrl?.origin ?? "https://*.supabase.co";
+const supabaseSocketOrigin = configuredSupabaseUrl
+  ? `${configuredSupabaseUrl.protocol === "http:" ? "ws:" : "wss:"}//${configuredSupabaseUrl.host}`
+  : "wss://*.supabase.co";
+const scriptSource =
+  process.env.NODE_ENV === "development"
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'";
 
 const CSP = [
   "default-src 'self'",
-  `connect-src 'self' https://${SUPABASE_HOST} wss://${SUPABASE_HOST}`,
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  `connect-src 'self' ${supabaseHttpOrigin} ${supabaseSocketOrigin}`,
+  scriptSource,
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",

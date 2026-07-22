@@ -19,6 +19,8 @@ import {
 import { generatePatientPassword } from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
+import { sensitiveProviderUrl } from "../src/lib/provider-url.ts";
+import { validateSupabaseProjectUrl } from "../scripts/bootstrap-admin.mjs";
 
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
@@ -95,6 +97,35 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
   for (const password of generated) {
     assert.match(password, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
   }
+  assert.match(generatePatientPassword(), /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
+});
+
+test("sensitive provider URLs require a secure transport", () => {
+  assert.equal(
+    sensitiveProviderUrl("https://identity.example/verify"),
+    "https://identity.example/verify",
+  );
+  assert.equal(sensitiveProviderUrl("http://identity.example/verify"), null);
+  assert.equal(sensitiveProviderUrl("file:///etc/passwd"), null);
+  assert.equal(sensitiveProviderUrl("not a URL"), null);
+});
+
+test("admin bootstrap sends its service key only to the exact Supabase project", () => {
+  const ref = "abcdefghijklmnopqrst";
+  const exact = `https://${ref}.supabase.co`;
+  assert.equal(validateSupabaseProjectUrl(exact, ref), `${exact}/`);
+
+  for (const hostile of [
+    `https://${ref}.evil.example`,
+    `https://${ref}.supabase.co.evil.example`,
+    `https://user:password@${ref}.supabase.co`,
+    `https://${ref}.supabase.co:444`,
+    `https://${ref}.supabase.co/rest/v1`,
+    `https://${ref}.supabase.co?redirect=evil`,
+    `http://${ref}.supabase.co`,
+  ]) {
+    assert.throws(() => validateSupabaseProjectUrl(hostile, ref));
+  }
 });
 
 test("rate limits enforce both client and supplied subject", () => {
@@ -157,4 +188,3 @@ test("R2: SQL migration 20260721000000_volunteer_checked_in_kpi.sql correctly ag
     "staff_person_kpis must filter on created_by OR checked_in_by for volunteers"
   );
 });
-

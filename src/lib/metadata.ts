@@ -1,32 +1,12 @@
 import { cache } from "react";
-import { unstable_cache } from "next/cache.js";
+import { unstable_cache } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Camp } from "@/lib/types";
 import type { DoctorOption } from "@/components/qr-scanner";
 
-async function fetchCachedCampsList(): Promise<Camp[]> {
-  const supabase = createServiceRoleClient();
-  if (!supabase) throw new Error("Camp service is not configured");
-  const { data, error } = await supabase
-    .from("camps")
-    .select("id, name, venue, camp_date, is_active, created_at")
-    .order("created_at", { ascending: false });
-  if (error) throw new Error("Camps data could not be loaded");
-  return (data || []) as Camp[];
-}
-
-const getUnstableCachedCampsList = unstable_cache(
-  fetchCachedCampsList,
-  ["camps-list-metadata-v1"],
-  { revalidate: 60, tags: ["camps-list"] },
-);
-
-/** Cached camp list query using React.cache() and Next.js unstable_cache() */
+/** Request-scoped admin query so a router refresh always sees camp mutations. */
 export const getCampsList = cache(async (): Promise<Camp[]> => {
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return getUnstableCachedCampsList();
-  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("camps")
@@ -43,6 +23,7 @@ async function fetchCachedDoctorsList(): Promise<DoctorOption[]> {
     .from("profiles")
     .select("id, full_name")
     .eq("role", "doctor")
+    .is("disabled_at", null)
     .order("full_name", { ascending: true });
   if (error) throw new Error("Doctor list could not be loaded");
   return (data || []) as DoctorOption[];
@@ -54,7 +35,7 @@ const getUnstableCachedDoctorsList = unstable_cache(
   { revalidate: 60, tags: ["doctors-list"] },
 );
 
-/** Cached doctor list query using React.cache() and Next.js unstable_cache() */
+/** Shared doctor metadata, invalidated by the admin doctor API. */
 export const getDoctorsList = cache(async (): Promise<DoctorOption[]> => {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return getUnstableCachedDoctorsList();
@@ -64,6 +45,7 @@ export const getDoctorsList = cache(async (): Promise<DoctorOption[]> => {
     .from("profiles")
     .select("id, full_name")
     .eq("role", "doctor")
+    .is("disabled_at", null)
     .order("full_name", { ascending: true });
   if (error) throw new Error("Doctor list could not be loaded");
   return (data || []) as DoctorOption[];

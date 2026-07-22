@@ -2,8 +2,8 @@ import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isStaff } from "@/lib/auth";
-import { patientScanUrl } from "@/lib/qr";
+import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
+import { isPatientUuid, patientScanUrl } from "@/lib/qr";
 
 const PrintActions = dynamic(
   () =>
@@ -19,29 +19,24 @@ const PrintSheet = dynamic(
     })),
   {
     loading: () => (
-      <p className="py-6 text-center text-sm text-muted">Loading print sheet…</p>
+      <p role="status" className="py-6 text-center text-sm text-muted">Loading print sheet…</p>
     ),
   },
 );
 
 export default async function PrintPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ auto?: string }>;
 }) {
   const { id } = await params;
-  const { auto } = await searchParams;
   const { profile } = await getSessionProfile();
-  if (!isStaff(profile?.role)) redirect("/login");
+  if (!profile) redirect("/login");
+  if (!canRegisterPatients(profile.role)) {
+    redirect(profile.role === "doctor" ? "/doctor" : "/patient");
+  }
 
-  const uuidOk =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      id,
-    );
-
-  if (!uuidOk) {
+  if (!isPatientUuid(id)) {
     return (
       <main id="main" className="mx-auto max-w-lg px-4 py-10">
         <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
@@ -59,7 +54,7 @@ export default async function PrintPage({
   const { data: patient, error: patientErr } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, gender, age, address, phone, email, queue_status, camps(name, venue, camp_date)",
+      "id, reg_no, full_name, gender, age, address, phone, email, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -79,25 +74,6 @@ export default async function PrintPage({
     );
   }
 
-  // Print path: join FCFS queue only — never mark seen. Idempotent if already waiting.
-  if (patient.queue_status === "registered" || patient.queue_status === "waiting") {
-    const { error: queueErr } = await supabase.rpc("mark_patient_printed", {
-      p_id: id,
-    });
-    if (queueErr) {
-      return (
-        <main id="main" className="mx-auto max-w-lg px-4 py-10">
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
-            <p className="text-lg font-semibold text-red-950">Could not join queue</p>
-            <p className="mt-1 text-sm text-red-900">
-              {queueErr.message || "Try again or ask an admin."}
-            </p>
-          </div>
-        </main>
-      );
-    }
-  }
-
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
   const proto = h.get("x-forwarded-proto") || "http";
@@ -107,6 +83,13 @@ export default async function PrintPage({
     | { name: string; venue: string | null; camp_date: string | null }[]
     | null;
   const camp = Array.isArray(campRel) ? campRel[0] ?? null : campRel;
+  const dayRel = patient.camp_days as
+    | { day_date: string }
+    | { day_date: string }[]
+    | null;
+  const campDayDate = Array.isArray(dayRel)
+    ? dayRel[0]?.day_date ?? null
+    : dayRel?.day_date ?? null;
 
   const today = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",
@@ -116,9 +99,14 @@ export default async function PrintPage({
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
       <PrintActions
         className="no-print mb-4"
+        patientId={patient.id}
         regNo={patient.reg_no}
         name={patient.full_name}
-        autoPrint={auto === "1" || auto === "true"}
+        queueStatus={patient.queue_status}
+        deskHref={profile.role === "admin" ? "/admin" : "/volunteer"}
+        deskLabel={
+          profile.role === "admin" ? "Admin dashboard" : "Volunteer desk"
+        }
       />
 
       <PrintSheet
@@ -133,6 +121,7 @@ export default async function PrintPage({
           email: patient.email,
         }}
         camp={camp}
+        campDayDate={campDayDate}
         origin={origin}
         today={today}
         qrValue={patientScanUrl(patient.id, origin)}
@@ -140,8 +129,17 @@ export default async function PrintPage({
 
       <p className="no-print mt-3 text-center text-xs text-muted">
         Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>{" "}
-        (not login). Patient is <strong>in queue</strong> until a volunteer or
-        doctor scans and marks seen.
+        (not login).{" "}
+        {patient.queue_status === "seen" ? (
+          <>The consultation is complete; reprinting does not change its status.</>
+        ) : patient.queue_status === "waiting" ? (
+          <>The patient is in queue and waiting for a doctor.</>
+        ) : (
+          <>
+            Use <strong>Join queue &amp; print</strong> before the patient proceeds
+            to a doctor.
+          </>
+        )}
       </p>
     </main>
   );

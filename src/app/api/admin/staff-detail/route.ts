@@ -4,10 +4,16 @@ import { getSessionProfile, isAdmin, isStaff } from "@/lib/auth";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const KOLKATA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 /**
  * Doctor/volunteer KPIs + recent patients for staff desks and admin.
- * Doctor → patients seen_by them. Volunteer → patients they registered.
+ * Doctor → patients seen by them. Volunteer → patients they registered or checked in.
  */
 export async function GET(req: Request) {
   const { userId, profile } = await getSessionProfile();
@@ -34,56 +40,37 @@ export async function GET(req: Request) {
 
   const supabase = await createClient();
 
-  const { data: activeCamp } = await supabase
-    .from("camps")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const [
+    { data: activeCamp, error: campError },
+    { data: person, error: pErr },
+  ] =
+    await Promise.all([
+      supabase
+        .from("camps")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at")
+        .eq("id", id)
+        .eq("role", role)
+        .maybeSingle(),
+    ]);
 
-  const { data: person, error: pErr } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, phone, role, created_at")
-    .eq("id", id)
-    .eq("role", role)
-    .maybeSingle();
-
-  if (pErr) {
-    return NextResponse.json({ error: pErr.message }, { status: 400 });
+  if (campError || pErr) {
+    return NextResponse.json(
+      { error: "Staff details could not be loaded" },
+      { status: 500 },
+    );
   }
   if (!person) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const kolkataDate = KOLKATA_DATE_FORMATTER.format(new Date());
   const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
   const campId = activeCamp?.id ?? null;
-
-  const { data: kpiRows, error: kpiErr } = await supabase.rpc(
-    "staff_person_kpis",
-    {
-      p_user_id: id,
-      p_role: role,
-      p_camp_id: campId,
-      p_since: startOfDay,
-    },
-  );
-
-  if (kpiErr) {
-    return NextResponse.json({ error: kpiErr.message }, { status: 400 });
-  }
-
-  const kpiRow = (Array.isArray(kpiRows) ? kpiRows[0] : kpiRows) as {
-    total?: number;
-    today?: number;
-    waiting?: number;
-    seen?: number;
-    label?: string;
-  } | null;
 
   let patientsQuery = supabase
     .from("patients")
@@ -99,17 +86,41 @@ export async function GET(req: Request) {
       .order("seen_at", { ascending: false });
   } else {
     patientsQuery = patientsQuery
-      .eq("created_by", id)
+      .or(`created_by.eq.${id},checked_in_by.eq.${id}`)
       .order("created_at", { ascending: false });
   }
   if (campId) {
     patientsQuery = patientsQuery.eq("camp_id", campId);
   }
 
-  const { data: patients, error: patientsErr } = await patientsQuery;
+  const [
+    { data: kpiRows, error: kpiErr },
+    { data: patients, error: patientsErr },
+  ] = await Promise.all([
+    supabase.rpc("staff_person_kpis", {
+      p_user_id: id,
+      p_role: role,
+      p_camp_id: campId,
+      p_since: startOfDay,
+    }),
+    patientsQuery,
+  ]);
+
+  if (kpiErr) {
+    return NextResponse.json({ error: kpiErr.message }, { status: 400 });
+  }
+
   if (patientsErr) {
     return NextResponse.json({ error: patientsErr.message }, { status: 400 });
   }
+
+  const kpiRow = (Array.isArray(kpiRows) ? kpiRows[0] : kpiRows) as {
+    total?: number;
+    today?: number;
+    waiting?: number;
+    seen?: number;
+    label?: string;
+  } | null;
 
   return NextResponse.json({
     person,
@@ -120,7 +131,7 @@ export async function GET(req: Request) {
       seen: Number(kpiRow?.seen ?? 0),
       label:
         kpiRow?.label ||
-        (role === "doctor" ? "Patients seen" : "Patients registered"),
+        (role === "doctor" ? "Patients seen" : "Patients handled"),
     },
     patients: patients || [],
   });

@@ -7,24 +7,22 @@
  * Optional: NOTIFY_WEBHOOK_SECRET as Bearer token.
  */
 
-export type NotifyChannel = "sms" | "whatsapp";
-
-export type NotifyPayload = {
+type NotifyPayload = {
   phone: string;
   message: string;
   /** short template key for provider routing */
-  template?: "registration" | "credentials";
+  template?: "registration";
   meta?: Record<string, string | number | null | undefined>;
 };
 
-export type NotifyResult = {
+type NotifyResult = {
   sms: "sent" | "skipped" | "failed";
   whatsapp: "sent" | "skipped" | "failed";
   detail?: string;
 };
 
-export { normalizePhoneE164 } from "@/lib/phone";
 import { normalizePhoneE164 } from "@/lib/phone";
+import { sensitiveProviderUrl } from "@/lib/provider-url";
 
 async function postWebhook(
   url: string | undefined,
@@ -35,8 +33,11 @@ async function postWebhook(
 
   const secret = process.env.NOTIFY_WEBHOOK_SECRET?.trim();
   try {
-    const res = await fetch(endpoint, {
+    const providerUrl = sensitiveProviderUrl(endpoint);
+    if (!providerUrl) return "failed";
+    const res = await fetch(providerUrl, {
       method: "POST",
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
         ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
@@ -66,7 +67,7 @@ export async function notifyPatient(
   const body = {
     phone,
     message: payload.message,
-    template: payload.template ?? "credentials",
+    template: payload.template ?? "registration",
     channel: "both" as const,
     meta: payload.meta ?? {},
   };
@@ -87,13 +88,6 @@ export function registrationMessage(regNo: number, password: string): string {
     `SNP Camp: Registered. Reg no #${regNo}. ` +
     `Password: ${password}. Keep this to log in. ` +
     `Show your reg no at the desk if needed.`
-  );
-}
-
-export function credentialsMessage(regNo: number, password: string): string {
-  return (
-    `SNP Camp: Your login — Reg no #${regNo}, Password: ${password}. ` +
-    `Sign in at the patient login page.`
   );
 }
 

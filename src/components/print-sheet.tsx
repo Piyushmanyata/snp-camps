@@ -1,5 +1,19 @@
 import { QrCode } from "@/components/qr-code";
 
+const CAMP_DAY_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const GENDER_LABELS: Record<string, string> = {
+  M: "Male",
+  F: "Female",
+  O: "Other",
+};
+
 type Props = {
   patient: {
     id: string;
@@ -16,6 +30,7 @@ type Props = {
     venue: string | null;
     camp_date: string | null;
   } | null;
+  campDayDate: string | null;
   origin: string;
   today: string;
   /** Staff-scan QR on paper (enter URL preferred). */
@@ -23,12 +38,27 @@ type Props = {
 };
 
 /** Dense one-page A4 prescription matching SNP eye-clinic form. */
-export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
+export function PrintSheet({
+  patient,
+  camp,
+  campDayDate,
+  origin,
+  today,
+  qrValue,
+}: Props) {
   const qr =
     qrValue || `${origin.replace(/\/$/, "")}/patient/enter/${patient.id}`;
   const venue = camp?.venue || camp?.name || "SIKAR BHAWAN";
-  const genderMark =
-    patient.gender === "M" ? "M" : patient.gender === "F" ? "F" : "M / F";
+  const genderLabel =
+    GENDER_LABELS[patient.gender?.trim().toUpperCase() || ""] || "Not specified";
+  const selectedDay = campDayDate || camp?.camp_date;
+  const campDate = selectedDay
+    ? new Date(`${selectedDay}T00:00:00Z`)
+    : null;
+  const campDay =
+    campDate && !Number.isNaN(campDate.getTime())
+      ? CAMP_DAY_FORMATTER.format(campDate)
+      : "Not set";
 
   return (
     <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a] bg-white text-[#1a3a8a]">
@@ -68,12 +98,16 @@ export function PrintSheet({ patient, camp, origin, today, qrValue }: Props) {
               </p>
             </div>
             <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Date</span> {today}
+              <span className="font-semibold">Printed</span> {today}
             </p>
             <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Age</span>{" "}
-              {patient.age ?? "——"}{" "}
-              <span className="ml-1 font-semibold">{genderMark}</span>
+              <span className="font-semibold">Camp day</span> {campDay}
+            </p>
+            <p className="w-full text-right text-[9px]">
+              <span className="font-semibold">Age</span> {patient.age ?? "——"}
+            </p>
+            <p className="w-full text-right text-[9px]">
+              <span className="font-semibold">Gender</span> {genderLabel}
             </p>
             <div className="mt-0.5 flex flex-col items-end gap-0.5">
               <div className="rounded border border-[#1a3a8a] bg-white p-1">

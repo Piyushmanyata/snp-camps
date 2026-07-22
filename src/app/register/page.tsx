@@ -1,7 +1,9 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSessionProfile, isStaff } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
+import { createClient } from "@/lib/supabase/server";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SignOutButton } from "@/components/sign-out";
@@ -10,7 +12,7 @@ const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
   },
 );
 
@@ -24,12 +26,24 @@ export default async function RegisterPage() {
   const staff = isStaff(profile?.role);
   const role = profile?.role;
 
+  if (role === "doctor") redirect("/doctor");
+  if (role === "patient" && userId && camp) {
+    const supabase = await createClient();
+    const { data: existing, error } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("camp_id", camp.id)
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("Could not check the current registration");
+    if (existing) redirect("/patient");
+  }
+
   const deskHref =
     role === "volunteer"
       ? "/volunteer"
-      : role === "doctor"
-        ? "/doctor"
-        : role === "admin"
+      : role === "admin"
           ? "/admin"
           : "/";
 
@@ -46,12 +60,7 @@ export default async function RegisterPage() {
             { href: "/admin", label: "Admin" },
             { href: "/admin/patients", label: "Patients" },
           ]
-        : role === "doctor"
-          ? [
-              { href: "/register", label: "Register", primary: true as const },
-              { href: "/doctor", label: "Desk" },
-            ]
-          : undefined;
+        : undefined;
 
   return (
     <Shell
@@ -67,9 +76,7 @@ export default async function RegisterPage() {
         staff
           ? role === "admin"
             ? "Admin"
-            : role === "doctor"
-              ? "Doctor"
-              : "Volunteer"
+            : "Volunteer"
           : undefined
       }
       actions={staff ? <SignOutButton place="header" /> : undefined}

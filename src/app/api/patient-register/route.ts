@@ -6,8 +6,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { normalizePhoneE164 } from "@/lib/phone";
 
 type Body = {
-  /** Aadhaar path (kept for later integration). */
-  verificationToken?: string;
+  requestId?: string;
   campId?: string;
   campDayId?: string;
   fullName?: string;
@@ -56,7 +55,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const verificationToken = String(body.verificationToken || "").trim();
+  const requestId = String(body.requestId || "").trim();
   const campId = String(body.campId || "").trim();
   const campDayId = String(body.campDayId || "").trim();
   const fullName = String(body.fullName || "").trim();
@@ -81,7 +80,7 @@ export async function POST(request: Request) {
 
   const rate = checkRateLimit(request, {
     scope: "patient-register",
-    identifier: verificationToken || phone || "missing",
+    identifier: phone || "missing",
     limit: 8,
     windowMs: 10 * 60_000,
   });
@@ -96,9 +95,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!UUID.test(campId) || !UUID.test(campDayId)) {
+  if (!UUID.test(requestId) || !UUID.test(campId) || !UUID.test(campDayId)) {
     return NextResponse.json(
-      { error: "A valid camp day is required." },
+      { error: "A valid registration request and camp day are required." },
       { status: 400, headers },
     );
   }
@@ -147,44 +146,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // —— Path A: Aadhaar verified token (legacy / future integration) ——
-  if (/^[0-9a-f]{64}$/i.test(verificationToken)) {
-    if (phone && phone.length !== 10) {
-      return NextResponse.json(
-        { error: "Enter a valid 10-digit mobile number." },
-        { status: 400, headers },
-      );
-    }
-    const { data, error } = await admin.rpc("register_verified_patient", {
-      p_verification_token: verificationToken,
-      p_camp_id: campId,
-      p_full_name: fullName,
-      p_gender: gender,
-      p_age: age,
-      p_address: address || null,
-      p_phone: phone || null,
-      p_email: email || null,
-      p_camp_day_id: campDayId,
-    });
-
-    if (error) {
-      return NextResponse.json(
-        { error: publicError(error.message) },
-        { status: /verification/i.test(error.message) ? 403 : 409, headers },
-      );
-    }
-
-    const patient = Array.isArray(data) ? data[0] : data;
-    if (!patient) {
-      return NextResponse.json(
-        { error: "Registration failed. Try again or ask the desk." },
-        { status: 500, headers },
-      );
-    }
-    return NextResponse.json({ patient, mode: "aadhaar" }, { status: 201, headers });
-  }
-
-  // —— Path B: Phone OTP session (primary) ——
+  // Phone OTP session is the only public self-registration identity path.
   const sessionClient = await createClient();
   const {
     data: { user },
@@ -200,12 +162,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: sessionProfile } = await sessionClient
+  const { data: sessionProfile, error: sessionProfileError } = await sessionClient
     .from("profiles")
-    .select("role")
+    .select("role, phone, disabled_at")
     .eq("id", user.id)
     .maybeSingle();
-  if (sessionProfile?.role && sessionProfile.role !== "patient") {
+  if (sessionProfileError) {
+    return NextResponse.json(
+      { error: "Registration service is unavailable." },
+      { status: 503, headers },
+    );
+  }
+  if (
+    sessionProfile?.disabled_at ||
+    (sessionProfile?.role && sessionProfile.role !== "patient")
+  ) {
     return NextResponse.json(
       { error: "Patient registration only." },
       { status: 403, headers },
@@ -213,25 +184,46 @@ export async function POST(request: Request) {
   }
 
   const sessionPhone = normalizePhone10(user.phone || "");
-  const regPhone = phone.length === 10 ? phone : sessionPhone;
-  if (regPhone.length !== 10) {
+  const hasVerifiedPhone =
+    Boolean(user.phone_confirmed_at) && sessionPhone.length === 10;
+  const { data: linkedIdentity, error: linkedIdentityError } = hasVerifiedPhone
+    ? { data: null, error: null }
+    : await admin
+        .from("patients")
+        .select("id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+  if (linkedIdentityError) {
     return NextResponse.json(
-      { error: "A verified 10-digit mobile number is required." },
+      { error: "Registration service is unavailable." },
+      { status: 503, headers },
+    );
+  }
+  const isProvisionedPatient =
+    sessionProfile?.role === "patient" && Boolean(linkedIdentity);
+  if (!hasVerifiedPhone && !isProvisionedPatient) {
+    return NextResponse.json(
+      { error: "Verify your phone with OTP or use your linked patient login." },
+      { status: 401, headers },
+    );
+  }
+  const identityPhone = hasVerifiedPhone
+    ? sessionPhone
+    : normalizePhone10(sessionProfile?.phone || "");
+  if (phone && phone !== identityPhone) {
+    return NextResponse.json(
+      { error: "Phone must match the number on your verified patient account." },
       { status: 400, headers },
     );
   }
-  if (sessionPhone && sessionPhone !== regPhone) {
-    return NextResponse.json(
-      { error: "Phone must match the number you verified with OTP." },
-      { status: 400, headers },
-    );
-  }
+  const regPhone = identityPhone;
 
   // Ensure profile is patient with phone on file before creating the row.
   const { error: profileError } = await admin.from("profiles").upsert({
     id: user.id,
     role: "patient",
-    phone: `+91${regPhone}`,
+    phone: regPhone ? `+91${regPhone}` : null,
     full_name: fullName,
     email: email || null,
   });
@@ -242,7 +234,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await admin.rpc("register_patient", {
+  const { data, error } = await admin.rpc("register_patient_idempotent", {
+    p_request_id: requestId,
     p_camp_id: campId,
     p_full_name: fullName,
     p_gender: gender,

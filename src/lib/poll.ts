@@ -15,27 +15,44 @@ export function useFixedPoll(
     if (!enabled || ms <= 0) return;
 
     let disposed = false;
+    let running = false;
     let timer: number | undefined;
 
     const schedule = () => {
-      if (!disposed) timer = window.setTimeout(run, ms);
+      if (disposed) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(run, ms);
     };
     const run = async () => {
-      if (disposed) return;
-      if (document.visibilityState === "visible") {
-        try {
-          await tick();
-        } catch {
-          // A failed refresh must not disable future polling.
-        }
+      if (disposed || running) return;
+      timer = undefined;
+      if (document.visibilityState !== "visible") {
+        schedule();
+        return;
       }
-      schedule();
+      running = true;
+      try {
+        await tick();
+      } catch {
+        // A failed refresh must not disable future polling.
+      } finally {
+        running = false;
+        schedule();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || disposed) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      void run();
     };
 
     schedule();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, ms, tick]);
 }

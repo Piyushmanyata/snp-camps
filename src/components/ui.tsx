@@ -14,7 +14,7 @@ const shellWidths = {
   xl: "max-w-6xl",
 } as const;
 
-export type DockItem = {
+type DockItem = {
   href: string;
   label: string;
   /** Primary CTA gets solid brand fill */
@@ -22,7 +22,7 @@ export type DockItem = {
 };
 
 /** Sticky bottom action bar for field desk pages (mobile only). */
-export function MobileDock({
+function MobileDock({
   items,
   label = "Quick actions",
 }: {
@@ -56,7 +56,6 @@ export function MobileDock({
     </nav>
   );
 }
-
 /** Page chrome: brand mark, title, optional back + actions. Mobile-first. */
 export function Shell({
   title,
@@ -161,7 +160,7 @@ export function Card({
   return (
     <div
       id={id}
-      className={`rounded-xl border border-border bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
+      className={`min-w-0 rounded-xl border border-border bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
     >
       {children}
     </div>
@@ -176,12 +175,12 @@ export function SectionTitle({
   hint?: string;
 }) {
   return (
-    <div className="mb-3 flex items-end justify-between gap-2">
+    <div className="mb-3 flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-end sm:justify-between sm:gap-2">
       <h2 className="text-lg font-semibold tracking-tight text-foreground">
         {children}
       </h2>
       {hint ? (
-        <span className="shrink-0 text-[0.8125rem] text-muted">{hint}</span>
+        <span className="text-[0.8125rem] text-muted sm:text-right">{hint}</span>
       ) : null}
     </div>
   );
@@ -326,7 +325,7 @@ export function Input({
         aria-describedby={
           [errorId, hintId].filter(Boolean).join(" ") || undefined
         }
-        className={`min-h-[3.25rem] w-full rounded-xl border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted/60 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
+        className={`min-h-[3.25rem] w-full rounded-xl border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
           error
             ? "border-danger focus:border-danger focus:ring-danger/20"
             : "border-border"
@@ -614,14 +613,15 @@ export function SegmentedControl<T extends string>({
 }) {
   return (
     <div
-      role="group"
+      role="radiogroup"
+      aria-orientation="horizontal"
       aria-label={label || "Options"}
       className="grid gap-1 rounded-xl border border-border bg-background p-1"
       style={{
         gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
       }}
     >
-      {options.map((opt) => {
+      {options.map((opt, index) => {
         const selected = value === opt.value;
         return (
           <button
@@ -629,8 +629,35 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
             onClick={() => onChange(opt.value)}
-            className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+            onKeyDown={(event) => {
+              const keys = [
+                "ArrowLeft",
+                "ArrowRight",
+                "ArrowUp",
+                "ArrowDown",
+                "Home",
+                "End",
+              ];
+              if (!keys.includes(event.key)) return;
+              event.preventDefault();
+
+              const nextIndex =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? options.length - 1
+                    : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ? (index - 1 + options.length) % options.length
+                      : (index + 1) % options.length;
+              const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                '[role="radio"]',
+              );
+              buttons?.[nextIndex]?.focus();
+              onChange(options[nextIndex]!.value);
+            }}
+            className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
               selected
                 ? "bg-card text-brand shadow-sm ring-1 ring-border"
                 : "text-muted hover:text-foreground hover:bg-card/60"
@@ -672,20 +699,5 @@ export function StepList({
         </li>
       ))}
     </ol>
-  );
-}
-
-export function Divider({ label }: { label?: string }) {
-  if (!label) {
-    return <hr className="border-0 border-t border-border" />;
-  }
-  return (
-    <div className="flex items-center gap-3" role="separator" aria-label={label}>
-      <div className="h-px flex-1 bg-border" />
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-border" />
-    </div>
   );
 }

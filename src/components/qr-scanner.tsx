@@ -8,6 +8,7 @@ import {
   parsePatientIdFromQr,
   parseRegistrationNumber,
 } from "@/lib/qr";
+import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 import { Button, ErrorBox, Input } from "@/components/ui";
 import { Toast } from "@/components/toast";
 
@@ -51,6 +52,21 @@ type BarcodeDetectorConstructor = new (options?: {
   formats: string[];
 }) => BarcodeDetectorInstance;
 
+const SCANNER_FPS = 10;
+const SCANNER_FRAME_INTERVAL_MS = 1000 / SCANNER_FPS;
+const SCANNER_VIDEO_WIDTH = 1280;
+const SCANNER_VIDEO_HEIGHT = 720;
+
+function ensureCanvasSize(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+): void {
+  if (canvas.width === width && canvas.height === height) return;
+  canvas.width = width;
+  canvas.height = height;
+}
+
 function getBarcodeDetectorClass(): BarcodeDetectorConstructor | null {
   if (typeof window !== "undefined" && "BarcodeDetector" in window) {
     return (window as unknown as Record<string, unknown>)
@@ -85,6 +101,7 @@ export function QrScanner({
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const regionId = `qr-reader-${uid}`;
+  const reviewHeadingId = `qr-review-heading-${uid}`;
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [active, setActive] = useState(false);
@@ -107,10 +124,8 @@ export function QrScanner({
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const html5QrcodeRef = useRef<Html5QrcodeInstance | null>(null);
-  const scannerRef = useRef<{
-    stop: () => Promise<void>;
-    clear: () => void;
-  } | null>(null);
+  const reviewRef = useRef<HTMLDivElement | null>(null);
+  const assigningRef = useRef(false);
 
   const stopScanner = useCallback(async () => {
     scannerGeneration.current += 1;
@@ -148,21 +163,6 @@ export function QrScanner({
       }
     }
 
-    const legacyScanner = scannerRef.current;
-    scannerRef.current = null;
-    if (legacyScanner) {
-      try {
-        await legacyScanner.stop();
-      } catch {
-        /* ignore */
-      }
-      try {
-        legacyScanner.clear();
-      } catch {
-        /* ignore */
-      }
-    }
-
     setActive(false);
     setStarting(false);
     setUseNative(false);
@@ -178,119 +178,149 @@ export function QrScanner({
 
   const assignDoctor = useCallback(
     async (opts: { id?: string; regNo?: number }, chosenDoctorId: string | null) => {
+      if (assigningRef.current) return null;
+      assigningRef.current = true;
       setAssigning(true);
       setError(null);
-      const supabase = createClient();
-      const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
-        p_patient_id: opts.id ?? null,
-        p_reg_no: opts.regNo ?? null,
-        p_doctor_id: chosenDoctorId,
-      });
-      setAssigning(false);
+      try {
+        const supabase = createClient();
+        const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
+          p_patient_id: opts.id ?? null,
+          p_reg_no: opts.regNo ?? null,
+          p_doctor_id: chosenDoctorId,
+        });
 
-      if (err) {
-        handledRef.current = false;
-        setError(err.message);
-        return null;
-      }
+        if (err) {
+          handledRef.current = false;
+          setError(err.message);
+          return null;
+        }
 
-      const row = (Array.isArray(data) ? data[0] : data) as AssignRow | null;
-      if (!row) {
-        handledRef.current = false;
-        setError("Could not assign doctor.");
-        return null;
-      }
+        const row = (Array.isArray(data) ? data[0] : data) as AssignRow | null;
+        if (!row) {
+          handledRef.current = false;
+          setError("Could not assign doctor.");
+          return null;
+        }
 
-      if (row.error_code === "already_seen" || row.already_seen) {
-        setError(
-          row.doctor_name
-            ? `Already seen by ${row.doctor_name}`
-            : "Already seen"
-        );
+        if (row.error_code === "already_seen" || row.already_seen) {
+          setError(
+            row.doctor_name
+              ? `Already seen by ${row.doctor_name}`
+              : "Already seen",
+          );
+          setAssigned(row);
+          setLookup(null);
+          handledRef.current = true;
+          await stopScanner();
+          router.refresh();
+          return row;
+        }
+
+        if (row.error_code === "doctor_required") {
+          setError("Select which doctor is seeing this patient.");
+          return row;
+        }
+
+        if (!isSuccessfulAssignment(row)) {
+          handledRef.current = false;
+          setError(
+            row.error_code
+              ? "Could not mark this patient as seen. Try again or ask an administrator."
+              : "Doctor assignment did not complete. No success was recorded.",
+          );
+          return null;
+        }
+
+        try {
+          if (typeof window !== "undefined" && "vibrate" in navigator) {
+            navigator.vibrate(80);
+          }
+        } catch {
+          /* ignore */
+        }
         setAssigned(row);
         setLookup(null);
+        setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
         handledRef.current = true;
         await stopScanner();
         router.refresh();
         return row;
-      }
-
-      if (row.error_code === "doctor_required") {
-        setError("Select which doctor is seeing this patient.");
-        return row;
-      }
-
-      try {
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate(80);
-        }
       } catch {
-        /* ignore */
+        handledRef.current = false;
+        setError(
+          "Could not assign this patient. Check the connection and try again.",
+        );
+        return null;
+      } finally {
+        assigningRef.current = false;
+        setAssigning(false);
       }
-      setAssigned(row);
-      setLookup(null);
-      setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
-      handledRef.current = true;
-      await stopScanner();
-      router.refresh();
-      return row;
     },
     [router, stopScanner],
   );
 
   const resolvePatient = useCallback(
     async (opts: { id?: string; regNo?: number }) => {
+      if (assigningRef.current) return null;
       setError(null);
       setLookup(null);
       setAssigned(null);
 
-      if (mode === "doctor") {
-        const row = await assignDoctor(opts, null);
-        return row;
-      }
-
-      const supabase = createClient();
-      const { data, error: err } = await supabase.rpc("lookup_patient_scan", {
-        p_patient_id: opts.id ?? null,
-        p_reg_no: opts.regNo ?? null,
-      });
-
-      if (err) {
-        handledRef.current = false;
-        setError(err.message);
-        return null;
-      }
-
-      const row = (Array.isArray(data) ? data[0] : data) as LookupRow | null;
-      if (!row) {
-        handledRef.current = false;
-        setError("Patient not found.");
-        return null;
-      }
-
-      await stopScanner();
-
       try {
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate(40);
-        }
-      } catch {
-        /* ignore */
-      }
+        const supabase = createClient();
+        const { data, error: err } = await supabase.rpc("lookup_patient_scan", {
+          p_patient_id: opts.id ?? null,
+          p_reg_no: opts.regNo ?? null,
+        });
 
-      if (row.queue_status === "seen") {
+        if (err) {
+          handledRef.current = false;
+          setError(err.message);
+          return null;
+        }
+
+        const row = (Array.isArray(data) ? data[0] : data) as LookupRow | null;
+        if (!row) {
+          handledRef.current = false;
+          setError("Patient not found.");
+          return null;
+        }
+
+        await stopScanner();
+
+        try {
+          if (typeof window !== "undefined" && "vibrate" in navigator) {
+            navigator.vibrate(40);
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (row.queue_status === "seen") {
+          setLookup(row);
+          handledRef.current = true;
+          return row;
+        }
+
+        // Volunteer/admin: registered → offer print (queue) or assign doctor
         setLookup(row);
         handledRef.current = true;
         return row;
+      } catch {
+        handledRef.current = false;
+        setError("Could not look up this patient. Check the connection and try again.");
+        return null;
       }
-
-      // Volunteer/admin: registered → offer print (queue) or assign doctor
-      setLookup(row);
-      handledRef.current = true;
-      return row;
     },
-    [assignDoctor, mode, stopScanner],
+    [stopScanner],
   );
+
+  useEffect(() => {
+    if (!lookup) return;
+    const frame = window.requestAnimationFrame(() => reviewRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [lookup]);
 
   // Deep-link: ?scan=<uuid> or legacy ?checkin=<uuid>
   useEffect(() => {
@@ -329,7 +359,7 @@ export function QrScanner({
   }, [resolvePatient, router]);
 
   async function start() {
-    if (starting || active) return;
+    if (starting || active || looking || assigningRef.current) return;
     const generation = ++scannerGeneration.current;
     setError(null);
     setLookup(null);
@@ -346,9 +376,8 @@ export function QrScanner({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
-            // Higher res helps blurry/small paper QR modules
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: SCANNER_VIDEO_WIDTH },
+            height: { ideal: SCANNER_VIDEO_HEIGHT },
           },
           audio: false,
         });
@@ -388,11 +417,10 @@ export function QrScanner({
           /* ignore unsupported constraints */
         }
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute("playsinline", "true");
-          await videoRef.current.play().catch(() => {});
-        }
+        if (!videoRef.current) throw new Error("Camera preview is unavailable");
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        await videoRef.current.play();
 
         // Offscreen canvases for multi-scale detect (helps blurry frames)
         const canvasFull = document.createElement("canvas");
@@ -401,6 +429,7 @@ export function QrScanner({
         const ctxHalf = canvasHalf.getContext("2d", { willReadFrequently: true });
         let lastFrameTime = 0;
         let scaleTick = 0;
+        let consecutiveFrameErrors = 0;
 
         const tryDecode = async (
           source: HTMLVideoElement | HTMLCanvasElement,
@@ -436,8 +465,7 @@ export function QrScanner({
           }
 
           const now = performance.now();
-          // ~30fps decode cadence
-          if (now - lastFrameTime >= 33) {
+          if (now - lastFrameTime >= SCANNER_FRAME_INTERVAL_MS) {
             lastFrameTime = now;
             const video = videoRef.current;
             if (video.readyState >= 2 && !handledRef.current) {
@@ -456,14 +484,16 @@ export function QrScanner({
                     const ch = Math.floor(vh * 0.72);
                     const sx = Math.floor((vw - cw) / 2);
                     const sy = Math.floor((vh - ch) / 2);
-                    canvasFull.width = cw;
-                    canvasFull.height = ch;
+                    ensureCanvasSize(canvasFull, cw, ch);
                     ctxFull.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
                     if (await tryDecode(canvasFull)) return;
 
                     // Half-res pass can help some detectors lock on low-contrast codes
-                    canvasHalf.width = Math.max(320, Math.floor(cw / 2));
-                    canvasHalf.height = Math.max(240, Math.floor(ch / 2));
+                    ensureCanvasSize(
+                      canvasHalf,
+                      Math.max(320, Math.floor(cw / 2)),
+                      Math.max(240, Math.floor(ch / 2)),
+                    );
                     ctxHalf.drawImage(
                       canvasFull,
                       0,
@@ -478,8 +508,18 @@ export function QrScanner({
                     if (await tryDecode(canvasHalf)) return;
                   }
                 }
+                consecutiveFrameErrors = 0;
               } catch {
-                /* ignore frame error */
+                consecutiveFrameErrors += 1;
+                if (consecutiveFrameErrors >= 5) {
+                  await stopScanner();
+                  if (isMounted.current) {
+                    setError(
+                      "Camera decoding stopped working. Reopen the camera or use registration-number lookup below.",
+                    );
+                  }
+                  return;
+                }
               }
             }
           }
@@ -510,7 +550,6 @@ export function QrScanner({
       if (!isMounted.current || generation !== scannerGeneration.current) return;
       const scanner = new Html5Qrcode(regionId, { verbose: false });
       html5QrcodeRef.current = scanner;
-      scannerRef.current = scanner;
 
       const cameras = await Html5Qrcode.getCameras().catch(() => []);
       if (!isMounted.current || generation !== scannerGeneration.current) {
@@ -532,7 +571,7 @@ export function QrScanner({
       await scanner.start(
         cameraId,
         {
-          fps: 30,
+          fps: SCANNER_FPS,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const edge = Math.min(viewfinderWidth, viewfinderHeight);
             // Large box = more modules in FOV for blurry paper QR
@@ -545,8 +584,8 @@ export function QrScanner({
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           videoConstraints: {
             facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: SCANNER_VIDEO_WIDTH },
+            height: { ideal: SCANNER_VIDEO_HEIGHT },
           },
         } as {
           fps: number;
@@ -602,6 +641,7 @@ export function QrScanner({
 
   async function openManual(e: React.FormEvent) {
     e.preventDefault();
+    if (looking || assigningRef.current) return;
     setLooking(true);
     setError(null);
     setLookup(null);
@@ -634,6 +674,7 @@ export function QrScanner({
   }
 
   function resetResult() {
+    if (assigningRef.current) return;
     setLookup(null);
     setAssigned(null);
     setManual("");
@@ -655,10 +696,10 @@ export function QrScanner({
       <p className="prose-help text-sm text-muted">
         {mode === "doctor" ? (
           <>
-            <strong className="text-foreground">Scan</strong> any registered
-            patient to mark{" "}
-            <strong className="text-foreground">seen</strong> (no print needed).
-            Re-scan is blocked.
+            <strong className="text-foreground">Scan</strong> to check the
+            patient, then confirm before marking them{" "}
+            <strong className="text-foreground">seen</strong>. No print is
+            needed, and re-scan is blocked.
           </>
         ) : (
           <>
@@ -670,7 +711,6 @@ export function QrScanner({
       </p>
 
       <div
-        id={regionId}
         className={`relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
           active ? "min-h-[280px]" : "min-h-[4.5rem]"
         }`}
@@ -686,6 +726,10 @@ export function QrScanner({
               ? "h-full w-full object-cover rounded-2xl"
               : "hidden"
           }
+        />
+        <div
+          id={regionId}
+          className={active && !useNative ? "min-h-[280px] w-full" : "hidden"}
         />
         {!active ? (
           <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
@@ -714,12 +758,14 @@ export function QrScanner({
               : "Doctor recorded"}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href={`/print/${assigned.id}`}
-              className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-white/90"
-            >
-              Reprint form
-            </Link>
+            {mode !== "doctor" ? (
+              <Link
+                href={`/print/${assigned.id}`}
+                className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-white/90"
+              >
+                Reprint form
+              </Link>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
@@ -734,8 +780,16 @@ export function QrScanner({
       ) : null}
 
       {lookup && !assigned ? (
-        <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-          <p className="font-bold text-foreground">
+        <div
+          ref={reviewRef}
+          tabIndex={-1}
+          role="region"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-labelledby={reviewHeadingId}
+          className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
+        >
+          <p id={reviewHeadingId} className="font-bold text-foreground">
             <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
             {lookup.full_name}
           </p>
@@ -747,8 +801,15 @@ export function QrScanner({
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
-                  href={`/print/${lookup.id}?auto=1`}
-                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
+                  href={`/print/${lookup.id}`}
+                  aria-disabled={assigning}
+                  tabIndex={assigning ? -1 : undefined}
+                  onClick={(event) => {
+                    if (assigning) event.preventDefault();
+                  }}
+                  className={`pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft ${
+                    assigning ? "pointer-events-none opacity-50" : ""
+                  }`}
                 >
                   Print (join queue)
                 </Link>
@@ -772,6 +833,7 @@ export function QrScanner({
                       <button
                         key={d.id}
                         type="button"
+                        disabled={assigning || looking}
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
@@ -799,6 +861,7 @@ export function QrScanner({
                 variant="secondary"
                 size="sm"
                 className="mt-2 w-auto"
+                disabled={assigning || looking}
                 onClick={resetResult}
               >
                 Cancel
@@ -816,12 +879,14 @@ export function QrScanner({
                 Multiple scanning is not allowed.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={`/print/${lookup.id}`}
-                  className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
-                >
-                  Reprint form
-                </Link>
+                {mode !== "doctor" ? (
+                  <Link
+                    href={`/print/${lookup.id}`}
+                    className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
+                  >
+                    Reprint form
+                  </Link>
+                ) : null}
                 <Button
                   type="button"
                   variant="secondary"
@@ -858,6 +923,7 @@ export function QrScanner({
                       <button
                         key={d.id}
                         type="button"
+                        disabled={assigning || looking}
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
@@ -885,11 +951,40 @@ export function QrScanner({
                 variant="secondary"
                 size="sm"
                 className="mt-2 w-auto"
+                disabled={assigning || looking}
                 onClick={resetResult}
               >
                 Cancel
               </Button>
             </>
+          ) : null}
+
+          {(lookup.queue_status === "registered" ||
+            lookup.queue_status === "waiting") &&
+          mode === "doctor" ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-muted">
+                Check the patient name and registration number before confirming.
+              </p>
+              <Button
+                type="button"
+                disabled={assigning}
+                loading={assigning}
+                onClick={() => void assignDoctor({ id: lookup.id }, null)}
+              >
+                {assigning ? "Marking seen…" : "Confirm patient · mark seen"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-auto"
+                disabled={assigning || looking}
+                onClick={resetResult}
+              >
+                Cancel
+              </Button>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -897,7 +992,7 @@ export function QrScanner({
       {!active ? (
         <Button
           type="button"
-          disabled={Boolean(disabledReason)}
+          disabled={Boolean(disabledReason) || assigning || looking || starting}
           onClick={() => void start()}
         >
           {starting ? "Opening camera…" : "Open camera scanner"}
@@ -906,6 +1001,7 @@ export function QrScanner({
         <Button
           type="button"
           variant="secondary"
+          disabled={assigning || looking}
           onClick={() => void stopScanner()}
         >
           Stop camera
@@ -923,14 +1019,14 @@ export function QrScanner({
           label="Reg no / QR link"
           inputMode="text"
           placeholder="e.g. 1001 or paste QR link"
-          disabled={Boolean(disabledReason)}
+          disabled={Boolean(disabledReason) || assigning || looking}
           value={manual}
           onChange={(e) => setManual(e.target.value)}
         />
         <Button
           type="submit"
           variant="secondary"
-          disabled={looking || Boolean(disabledReason)}
+          disabled={looking || assigning || Boolean(disabledReason)}
         >
           {looking ? "Looking up…" : "Look up patient"}
         </Button>

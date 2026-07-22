@@ -5,10 +5,10 @@ Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 ## Camp flow (v3)
 
 1. **Self-register** with **phone OTP** → details → account linked → **auto sign-in**
-2. Patient sees **reg number + optional backup password** (also **SMS/WhatsApp** when configured)
-3. On **logout**, reg number + new password are shown again (and re-sent via SMS/WhatsApp stubs)
-4. **Desk print** (optional) → joins FCFS **queue** (`waiting`)
-5. **Doctor scan** → **seen** (once only) — **no print required**
+2. Patient sees **reg number + optional one-time backup password** (also **SMS/WhatsApp** when configured)
+3. **Logout** ends the session without changing patient credentials; phone OTP remains available for recovery
+4. Explicit **desk print** (optional) → joins FCFS **queue** (`waiting`)
+5. **Doctor scan** → review patient → confirm → **seen** (once only) — **no print required**
 6. Volunteer/admin can print for queue or assign a doctor on scan
 7. Re-scan of a seen patient is **blocked** (“Already seen by Dr X”)
 
@@ -25,52 +25,39 @@ Next.js · Supabase · Vercel · GitHub: [Piyushmanyata/snp-camps](https://githu
 
 ### 1. Supabase SQL
 
-In Supabase Dashboard → SQL Editor, run:
+For a new, empty Supabase project, run `supabase/schema.sql` once in the SQL
+Editor. It is the canonical schema and already contains the complete reviewed
+migration lineage. Do not run it on an existing database.
 
-`supabase/schema.sql`
+For an existing deployment, apply only unapplied files from
+`supabase/migrations` in timestamp order. Rehearse every migration on a
+production-shaped disposable database before applying it to production. The
+current release is deliberately split so neither the old nor new app sees an
+incompatible schema:
 
-For the current production lineage, apply these SQL files in order. The other SQL files in this directory are historical or superseded; do not apply them to a current database.
+1. Apply `20260722000000_disabled_staff_expand.sql` (backward-compatible
+   column, disabled-account guards, and profile immutability).
+2. Deploy the matching application and pass `/api/health?ready=1`.
+3. Apply `20260722010000_production_hardening.sql` to enforce the new RLS, ACL,
+   attribution, and queue contracts.
+4. Re-run readiness, role smoke tests, and database privilege postconditions.
 
-1. `supabase/fix-print-queue-doctor.sql`
-2. `supabase/fix-camp-days.sql`
-3. `supabase/fix-change-day-queue-lock.sql`
-4. `supabase/fix-ambiguous-and-delete-camp.sql`
-5. `supabase/fix-doctor-scan-no-print.sql`
-6. `supabase/fix-security-and-account-claims.sql`
-7. `supabase/production-readiness.sql`
-8. `supabase/security-followup.sql`
-9. `supabase/verified-registration-cutover.sql` (safe pre-deploy setup)
-10. `supabase/advisor-cleanup.sql`
-11. `supabase/dashboard-stats.sql`
-12. `supabase/lean-perf.sql` (partial indexes, desk KPI RPCs, no realtime on hot tables)
-13. `supabase/release-hardening.sql` (safe pre-deploy authorization/index/cleanup)
-14. `supabase/fix-registration-contract.sql` (claim-token return-shape and indexed duplicate-check repair)
-15. `supabase/fix-qr-staff-scan.sql` (lookup + assign RPCs for volunteer QR scan)
-16. `supabase/optimization-hardening.sql` (RLS policy consolidation and RPC grants)
-17. `supabase/optimization-registration-guard.sql` (registration contract and capacity guard)
-18. `supabase/performance-snapshot.sql` (cached public camp snapshot)
-19. `supabase/deep-hardening.sql` (claim-token column isolation and duplicate-index cleanup)
+Do not batch both migrations ahead of the application deployment. After the
+enforcement step, recover with a forward-fix migration; do not restore claim
+token grants or remove `disabled_at`.
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
-The security/account migration must precede the app because patient-account and
-OTP flows use its columns/RPCs. The final
-`supabase/verified-registration-revoke-anon.sql` is a deployment cutover:
-
-1. Deploy the frontend containing `/api/patient-register`.
-2. Smoke-test a verified self-registration.
-3. Apply the revoke file immediately.
-
-Do not apply that final revoke before the matching frontend is live; the old
-browser flow calls `register_patient` directly.
-
 `GET /api/health` is a cheap liveness probe. `GET /api/health?ready=1` also
-checks the required database shape, verified-registration RPC, service-role
-configuration, and `AADHAAR_VERIFY_URL`; it returns 503 until all are ready.
+checks the required database shape, service-role configuration, and Supabase
+Phone Auth/SMS provider settings; it returns 503 until all are ready.
 
 ### 2. Auth settings
 
 - **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.  
+- **Phone**: enable Phone Auth and configure a supported SMS provider/sender.
+  Confirm a real `+91` test number receives and verifies an OTP before launch.
+  Review Supabase Auth OTP expiry and rate limits for expected camp traffic.
 - Patient accounts use synthetic emails (`reg{N}@patients.snp.local`) + password.
 
 ### 3. Env
@@ -78,15 +65,19 @@ configuration, and `AADHAAR_VERIFY_URL`; it returns 503 until all are ready.
 Copy `.env.example` → `.env.local`.
 
 ```
-VOLUNTEER_INVITE_CODE=...
-SUPABASE_SERVICE_ROLE_KEY=...   # create volunteers/doctors, patient accounts
+SUPABASE_SERVICE_ROLE_KEY=...   # server-only; never expose with NEXT_PUBLIC_
 ```
+
+Bootstrap the first admin once. Set `SUPABASE_PROJECT_REF`,
+`ADMIN_BOOTSTRAP_EMAIL`, and a unique `ADMIN_BOOTSTRAP_PASSWORD` of at least 14
+characters, then run `npm run bootstrap:admin`. Remove those three bootstrap
+values immediately after it succeeds. All later volunteers and doctors are
+created by an active admin; there is no public staff self-registration route.
 
 Optional later:
 
 ```
-# Optional Aadhaar eKYC / lookup provider
-# AADHAAR_VERIFY_URL=
+# Optional Aadhaar lookup provider
 # AADHAAR_LOOKUP_URL=
 # SMS_WEBHOOK_URL=
 # WHATSAPP_WEBHOOK_URL=
@@ -100,10 +91,10 @@ npm install
 npm run dev
 ```
 
-1. Open `/staff/register` with **admin** invite code  
-2. Create a camp → set active  
-3. Admin → add **doctors** and volunteers  
-4. Patients self-register with Aadhaar → doctor **scan** (print optional at desk)
+1. Sign in at `/login` with the bootstrapped admin.
+2. Create a camp and set it active.
+3. Add doctors and volunteers from the admin desk.
+4. Patients self-register with phone OTP; Aadhaar auto-fill is optional when a lookup provider is configured.
 
 ### 5. Deploy Vercel
 
@@ -137,17 +128,18 @@ below 1.5 seconds before treating the result as a capacity signal.
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats, **scan only** (self-assign, no print required) |
-| Patient | Aadhaar self-reg → auto login; reg+password on register & logout |
+| Patient | Phone OTP self-registration and login; registration profile, QR, day and queue status |
 
 ## Privacy
 
 Never store full Aadhaar. Only `aadhaar_last4`.
 
-### Aadhaar verify / auto-fill (optional)
+### Aadhaar auto-fill (optional)
 
-1. **Verify**: `AADHAAR_VERIFY_URL` — POST `{ "aadhaar": "12digits", "action": "verify" }`. Self-registration is disabled until a provider is configured; a checksum alone is never treated as identity verification.
-2. **Lookup / auto-fill**: set `NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true` and `AADHAAR_LOOKUP_URL`.  
-3. Optional `AADHAAR_LOOKUP_SECRET` / `AADHAAR_VERIFY_SECRET` as Bearer token.
+Set `NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true` and `AADHAAR_LOOKUP_URL`.
+`AADHAAR_LOOKUP_SECRET` is sent as a Bearer token. This is optional auto-fill;
+phone OTP remains the registration identity check, and only Aadhaar last four
+digits are stored.
 
 Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `address`, `phone`, `email`.
 
@@ -156,7 +148,11 @@ Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `addr
 Set `SMS_WEBHOOK_URL` and/or `WHATSAPP_WEBHOOK_URL`. App POSTs JSON:
 
 ```json
-{ "phone": "+91…", "message": "…", "template": "registration|credentials", "channel": "sms|whatsapp" }
+{ "phone": "+91…", "message": "…", "template": "registration", "channel": "sms|whatsapp" }
 ```
 
-Until configured, registration and logout still show credentials on screen; notify status reports “not configured yet”.
+Until configured, registration may show the one-time backup password on screen; notify status reports “not configured yet”. Logout never rotates or reveals credentials.
+
+These notification webhooks do not deliver Supabase Auth OTPs. Configure the
+Phone Auth SMS provider separately under Auth settings and keep readiness at
+503 until a real OTP smoke test succeeds.

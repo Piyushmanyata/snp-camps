@@ -7,6 +7,7 @@ export type Profile = {
   full_name: string | null;
   phone: string | null;
   email: string | null;
+  disabled_at?: string | null;
 };
 
 export type Camp = {
@@ -26,28 +27,6 @@ export type CampDayStats = {
   seats_taken: number;
   seats_left: number;
   is_full: boolean;
-};
-
-export type Patient = {
-  id: string;
-  user_id: string | null;
-  camp_id: string;
-  camp_day_id: string | null;
-  reg_no: number;
-  full_name: string;
-  gender: "M" | "F" | "O" | null;
-  age: number | null;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  aadhaar_last4: string | null;
-  queue_status: QueueStatus;
-  queued_at: string | null;
-  printed_at: string | null;
-  seen_at: string | null;
-  seen_by: string | null;
-  created_by: string | null;
-  created_at: string;
 };
 
 export function queueLabel(status: string) {

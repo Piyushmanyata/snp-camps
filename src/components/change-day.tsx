@@ -11,12 +11,14 @@ export function ChangeDay({
   currentDayId,
   days,
   queueStatus = "registered",
+  campActive = true,
 }: {
   patientId: string;
   currentDayId: string | null;
   days: CampDayStats[];
   /** When waiting/seen, day change is locked (also enforced in DB). */
   queueStatus?: string | null;
+  campActive?: boolean;
 }) {
   const router = useRouter();
   const [dayId, setDayId] = useState(currentDayId || "");
@@ -25,7 +27,7 @@ export function ChangeDay({
   const [loading, setLoading] = useState(false);
 
   const locked =
-    queueStatus === "waiting" || queueStatus === "seen";
+    !campActive || queueStatus === "waiting" || queueStatus === "seen";
 
   if (locked) {
     const dayLabel = days.find((d) => d.id === currentDayId);
@@ -37,7 +39,9 @@ export function ChangeDay({
             : "Camp day locked"}
         </p>
         <p className="mt-1 text-xs">
-          {queueStatus === "seen"
+          {!campActive
+            ? "Day cannot be changed because this camp is no longer active."
+            : queueStatus === "seen"
             ? "Day cannot be changed after the patient has been seen."
             : "Day cannot be changed after joining the queue."}
         </p>
@@ -58,24 +62,28 @@ export function ChangeDay({
     setLoading(true);
     setError(null);
     setOk(null);
-    const supabase = createClient();
-    const { data, error: err } = await supabase.rpc("change_camp_day", {
-      p_patient_id: patientId,
-      p_new_day_id: dayId,
-    });
-    if (err) {
-      setError(err.message);
+    try {
+      const supabase = createClient();
+      const { data, error: err } = await supabase.rpc("change_camp_day", {
+        p_patient_id: patientId,
+        p_new_day_id: dayId,
+      });
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      setOk(
+        row?.day_date
+          ? `Moved to ${formatCampDay(row.day_date)}`
+          : "Day updated",
+      );
+      router.refresh();
+    } catch {
+      setError("Could not change the day. Check the connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-    const row = Array.isArray(data) ? data[0] : data;
-    setOk(
-      row?.day_date
-        ? `Moved to ${formatCampDay(row.day_date)}`
-        : "Day updated",
-    );
-    setLoading(false);
-    router.refresh();
   }
 
   return (

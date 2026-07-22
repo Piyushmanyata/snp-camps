@@ -7,8 +7,13 @@ import {
   normalizeGender,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
-import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
+import {
+  canRegisterPatients,
+  getSessionProfile,
+  readJsonBody,
+} from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { sensitiveProviderUrl } from "@/lib/provider-url";
 
 type Body = { aadhaar?: string };
 
@@ -31,8 +36,17 @@ type ProviderPayload = {
  * Never persists the full Aadhaar number.
  */
 export async function POST(req: Request) {
+  const { profile } = await getSessionProfile();
+  if (!canRegisterPatients(profile?.role)) {
+    return NextResponse.json(
+      { error: "Aadhaar lookup is available to camp staff only." },
+      { status: 403 },
+    );
+  }
+
   const rate = checkRateLimit(req, {
     scope: "aadhaar-lookup",
+    identifier: profile.id,
     limit: 30,
     windowMs: 15 * 60_000,
   });
@@ -40,14 +54,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Too many Aadhaar lookup attempts. Try again later." },
       { status: 429, headers: rate.headers },
-    );
-  }
-
-  const { profile } = await getSessionProfile();
-  if (!isStaff(profile?.role)) {
-    return NextResponse.json(
-      { error: "Aadhaar lookup is available to camp staff only." },
-      { status: 403 },
     );
   }
   if (!isAadhaarLookupEnabledServer()) {
@@ -74,8 +80,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const url = process.env.AADHAAR_LOOKUP_URL!.trim();
+  const url = sensitiveProviderUrl(process.env.AADHAAR_LOOKUP_URL);
   const secret = process.env.AADHAAR_LOOKUP_SECRET?.trim();
+
+  if (!url) {
+    return NextResponse.json(
+      { available: false, error: "Aadhaar lookup provider must use HTTPS." },
+      { status: 503 },
+    );
+  }
 
   try {
     const res = await fetch(url, {
@@ -87,6 +100,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({ aadhaar }),
       // Camp desk should fail fast if provider is down
       signal: AbortSignal.timeout(12_000),
+      redirect: "error",
     });
 
     if (!res.ok) {

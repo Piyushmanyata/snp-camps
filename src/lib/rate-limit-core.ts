@@ -31,20 +31,19 @@ function clientAddress(request: Request) {
 }
 
 function sweepExpired(now: number) {
-  if ((globalStore.__snpRateLimitSweepAt ?? 0) > now) return;
-  globalStore.__snpRateLimitSweepAt = now + 60_000;
-
-  for (const [key, entry] of store) {
-    if (entry.resetAt <= now) store.delete(key);
-  }
-
-  // Bound memory even when an attacker rotates addresses.
   if (store.size > 20_000) {
     const targetSize = 15_000;
     for (const key of store.keys()) {
       store.delete(key);
       if (store.size <= targetSize) break;
     }
+  }
+
+  if ((globalStore.__snpRateLimitSweepAt ?? 0) > now) return;
+  globalStore.__snpRateLimitSweepAt = now + 60_000;
+
+  for (const [key, entry] of store) {
+    if (entry.resetAt <= now) store.delete(key);
   }
 }
 
@@ -57,7 +56,6 @@ function hashValue(value: string) {
 
 function recordLimit(
   key: string,
-  limit: number,
   windowMs: number,
   now: number,
 ) {
@@ -90,7 +88,7 @@ export function checkRateLimit(request: Request, options: Options) {
   // Keep both protections: an attacker cannot rotate identifiers from one IP,
   // and one patient/token cannot bypass the limit by rotating IPs.
   const entries = keys.map((key) =>
-    recordLimit(key, options.limit, options.windowMs, now),
+    recordLimit(key, options.windowMs, now),
   );
   const entry = entries.reduce(
     (current, candidate) =>

@@ -26,7 +26,8 @@ if (!Number.isFinite(durationSeconds) || durationSeconds < 5 || durationSeconds 
 }
 if (!paths.length) throw new Error("LOAD_PATHS must contain at least one safe GET path.");
 
-const deadline = performance.now() + durationSeconds * 1_000;
+const startedAt = performance.now();
+const deadline = startedAt + durationSeconds * 1_000;
 const latencies = [];
 let requests = 0;
 let failures = 0;
@@ -45,8 +46,10 @@ async function virtualUser(id) {
         headers: { "User-Agent": "snp-staging-load-harness/1.0" },
       });
       statusCounts[response.status] = (statusCounts[response.status] || 0) + 1;
-      if (response.status < 200 || response.status >= 400) failures += 1;
-      await response.arrayBuffer();
+      // A redirect usually means the requested workflow was not exercised
+      // (for example, an auth guard sent traffic to login). Fail it explicitly.
+      if (response.status < 200 || response.status >= 300) failures += 1;
+      if (response.body) await response.body.pipeTo(new WritableStream());
     } catch {
       failures += 1;
     } finally {
@@ -56,8 +59,13 @@ async function virtualUser(id) {
     }
 
     index = (index + 1) % paths.length;
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) break;
     await new Promise((resolve) =>
-      setTimeout(resolve, 250 + Math.floor(Math.random() * 750)),
+      setTimeout(
+        resolve,
+        Math.min(remainingMs, 250 + Math.floor(Math.random() * 750)),
+      ),
     );
   }
 }
@@ -68,14 +76,18 @@ await Promise.all(
 
 latencies.sort((a, b) => a - b);
 const percentile = (value) =>
-  latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * value))] || 0;
+  latencies[
+    Math.min(latencies.length - 1, Math.max(0, Math.ceil(latencies.length * value) - 1))
+  ] || 0;
 const errorRate = requests ? failures / requests : 1;
+const elapsedSeconds = Math.max((performance.now() - startedAt) / 1_000, Number.EPSILON);
 const result = {
   baseUrl,
   virtualUsers,
   durationSeconds,
+  elapsedSeconds: Number(elapsedSeconds.toFixed(2)),
   requests,
-  requestsPerSecond: Number((requests / durationSeconds).toFixed(2)),
+  requestsPerSecond: Number((requests / elapsedSeconds).toFixed(2)),
   failures,
   errorRate: Number((errorRate * 100).toFixed(2)),
   statusCounts,

@@ -10,6 +10,10 @@ const geistSans = Geist({
   adjustFontFallback: true,
 });
 
+const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
+  : null;
+
 export const metadata: Metadata = {
   title: {
     default: "SNP Camps · Medical Camp Desk",
@@ -49,13 +53,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} h-full antialiased`}
+      data-scroll-behavior="smooth"
+    >
       <head>
-        <link
-          rel="preconnect"
-          href="https://ruklmrzpyutvefancsgo.supabase.co"
-          crossOrigin="anonymous"
-        />
+        {supabaseOrigin ? (
+          <link
+            rel="preconnect"
+            href={supabaseOrigin}
+            crossOrigin="anonymous"
+          />
+        ) : null}
       </head>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <a href="#main" className="skip-link">

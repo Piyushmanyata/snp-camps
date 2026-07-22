@@ -2,7 +2,13 @@ import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isStaff, isDoctor, isAdmin } from "@/lib/auth";
+import {
+  getSessionProfile,
+  isStaff,
+  isDoctor,
+  isAdmin,
+  roleHome,
+} from "@/lib/auth";
 import type { CampDayStats } from "@/lib/types";
 import {
   ActionCard,
@@ -23,7 +29,7 @@ const ChangePasswordCard = dynamic(
       default: m.ChangePasswordCard,
     })),
   {
-    loading: () => <p className="py-2 text-xs text-muted">Loading...</p>,
+    loading: () => <p role="status" className="py-2 text-xs text-muted">Loading…</p>,
   },
 );
 
@@ -31,7 +37,7 @@ const LiveQueue = dynamic(
   () =>
     import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading queue…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading queue…</p>,
   },
 );
 
@@ -39,7 +45,7 @@ const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
-    loading: () => <p className="py-4 text-xs text-muted">Loading seat board…</p>,
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
   },
 );
 
@@ -48,7 +54,7 @@ const QrScanner = dynamic(
     import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
   {
     loading: () => (
-      <p className="py-6 text-center text-sm text-muted">Loading scanner…</p>
+      <p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>
     ),
   },
 );
@@ -60,14 +66,16 @@ const AdminVolunteers = dynamic(
     })),
   {
     loading: () => (
-      <p className="py-4 text-xs text-muted">Loading volunteers…</p>
+      <p role="status" className="py-4 text-xs text-muted">Loading volunteers…</p>
     ),
   },
 );
 
 export default async function VolunteerPage() {
   const { profile } = await getSessionProfile();
-  if (!isStaff(profile?.role)) redirect("/login");
+  if (!isStaff(profile?.role)) {
+    redirect(roleHome(profile?.role) || "/login");
+  }
   if (isDoctor(profile?.role)) redirect("/doctor");
 
   const supabase = await createClient();
@@ -76,15 +84,18 @@ export default async function VolunteerPage() {
   if (admin) {
     const { data: volunteers, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, phone, role, created_at")
+      .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "volunteer")
       .order("created_at", { ascending: false });
     if (error) throw new Error("Volunteer desk data could not be loaded");
+    const activeVolunteers =
+      volunteers?.filter((volunteer) => !volunteer.disabled_at).length ?? 0;
+    const disabledVolunteers = (volunteers?.length ?? 0) - activeVolunteers;
 
     return (
       <Shell
         title="Volunteer desk"
-        subtitle="Manage volunteers · KPIs · add / remove"
+        subtitle="Manage volunteers · KPIs · account access"
         width="xl"
         roleLabel="Admin"
         actions={<SignOutButton place="header" />}
@@ -100,12 +111,14 @@ export default async function VolunteerPage() {
               Staff management
             </p>
             <p className="text-xl font-bold tracking-tight">
-              {volunteers?.length ?? 0} volunteer
-              {(volunteers?.length ?? 0) === 1 ? "" : "s"}
+              {activeVolunteers} active volunteer{activeVolunteers === 1 ? "" : "s"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Tap a volunteer for their KPIs and patients. Scanner and queue
-              live on the main admin dashboard.
+              {disabledVolunteers
+                ? `${disabledVolunteers} disabled · `
+                : ""}
+              Tap a volunteer for their KPIs and patients. Scanner and queue live
+              on the main admin dashboard.
             </p>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
@@ -114,7 +127,7 @@ export default async function VolunteerPage() {
             </div>
           </Card>
           <Card>
-            <Suspense fallback={<p className="py-4 text-xs text-muted">Loading volunteers…</p>}>
+            <Suspense fallback={<p role="status" className="py-4 text-xs text-muted">Loading volunteers…</p>}>
               <AdminVolunteers initial={volunteers || []} canManage />
             </Suspense>
           </Card>
@@ -219,8 +232,8 @@ export default async function VolunteerPage() {
               ) : null}
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="You registered" value={myTotal} tone="ok" />
-              <Stat label="Today" value={myToday} />
+              <Stat label="You handled" value={myTotal} tone="ok" />
+              <Stat label="Handled today" value={myToday} />
               <Stat label="In queue" value={myWait} tone="wait" />
               <Stat label="Doctor seen" value={mySeen} tone="ok" />
             </div>
@@ -272,7 +285,7 @@ export default async function VolunteerPage() {
             <SectionTitle hint="Scan paper or phone QR · pick doctor">
               Scan / assign doctor
             </SectionTitle>
-            <Suspense fallback={<p className="py-6 text-center text-sm text-muted">Loading scanner…</p>}>
+            <Suspense fallback={<p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>}>
               <QrScanner
                 mode="volunteer"
                 doctors={doctors}

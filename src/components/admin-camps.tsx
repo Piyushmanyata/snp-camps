@@ -17,39 +17,64 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
   const [name, setName] = useState("");
   const [venue, setVenue] = useState("");
   const [campDate, setCampDate] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [campError, setCampError] = useState<{
+    campId: string;
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function createCamp(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const supabase = createClient();
-    const { error: err } = await supabase.from("camps").insert({
-      name: name.trim(),
-      venue: venue.trim() || null,
-      camp_date: campDate || null,
-      is_active: camps.length === 0,
-    });
-    if (err) setError(err.message);
-    else {
-      setName("");
-      setVenue("");
-      setCampDate("");
-      router.refresh();
+    setCreateError(null);
+    if (!name.trim()) {
+      setCreateError("Enter a camp name.");
+      return;
     }
-    setLoading(false);
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.from("camps").insert({
+        name: name.trim(),
+        venue: venue.trim() || null,
+        camp_date: campDate || null,
+        is_active: camps.length === 0,
+      });
+      if (err) setCreateError(err.message);
+      else {
+        setName("");
+        setVenue("");
+        setCampDate("");
+        router.refresh();
+      }
+    } catch {
+      setCreateError("Could not create the camp. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function activate(id: string) {
-    setError(null);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("set_active_camp", {
-      p_camp_id: id,
-    });
-    if (err) setError(err.message);
-    router.refresh();
+    if (activatingId || deletingId) return;
+    setCampError(null);
+    setActivatingId(id);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("set_active_camp", {
+        p_camp_id: id,
+      });
+      if (err) setCampError({ campId: id, message: err.message });
+      else router.refresh();
+    } catch {
+      setCampError({
+        campId: id,
+        message: "Could not activate this camp. Check your connection and try again.",
+      });
+    } finally {
+      setActivatingId(null);
+    }
   }
 
   async function removeCamp(c: Camp) {
@@ -61,15 +86,24 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
     ) {
       return;
     }
+    if (activatingId || deletingId) return;
     setDeletingId(c.id);
-    setError(null);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("delete_camp", {
-      p_camp_id: c.id,
-    });
-    if (err) setError(err.message);
-    else router.refresh();
-    setDeletingId(null);
+    setCampError(null);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("delete_camp", {
+        p_camp_id: c.id,
+      });
+      if (err) setCampError({ campId: c.id, message: err.message });
+      else router.refresh();
+    } catch {
+      setCampError({
+        campId: c.id,
+        message: "Could not delete this camp. Check your connection and try again.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -79,35 +113,41 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
         {camps.map((c) => (
           <li
             key={c.id}
-            className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            className="space-y-2 py-2.5"
           >
-            <div className="min-w-0">
-              <p className="truncate font-medium">{c.name}</p>
-              <p className="truncate text-xs text-muted">
-                {[c.venue, c.camp_date].filter(Boolean).join(" · ") || "—"}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {c.is_active ? (
-                <Badge tone="ok">Active</Badge>
-              ) : (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{c.name}</p>
+                <p className="truncate text-xs text-muted">
+                  {[c.venue, c.camp_date].filter(Boolean).join(" · ") || "—"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {c.is_active ? (
+                  <Badge tone="ok">Active</Badge>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-medium shadow-sm transition hover:bg-brand-soft disabled:opacity-50"
+                    disabled={Boolean(activatingId || deletingId)}
+                    onClick={() => activate(c.id)}
+                  >
+                    {activatingId === c.id ? "Activating…" : "Set active"}
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-medium shadow-sm transition hover:bg-brand-soft"
-                  onClick={() => activate(c.id)}
+                  className="pressable rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+                  disabled={Boolean(activatingId || deletingId)}
+                  onClick={() => removeCamp(c)}
                 >
-                  Set active
+                  {deletingId === c.id ? "Deleting…" : "Delete"}
                 </button>
-              )}
-              <button
-                type="button"
-                className="pressable rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
-                disabled={deletingId === c.id}
-                onClick={() => removeCamp(c)}
-              >
-                {deletingId === c.id ? "Deleting…" : "Delete"}
-              </button>
+              </div>
             </div>
+            <ErrorBox
+              message={campError?.campId === c.id ? campError.message : null}
+            />
           </li>
         ))}
         {!camps.length ? (
@@ -140,7 +180,7 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
           value={campDate}
           onChange={(e) => setCampDate(e.target.value)}
         />
-        <ErrorBox message={error} />
+        <ErrorBox message={createError} />
         <Button type="submit" disabled={loading} variant="secondary">
           {loading ? "Creating…" : "Create camp"}
         </Button>

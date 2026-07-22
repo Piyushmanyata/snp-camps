@@ -1,8 +1,9 @@
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
-import { Card, NavLink, Shell, Stat } from "@/components/ui";
+import { Card, EmptyState, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import type { AdminPatientRow } from "@/components/admin-patients";
 
@@ -13,18 +14,17 @@ const AdminPatients = dynamic(
     })),
   {
     loading: () => (
-      <p className="py-6 text-center text-sm text-muted">Loading patient desk…</p>
+      <p role="status" className="py-6 text-center text-sm text-muted">
+        Loading patient desk…
+      </p>
     ),
   },
 );
 
-export default async function PatientDeskPage() {
-  const { profile } = await getSessionProfile();
-  if (profile?.role !== "admin") redirect("/login");
-
+async function PatientDeskContent() {
   const supabase = await createClient();
 
-  const { data: camp } = await supabase
+  const { data: camp, error: campError } = await supabase
     .from("camps")
     .select("id, name")
     .eq("is_active", true)
@@ -34,17 +34,17 @@ export default async function PatientDeskPage() {
     supabase
       .from("patients")
       .select(
-        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)",
+        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
       .limit(50),
-      camp
-        ? supabase.rpc("camp_queue_counts", { p_camp_id: camp.id })
-        : Promise.resolve({ data: [], error: null }),
+    camp
+      ? supabase.rpc("camp_queue_counts", { p_camp_id: camp.id })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (patientsRes.error || (camp && queueCountsRes.error)) {
+  if (campError || patientsRes.error || (camp && queueCountsRes.error)) {
     throw new Error("Patient desk data could not be loaded");
   }
 
@@ -78,6 +78,7 @@ export default async function PatientDeskPage() {
     const seenBy = (p.seen_by as string | null) ?? null;
     return {
       id: p.id as string,
+      user_id: (p.user_id as string | null) ?? null,
       reg_no: p.reg_no as number,
       full_name: p.full_name as string,
       phone: (p.phone as string | null) ?? null,
@@ -109,13 +110,65 @@ export default async function PatientDeskPage() {
       : null;
 
   return (
+    <div className="space-y-3 sm:space-y-4">
+      {camp ? (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <Stat label="Active registered" value={registered} />
+          <Stat label="Active queue" value={waiting} tone="wait" />
+          <Stat label="Active seen" value={doctorSeen} tone="ok" />
+        </div>
+      ) : (
+        <EmptyState>
+          No active camp. Historical patients remain available below.
+        </EmptyState>
+      )}
+
+      <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
+        <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
+          Patient desk
+        </p>
+        <p className="text-sm text-muted">
+          Who registered them, who saw them, and when. Average wait is from
+          queue join to doctor seen.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 lg:hidden">
+          <NavLink href="/register" variant="primary">
+            Register
+          </NavLink>
+          <NavLink href="/admin" variant="soft">
+            Admin
+          </NavLink>
+        </div>
+        <div className="desk-inline-actions mt-4">
+          <NavLink href="/admin" variant="soft">
+            Back to admin
+          </NavLink>
+          <NavLink href="/register" variant="primary">
+            Register patient
+          </NavLink>
+        </div>
+      </Card>
+
+      <Card>
+        <AdminPatients
+          initial={patients}
+          totalCount={patientsRes.count ?? patients.length}
+          avgWaitMinutes={avgWaitMin}
+          showAttribution
+        />
+      </Card>
+    </div>
+  );
+}
+
+export default async function PatientDeskPage() {
+  const { profile } = await getSessionProfile();
+  if (profile?.role !== "admin") redirect("/login");
+
+  return (
     <Shell
       title="Patient desk"
-      subtitle={
-        camp?.name
-          ? `${camp.name} · all patients · wait times`
-          : "All patients · volunteer · doctor · timestamps"
-      }
+      subtitle="All patients · volunteer · doctor · timestamps"
       width="xl"
       roleLabel="Admin"
       actions={<SignOutButton place="header" />}
@@ -125,48 +178,15 @@ export default async function PatientDeskPage() {
         { href: "/volunteer", label: "Volunteers" },
       ]}
     >
-      <div className="space-y-3 sm:space-y-4">
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <Stat label="Registered" value={registered} />
-          <Stat label="In queue" value={waiting} tone="wait" />
-          <Stat label="Doctor seen" value={doctorSeen} tone="ok" />
-        </div>
-
-        <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
-          <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
-            Patient desk
-          </p>
-          <p className="text-sm text-muted">
-            Who registered them, who saw them, and when. Average wait is from
-            queue join to doctor seen.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 lg:hidden">
-            <NavLink href="/register" variant="primary">
-              Register
-            </NavLink>
-            <NavLink href="/admin" variant="soft">
-              Admin
-            </NavLink>
-          </div>
-          <div className="desk-inline-actions mt-4">
-            <NavLink href="/admin" variant="soft">
-              Back to admin
-            </NavLink>
-            <NavLink href="/register" variant="primary">
-              Register patient
-            </NavLink>
-          </div>
-        </Card>
-
-        <Card>
-          <AdminPatients
-            initial={patients}
-            totalCount={patientsRes.count ?? patients.length}
-            avgWaitMinutes={avgWaitMin}
-            showAttribution
-          />
-        </Card>
-      </div>
+      <Suspense
+        fallback={
+          <Card className="p-6 text-sm text-muted">
+            <p role="status">Loading patient desk data…</p>
+          </Card>
+        }
+      >
+        <PatientDeskContent />
+      </Suspense>
     </Shell>
   );
 }

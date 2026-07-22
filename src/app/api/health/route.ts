@@ -2,8 +2,29 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 const cacheHeaders = {
-  "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=30",
+  "Cache-Control": "no-store",
 };
+
+async function phoneOtpIsConfigured() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return false;
+  try {
+    const response = await fetch(new URL("/auth/v1/settings", url), {
+      cache: "no-store",
+      headers: { apikey: anonKey },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return false;
+    const settings = (await response.json()) as {
+      external?: { phone?: boolean };
+      sms_provider?: string;
+    };
+    return settings.external?.phone === true && Boolean(settings.sms_provider);
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(request: Request) {
   const ready = new URL(request.url).searchParams.get("ready") === "1";
@@ -12,45 +33,38 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServiceRoleClient();
-  if (!supabase || !process.env.AADHAAR_VERIFY_URL?.trim()) {
+  if (!supabase) {
     return NextResponse.json(
       { ok: false },
       { status: 503, headers: cacheHeaders },
     );
   }
 
-  const [camps, patientShape, verificationStore, verifiedRegistration] =
+  const [phoneOtpReady, camps, profileShape, patientShape, phoneLinkRpc] =
     await Promise.all([
+      phoneOtpIsConfigured(),
       supabase.from("camps").select("id").limit(1),
+      supabase.from("profiles").select("id, disabled_at").limit(1),
       supabase
         .from("patients")
         .select(
           "id, phone_normalized, full_name_normalized, account_claim_token, account_claim_expires_at",
         )
         .limit(1),
-      supabase
-        .from("registration_verifications")
-        .select("token_hash, expires_at, consumed_at")
-        .limit(1),
-      supabase.rpc("register_verified_patient", {
-        p_verification_token: "0".repeat(64),
-        p_camp_id: "00000000-0000-0000-0000-000000000000",
-        p_full_name: "Readiness probe",
-        p_camp_day_id: "00000000-0000-0000-0000-000000000000",
-      }),
+      supabase.rpc("link_patient_phone", { p_phone: "" }),
     ]);
   const rpcExists = Boolean(
-    verifiedRegistration.error &&
-      /verification/i.test(verifiedRegistration.error.message),
+    phoneLinkRpc.error && /sign in required/i.test(phoneLinkRpc.error.message),
   );
   const ok =
+    phoneOtpReady &&
     !camps.error &&
+    !profileShape.error &&
     !patientShape.error &&
-    !verificationStore.error &&
     rpcExists;
 
   return NextResponse.json(
-    { ok },
+    { ok, checks: { database: !camps.error && !profileShape.error && !patientShape.error && rpcExists, phoneOtp: phoneOtpReady } },
     {
       status: ok ? 200 : 503,
       headers: cacheHeaders,

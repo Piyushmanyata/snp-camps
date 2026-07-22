@@ -52,136 +52,148 @@ export default function PatientLoginPage() {
 
   async function loginWithPassword(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
     const n = parseRegistrationNumber(regNo);
     if (n === null) {
       setError("Enter your registration number.");
-      setLoading(false);
       return;
     }
     if (password.length < 6) {
       setError("Enter your password (at least 6 characters).");
-      setLoading(false);
       return;
     }
 
-    const supabase = createClient();
-    const { error: err } = await supabase.auth.signInWithPassword({
-      email: patientAuthEmail(n),
-      password,
-    });
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email: patientAuthEmail(n),
+        password,
+      });
 
-    if (err) {
-      const msg = err.message.toLowerCase();
-      setError(
-        msg.includes("invalid") || msg.includes("credentials")
-          ? "Wrong reg no or password. Ask the desk if you never set a password."
-          : err.message,
-      );
+      if (err) {
+        const msg = err.message.toLowerCase();
+        setError(
+          msg.includes("invalid") || msg.includes("credentials")
+            ? "Wrong reg no or password. Ask the desk if you never set a password."
+            : err.message,
+        );
+        return;
+      }
+
+      router.replace("/patient");
+    } catch {
+      setError("Could not sign in. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.replace("/patient");
   }
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     const phoneE164 = normalizePhoneE164(phone);
     if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
-      setLoading(false);
       return;
     }
-    const supabase = createClient();
-    const { error: err } = await supabase.auth.signInWithOtp({
-      phone: phoneE164,
-    });
-    if (err) {
-      setError(
-        err.message +
-          " — Phone OTP needs SMS configured in Supabase. Use reg no + password for now.",
-      );
+
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.auth.signInWithOtp({
+        phone: phoneE164,
+        options: { shouldCreateUser: true },
+      });
+      if (err) {
+        setError(
+          err.message +
+            " — Phone OTP needs SMS configured in Supabase. Use reg no + password for now.",
+        );
+        return;
+      }
+      setOtpStep("otp");
+    } catch {
+      setError("Could not send an OTP. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setOtpStep("otp");
-    setLoading(false);
   }
 
   async function verifyOtp(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
-    const supabase = createClient();
     const phoneE164 = normalizePhoneE164(phone);
     if (!phoneE164) {
       setError("Enter a valid 10-digit Indian mobile number.");
-      setLoading(false);
-      return;
-    }
-    const { error: err } = await supabase.auth.verifyOtp({
-      phone: phoneE164,
-      token: otp,
-      type: "sms",
-    });
-    if (err) {
-      setError(err.message);
-      setLoading(false);
       return;
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError("OTP verified but no user session was created. Try again.");
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
+    const supabase = createClient();
+    try {
+      const {
+        data: { user },
+        error: err,
+      } = await supabase.auth.verifyOtp({
+        phone: phoneE164,
+        token: otp,
+        type: "sms",
+      });
+      if (err) {
+        setError(err.message);
+        return;
+      }
 
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .update({ phone: phoneE164, role: "patient" })
-      .eq("id", user.id);
+      if (!user) {
+        setError("OTP verified but no user session was created. Try again.");
+        return;
+      }
 
-    if (profileErr) {
-      await supabase.auth.signOut();
-      setError(profileErr.message);
-      setLoading(false);
-      return;
-    }
+      const { data: linked, error: linkedError } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
 
-    const { data: linked } = await supabase
-      .from("patients")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      if (linkedError) {
+        await supabase.auth.signOut();
+        setError("Could not check your linked registrations. Try again.");
+        return;
+      }
 
-    if (linked) {
-      router.replace("/patient");
-      return;
-    }
+      if (linked) {
+        router.replace("/patient");
+        return;
+      }
 
-    const { data: linkedId, error: linkErr } = await supabase.rpc(
-      "link_patient_phone",
-      { p_phone: phoneE164 },
-    );
-    if (linkErr || !linkedId) {
-      await supabase.auth.signOut();
-      setError(
-        linkErr?.message ||
-          "No unlinked registration was found for this phone number.",
+      const { data: linkedId, error: linkErr } = await supabase.rpc(
+        "link_patient_phone",
+        { p_phone: phoneE164 },
       );
-      setLoading(false);
-      return;
-    }
+      if (linkErr) {
+        await supabase.auth.signOut();
+        setError(
+          linkErr?.message ||
+            "Could not claim a registration for this phone number.",
+        );
+        return;
+      }
+
+      if (!linkedId) {
+        router.replace("/register");
+        return;
+      }
 
       router.replace("/patient");
+    } catch {
+      await supabase.auth.signOut().catch(() => undefined);
+      setError("Could not verify the OTP. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -195,8 +207,9 @@ export default function PatientLoginPage() {
       <Card>
         <InfoBox>
           Use the <strong className="text-foreground">reg number and password</strong>{" "}
-          from registration (also sent by SMS/WhatsApp when configured). On sign
-          out we show them again. QR codes are for camp staff only.
+          from registration (also sent by SMS/WhatsApp when configured). Save the
+          one-time backup password when it is shown; it is not displayed again
+          after sign out. QR codes are for camp staff only.
         </InfoBox>
 
         <div className="mt-4 mb-4">
@@ -215,7 +228,7 @@ export default function PatientLoginPage() {
         </div>
 
         {mode === "password" ? (
-          <form onSubmit={loginWithPassword} className="space-y-4" noValidate>
+          <form method="post" onSubmit={loginWithPassword} className="space-y-4">
             <Input
               label="Registration number"
               name="reg_no"
@@ -246,11 +259,11 @@ export default function PatientLoginPage() {
         ) : (
           <div className="space-y-4">
             <WarningBox>
-              Phone OTP works only after SMS is configured in Supabase. Prefer{" "}
-              <strong>reg no + password</strong> for now.
+              Phone OTP requires SMS delivery. If a code does not arrive, use{" "}
+              <strong>reg no + password</strong> or ask the camp desk.
             </WarningBox>
             {otpStep === "phone" ? (
-              <form onSubmit={sendOtp} className="space-y-4" noValidate>
+              <form method="post" onSubmit={sendOtp} className="space-y-4">
                 <Input
                   label="Mobile number"
                   name="phone"
@@ -273,7 +286,7 @@ export default function PatientLoginPage() {
                 </Button>
               </form>
             ) : (
-              <form onSubmit={verifyOtp} className="space-y-4" noValidate>
+              <form method="post" onSubmit={verifyOtp} className="space-y-4">
                 <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">
                   OTP sent to <strong>{normalizePhoneE164(phone) || phone}</strong>
                 </p>
