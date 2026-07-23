@@ -31,4 +31,7 @@ test("staff QR GET routes to each role's lookup-first scanner", () => {
   assert.match(qrEntryRoute, /: "\/volunteer"/);
   assert.match(qrEntryRoute, /`\$\{deskBase\}\?scan=\$\{id\}`/);
   assert.doesNotMatch(qrEntryRoute, /lookup_patient_scan|createClient|\/print\//);
+  // Desk handoff must clone the request URL so host/port (and cookies) match.
+  assert.match(qrEntryRoute, /req\.nextUrl\.clone\(\)/);
+  assert.doesNotMatch(qrEntryRoute, /NEXT_PUBLIC_SITE_URL/);
 });
