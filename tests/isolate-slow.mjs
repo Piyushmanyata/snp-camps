@@ -3,7 +3,7 @@ import { parsePatientIdFromQr, parseRegistrationNumber } from "../src/lib/qr.ts"
 import { isValidAadhaarNumber } from "../src/lib/aadhaar.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
 
-const VALID_UUID = "e3b0c442-98fc-41c4-a012-3456789abcde";
+
 
 const payloads = {
   p1: "/p/" + "a".repeat(10_000),

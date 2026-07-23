@@ -108,16 +108,6 @@ if (!process.env.E2E_SUPABASE_ANON_KEY || !process.env.E2E_SUPABASE_SERVICE_ROLE
   discovered = discoverDockerKeys();
 }
 
-async function isUrlReachable(url) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    return res.ok || res.status < 500;
-  } catch {
-    return false;
-  }
-}
-
-const isLocalReachable = await isUrlReachable("http://127.0.0.1:54321/rest/v1/");
 
 const hasValidServiceKey = Boolean(envLocal.SUPABASE_SERVICE_ROLE_KEY);
 

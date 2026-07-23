@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       supabase
         .from("patients")
         .select(
-          "id, phone_normalized, full_name_normalized, account_claim_token, account_claim_expires_at",
+          "id, phone_normalized, full_name_normalized",
         )
         .limit(1),
       supabase.rpc("link_patient_phone", { p_phone: "" }),

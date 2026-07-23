@@ -5,11 +5,8 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
-  isPatientUuid,
   parseRegistrationNumber,
   parsePatientIdFromQr,
-  patientPrintUrl,
-  patientScanUrl,
 } from "../src/lib/qr.ts";
 
 import {
@@ -73,7 +70,7 @@ test("CHALLENGER: QR & RegNo Parsing Microbenchmark (< 1µs/op target)", () => {
   console.log(
     `[CHALLENGER BENCHMARK] Executed ${totalOps} QR/RegNo parse ops in ${durationMs.toFixed(
       2
-    )} ms (${usPerOp.toFixed(4)} µs/op)`
+    )} ms (${usPerOp.toFixed(4)} µs/op) [valid QR: ${validQrCount}, valid RegNo: ${validRegCount}]`
   );
 
   assert.ok(

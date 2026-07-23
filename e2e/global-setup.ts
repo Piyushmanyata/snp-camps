@@ -15,9 +15,6 @@ function password() {
   return `${randomBytes(18).toString("base64url")}Aa1!`;
 }
 
-function throwOnError(error: { message: string } | null, action: string) {
-  if (error) throw new Error(`${action}: ${error.message}`);
-}
 
 async function listUsers(admin: SupabaseClient) {
   const users: User[] = [];
@@ -135,7 +132,7 @@ export default async function globalSetup() {
     };
 
     await createStaff("admin");
-    const volunteerId = await createStaff("volunteer");
+    await createStaff("volunteer");
     await createStaff("doctor");
 
     let camp = null;
