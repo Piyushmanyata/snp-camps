@@ -5,8 +5,8 @@ export function patientAuthEmail(regNo: number | string) {
   return `reg${regNo}@patients.snp.local`;
 }
 
-/** Default initial password for all patient accounts. */
-export const DEFAULT_PATIENT_PASSWORD = "1234";
+/** Default initial password for all patient accounts. Must satisfy Supabase Auth min 6-char policy. */
+export const DEFAULT_PATIENT_PASSWORD = "123456";
 
 /** Returns a crypto-random patient login password (default 12 chars). */
 export function generatePatientPassword(length = 12): string {

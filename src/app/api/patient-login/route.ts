@@ -64,10 +64,16 @@ export async function POST(req: Request) {
   let userId = patient.user_id;
 
   if (userId) {
-    await admin.auth.admin.updateUserById(userId, {
+    const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
       password: DEFAULT_PATIENT_PASSWORD,
       email_confirm: true,
     });
+    if (updErr) {
+      return NextResponse.json(
+        { error: "Could not prepare patient login. Try again." },
+        { status: 500 },
+      );
+    }
   } else {
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
@@ -85,10 +91,16 @@ export async function POST(req: Request) {
 
       if (existingProfile?.id) {
         userId = existingProfile.id;
-        await admin.auth.admin.updateUserById(userId, {
+        const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
           password: DEFAULT_PATIENT_PASSWORD,
           email_confirm: true,
         });
+        if (updErr) {
+          return NextResponse.json(
+            { error: "Could not provision login session." },
+            { status: 500 },
+          );
+        }
       } else {
         return NextResponse.json(
           { error: "Could not provision login session." },

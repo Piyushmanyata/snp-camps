@@ -121,7 +121,7 @@ test("CHALLENGER: Aadhaar Normalization & Checksum Microbenchmark (< 1µs/op tar
 });
 
 test("CHALLENGER: Password Generation Harness & Entropy Invariants", () => {
-  assert.equal(DEFAULT_PATIENT_PASSWORD, "1234");
+  assert.equal(DEFAULT_PATIENT_PASSWORD, "123456");
 
   const COUNT = 10_000;
   const patientPasswords = new Set();
