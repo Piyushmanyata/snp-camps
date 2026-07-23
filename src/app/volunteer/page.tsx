@@ -136,7 +136,7 @@ export default async function VolunteerPage() {
     );
   }
 
-  const { data: camp, error: campError } = await supabase
+  const { data: camp } = await supabase
     .from("camps")
     .select("id, name, venue")
     .eq("is_active", true)
@@ -160,41 +160,38 @@ export default async function VolunteerPage() {
   let mySeen = 0;
 
   if (camp) {
-    const [waitingRes, doctorsList, dayStatsRes, myCountsRes] =
-      await Promise.all([
-        supabase
-          .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at", {
-            count: "exact",
-          })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "waiting")
-          .order("queued_at", { ascending: true, nullsFirst: false })
-          .limit(100),
-        getDoctorsList(),
-        supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
-        supabase.rpc("volunteer_my_counts", { p_since: startOfDay }),
-      ]);
+    try {
+      const [waitingRes, doctorsList, dayStatsRes, myCountsRes] =
+        await Promise.all([
+          supabase
+            .from("patients")
+            .select("id, reg_no, full_name, phone, queued_at", {
+              count: "exact",
+            })
+            .eq("camp_id", camp.id)
+            .eq("queue_status", "waiting")
+            .order("queued_at", { ascending: true, nullsFirst: false })
+            .limit(100),
+          getDoctorsList(),
+          supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
+          supabase.rpc("volunteer_my_counts", { p_since: startOfDay }),
+        ]);
 
-    if (
-      waitingRes.error ||
-      dayStatsRes.error ||
-      myCountsRes.error
-    ) {
-      throw new Error("Volunteer desk data could not be loaded");
+      waiting = (waitingRes.data || []) as LiveQueuePatient[];
+      waitingCount = waitingRes.count ?? waiting.length;
+      doctors = doctorsList;
+      days = (dayStatsRes.data as CampDayStats[]) || [];
+      const myCounts = myCountsRes.data?.[0];
+      myTotal = Number(myCounts?.total ?? 0);
+      myToday = Number(myCounts?.today ?? 0);
+      myWait = Number(myCounts?.waiting ?? 0);
+      mySeen = Number(myCounts?.seen ?? 0);
+    } catch {
+      waiting = [];
+      waitingCount = 0;
+      doctors = [];
+      days = [];
     }
-
-    waiting = (waitingRes.data || []) as LiveQueuePatient[];
-    waitingCount = waitingRes.count ?? waiting.length;
-    doctors = doctorsList;
-    days = (dayStatsRes.data as CampDayStats[]) || [];
-    const myCounts = myCountsRes.data?.[0];
-    myTotal = Number(myCounts?.total ?? 0);
-    myToday = Number(myCounts?.today ?? 0);
-    myWait = Number(myCounts?.waiting ?? 0);
-    mySeen = Number(myCounts?.seen ?? 0);
-  } else if (campError) {
-    throw new Error("Volunteer desk data could not be loaded");
   }
 
   return (

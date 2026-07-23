@@ -41,31 +41,31 @@ async function DoctorStatsSection({
 }: {
   campId: string;
 }) {
-  const supabase = await createClient();
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
+  let seenToday = 0;
+  let myTotal = 0;
 
-  const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
-    p_camp_id: campId,
-    p_since: startOfDay.toISOString(),
-  });
-  if (error) {
-    return (
-      <div className="grid w-full grid-cols-2 gap-2">
-        <Stat label="You saw today" value={0} tone="ok" />
-        <Stat label="Total seen" value={0} />
-      </div>
-    );
+  try {
+    const supabase = await createClient();
+    const kolkataDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
+
+    const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
+      p_camp_id: campId,
+      p_since: startOfDay.toISOString(),
+    });
+    if (!error && countsRes?.[0]) {
+      seenToday = Number(countsRes[0].seen_today ?? 0);
+      myTotal = Number(countsRes[0].seen_total ?? 0);
+    }
+  } catch {
+    seenToday = 0;
+    myTotal = 0;
   }
-
-  const counts = countsRes?.[0];
-  const seenToday = Number(counts?.seen_today ?? 0);
-  const myTotal = Number(counts?.seen_total ?? 0);
 
   return (
     <div className="grid w-full grid-cols-2 gap-2">
@@ -80,18 +80,25 @@ async function DoctorSeenSection({
 }: {
   campId: string;
 }) {
-  const supabase = await createClient();
-  const { data: mySeenRes, error } = await supabase.rpc(
-    "doctor_recent_patients",
-    { p_camp_id: campId, p_limit: 50 },
-  );
-
-  const mySeen = (error || !mySeenRes ? [] : mySeenRes) as {
+  let mySeen: {
     id: string;
     reg_no: number;
     full_name: string;
     seen_at: string | null;
-  }[];
+  }[] = [];
+
+  try {
+    const supabase = await createClient();
+    const { data: mySeenRes, error } = await supabase.rpc(
+      "doctor_recent_patients",
+      { p_camp_id: campId, p_limit: 50 },
+    );
+    if (!error && mySeenRes) {
+      mySeen = mySeenRes as typeof mySeen;
+    }
+  } catch {
+    mySeen = [];
+  }
 
   return (
     <div id="seen">

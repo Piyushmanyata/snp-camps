@@ -30,10 +30,12 @@ export type AdminPatientRow = {
   camps: { name: string } | null;
   day_date?: string | null;
   created_by?: string | null;
+  checked_in_by?: string | null;
   seen_by?: string | null;
   queued_at?: string | null;
   seen_at?: string | null;
   volunteer_name?: string | null;
+  checked_in_by_name?: string | null;
   doctor_name?: string | null;
 };
 
@@ -87,15 +89,23 @@ function mapRows(
       | { full_name: string }
       | { full_name: string }[]
       | null;
+    const checkedInByRel = patient.checked_in_by_profile as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
     const doctor = patient.doctor as
       | { full_name: string }
       | { full_name: string }[]
       | null;
     const createdBy = (patient.created_by as string | null) ?? null;
+    const checkedInBy = (patient.checked_in_by as string | null) ?? null;
     const seenBy = (patient.seen_by as string | null) ?? null;
     const volunteerName = Array.isArray(volunteer)
       ? volunteer[0]?.full_name ?? null
       : volunteer?.full_name ?? null;
+    const checkedInByName = Array.isArray(checkedInByRel)
+      ? checkedInByRel[0]?.full_name ?? null
+      : checkedInByRel?.full_name ?? null;
     const doctorName = Array.isArray(doctor)
       ? doctor[0]?.full_name ?? null
       : doctor?.full_name ?? null;
@@ -115,17 +125,19 @@ function mapRows(
         ? day[0]?.day_date ?? null
         : day?.day_date ?? null,
       created_by: createdBy,
+      checked_in_by: checkedInBy,
       seen_by: seenBy,
       queued_at: (patient.queued_at as string | null) ?? null,
       seen_at: (patient.seen_at as string | null) ?? null,
       volunteer_name: volunteerName,
+      checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
     };
   });
 }
 
 const SELECT =
-  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -537,6 +549,11 @@ export function AdminPatients({
                             Queued
                           </span>
                           {queuedAt ? ` · ${queuedAt}` : ""}
+                          {r.checked_in_by_name
+                            ? ` · by ${r.checked_in_by_name}`
+                            : r.checked_in_by
+                              ? " · by staff"
+                              : ""}
                         </p>
                       ) : null}
                       {r.queue_status === "seen" || r.seen_at ? (

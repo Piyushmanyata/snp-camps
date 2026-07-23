@@ -1,5 +1,6 @@
 /** Normalize the Indian mobile formats accepted by registration and OTP flows. */
 export function normalizePhoneE164(raw: string): string | null {
+  if (!raw || typeof raw !== "string" || raw.length > 512) return null;
   const digits = raw.replace(/\D/g, "");
   const mobile = (value: string) => /^[6-9]\d{9}$/.test(value);
 

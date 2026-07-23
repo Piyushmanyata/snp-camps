@@ -25,6 +25,7 @@ const VERHOEFF_P = [
 ] as const;
 
 export function digitsOnly(value: string): string {
+  if (!value || typeof value !== "string" || value.length > 512) return "";
   return value.replace(/\D/g, "");
 }
 

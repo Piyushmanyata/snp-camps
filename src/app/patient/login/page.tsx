@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { parseRegistrationNumber } from "@/lib/qr";
+import { patientAuthEmail } from "@/lib/patient-password";
 import {
   Button,
   Card,
@@ -81,7 +82,7 @@ export default function PatientLoginPage() {
 
       const supabase = createClient();
       const { error: err } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email: data.email || patientAuthEmail(n),
         password: data.password,
       });
 
@@ -91,6 +92,8 @@ export default function PatientLoginPage() {
       }
 
       router.replace("/patient");
+      router.refresh();
+      window.location.href = "/patient";
     } catch {
       setError("Could not sign in. Check your connection and try again.");
     } finally {

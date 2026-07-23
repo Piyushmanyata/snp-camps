@@ -228,8 +228,9 @@ export async function POST(req: Request) {
   }
 
   async function restoreProvisioningReservation() {
-    if (!admin) return;
-    await admin
+    const client = admin;
+    if (!client) return;
+    await client
       .from("patients")
       .update({ account_provisioning_token: originalProvisioningToken })
       .eq("id", patientId)

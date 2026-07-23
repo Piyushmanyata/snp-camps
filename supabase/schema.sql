@@ -849,13 +849,12 @@ $$;
 -- Name: register_patient_authorized_impl(uuid, text, text, integer, text, text, text, text, uuid, uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.register_patient_authorized_impl(p_camp_id uuid, p_full_name text, p_gender text DEFAULT NULL::text, p_age integer DEFAULT NULL::integer, p_address text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_aadhaar_last4 text DEFAULT NULL::text, p_user_id uuid DEFAULT NULL::uuid, p_created_by uuid DEFAULT NULL::uuid, p_camp_day_id uuid DEFAULT NULL::uuid) RETURNS TABLE(id uuid, reg_no integer, full_name text, camp_day_id uuid, day_date date, claim_token text)
+CREATE FUNCTION public.register_patient_idempotent(p_request_id uuid, p_camp_id uuid, p_full_name text, p_gender text DEFAULT NULL::text, p_age integer DEFAULT NULL::integer, p_address text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_aadhaar_last4 text DEFAULT NULL::text, p_user_id uuid DEFAULT NULL::uuid, p_created_by uuid DEFAULT NULL::uuid, p_camp_day_id uuid DEFAULT NULL::uuid) RETURNS TABLE(id uuid, reg_no integer, full_name text, camp_day_id uuid, day_date date)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'public', 'extensions'
-    AS $_$
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
 declare
   v_request_role text;
-  v_is_staff boolean;
   v_user_id uuid;
   v_created_by uuid;
   v_aadhaar char(4);
@@ -866,35 +865,86 @@ declare
   v_taken integer;
   v_row public.patients%rowtype;
 begin
+  if p_request_id is null then
+    raise exception 'registration request id required';
+  end if;
+
   v_request_role := coalesce(
     nullif(auth.role(), ''),
     nullif(current_setting('request.jwt.claim.role', true), '')
   );
-  if v_request_role not in ('authenticated', 'service_role') then
-    raise exception 'API role required';
+
+  if v_request_role = 'service_role' then
+    v_user_id := p_user_id;
+    v_created_by := case when p_user_id is null then p_created_by else null end;
+  elsif v_request_role = 'authenticated' then
+    if not exists (
+      select 1
+      from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('admin', 'volunteer')
+        and p.disabled_at is null
+    ) then
+      raise exception 'active admin or volunteer required';
+    end if;
+    v_user_id := null;
+    v_created_by := (select auth.uid());
+  else
+    raise exception 'authenticated registration required';
   end if;
 
-  v_is_staff := public.is_staff();
-  if v_request_role = 'authenticated' and not v_is_staff then
-    raise exception 'staff only';
+  perform pg_advisory_xact_lock(
+    hashtext('register-request:' || p_request_id::text)
+  );
+
+  select p.id, p.reg_no, p.full_name, p.camp_day_id, d.day_date
+  into id, reg_no, full_name, camp_day_id, day_date
+  from public.patients p
+  join public.camp_days d on d.id = p.camp_day_id
+  where p.registration_request_id = p_request_id;
+
+  if found then
+    return next;
+    return;
   end if;
 
   v_name := trim(coalesce(p_full_name, ''));
-  if length(v_name) = 0 then
-    raise exception 'full_name required';
+  if length(v_name) = 0 or length(v_name) > 120 then
+    raise exception 'full_name required and must be at most 120 characters';
+  end if;
+  if p_age is not null and (p_age < 0 or p_age >= 150) then
+    raise exception 'age must be between 0 and 149';
   end if;
 
   if not exists (
     select 1
     from public.camps c
-    where c.id = p_camp_id
-      and c.is_active = true
+    where c.id = p_camp_id and c.is_active
   ) then
     raise exception 'No active camp';
   end if;
 
   if p_camp_day_id is null then
     raise exception 'Please select a camp day';
+  end if;
+
+  if v_user_id is not null then
+    perform pg_advisory_xact_lock(
+      hashtext('register-user:' || p_camp_id::text || ':' || v_user_id::text)
+    );
+
+    select p.reg_no
+    into v_existing_reg
+    from public.patients p
+    where p.camp_id = p_camp_id
+      and p.user_id = v_user_id
+    limit 1;
+
+    if v_existing_reg is not null then
+      raise exception
+        'Already registered for this camp (reg no %). Change day instead.',
+        v_existing_reg;
+    end if;
   end if;
 
   select *
@@ -907,34 +957,13 @@ begin
     raise exception 'Invalid camp day';
   end if;
 
-  select count(*)::int
+  select count(*)::integer
   into v_taken
   from public.patients p
   where p.camp_day_id = p_camp_day_id;
 
   if v_taken >= v_day.seat_limit then
-    raise exception 'This day is full (% seats). Choose another day.',
-      v_day.seat_limit;
-  end if;
-
-  if p_user_id is not null then
-    if v_request_role <> 'service_role'
-      and p_user_id is distinct from auth.uid()
-      and not v_is_staff
-    then
-      raise exception 'Cannot register for another user';
-    end if;
-    v_user_id := p_user_id;
-  end if;
-
-  if v_is_staff then
-    v_created_by := coalesce(p_created_by, auth.uid());
-  else
-    v_created_by := auth.uid();
-  end if;
-
-  if v_request_role = 'service_role' and p_user_id is not null then
-    v_created_by := null;
+    raise exception 'This day is full (% seats). Choose another day.', v_day.seat_limit;
   end if;
 
   if p_aadhaar_last4 is null or length(trim(p_aadhaar_last4)) = 0 then
@@ -954,37 +983,8 @@ begin
     v_phone10 := null;
   end if;
 
-  if v_user_id is not null then
-    select p.reg_no
-    into v_existing_reg
-    from public.patients p
-    where p.camp_id = p_camp_id
-      and p.user_id = v_user_id
-      and p.user_id is not null
-    limit 1;
-    if v_existing_reg is not null then
-      raise exception
-        'Already registered for this camp (reg no %). Change day instead.',
-        v_existing_reg;
-    end if;
-  end if;
-
-  if v_aadhaar is not null then
-    select p.reg_no
-    into v_existing_reg
-    from public.patients p
-    where p.camp_id = p_camp_id
-      and p.aadhaar_last4 = v_aadhaar
-      and p.full_name_normalized = lower(v_name)
-    limit 1;
-    if v_existing_reg is not null then
-      raise exception
-        'Already registered for this camp (reg no %). Change day instead.',
-        v_existing_reg;
-    end if;
-  end if;
-
   insert into public.patients (
+    registration_request_id,
     camp_id,
     camp_day_id,
     user_id,
@@ -997,11 +997,10 @@ begin
     aadhaar_last4,
     created_by,
     queue_status,
-    queued_at,
-    account_claim_token,
-    account_claim_expires_at
+    queued_at
   )
   values (
+    p_request_id,
     p_camp_id,
     p_camp_day_id,
     v_user_id,
@@ -1014,38 +1013,56 @@ begin
     v_aadhaar,
     v_created_by,
     'registered',
-    null,
-    case
-      when v_is_staff then null
-      else encode(extensions.gen_random_bytes(24), 'hex')
-    end,
-    case
-      when v_is_staff then null
-      else now() + interval '30 minutes'
-    end
+    null
   )
-  returning
-    public.patients.id,
-    public.patients.reg_no,
-    public.patients.full_name,
-    public.patients.camp_day_id,
-    public.patients.account_claim_token
-  into
-    v_row.id,
-    v_row.reg_no,
-    v_row.full_name,
-    v_row.camp_day_id,
-    v_row.account_claim_token;
+  returning public.patients.* into v_row;
 
   id := v_row.id;
   reg_no := v_row.reg_no;
   full_name := v_row.full_name;
   camp_day_id := v_row.camp_day_id;
   day_date := v_day.day_date;
-  claim_token := v_row.account_claim_token;
   return next;
 end;
-$_$;
+$$;
+
+
+CREATE FUNCTION public.app_database_contract() RETURNS text
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+  select case
+    when to_regprocedure(
+      'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid)'
+    ) is not null
+      and to_regprocedure('public.doctor_recent_patients(uuid,integer)') is not null
+      and to_regprocedure('public.link_patient_phone(text)') is not null
+      and exists (
+        select 1
+        from pg_catalog.pg_attribute a
+        join pg_catalog.pg_class c on c.oid = a.attrelid
+        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname = 'patients'
+          and a.attname = 'registration_request_id'
+          and a.attnum > 0
+          and not a.attisdropped
+      )
+      and exists (
+        select 1
+        from pg_catalog.pg_attribute a
+        join pg_catalog.pg_class c on c.oid = a.attrelid
+        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname = 'patients'
+          and a.attname = 'account_provisioning_token'
+          and a.attnum > 0
+          and not a.attisdropped
+      )
+    then '20260722050000'
+    else 'incomplete'
+  end;
+$$;
 
 
 --
@@ -1314,8 +1331,8 @@ CREATE TABLE public.patients (
     seen_by uuid,
     checked_in_by uuid,
     created_by uuid,
-    account_claim_token text,
-    account_claim_expires_at timestamp with time zone,
+    registration_request_id uuid,
+    account_provisioning_token text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     camp_day_id uuid,
     phone_normalized text GENERATED ALWAYS AS (NULLIF("right"(regexp_replace(COALESCE(phone, ''::text), '\D'::text, ''::text, 'g'::text), 10), ''::text)) STORED,
@@ -1404,10 +1421,17 @@ CREATE UNIQUE INDEX camps_one_active ON public.camps USING btree (is_active) WHE
 
 
 --
--- Name: patients_account_claim_token_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: patients_registration_request_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX patients_account_claim_token_idx ON public.patients USING btree (account_claim_token) WHERE (account_claim_token IS NOT NULL);
+CREATE UNIQUE INDEX patients_registration_request_id_idx ON public.patients USING btree (registration_request_id) WHERE (registration_request_id IS NOT NULL);
+
+
+--
+-- Name: patients_account_provisioning_token_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX patients_account_provisioning_token_idx ON public.patients USING btree (account_provisioning_token) WHERE (account_provisioning_token IS NOT NULL);
 
 
 --
@@ -1736,91 +1760,72 @@ GRANT USAGE ON SCHEMA public TO service_role;
 -- Name: FUNCTION active_camp_snapshot(); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.active_camp_snapshot() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.active_camp_snapshot() TO postgres;
-GRANT ALL ON FUNCTION public.active_camp_snapshot() TO anon;
-GRANT ALL ON FUNCTION public.active_camp_snapshot() TO authenticated;
-GRANT ALL ON FUNCTION public.active_camp_snapshot() TO service_role;
+REVOKE ALL ON FUNCTION public.active_camp_snapshot() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.active_camp_snapshot() TO anon, authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_patient_doctor(p_patient_id uuid, p_reg_no integer, p_doctor_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION camp_day_stats(p_camp_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.camp_day_stats(p_camp_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.camp_day_stats(p_camp_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.camp_day_stats(p_camp_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.camp_day_stats(p_camp_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.camp_day_stats(p_camp_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.camp_day_stats(p_camp_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION camp_queue_counts(p_camp_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.camp_queue_counts(p_camp_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.camp_queue_counts(p_camp_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.camp_queue_counts(p_camp_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.camp_queue_counts(p_camp_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.camp_queue_counts(p_camp_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.camp_queue_counts(p_camp_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION change_camp_day(p_patient_id uuid, p_new_day_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.change_camp_day(p_patient_id uuid, p_new_day_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION delete_camp(p_camp_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.delete_camp(p_camp_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.delete_camp(p_camp_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.delete_camp(p_camp_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.delete_camp(p_camp_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.delete_camp(p_camp_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_camp(p_camp_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION delete_camp_day(p_day_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.delete_camp_day(p_day_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.delete_camp_day(p_day_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.delete_camp_day(p_day_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.delete_camp_day(p_day_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.delete_camp_day(p_day_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_camp_day(p_day_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) TO postgres;
-GRANT ALL ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) TO service_role;
-GRANT ALL ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) TO authenticated;
+REVOKE ALL ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.doctor_my_counts(p_camp_id uuid, p_since timestamp with time zone) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION doctor_recent_patients(p_camp_id uuid, p_limit integer); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) TO postgres;
-GRANT ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) TO service_role;
-GRANT ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) TO authenticated;
+REVOKE ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit integer) TO authenticated, service_role, postgres;
 
 
 --
@@ -1828,137 +1833,103 @@ GRANT ALL ON FUNCTION public.doctor_recent_patients(p_camp_id uuid, p_limit inte
 --
 
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.handle_new_user() TO postgres;
-GRANT ALL ON FUNCTION public.handle_new_user() TO service_role;
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO postgres, service_role;
 
 
 --
 -- Name: FUNCTION is_admin(); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.is_admin() TO postgres;
-GRANT ALL ON FUNCTION public.is_admin() TO service_role;
-GRANT ALL ON FUNCTION public.is_admin() TO authenticated;
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION is_doctor(); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.is_doctor() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.is_doctor() TO postgres;
-GRANT ALL ON FUNCTION public.is_doctor() TO service_role;
-GRANT ALL ON FUNCTION public.is_doctor() TO authenticated;
+REVOKE ALL ON FUNCTION public.is_doctor() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_doctor() TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION is_staff(); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.is_staff() FROM PUBLIC;
-GRANT ALL ON FUNCTION public.is_staff() TO postgres;
-GRANT ALL ON FUNCTION public.is_staff() TO service_role;
-
-GRANT ALL ON FUNCTION public.is_staff() TO authenticated;
+REVOKE ALL ON FUNCTION public.is_staff() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_staff() TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION link_patient_phone(p_phone text); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.link_patient_phone(p_phone text) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.link_patient_phone(p_phone text) TO postgres;
-GRANT ALL ON FUNCTION public.link_patient_phone(p_phone text) TO service_role;
-GRANT ALL ON FUNCTION public.link_patient_phone(p_phone text) TO authenticated;
+REVOKE ALL ON FUNCTION public.link_patient_phone(p_phone text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.link_patient_phone(p_phone text) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION lookup_patient_scan(p_patient_id uuid, p_reg_no integer); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) TO postgres;
-GRANT ALL ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) TO service_role;
-GRANT ALL ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) TO authenticated;
+REVOKE ALL ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION mark_patient_printed(p_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.mark_patient_printed(p_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.mark_patient_printed(p_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.mark_patient_printed(p_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.mark_patient_printed(p_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.mark_patient_printed(p_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_patient_printed(p_id uuid) TO authenticated, service_role, postgres;
+
+
+--
+-- Name: FUNCTION register_patient_idempotent(p_request_id uuid, p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.register_patient_idempotent(p_request_id uuid, p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.register_patient_idempotent(p_request_id uuid, p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO authenticated;
-
-
---
--- Name: FUNCTION register_patient_authorized_impl(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.register_patient_authorized_impl(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.register_patient_authorized_impl(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO postgres;
+REVOKE ALL ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.register_patient(p_camp_id uuid, p_full_name text, p_gender text, p_age integer, p_address text, p_phone text, p_email text, p_aadhaar_last4 text, p_user_id uuid, p_created_by uuid, p_camp_day_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION set_active_camp(p_camp_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.set_active_camp(p_camp_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.set_active_camp(p_camp_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.set_active_camp(p_camp_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.set_active_camp(p_camp_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.set_active_camp(p_camp_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_active_camp(p_camp_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) TO postgres;
-GRANT ALL ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) TO service_role;
-GRANT ALL ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) TO authenticated;
-
-
---
--- Name: TABLE camp_days; Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON TABLE public.camp_days TO postgres;
-GRANT ALL ON TABLE public.camp_days TO service_role;
-GRANT SELECT ON TABLE public.camp_days TO anon;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.camp_days TO authenticated;
+REVOKE ALL ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.staff_person_kpis(p_user_id uuid, p_role text, p_camp_id uuid, p_since timestamp with time zone) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) TO postgres;
-GRANT ALL ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) TO service_role;
-GRANT ALL ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_camp_day(p_camp_id uuid, p_day_date date, p_seat_limit integer, p_day_id uuid) TO authenticated, service_role, postgres;
 
 
 --
 -- Name: FUNCTION volunteer_my_counts(p_since timestamp with time zone); Type: ACL; Schema: public; Owner: -
 --
 
-REVOKE ALL ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) FROM PUBLIC;
-GRANT ALL ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) TO postgres;
-GRANT ALL ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) TO service_role;
-GRANT ALL ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) TO authenticated;
+REVOKE ALL ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.volunteer_my_counts(p_since timestamp with time zone) TO authenticated, service_role, postgres;
 
 
 --

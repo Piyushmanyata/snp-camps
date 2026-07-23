@@ -59,6 +59,16 @@ const AdminCampDays = dynamic(
   },
 );
 
+const ChangePasswordCard = dynamic(
+  () =>
+    import("@/components/change-password-card").then((m) => ({
+      default: m.ChangePasswordCard,
+    })),
+  {
+    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading password settings…</p>,
+  },
+);
+
 const getCampQueueCounts = cache(async (campId: string) => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("camp_queue_counts", {
@@ -335,6 +345,10 @@ export default async function AdminPage() {
             <AdminOperationsSection campId={active.id} />
           </Suspense>
         ) : null}
+
+        <CollapsibleSection title="Account security" hint="Change password" defaultOpen={false}>
+          <ChangePasswordCard />
+        </CollapsibleSection>
       </div>
     </Shell>
   );

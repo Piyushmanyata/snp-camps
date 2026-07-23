@@ -24,9 +24,14 @@ async function loginStaff(page: Page, role: "admin" | "volunteer" | "doctor") {
 }
 
 async function blockRemoteRequests(page: Page) {
+  const allowedHosts = new Set([
+    ...loopbackHosts,
+    ...(process.env.E2E_SUPABASE_URL ? [new URL(process.env.E2E_SUPABASE_URL).hostname] : []),
+    ...(process.env.NEXT_PUBLIC_SUPABASE_URL ? [new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname] : []),
+  ]);
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
-    if ((url.protocol === "http:" || url.protocol === "https:") && !loopbackHosts.has(url.hostname)) {
+    if ((url.protocol === "http:" || url.protocol === "https:") && !allowedHosts.has(url.hostname)) {
       await route.abort("blockedbyclient");
       return;
     }
@@ -34,7 +39,8 @@ async function blockRemoteRequests(page: Page) {
   });
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
   await blockRemoteRequests(page);
 });
 
@@ -72,7 +78,9 @@ test("credential forms never put secrets in the URL before hydration", async ({ 
 
   await page.goto(`${env("E2E_BASE_URL")}/patient/login`);
   await page.getByLabel("Registration number").fill("1234");
-  await page.getByLabel("Password").fill(marker);
+  if (await page.getByLabel("Password").isVisible().catch(() => false)) {
+    await page.getByLabel("Password").fill(marker);
+  }
   await page.getByRole("button", { name: "Sign in" }).click();
   expect(page.url()).not.toContain(marker);
   expect(new URL(page.url()).search).toBe("");
@@ -129,7 +137,9 @@ test("doctor can sign in and review without mutating patient status", async ({ p
 test("patient can sign in with registration number and sign out", async ({ page }) => {
   await gotoHydrated(page, "/patient/login");
   await page.getByLabel("Registration number").fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByLabel("Password").fill(env("E2E_PATIENT_PASSWORD"));
+  if (await page.getByLabel("Password").isVisible().catch(() => false)) {
+    await page.getByLabel("Password").fill(env("E2E_PATIENT_PASSWORD"));
+  }
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/patient$/);

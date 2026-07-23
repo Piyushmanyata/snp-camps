@@ -34,7 +34,7 @@ async function PatientDeskContent() {
     supabase
       .from("patients")
       .select(
-        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), doctor:profiles!seen_by(full_name)",
+        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -64,6 +64,10 @@ async function PatientDeskContent() {
       | { full_name: string }
       | { full_name: string }[]
       | null;
+    const checkedInByRel = p.checked_in_by_profile as
+      | { full_name: string }
+      | { full_name: string }[]
+      | null;
     const doctorRel = p.doctor as
       | { full_name: string }
       | { full_name: string }[]
@@ -71,10 +75,14 @@ async function PatientDeskContent() {
     const volunteerName = Array.isArray(volunteerRel)
       ? volunteerRel[0]?.full_name ?? null
       : volunteerRel?.full_name ?? null;
+    const checkedInByName = Array.isArray(checkedInByRel)
+      ? checkedInByRel[0]?.full_name ?? null
+      : checkedInByRel?.full_name ?? null;
     const doctorName = Array.isArray(doctorRel)
       ? doctorRel[0]?.full_name ?? null
       : doctorRel?.full_name ?? null;
     const createdBy = (p.created_by as string | null) ?? null;
+    const checkedInBy = (p.checked_in_by as string | null) ?? null;
     const seenBy = (p.seen_by as string | null) ?? null;
     return {
       id: p.id as string,
@@ -90,10 +98,12 @@ async function PatientDeskContent() {
       camps: campName ? { name: campName } : null,
       day_date: dayDate,
       created_by: createdBy,
+      checked_in_by: checkedInBy,
       seen_by: seenBy,
       queued_at: (p.queued_at as string | null) ?? null,
       seen_at: (p.seen_at as string | null) ?? null,
       volunteer_name: volunteerName,
+      checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
     };
   });
