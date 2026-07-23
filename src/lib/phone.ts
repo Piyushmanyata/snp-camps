@@ -2,6 +2,7 @@
 export function normalizePhoneE164(raw: string): string | null {
   if (!raw || typeof raw !== "string" || raw.length > 512) return null;
   const digits = raw.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 13) return null;
   const mobile = (value: string) => /^[6-9]\d{9}$/.test(value);
 
   if (digits.length === 10 && mobile(digits)) return `+91${digits}`;

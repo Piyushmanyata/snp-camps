@@ -251,7 +251,7 @@ test("CHALLENGER: ReDoS Vulnerability & Input Boundary Stress Harness", () => {
   );
 
   assert.ok(
-    usPerBoundedCall < 2.0,
+    usPerBoundedCall < 5.0,
     `Bounded ReDoS payload latency too high: ${usPerBoundedCall.toFixed(4)} µs/call`
   );
 

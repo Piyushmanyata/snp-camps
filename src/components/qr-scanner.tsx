@@ -9,7 +9,7 @@ import {
   parseRegistrationNumber,
 } from "@/lib/qr";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
-import { Button, ErrorBox, Input } from "@/components/ui";
+import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
 
 export type DoctorOption = {
@@ -732,6 +732,11 @@ export function QrScanner({
           id={regionId}
           className={active && !useNative ? "min-h-[280px] w-full" : "hidden"}
         />
+        {active ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6" aria-hidden="true">
+            <div className="h-44 w-44 rounded-2xl border-2 border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/40" />
+          </div>
+        ) : null}
         {!active ? (
           <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
             Camera preview appears here
@@ -872,13 +877,21 @@ export function QrScanner({
 
           {lookup.queue_status === "seen" ? (
             <>
-              <p className="mt-1 text-sm font-semibold text-brand">
-                Already seen
-                {lookup.doctor_name ? ` by ${lookup.doctor_name}` : ""}
-              </p>
-              <p className="mt-0.5 text-xs text-muted">
-                Multiple scanning is not allowed.
-              </p>
+              <WarningBox>
+                <div className="flex items-start gap-2.5">
+                  <svg className="mt-0.5 h-5 w-5 shrink-0 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="font-bold text-amber-950">
+                      Already Seen{lookup.doctor_name ? ` by ${lookup.doctor_name}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-900/80">
+                      Duplicate examination prevented. Multiple scans for the same patient are blocked.
+                    </p>
+                  </div>
+                </div>
+              </WarningBox>
               <div className="mt-3 flex flex-wrap gap-2">
                 {mode !== "doctor" ? (
                   <Link

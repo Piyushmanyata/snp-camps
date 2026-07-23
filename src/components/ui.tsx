@@ -93,7 +93,7 @@ export function Shell({
             : { paddingBottom: "calc(2rem + var(--safe-bottom))" }),
         }}
       >
-        <header className="mb-4 flex items-start gap-2.5 sm:mb-6 sm:gap-3">
+        <header className="mb-4 flex items-start gap-2.5 rounded-2xl border border-border/50 bg-card/70 p-3.5 backdrop-blur-md shadow-xs sm:mb-6 sm:gap-3 sm:p-4">
           {backHref ? (
             <Link
               href={backHref}
@@ -435,19 +435,21 @@ export function Badge({
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "ok" | "wait" | "danger";
+  tone?: "default" | "ok" | "wait" | "danger" | "scanning" | "seen";
 }) {
   const c =
-    tone === "ok"
-      ? "bg-brand-soft text-brand ring-1 ring-brand/15"
+    tone === "ok" || tone === "scanning"
+      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
       : tone === "wait"
-        ? "bg-amber-50 text-amber-900 ring-1 ring-amber-200/80"
-        : tone === "danger"
-          ? "bg-danger-soft text-danger ring-1 ring-danger/20"
-          : "bg-background text-muted ring-1 ring-border/80";
+        ? "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+        : tone === "seen"
+          ? "bg-emerald-500/10 text-emerald-800 ring-1 ring-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+          : tone === "danger"
+            ? "bg-danger-soft text-danger ring-1 ring-danger/25"
+            : "bg-background text-muted ring-1 ring-border/80";
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold ${c}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold transition-all duration-150 ${c}`}
     >
       {children}
     </span>
@@ -540,10 +542,10 @@ export function ActionCard({
 
   const styles =
     variant === "primary"
-      ? "bg-brand text-white shadow-md hover:bg-brand-dark hover:shadow-[var(--shadow-lift)]"
+      ? "bg-brand text-white shadow-md hover:bg-brand-dark hover:shadow-[var(--shadow-lift)] hover:-translate-y-0.5"
       : variant === "soft"
-        ? "border border-brand/20 bg-brand-soft text-brand hover:bg-white hover:border-brand/35"
-        : "border border-border bg-card text-foreground shadow-sm hover:border-brand/30 hover:bg-brand-soft";
+        ? "border border-brand/20 bg-brand-soft text-brand hover:bg-white hover:border-brand/35 hover:-translate-y-0.5"
+        : "border border-border bg-card text-foreground shadow-sm hover:border-brand/30 hover:bg-brand-soft hover:-translate-y-0.5";
 
   const descClass =
     variant === "primary" ? "text-white/90" : "text-muted";

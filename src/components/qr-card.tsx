@@ -27,9 +27,9 @@ export function QrCard({
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-md transition-all duration-200 hover:shadow-lg ring-1 ring-emerald-500/15">
       <div className="text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted">
           Registration no.
         </p>
         <p
@@ -39,17 +39,17 @@ export function QrCard({
           {regNo}
         </p>
       </div>
-      <div className="rounded-2xl border border-border bg-white p-4 shadow-inner">
+      <div className="rounded-2xl border border-emerald-500/20 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10">
         <QrCode
           value={payload}
           size={220}
           level="H"
           includeMargin
-          fgColor="#0a5c3a"
+          fgColor="#047857"
         />
       </div>
       <div className="text-center">
-        <p className="text-sm font-semibold text-brand">
+        <p className="text-sm font-bold text-brand">
           Show this QR to camp staff
         </p>
         <p className="prose-help mt-1 text-xs text-muted">

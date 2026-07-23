@@ -35,7 +35,7 @@ export function parseRegistrationNumber(
   if (typeof raw !== "string" || raw.length > 512) return null;
 
   const digits = raw.replace(/\D/g, "");
-  if (!digits) return null;
+  if (!digits || digits.length > 10) return null;
   const value = Number(digits);
   return Number.isSafeInteger(value) && value > 0 && value <= REG_NO_MAX
     ? value

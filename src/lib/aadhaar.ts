@@ -44,7 +44,7 @@ export function aadhaarLast4(raw: string): string {
 /** Verhoeff checksum used by UIDAI for 12-digit Aadhaar. */
 export function isValidAadhaarNumber(raw: string): boolean {
   const d = digitsOnly(raw);
-  if (!/^\d{12}$/.test(d)) return false;
+  if (d.length !== 12) return false;
   // Reject obviously invalid (all same digit)
   if (/^(\d)\1{11}$/.test(d)) return false;
 
