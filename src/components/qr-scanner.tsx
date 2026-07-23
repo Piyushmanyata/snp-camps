@@ -351,12 +351,13 @@ export function QrScanner({
     autoScanDone.current = true;
     const timer = window.setTimeout(() => {
       void resolvePatient({ id }).then(() => {
-        const path = window.location.pathname;
-        router.replace(path, { scroll: false });
+        // Strip ?scan= via History API so the lookup card is not remounted away.
+        const next = window.location.pathname;
+        window.history.replaceState(null, "", next);
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [resolvePatient, router]);
+  }, [resolvePatient]);
 
   async function start() {
     if (starting || active || looking || assigningRef.current) return;

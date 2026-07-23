@@ -16,17 +16,25 @@ export async function GET(
 ) {
   const { id: rawId } = await params;
   const id = rawId.trim().toLowerCase();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
+
+  // Clone the request URL so redirects keep the same host/port the client used
+  // (127.0.0.1 vs localhost matter for cookies). Absolute SITE_URL would bounce
+  // a local desk session to production and drop auth.
+  function redirectTo(pathWithQuery: string) {
+    const url = req.nextUrl.clone();
+    const [pathname, search = ""] = pathWithQuery.split("?");
+    url.pathname = pathname;
+    url.search = search ? `?${search}` : "";
+    return NextResponse.redirect(url);
+  }
 
   if (!isPatientUuid(id)) {
-    return NextResponse.redirect(new URL("/patient/qr-help?invalid=1", origin));
+    return redirectTo("/patient/qr-help?invalid=1");
   }
 
   const { profile } = await getSessionProfile();
   if (!isStaff(profile?.role)) {
-    return NextResponse.redirect(
-      new URL(`/patient/qr-help?id=${encodeURIComponent(id)}`, origin),
-    );
+    return redirectTo(`/patient/qr-help?id=${encodeURIComponent(id)}`);
   }
 
   const deskBase =
@@ -36,5 +44,5 @@ export async function GET(
         ? "/doctor"
         : "/volunteer";
 
-  return NextResponse.redirect(new URL(`${deskBase}?scan=${id}`, origin));
+  return redirectTo(`${deskBase}?scan=${id}`);
 }

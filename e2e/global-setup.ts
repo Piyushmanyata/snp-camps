@@ -15,7 +15,6 @@ function password() {
   return `${randomBytes(18).toString("base64url")}Aa1!`;
 }
 
-
 async function listUsers(admin: SupabaseClient) {
   const users: User[] = [];
   try {
@@ -256,6 +255,7 @@ export default async function globalSetup() {
     process.env.E2E_PATIENT_REG_NO = String(regNo);
     process.env.E2E_PATIENT_PASSWORD = patientPassword;
     process.env.E2E_PATIENT_NAME = patientName;
+    if (patientId) process.env.E2E_PATIENT_ID = patientId;
 
     return cleanup;
   } catch (error) {

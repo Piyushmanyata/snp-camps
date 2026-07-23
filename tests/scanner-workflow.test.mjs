@@ -65,3 +65,12 @@ test("scanner and deep links look up before any explicit assignment", () => {
     /\.select\(["'][^"']*\bphone\b[^"']*["']\)/,
   );
 });
+
+test("deep-link scan strips query without App Router remount", () => {
+  const deepLink = scanner.match(
+    /\/\/ Deep-link:[\s\S]*?\}, \[resolvePatient\]\);/,
+  )?.[0];
+  assert.ok(deepLink, "deep-link effect must be present");
+  assert.match(deepLink, /window\.history\.replaceState\(null, "", next\)/);
+  assert.doesNotMatch(deepLink, /router\.replace\(/);
+});
