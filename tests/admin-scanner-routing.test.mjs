@@ -7,8 +7,8 @@ const adminPage = fs.readFileSync(
   path.join(process.cwd(), "src/app/admin/page.tsx"),
   "utf8",
 );
-const qrEntryRoute = fs.readFileSync(
-  path.join(process.cwd(), "src/app/patient/enter/[id]/route.ts"),
+const qrEntryPage = fs.readFileSync(
+  path.join(process.cwd(), "src/app/patient/enter/[id]/page.tsx"),
   "utf8",
 );
 
@@ -21,17 +21,18 @@ test("admin dashboard shares active doctors between scanner and queue", () => {
 });
 
 test("staff QR GET routes to each role's lookup-first scanner", () => {
-  assert.match(qrEntryRoute, /if \(!isPatientUuid\(id\)\)/);
+  assert.match(qrEntryPage, /if \(!isPatientUuid\(id\)\)/);
   assert.match(
-    qrEntryRoute,
+    qrEntryPage,
     /if \(!isStaff\(profile\?\.role\)\)[\s\S]*\/patient\/qr-help/,
   );
-  assert.match(qrEntryRoute, /profile\?\.role === "admin"\s*\? "\/admin"/);
-  assert.match(qrEntryRoute, /profile\?\.role === "doctor"\s*\? "\/doctor"/);
-  assert.match(qrEntryRoute, /: "\/volunteer"/);
-  assert.match(qrEntryRoute, /`\$\{deskBase\}\?scan=\$\{id\}`/);
-  assert.doesNotMatch(qrEntryRoute, /lookup_patient_scan|createClient|\/print\//);
-  // Desk handoff must clone the request URL so host/port (and cookies) match.
-  assert.match(qrEntryRoute, /req\.nextUrl\.clone\(\)/);
-  assert.doesNotMatch(qrEntryRoute, /NEXT_PUBLIC_SITE_URL/);
+  assert.match(qrEntryPage, /profile\?\.role === "admin"\s*\? "\/admin"/);
+  assert.match(qrEntryPage, /profile\?\.role === "doctor"\s*\? "\/doctor"/);
+  assert.match(qrEntryPage, /: "\/volunteer"/);
+  assert.match(qrEntryPage, /`\$\{deskBase\}\?scan=\$\{id\}`/);
+  assert.doesNotMatch(qrEntryPage, /lookup_patient_scan|createClient|\/print\//);
+  // Relative redirect() keeps the current host/port (cookies stay bound).
+  assert.match(qrEntryPage, /redirect\(`\$\{deskBase\}\?scan=\$\{id\}`\)/);
+  assert.doesNotMatch(qrEntryPage, /NEXT_PUBLIC_SITE_URL/);
+  assert.doesNotMatch(qrEntryPage, /req\.nextUrl|NextResponse\.redirect/);
 });
