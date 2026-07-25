@@ -58,9 +58,11 @@ as a casual fix.
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
-`GET /api/health` is a cheap liveness probe. `GET /api/health?ready=1` also
-checks the required database shape, service-role configuration, and Supabase
-Phone Auth/SMS provider settings; it returns 503 until all are ready.
+`GET /api/health` is a cheap, open liveness probe. `GET /api/health?ready=1`
+also checks the required database shape (via `app_database_contract` and table
+probes), service-role configuration, and Supabase Phone Auth/SMS provider
+settings; it returns 503 until all are ready. The readiness path is
+per-IP rate-limited (12/min) so it cannot be used as an amplification vector.
 
 ### 2. Auth settings
 

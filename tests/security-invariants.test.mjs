@@ -100,6 +100,17 @@ test("every public table in the baseline migration has RLS enabled", () => {
   }
 });
 
+test("health readiness is rate-limited and does not match RPC error text", () => {
+  const health = read("src/app/api/health/route.ts");
+  assert.match(health, /checkRateLimit/);
+  assert.match(health, /scope:\s*["']health-ready["']/);
+  assert.match(health, /app_database_contract/);
+  assert.doesNotMatch(health, /sign in required/i);
+  assert.doesNotMatch(health, /link_patient_phone/);
+  // Liveness stays an early open path (ready !== "1").
+  assert.match(health, /searchParams\.get\(["']ready["']\)\s*===\s*["']1["']/);
+});
+
 test("production CSP script-src has no unsafe-inline (nonce + strict-dynamic)", async () => {
   const { buildContentSecurityPolicy, productionScriptSrcAllowsUnsafeInline } =
     await import("../src/lib/csp.ts");
