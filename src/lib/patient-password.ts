@@ -1,13 +1,5 @@
 import { randomInt } from "node:crypto";
 
-/** Synthetic auth email for reg-no + password patient accounts. */
-export function patientAuthEmail(regNo: number | string) {
-  return `reg${regNo}@patients.snp.local`;
-}
-
-/** Default initial password for all patient accounts. Must satisfy Supabase Auth min 6-char policy. */
-export const DEFAULT_PATIENT_PASSWORD = "123456";
-
 /** Returns a crypto-random patient login password (default 12 chars). */
 export function generatePatientPassword(length = 12): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

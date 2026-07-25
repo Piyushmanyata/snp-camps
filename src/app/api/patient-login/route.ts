@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
-import { DEFAULT_PATIENT_PASSWORD } from "@/lib/patient-password";
 import { parseRegistrationNumber } from "@/lib/qr";
 import { checkRateLimit } from "@/lib/rate-limit";
+
+// Local to this legacy endpoint only — not a shared module export (see #11, #15, #16).
+const LEGACY_DEFAULT_PASSWORD = "123456";
 
 type Body = {
   regNo?: number | string;
@@ -65,7 +67,7 @@ export async function POST(req: Request) {
 
   if (userId) {
     const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
-      password: DEFAULT_PATIENT_PASSWORD,
+      password: LEGACY_DEFAULT_PASSWORD,
       email_confirm: true,
     });
     if (updErr) {
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
   } else {
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
-      password: DEFAULT_PATIENT_PASSWORD,
+      password: LEGACY_DEFAULT_PASSWORD,
       email_confirm: true,
       user_metadata: { full_name: name, patient_reg_no: regNo },
     });
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
       if (existingProfile?.id) {
         userId = existingProfile.id;
         const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
-          password: DEFAULT_PATIENT_PASSWORD,
+          password: LEGACY_DEFAULT_PASSWORD,
           email_confirm: true,
         });
         if (updErr) {
@@ -130,7 +132,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     email,
-    password: DEFAULT_PATIENT_PASSWORD,
+    password: LEGACY_DEFAULT_PASSWORD,
     regNo: patient.reg_no,
   });
 }

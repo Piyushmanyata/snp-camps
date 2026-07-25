@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { parseRegistrationNumber } from "@/lib/qr";
-import { patientAuthEmail } from "@/lib/patient-password";
+import { patientAuthEmail } from "@/lib/patient-auth";
 import {
   Button,
   Card,
