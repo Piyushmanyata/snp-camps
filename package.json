@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --no-warnings --import ./tests/route-loader.mjs --test tests/*.test.mjs",
+    "test:db": "node --no-warnings --test tests/register-patient-idempotent.db.test.mjs",
     "test:e2e": "node e2e/run-local.mjs",
     "verify": "npm run lint && npm test && npm run build",
     "load:smoke": "node scripts/load-test.mjs",
