@@ -71,3 +71,30 @@ test("backup credentials use the account API login reg number", () => {
     /Registered & signed in[\s\S]*#\{created\.reg_no\}/,
   );
 });
+
+test("public self-registration sends a client requestId to the API", () => {
+  assert.match(registrationSource, /import \{ createRequestId \} from "@\/lib\/request-id"/);
+  assert.match(
+    registrationSource,
+    /registrationRequestId = useRef<string>\(createRequestId\(\)\)/,
+  );
+  // Public path body must include requestId (the API rejects missing UUIDs).
+  assert.match(
+    registrationSource,
+    /fetch\("\/api\/patient-register"[\s\S]*?JSON\.stringify\(\{[\s\S]*?requestId,/,
+  );
+  // Staff path must never fall back to undefined when randomUUID is missing.
+  assert.doesNotMatch(
+    registrationSource,
+    /crypto\.randomUUID[\s\S]{0,80}\?[\s\S]{0,40}:\s*undefined/,
+  );
+  assert.match(
+    registrationSource,
+    /register_patient_idempotent[\s\S]*?p_request_id:\s*requestId/,
+  );
+  // API still requires a valid UUID request id.
+  assert.match(
+    registerRouteSource,
+    /if \(!UUID\.test\(requestId\) \|\| !UUID\.test\(campId\) \|\| !UUID\.test\(campDayId\)\)/,
+  );
+});

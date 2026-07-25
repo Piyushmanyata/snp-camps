@@ -13,6 +13,7 @@ import {
   type AadhaarProfile,
 } from "@/lib/aadhaar";
 import { normalizePhoneE164 } from "@/lib/phone";
+import { createRequestId } from "@/lib/request-id";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
@@ -118,6 +119,8 @@ export function PatientForm({
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLookedUp = useRef<string>("");
   const lookupRequest = useRef(0);
+  /** Stable idempotency key for the in-flight registration attempt (retries reuse it). */
+  const registrationRequestId = useRef<string>(createRequestId());
   const lookupAbort = useRef<AbortController | null>(null);
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
@@ -467,12 +470,10 @@ export function PatientForm({
     let data: unknown;
     let registrationError: string | null = null;
 
+    const requestId = registrationRequestId.current;
+
     if (isStaff) {
       try {
-        const requestId =
-          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : undefined;
         const result = await supabase.rpc("register_patient_idempotent", {
           p_request_id: requestId,
           p_camp_id: campId,
@@ -499,6 +500,7 @@ export function PatientForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            requestId,
             campId,
             campDayId,
             fullName: fullName.trim(),
@@ -536,6 +538,9 @@ export function PatientForm({
       setLoading(false);
       return;
     }
+
+    // Success: rotate idempotency key so the next walk-in is a new request.
+    registrationRequestId.current = createRequestId();
 
     const base = row as Created;
 
@@ -675,6 +680,7 @@ export function PatientForm({
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
+    registrationRequestId.current = createRequestId();
   }
 
   function moveDay(currentId: string, direction: -1 | 1) {
