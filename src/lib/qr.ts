@@ -1,6 +1,7 @@
 /**
  * Patient QR codes are for **staff scan only** (volunteer / doctor / admin).
- * Never used for patient login — patients sign in with reg no + password.
+ * Never used for patient login — patients have no app login; status is
+ * passwordless via /s/<token> (not this QR).
  */
 
 const UUID_RE =
@@ -61,7 +62,7 @@ export function resolveOrigin(origin?: string | null): string {
 /**
  * Staff-scan QR payload (short path = denser, more reliable paper scan).
  * Opening as staff: registered → print · waiting/seen → desk assign.
- * Opening as patient/public: qr-help (no login).
+ * Opening as public: show-at-desk message (no login).
  */
 export function patientScanUrl(
   patientId: string,

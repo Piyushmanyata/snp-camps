@@ -25,37 +25,6 @@ export function createRegistrationAttempt(
   };
 }
 
-export type PublicRegistrationFields = {
-  campId: string;
-  campDayId: string;
-  fullName: string;
-  gender: string | null;
-  age: number | null;
-  address: string | null;
-  phone: string;
-  email: string | null;
-  aadhaarLast4: string | null;
-};
-
-/** JSON body for POST /api/patient-register (public self-registration). */
-export function publicRegistrationBody(
-  attempt: Pick<RegistrationAttempt, "id">,
-  fields: PublicRegistrationFields,
-) {
-  return {
-    requestId: attempt.id,
-    campId: fields.campId,
-    campDayId: fields.campDayId,
-    fullName: fields.fullName,
-    gender: fields.gender,
-    age: fields.age,
-    address: fields.address,
-    phone: fields.phone,
-    email: fields.email,
-    aadhaarLast4: fields.aadhaarLast4,
-  };
-}
-
 export type StaffRegistrationFields = {
   campId: string;
   fullName: string;
@@ -108,15 +77,14 @@ export function staffRegistrationRpcArgs(
 
 /**
  * Outbound registration call used by PatientForm.
- * Public path → fetch /api/patient-register; staff path → RPC.
+ * Staff path only → RPC `register_patient_idempotent`.
+ * Public self-registration is retired (#45).
  * Does not rotate the attempt — caller rotates only after success / resetForm.
  */
 export async function submitRegistrationOutbound(options: {
   isStaff: boolean;
   attempt: Pick<RegistrationAttempt, "id">;
-  publicFields?: PublicRegistrationFields;
   staffFields?: StaffRegistrationFields;
-  fetchImpl?: typeof fetch;
   rpc?: (
     fn: "register_patient_idempotent",
     args: ReturnType<typeof staffRegistrationRpcArgs>,
@@ -126,68 +94,36 @@ export async function submitRegistrationOutbound(options: {
   error: string | null;
   aadhaarDuplicateRegNo?: number | null;
 }> {
-  const {
-    isStaff,
-    attempt,
-    publicFields,
-    staffFields,
-    fetchImpl = fetch,
-    rpc,
-  } = options;
+  const { isStaff, attempt, staffFields, rpc } = options;
 
-  if (isStaff) {
-    if (!staffFields || !rpc) {
-      return { data: null, error: "Staff registration is misconfigured." };
-    }
-    try {
-      const result = await rpc(
-        "register_patient_idempotent",
-        staffRegistrationRpcArgs(attempt, staffFields),
-      );
-      const errMsg = result.error?.message || null;
-      const dup = parseAadhaarDuplicateError(errMsg);
-      // Keep AADHAAR_DUPLICATE raw so the form can offer staff override;
-      // every other DB error is mapped to camp-worker copy (#31).
-      return {
-        data: result.data,
-        error: errMsg
-          ? dup
-            ? errMsg
-            : publicRegistrationError(result.error, "staff-register.rpc")
-          : null,
-        aadhaarDuplicateRegNo: dup?.regNo ?? null,
-      };
-    } catch {
-      return {
-        data: null,
-        error:
-          "Registration service is unavailable. Check your connection and try again.",
-        aadhaarDuplicateRegNo: null,
-      };
-    }
-  }
-
-  if (!publicFields) {
-    return { data: null, error: "Public registration is misconfigured." };
-  }
-
-  try {
-    const response = await fetchImpl("/api/patient-register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(publicRegistrationBody(attempt, publicFields)),
-    });
-    const payload = (await response.json()) as {
-      patient?: unknown;
-      error?: string;
-    };
-    const errMsg = response.ok
-      ? null
-      : payload.error || "Registration failed";
+  if (!isStaff) {
     return {
-      data: payload.patient,
-      error: errMsg,
-      aadhaarDuplicateRegNo: parseAadhaarDuplicateError(errMsg)?.regNo ?? null,
+      data: null,
+      error: "Registration is at the camp desk only.",
+      aadhaarDuplicateRegNo: null,
+    };
+  }
+
+  if (!staffFields || !rpc) {
+    return { data: null, error: "Staff registration is misconfigured." };
+  }
+  try {
+    const result = await rpc(
+      "register_patient_idempotent",
+      staffRegistrationRpcArgs(attempt, staffFields),
+    );
+    const errMsg = result.error?.message || null;
+    const dup = parseAadhaarDuplicateError(errMsg);
+    // Keep AADHAAR_DUPLICATE raw so the form can offer staff override;
+    // every other DB error is mapped to camp-worker copy (#31).
+    return {
+      data: result.data,
+      error: errMsg
+        ? dup
+          ? errMsg
+          : publicRegistrationError(result.error, "staff-register.rpc")
+        : null,
+      aadhaarDuplicateRegNo: dup?.regNo ?? null,
     };
   } catch {
     return {

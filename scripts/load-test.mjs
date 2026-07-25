@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 const baseUrl = process.env.LOAD_BASE_URL?.replace(/\/$/, "");
 const virtualUsers = Number(process.env.LOAD_VUS || 25);
 const durationSeconds = Number(process.env.LOAD_DURATION_SECONDS || 30);
-const paths = (process.env.LOAD_PATHS || "/,/register,/patient/login")
+const paths = (process.env.LOAD_PATHS || "/,/register,/login")
   .split(",")
   .map((value) => value.trim())
   .filter((value) => value.startsWith("/"));

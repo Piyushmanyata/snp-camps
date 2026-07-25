@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted (2026-07-25) — implements GitHub issue #15.
+**Superseded** (2026-07-26) by GitHub issues **#41** / **#45** — patient
+passcode login, public OTP self-registration, and the patient portal were
+removed. Patients no longer authenticate in-app; desk registration +
+staff-scan QR + passwordless `/s/<token>` status replace this model. Keep this
+ADR for history; do not reintroduce desk-slip passcodes without a new ADR.
+
+Previously: Accepted (2026-07-25) — implements GitHub issue #15.
 
 ## Context
 

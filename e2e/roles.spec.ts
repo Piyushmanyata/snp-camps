@@ -62,7 +62,9 @@ test("public entry points and protected-route redirects", async ({
   await expect(
     page.getByRole("heading", { name: "Medical Camp Desk" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Patient login/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Patient login/ })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("link", { name: /Staff login/ })).toBeVisible();
 
   await page.goto("/admin");
@@ -71,8 +73,16 @@ test("public entry points and protected-route redirects", async ({
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/doctor");
   await expect(page).toHaveURL(/\/login$/);
+
+  // Retired patient portal routes should not serve an app shell.
   await page.goto("/patient");
-  await expect(page).toHaveURL(/\/patient\/login$/);
+  await expect(page.getByRole("heading", { name: "My profile" })).toHaveCount(
+    0,
+  );
+  await page.goto("/patient/login");
+  await expect(
+    page.getByRole("heading", { name: /Patient login/i }),
+  ).toHaveCount(0);
 });
 
 test("credential forms never put secrets in the URL before hydration", async ({
@@ -86,15 +96,6 @@ test("credential forms never put secrets in the URL before hydration", async ({
   await page.goto(`${env("E2E_BASE_URL")}/login`);
   await page.getByLabel("Email").fill("no-js@snp.local");
   await page.getByLabel("Password").fill(marker);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  expect(page.url()).not.toContain(marker);
-  expect(new URL(page.url()).search).toBe("");
-
-  await page.goto(`${env("E2E_BASE_URL")}/patient/login`);
-  await page.getByLabel("Registration number").fill("1234");
-  if (await page.getByLabel("Password").isVisible().catch(() => false)) {
-    await page.getByLabel("Password").fill(marker);
-  }
   await page.getByRole("button", { name: "Sign in" }).click();
   expect(page.url()).not.toContain(marker);
   expect(new URL(page.url()).search).toBe("");
@@ -272,67 +273,20 @@ test("doctor can sign in and review without mutating patient status", async ({
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("patient can sign in with registration number and passcode and sign out", async ({
-  page,
-}) => {
-  await gotoHydrated(page, "/patient/login");
-  await page.getByLabel("Registration number").fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByLabel("Passcode").fill(env("E2E_PATIENT_PASSWORD"));
-  await page.getByRole("button", { name: "Sign in" }).click();
-
-  await expect(page).toHaveURL(/\/patient$/);
-  await expect(page.getByRole("heading", { name: "My profile" })).toBeVisible();
-  await expect(
-    page.getByText(env("E2E_PATIENT_NAME"), { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(`#${env("E2E_PATIENT_REG_NO")}`, { exact: true }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/$/);
-});
-
-test("patient phone OTP uses the real configured SMS provider", async ({
-  page,
-}) => {
-  test.skip(
-    !process.env.E2E_REAL_SMS_PHONE || !process.env.E2E_REAL_SMS_OTP,
-    "Real SMS provider credentials were not supplied; OTP is not mocked.",
-  );
-
-  await gotoHydrated(page, "/patient/login");
-  await page.getByRole("radio", { name: "Phone OTP" }).click();
-  await page.getByLabel("Mobile number").fill(env("E2E_REAL_SMS_PHONE"));
-  await page.getByRole("button", { name: "Send OTP" }).click();
-  await page.getByLabel("OTP").fill(env("E2E_REAL_SMS_OTP"));
-  await page.getByRole("button", { name: "Verify & continue" }).click();
-  await expect(page).toHaveURL(/\/patient$/);
-});
-
 test("staff-scan QR never logs a public visitor in", async ({ page }) => {
   const patientId = env("E2E_PATIENT_ID");
 
   await page.goto(`/p/${patientId}`);
-  await expect(page).toHaveURL(/\/patient\/qr-help/);
   await expect(
-    page.getByRole("heading", { name: "Show this at the desk" }),
+    page.getByRole("heading", { name: /Camp desk scan only|Invalid code/i }),
   ).toBeVisible();
-  await expect(page.getByText(/does not log you in/i)).toBeVisible();
-
-  await page.goto(`/patient/enter/${patientId}`);
-  await expect(page).toHaveURL(/\/patient\/qr-help/);
-  await expect(
-    page.getByRole("heading", { name: "Show this at the desk" }),
-  ).toBeVisible();
+  await expect(page.getByText(/does not log you in|for camp staff/i)).toBeVisible();
 });
 
 test("invalid QR path shows clear help", async ({ page }) => {
   await page.goto("/p/not-a-uuid");
-  await expect(page).toHaveURL(/\/patient\/qr-help\?invalid=1/);
-  await expect(
-    page.getByText(/incomplete or invalid/i),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Invalid code" })).toBeVisible();
+  await expect(page.getByText(/Show this screen at the camp desk/i)).toBeVisible();
 });
 
 test("staff deep-link scan opens lookup-first desk", async ({ page }) => {

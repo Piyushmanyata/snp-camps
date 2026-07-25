@@ -35,6 +35,7 @@ export function roleHome(role?: UserRole | null) {
   if (role === "admin") return "/admin";
   if (role === "volunteer") return "/volunteer";
   if (role === "doctor") return "/doctor";
-  if (role === "patient") return "/patient";
+  // Patients have no app home — passwordless status is /s/<token> (no session).
+  if (role === "patient") return null;
   return null;
 }

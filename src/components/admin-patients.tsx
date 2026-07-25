@@ -13,16 +13,7 @@ import {
   ErrorBox,
   Input,
   Stat,
-  SuccessBox,
 } from "@/components/ui";
-import {
-  clearDeskPasscode,
-  storeDeskPasscode,
-} from "@/lib/desk-passcode";
-import {
-  isPasscodeNeverIssued,
-  PASSCODE_NEVER_ISSUED_MARKER,
-} from "@/lib/passcode-issued";
 import { mapDbError } from "@/lib/public-error";
 
 export type AdminPatientRow = {
@@ -46,8 +37,6 @@ export type AdminPatientRow = {
   volunteer_name?: string | null;
   checked_in_by_name?: string | null;
   doctor_name?: string | null;
-  /** Null = never issued under the current scheme. */
-  passcode_issued_at?: string | null;
 };
 
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -84,9 +73,7 @@ function waitMinutes(
   return Math.round((end - start) / 60_000);
 }
 
-function mapRows(
-  data: Record<string, unknown>[],
-): AdminPatientRow[] {
+function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
   return data.map((patient) => {
     const camp = patient.camps as
       | { name: string }
@@ -143,14 +130,12 @@ function mapRows(
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
-      passcode_issued_at:
-        (patient.passcode_issued_at as string | null | undefined) ?? null,
     };
   });
 }
 
 const SELECT =
-  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, passcode_issued_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -195,21 +180,7 @@ export function AdminPatients({
 
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
-  const [credential, setCredential] = useState<{
-    rowId: string;
-    regNo: number;
-    /** Desk-slip passcode (Auth password); shown once after issue/reissue. */
-    passcode: string;
-  } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const credentialHeadingRef = useRef<HTMLHeadingElement>(null);
-  const mutationBusy =
-    deletingId !== null || accountBusyId !== null || credential !== null;
-
-  useEffect(() => {
-    if (credential) credentialHeadingRef.current?.focus();
-  }, [credential]);
+  const mutationBusy = deletingId !== null;
 
   useEffect(() => {
     if (isDefaultView) return;
@@ -288,7 +259,7 @@ export function AdminPatients({
   async function removePatient(row: AdminPatientRow) {
     if (mutationBusy) return;
     const ok = window.confirm(
-      `Remove registration #${row.reg_no} for ${row.full_name}?\nThe registration is permanently deleted; any login account is preserved.`,
+      `Remove registration #${row.reg_no} for ${row.full_name}?\nThe registration is permanently deleted.`,
     );
     if (!ok) return;
 
@@ -330,90 +301,6 @@ export function AdminPatients({
       setError("Could not remove this patient. Check your connection and try again.");
     } finally {
       setDeletingId(null);
-    }
-  }
-
-  async function provisionLogin(row: AdminPatientRow) {
-    if (mutationBusy) return;
-    const action = row.user_id ? "reissue" : "issue";
-    if (
-      !window.confirm(
-        `${action === "reissue" ? "Reissue" : "Issue"} desk-slip passcode for #${row.reg_no} ${row.full_name}? The previous passcode will stop working.`,
-      )
-    ) {
-      return;
-    }
-    setAccountBusyId(row.id);
-    setError(null);
-    try {
-      const response = await fetch("/api/patient-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId: row.id,
-          regNo: row.reg_no,
-          adminProvision: true,
-          returnCredentials: true,
-          notify: false,
-        }),
-      });
-      const result = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        password?: string;
-        userId?: string;
-        regNo?: number;
-      };
-      if (!response.ok || !result.password) {
-        setError(result.error || "Passcode could not be issued or reissued.");
-        return;
-      }
-      storeDeskPasscode(row.id, result.password);
-      setCredential({
-        rowId: row.id,
-        regNo: result.regNo ?? row.reg_no,
-        passcode: result.password,
-      });
-      setCopied(false);
-      setSnapshot((prev) => {
-        const sourceRows = prev?.source === initial ? prev.rows : initial;
-        return {
-          source: initial,
-          rows: sourceRows.map((patient) =>
-            patient.id === row.id
-              ? {
-                  ...patient,
-                  user_id: result.userId ?? patient.user_id,
-                  // Successful issue/reissue stamps passcode_issued_at server-side.
-                  passcode_issued_at: new Date().toISOString(),
-                }
-              : patient,
-          ),
-          total:
-            prev?.source === initial
-              ? prev.total
-              : (totalCount ?? initial.length),
-          isDefault:
-            prev?.source === initial ? prev.isDefault : isDefaultView,
-        };
-      });
-    } catch {
-      setError("Could not manage this passcode. Check your connection and try again.");
-    } finally {
-      setAccountBusyId(null);
-    }
-  }
-
-  async function copyCredential() {
-    if (!credential) return;
-    try {
-      await navigator.clipboard.writeText(
-        `Patient login\nReg #${credential.regNo}\nPasscode: ${credential.passcode}`,
-      );
-      setCopied(true);
-      setError(null);
-    } catch {
-      setCopied(false);
-      setError("Could not copy. Select the passcode manually.");
     }
   }
 
@@ -479,58 +366,6 @@ export function AdminPatients({
       </div>
 
       <ErrorBox message={error} />
-      {credential ? (
-        <section
-          aria-labelledby="patient-credential-heading"
-          className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
-        >
-          <SuccessBox message="Desk-slip passcode is ready. Print the slip or save it before dismissing." />
-          <h3
-            id="patient-credential-heading"
-            ref={credentialHeadingRef}
-            tabIndex={-1}
-            className="text-sm font-bold text-amber-950"
-          >
-            Passcode shown once — print on desk slip
-          </h3>
-          <p className="text-sm text-amber-950">
-            Reg <strong>#{credential.regNo}</strong> · passcode{" "}
-            <strong className="font-mono" translate="no">
-              {credential.passcode}
-            </strong>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/print/${credential.rowId}?auto=1`}
-              className="pressable inline-flex min-h-9 items-center justify-center rounded-xl bg-brand px-3 text-xs font-semibold text-white shadow-sm hover:bg-brand-dark"
-            >
-              Print desk slip
-            </Link>
-            <Button type="button" size="sm" className="w-auto" onClick={() => void copyCredential()}>
-              {copied ? "Copied" : "Copy login"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="w-auto"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Have you printed the slip or securely shared this passcode?",
-                  )
-                ) {
-                  clearDeskPasscode(credential.rowId);
-                  setCredential(null);
-                  setCopied(false);
-                }
-              }}
-            >
-              I saved it
-            </Button>
-          </div>
-        </section>
-      ) : null}
 
       {isSearching ? (
         <p className="py-8 text-center text-sm text-muted" role="status">
@@ -559,14 +394,6 @@ export function AdminPatients({
                     <span className="tabular text-brand">#{r.reg_no}</span>{" "}
                     {r.full_name}
                   </p>
-                  {isPasscodeNeverIssued(r.passcode_issued_at) ? (
-                    <p
-                      className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-950"
-                      role="status"
-                    >
-                      {PASSCODE_NEVER_ISSUED_MARKER}
-                    </p>
-                  ) : null}
                   <p className="truncate text-xs text-muted">
                     {[
                       r.day_date ? formatCampDay(r.day_date) : null,
@@ -589,7 +416,7 @@ export function AdminPatients({
                           ? ` · by ${r.volunteer_name}`
                           : r.created_by
                             ? " · by staff"
-                            : " · self / walk-in"}
+                            : " · desk / walk-in"}
                       </p>
                       {r.queued_at ? (
                         <p>
@@ -631,21 +458,6 @@ export function AdminPatients({
                   >
                     Print
                   </Link>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="w-auto"
-                    disabled={mutationBusy}
-                    loading={accountBusyId === r.id}
-                    onClick={() => void provisionLogin(r)}
-                  >
-                    {accountBusyId === r.id
-                      ? "Working…"
-                      : r.user_id
-                        ? "Reissue passcode"
-                        : "Issue passcode"}
-                  </Button>
                   <Button
                     type="button"
                     variant="danger"

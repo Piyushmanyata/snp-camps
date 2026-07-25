@@ -63,8 +63,11 @@ export default function StaffLoginPage() {
       else if (profile.role === "volunteer") router.replace("/volunteer");
       else if (profile.role === "doctor") router.replace("/doctor");
       else {
+        // Patient (or other) accounts cannot use staff login.
         await supabase.auth.signOut();
-        setError("Use Patient login for a patient account.");
+        setError(
+          "Patient accounts do not sign in here. Use staff login for camp crew, or open the passwordless status link from SMS.",
+        );
       }
     } catch {
       setError("Could not sign in. Check your connection and try again.");
@@ -113,15 +116,16 @@ export default function StaffLoginPage() {
 
       <div className="mt-4 space-y-3">
         <InfoBox>
-          Need an account? Ask an admin to create one for you.
+          Need an account? Ask an admin to create one for you. Patients
+          register at the camp desk and check status via the SMS link when
+          available — there is no patient login.
         </InfoBox>
         <p className="text-center text-sm text-muted">
-          Patient?{" "}
           <Link
-            href="/patient/login"
+            href="/"
             className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
           >
-            Patient login
+            Back to home
           </Link>
         </p>
       </div>

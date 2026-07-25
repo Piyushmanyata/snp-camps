@@ -2,24 +2,25 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-## Camp flow (v4)
+## Camp flow (v5)
 
-Two registration paths, then one shared queue:
+Desk-only registration, one shared queue, passwordless patient status:
 
-1. **Desk registration (Staff):** Staff registers the patient at the Volunteer Desk → a **Passcode** is shown once and stored for the Desk Slip → **print** joins the **FCFS Queue** (`waiting`) and prints the Desk Slip (reg number + Passcode + Patient QR).
-2. **Self-register (phone OTP):** When SMS is configured, the patient verifies phone OTP → details → account linked → **auto sign-in**. A Desk Slip can still be printed later by Staff if the reg-number login path is needed.
-3. **Patient login:** registration number + **Passcode** from the Desk Slip (phone OTP remains an alternative when configured). Logout ends the session without changing credentials.
-4. **Lost slip is expected:** Staff **reissue** a new Passcode (the old one stops working) and reprint the Desk Slip. The Desk Slip is **required** for the reg-number login path because it carries the Passcode.
-5. **Doctor scan** → review patient → confirm → **Seen** (once only) — print is not required for the doctor path.
-6. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
+1. **Desk registration (Staff):** Staff registers the walk-in at the Volunteer Desk (age & address required; phone optional).
+2. **Print desk slip** → joins the **FCFS Queue** (`waiting`) and prints reg number + **Patient QR** (staff-scan). No passcode on the slip.
+3. **Doctor scan** → review patient → confirm → **Seen** (once only) — print is not required for the doctor path.
+4. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
+5. **Patient status (passwordless):** each patient has a status token; open `/s/<token>` with no sign-in for day/queue info. SMS can carry that link when configured. There is **no patient login** and **no public self-registration**.
 
-- Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` — no phone QR login)
+- Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` or `snp:{uuid}` — never a login)
 - One active camp, single FCFS Queue; doctor recorded when Seen
 - Aadhaar: full number used only for verify/lookup in memory; **last 4 digits only** stored
 
 ## Auth model
 
-Patients prove identity with **registration number + Passcode** printed on the **Desk Slip**, or with phone OTP when SMS is configured. The Passcode is the Supabase Auth password for the synthetic account; plaintext is shown only once to Staff at issue/reissue and never returned to unauthenticated callers. The authority for this model is [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md). Any future change to the auth model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
+**Staff** (admin, volunteer, doctor) sign in with email + password at `/login`.
+
+**Patients** do not authenticate in the app. Registration is desk-only. Status is passwordless via `/s/<token>`. The former desk-slip passcode + phone-OTP patient login model is **superseded** (see [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md) and issues #41 / #45). Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
 
 ## Stack
 
@@ -84,11 +85,8 @@ as an amplification vector.
 
 ### 2. Auth settings
 
-- **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.  
-- **Phone**: enable Phone Auth and configure a supported SMS provider/sender.
-  Confirm a real `+91` test number receives and verifies an OTP before launch.
-  Review Supabase Auth OTP expiry and rate limits for expected camp traffic.
-- Patient accounts use synthetic emails (`reg{N}@patients.snp.local`) + **Passcode** (Auth password issued at the desk and printed on the Desk Slip).
+- **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.
+- Patient app login and phone OTP self-registration are **not** used. Optional `SMS_WEBHOOK_URL` can still send registration / status-link notifications (not Supabase Auth OTPs).
 
 ### 3. Env
 
@@ -124,7 +122,7 @@ npm run dev
 1. Sign in at `/login` with the bootstrapped admin.
 2. Create a camp and set it active.
 3. Add doctors and volunteers from the admin desk.
-4. Patients self-register with phone OTP; Aadhaar auto-fill is optional when a lookup provider is configured.
+4. Register walk-ins from the volunteer/admin desk; Aadhaar auto-fill is optional when a lookup provider is configured.
 
 ### 5. Deploy Vercel
 
@@ -169,7 +167,7 @@ below 1.5 seconds before treating the result as a capacity signal.
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats, **scan only** (self-assign, no print required) |
-| Patient | Reg number + desk-slip passcode login (phone OTP alternative); registration profile, staff-scan QR, day and queue status |
+| Patient | No app login; desk registration; staff-scan QR; passwordless status at `/s/<token>` |
 
 ## Privacy
 
@@ -178,9 +176,8 @@ Never store full Aadhaar. Only `aadhaar_last4`.
 ### Aadhaar auto-fill (optional)
 
 Set `NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true` and `AADHAAR_LOOKUP_URL`.
-`AADHAAR_LOOKUP_SECRET` is sent as a Bearer token. This is optional auto-fill;
-phone OTP remains the registration identity check, and only Aadhaar last four
-digits are stored.
+`AADHAAR_LOOKUP_SECRET` is sent as a Bearer token. This is optional desk
+auto-fill; only Aadhaar last four digits are stored.
 
 Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `address`, `phone`, `email`.
 
@@ -192,8 +189,8 @@ Set `SMS_WEBHOOK_URL` and/or `WHATSAPP_WEBHOOK_URL`. App POSTs JSON:
 { "phone": "+91…", "message": "…", "template": "registration", "channel": "sms|whatsapp" }
 ```
 
-Until configured, notify status reports “not configured yet”; desk registration still issues a Passcode on the Desk Slip for the reg-number login path. Logout never rotates or reveals credentials.
+Until configured, notify status reports “not configured yet”; desk registration
+and print still work without SMS. When a status token/URL is available, the
+message can include the passwordless status link.
 
-These notification webhooks do not deliver Supabase Auth OTPs. Configure the
-Phone Auth SMS provider separately under Auth settings and keep readiness at
-503 until a real OTP smoke test succeeds.
+These notification webhooks are not patient login OTPs.

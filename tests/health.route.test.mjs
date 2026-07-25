@@ -1,6 +1,7 @@
 /**
- * Behavioural coverage for GET /api/health (#14 rate limit + #22 readiness).
+ * Behavioural coverage for GET /api/health (#14 rate limit + readiness).
  * Liveness (?ready absent) must never be rate-limited.
+ * Phone OTP is no longer a readiness gate (#45 deleted patient self-reg).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -58,29 +59,6 @@ function mockServiceRole({
   };
 }
 
-async function mockPhoneOtp(ready) {
-  const original = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-    const url = String(input);
-    if (url.includes("/auth/v1/settings")) {
-      if (!ready) {
-        return new Response("{}", { status: 500 });
-      }
-      return new Response(
-        JSON.stringify({
-          external: { phone: true },
-          sms_provider: "test",
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    return original(input);
-  };
-  return () => {
-    globalThis.fetch = original;
-  };
-}
-
 test.beforeEach(() => {
   clearRateLimits();
   __resetServiceRoleClient();
@@ -119,61 +97,32 @@ test("liveness is never rate-limited across thirty requests", async () => {
 });
 
 test("ready-ok reports migrationVersion from the ledger", async () => {
-  const restoreFetch = await mockPhoneOtp(true);
   __setServiceRoleClient(
     mockServiceRole({ migrationVersion: "20260725232000" }),
   );
-  try {
-    const res = await GET(
-      healthRequest("/api/health?ready=1", "198.51.100.30"),
-    );
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.equal(body.ok, true);
-    assert.equal(body.checks.database, true);
-    assert.equal(body.checks.phoneOtp, true);
-    assert.equal(body.migrationVersion, "20260725232000");
-  } finally {
-    restoreFetch();
-  }
+  const res = await GET(
+    healthRequest("/api/health?ready=1", "198.51.100.30"),
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.checks.database, true);
+  assert.equal(body.checks.phoneOtp, undefined);
+  assert.equal(body.migrationVersion, "20260725232000");
 });
 
 test("ready-db-fail when a table-shape probe errors (503)", async () => {
-  const restoreFetch = await mockPhoneOtp(true);
   __setServiceRoleClient(
     mockServiceRole({ patientsError: { message: "relation missing" } }),
   );
-  try {
-    const res = await GET(
-      healthRequest("/api/health?ready=1", "198.51.100.31"),
-    );
-    assert.equal(res.status, 503);
-    const body = await res.json();
-    assert.equal(body.ok, false);
-    assert.equal(body.checks.database, false);
-    assert.equal(body.checks.phoneOtp, true);
-    // Ledger field is still reported when the RPC works.
-    assert.equal(body.migrationVersion, "20260725232000");
-  } finally {
-    restoreFetch();
-  }
-});
-
-test("ready-otp-fail when phone OTP is unconfigured (503)", async () => {
-  const restoreFetch = await mockPhoneOtp(false);
-  __setServiceRoleClient(mockServiceRole());
-  try {
-    const res = await GET(
-      healthRequest("/api/health?ready=1", "198.51.100.32"),
-    );
-    assert.equal(res.status, 503);
-    const body = await res.json();
-    assert.equal(body.ok, false);
-    assert.equal(body.checks.phoneOtp, false);
-    assert.equal(body.checks.database, true);
-  } finally {
-    restoreFetch();
-  }
+  const res = await GET(
+    healthRequest("/api/health?ready=1", "198.51.100.31"),
+  );
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.checks.database, false);
+  assert.equal(body.migrationVersion, "20260725232000");
 });
 
 test("no code path references app_database_contract", async () => {

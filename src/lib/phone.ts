@@ -1,4 +1,4 @@
-/** Normalize the Indian mobile formats accepted by registration and OTP flows. */
+/** Normalize the Indian mobile formats accepted by desk registration and notify. */
 export function normalizePhoneE164(raw: string): string | null {
   if (!raw || typeof raw !== "string" || raw.length > 512) return null;
   const digits = raw.replace(/\D/g, "");

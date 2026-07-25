@@ -1,14 +1,14 @@
 /**
  * Behavioural coverage for registration idempotency / requestId outbound paths.
- * Exercises the same module PatientForm uses to call the API and staff RPC.
+ * Exercises the same module PatientForm uses to call the staff RPC.
  * Deliberately does not grep component source for the string "requestId".
+ * Public self-registration is retired (#45).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createRegistrationAttempt,
   parseAadhaarDuplicateError,
-  publicRegistrationBody,
   staffRegistrationRpcArgs,
   submitRegistrationOutbound,
 } from "../src/lib/registration-request.ts";
@@ -21,9 +21,8 @@ function newAttempt() {
   return createRegistrationAttempt(createRequestId);
 }
 
-const publicFields = {
+const staffFields = {
   campId: "11111111-1111-4111-8111-111111111111",
-  campDayId: "22222222-2222-4222-8222-222222222222",
   fullName: "Test Patient",
   gender: "F",
   age: 30,
@@ -31,49 +30,19 @@ const publicFields = {
   phone: "9876543210",
   email: null,
   aadhaarLast4: "1234",
-};
-
-const staffFields = {
-  campId: publicFields.campId,
-  fullName: publicFields.fullName,
-  gender: publicFields.gender,
-  age: publicFields.age,
-  address: publicFields.address,
-  phone: publicFields.phone,
-  email: null,
-  aadhaarLast4: "1234",
   userId: "33333333-3333-4333-8333-333333333333",
   createdBy: "44444444-4444-4444-8444-444444444444",
-  campDayId: publicFields.campDayId,
+  campDayId: "22222222-2222-4222-8222-222222222222",
 };
 
-test("public registration submit sends a non-empty UUID requestId to the API", async () => {
+test("non-staff registration is rejected (desk only)", async () => {
   const attempt = newAttempt();
-  /** @type {unknown} */
-  let capturedBody = null;
-
   const result = await submitRegistrationOutbound({
     isStaff: false,
     attempt,
-    publicFields,
-    fetchImpl: async (_url, init) => {
-      capturedBody = JSON.parse(String(init?.body ?? "{}"));
-      return new Response(
-        JSON.stringify({
-          patient: { id: "p1", reg_no: 1, full_name: publicFields.fullName },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    },
   });
-
-  assert.equal(result.error, null);
-  assert.ok(capturedBody && typeof capturedBody === "object");
-  const body = /** @type {{ requestId?: string }} */ (capturedBody);
-  assert.equal(typeof body.requestId, "string");
-  assert.ok(body.requestId.length > 0, "requestId must be non-empty");
-  assert.match(body.requestId, UUID_V4);
-  assert.equal(body.requestId, attempt.id);
+  assert.equal(result.data, null);
+  assert.match(String(result.error), /desk only/i);
 });
 
 test("staff registration submit sends a non-empty UUID p_request_id to the RPC", async () => {
@@ -110,16 +79,12 @@ test("requestId is stable across retries of the same submission", async () => {
 
   for (let i = 0; i < 3; i += 1) {
     await submitRegistrationOutbound({
-      isStaff: false,
+      isStaff: true,
       attempt,
-      publicFields,
-      fetchImpl: async (_url, init) => {
-        const body = JSON.parse(String(init?.body ?? "{}"));
-        ids.push(body.requestId);
-        return new Response(JSON.stringify({ error: "temporary" }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        });
+      staffFields,
+      rpc: async (_fn, args) => {
+        ids.push(args.p_request_id);
+        return { data: null, error: { message: "temporary" } };
       },
     });
   }
@@ -135,16 +100,13 @@ test("requestId rotates after success (next walk-in) and after resetForm", async
   const first = attempt.id;
 
   await submitRegistrationOutbound({
-    isStaff: false,
+    isStaff: true,
     attempt,
-    publicFields,
-    fetchImpl: async () =>
-      new Response(
-        JSON.stringify({
-          patient: { id: "p1", reg_no: 1, full_name: "X" },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    staffFields,
+    rpc: async () => ({
+      data: [{ id: "p1", reg_no: 1, full_name: "X" }],
+      error: null,
+    }),
   });
 
   // PatientForm rotates only after a successful row is returned.
@@ -160,21 +122,14 @@ test("requestId rotates after success (next walk-in) and after resetForm", async
   assert.match(afterReset, UUID_V4);
 });
 
-test("public and staff payload builders include the attempt id (not optional)", () => {
+test("staff payload builder includes the attempt id (not optional)", () => {
   const attempt = createRegistrationAttempt(
     () => "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
   );
-  const publicBody = publicRegistrationBody(attempt, publicFields);
   const staffArgs = staffRegistrationRpcArgs(attempt, staffFields);
 
-  assert.equal(publicBody.requestId, attempt.id);
   assert.equal(staffArgs.p_request_id, attempt.id);
   assert.equal(staffArgs.p_aadhaar_duplicate_override, false);
-  // API rejects missing/invalid UUIDs — builders must not drop the field.
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(publicBody, "requestId"),
-    true,
-  );
   assert.equal(
     Object.prototype.hasOwnProperty.call(staffArgs, "p_request_id"),
     true,

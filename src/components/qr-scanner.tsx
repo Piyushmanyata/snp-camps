@@ -9,10 +9,6 @@ import {
   parseRegistrationNumber,
 } from "@/lib/qr";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
-import {
-  isPasscodeNeverIssued,
-  PASSCODE_NEVER_ISSUED_MARKER,
-} from "@/lib/passcode-issued";
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import { mapDbError } from "@/lib/public-error";
@@ -26,7 +22,6 @@ type LookupRow = {
   phone: string | null;
   doctor_id: string | null;
   doctor_name: string | null;
-  passcode_issued_at?: string | null;
 };
 
 type AssignRow = {
@@ -811,14 +806,6 @@ export function QrScanner({
             <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
             {lookup.full_name}
           </p>
-          {isPasscodeNeverIssued(lookup.passcode_issued_at) ? (
-            <p
-              className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-950"
-              role="status"
-            >
-              {PASSCODE_NEVER_ISSUED_MARKER}
-            </p>
-          ) : null}
           {lookup.queue_status === "registered" && mode !== "doctor" ? (
             <>
               <p className="mt-1 text-sm text-muted">

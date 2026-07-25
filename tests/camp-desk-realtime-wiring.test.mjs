@@ -14,13 +14,12 @@ function read(rel) {
   return fs.readFileSync(path.join(root, rel), "utf8");
 }
 
-test("patient-facing SeatBoard call sites never pass live", () => {
-  const patient = read("src/app/patient/page.tsx");
+test("public/register SeatBoard call sites never pass live", () => {
+  // Patient app portal was removed (#45); register + home remain poll-only.
   const register = read("src/app/register/page.tsx");
   const home = read("src/app/page.tsx");
 
   for (const [name, src] of [
-    ["patient", patient],
     ["register", register],
     ["home", home],
   ]) {

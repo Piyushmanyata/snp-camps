@@ -83,11 +83,17 @@ export async function notifyPatient(
   return { sms, whatsapp };
 }
 
-export function registrationMessage(regNo: number): string {
+export function registrationMessage(
+  regNo: number,
+  statusUrl?: string | null,
+): string {
+  const statusPart = statusUrl?.trim()
+    ? ` Status: ${statusUrl.trim()}`
+    : " Status is passwordless — ask the desk if you need your status link.";
   return (
-    `SNP Camp: Registered. Reg no #${regNo}. ` +
-    `Keep your desk slip: login needs reg no + passcode on the slip. ` +
-    `Lost slip? Ask the volunteer desk to reissue.`
+    `SNP Camp: Registered. Reg no #${regNo}.` +
+    statusPart +
+    ` Keep your desk slip for staff scan at the camp.`
   );
 }
 

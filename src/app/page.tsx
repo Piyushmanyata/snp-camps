@@ -17,7 +17,7 @@ export default async function HomePage() {
   if (profile?.role === "admin") redirect("/admin");
   if (profile?.role === "volunteer") redirect("/volunteer");
   if (profile?.role === "doctor") redirect("/doctor");
-  if (profile?.role === "patient") redirect("/patient");
+  // Patient sessions have no app home; stay on public landing (status is /s/<token>).
 
   const camp = snapshot;
   const days = snapshot?.days || [];
@@ -49,8 +49,8 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
-                Multi-day eye camp with limited seats. Self-register with phone
-                OTP, get your reg no, then doctor scan.
+                Multi-day eye camp with limited seats. Register at the volunteer
+                desk, get a desk slip, then doctor scan.
               </p>
             </div>
           </div>
@@ -77,44 +77,36 @@ export default async function HomePage() {
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="sm:col-span-2 lg:col-span-1">
-              <ActionCard
-                href="/register"
-                title="Register for camp"
-                description={
-                  !camp
-                    ? "No active camp"
-                    : anyOpen
-                      ? "Phone OTP → details → reg no → signed in"
-                      : "All days full"
-                }
-                variant="primary"
-                disabled={!camp || !anyOpen}
-                disabledReason={
-                  !camp
-                    ? "No active camp"
-                    : "All days are full — try again later"
-                }
-              />
-            </div>
-
-            <ActionCard
-              href="/patient/login"
-              title="Patient login"
-              description="Reg no + desk-slip passcode, or phone OTP"
-              variant="secondary"
-            />
-
             <ActionCard
               href="/login"
               title="Staff login"
               description="Admin · volunteers · doctors"
+              variant="primary"
+            />
+
+            <ActionCard
+              href="/register"
+              title="Desk registration"
+              description={
+                !camp
+                  ? "No active camp"
+                  : anyOpen
+                    ? "Staff only · walk-in at the volunteer desk"
+                    : "All days full"
+              }
               variant="soft"
+              disabled={!camp || !anyOpen}
+              disabledReason={
+                !camp
+                  ? "No active camp"
+                  : "All days are full — try again later"
+              }
             />
           </div>
 
           <p className="text-center text-xs text-muted lg:text-left">
-            First-time staff? Ask an admin to create your account.
+            First-time staff? Ask an admin to create your account. Patients:
+            register at the desk — no patient login.
           </p>
 
           <div className="pt-1 text-left">
@@ -124,12 +116,12 @@ export default async function HomePage() {
             <StepList
               steps={[
                 {
-                  title: "Phone OTP register",
-                  detail: "Verify mobile · get reg no",
+                  title: "Desk registration",
+                  detail: "Volunteer registers you · desk slip",
                 },
                 {
-                  title: "Optional desk print",
-                  detail: "Joins the FCFS queue",
+                  title: "Print joins queue",
+                  detail: "FCFS queue · staff-scan QR",
                 },
                 {
                   title: "Doctor scan",

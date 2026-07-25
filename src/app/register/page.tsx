@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionProfile, isStaff, isDoctor, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
-import { createClient } from "@/lib/supabase/server";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SignOutButton } from "@/components/sign-out";
@@ -12,7 +11,11 @@ const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
+    loading: () => (
+      <p role="status" className="py-4 text-xs text-muted">
+        Loading seat board…
+      </p>
+    ),
   },
 );
 
@@ -30,25 +33,13 @@ export default async function RegisterPage() {
   if (isDoctor(role)) redirect(roleHome(role) || "/doctor");
 
   const staff = isStaff(role);
-  if (role === "patient" && userId && camp) {
-    const supabase = await createClient();
-    const { data: existing, error } = await supabase
-      .from("patients")
-      .select("id")
-      .eq("camp_id", camp.id)
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error("Could not check the current registration");
-    if (existing) redirect("/patient");
-  }
 
   const deskHref =
     role === "volunteer"
       ? "/volunteer"
       : role === "admin"
-          ? "/admin"
-          : "/";
+        ? "/admin"
+        : "/";
 
   const staffDock =
     role === "volunteer"
@@ -65,25 +56,39 @@ export default async function RegisterPage() {
           ]
         : undefined;
 
+  if (!staff) {
+    return (
+      <Shell
+        title="Register patient"
+        subtitle="Desk registration only"
+        backHref="/"
+        width="lg"
+      >
+        <Card>
+          <EmptyState>
+            Registration is at the camp desk only. Please go to a volunteer —
+            there is no public online registration or patient login.
+          </EmptyState>
+          <Link
+            href="/"
+            className="mt-3 inline-flex text-sm font-semibold text-brand underline decoration-brand/30 underline-offset-2"
+          >
+            Back to home
+          </Link>
+        </Card>
+      </Shell>
+    );
+  }
+
   return (
     <Shell
-      title={staff ? "Register walk-in" : "Register patient"}
-      subtitle={
-        staff
-          ? "Desk registration · age & address required · phone optional"
-          : "Phone OTP · choose a day with open seats"
-      }
-      backHref={staff ? deskHref : "/"}
+      title="Register walk-in"
+      subtitle="Desk registration · age & address required · phone optional"
+      backHref={deskHref}
       width="lg"
-      roleLabel={
-        staff
-          ? role === "admin"
-            ? "Admin"
-            : "Volunteer"
-          : undefined
-      }
-      actions={staff ? <SignOutButton place="header" /> : undefined}
-      dock={staff ? staffDock : undefined}
+      roleLabel={role === "admin" ? "Admin" : "Volunteer"}
+      actions={<SignOutButton place="header" />}
+      dock={staffDock}
     >
       {!camp ? (
         <Card>
@@ -104,18 +109,17 @@ export default async function RegisterPage() {
           {/* Form first on phone — speed for walk-ins */}
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
-              {staff
-                ? "One person, one day. Age and address required; phone optional. Print joins the FCFS queue. Doctors can scan without printing."
-                : "Self-registration uses phone OTP. After verify you complete details, get a reg number, and stay signed in."}
+              One person, one day. Age and address required; phone optional.
+              Print joins the FCFS queue. Doctors can scan without printing.
             </p>
             <PatientForm
               campId={camp.id}
               days={days}
-              userId={profile?.role === "patient" ? userId : null}
-              createdBy={staff ? userId : null}
-              isStaff={staff}
+              userId={null}
+              createdBy={userId}
+              isStaff
               userRole={role}
-              defaultPhone={profile?.phone || ""}
+              defaultPhone=""
             />
           </Card>
 

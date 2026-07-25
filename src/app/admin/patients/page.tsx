@@ -34,7 +34,7 @@ async function PatientDeskContent() {
     supabase
       .from("patients")
       .select(
-        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, passcode_issued_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)",
+        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -105,8 +105,6 @@ async function PatientDeskContent() {
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
-      passcode_issued_at:
-        (p.passcode_issued_at as string | null | undefined) ?? null,
     };
   });
 

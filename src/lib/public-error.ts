@@ -158,7 +158,7 @@ export function mapDbError(
 /** Registration API helper — same mapper with registration-flavoured fallback. */
 export function publicRegistrationError(
   error: DbErrorLike | string | unknown,
-  context = "patient-register",
+  context = "staff-register",
 ): string {
   return mapDbError(error, {
     context,

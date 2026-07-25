@@ -1,5 +1,5 @@
 /**
- * Configurable stub for @supabase/ssr createServerClient used by patient-login.
+ * Configurable stub for @supabase/ssr createServerClient used by route tests.
  * Tests set behaviour via __setAuthMock / __resetAuthMock.
  */
 

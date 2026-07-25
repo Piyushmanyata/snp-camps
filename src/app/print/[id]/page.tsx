@@ -4,24 +4,13 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
+import { PrintSheet } from "@/components/print-sheet";
 
 const PrintActions = dynamic(
   () =>
     import("@/components/print-actions").then((m) => ({
       default: m.PrintActions,
     })),
-);
-
-const PrintSheetWithPasscode = dynamic(
-  () =>
-    import("@/components/print-sheet-with-passcode").then((m) => ({
-      default: m.PrintSheetWithPasscode,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-6 text-center text-sm text-muted">Loading print sheet…</p>
-    ),
-  },
 );
 
 export default async function PrintPage({
@@ -33,7 +22,7 @@ export default async function PrintPage({
   const { profile } = await getSessionProfile();
   if (!profile) redirect("/login");
   if (!canRegisterPatients(profile.role)) {
-    redirect(profile.role === "doctor" ? "/doctor" : "/patient");
+    redirect(profile.role === "doctor" ? "/doctor" : "/");
   }
 
   if (!isPatientUuid(id)) {
@@ -109,7 +98,7 @@ export default async function PrintPage({
         }
       />
 
-      <PrintSheetWithPasscode
+      <PrintSheet
         patient={{
           id: patient.id,
           reg_no: patient.reg_no,
@@ -128,10 +117,8 @@ export default async function PrintPage({
       />
 
       <p className="no-print mt-3 text-center text-xs text-muted">
-        Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>{" "}
-        (not login). Login uses <strong>reg number + passcode</strong> on the slip
-        when just issued in this tab. Lost passcode: reissue from Patients, then
-        print again.{" "}
+        Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>
+        . Status for the patient is a separate SMS link when configured.{" "}
         {patient.queue_status === "seen" ? (
           <>The consultation is complete; reprinting does not change its status.</>
         ) : patient.queue_status === "waiting" ? (
