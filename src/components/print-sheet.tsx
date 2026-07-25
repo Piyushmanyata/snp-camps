@@ -1,12 +1,5 @@
 import { QrCode } from "@/components/qr-code";
-
-const CAMP_DAY_FORMATTER = new Intl.DateTimeFormat("en-IN", {
-  weekday: "short",
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
+import { formatCampDay } from "@/lib/format-camp-day";
 
 const GENDER_LABELS: Record<string, string> = {
   M: "Male",
@@ -58,13 +51,7 @@ export function PrintSheet({
   const genderLabel =
     GENDER_LABELS[patient.gender?.trim().toUpperCase() || ""] || "Not specified";
   const selectedDay = campDayDate || camp?.camp_date;
-  const campDate = selectedDay
-    ? new Date(`${selectedDay}T00:00:00Z`)
-    : null;
-  const campDay =
-    campDate && !Number.isNaN(campDate.getTime())
-      ? CAMP_DAY_FORMATTER.format(campDate)
-      : "Not set";
+  const campDay = selectedDay ? formatCampDay(selectedDay) : "Not set";
 
   return (
     <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a] bg-white text-[#1a3a8a]">

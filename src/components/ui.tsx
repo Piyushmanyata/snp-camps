@@ -435,18 +435,16 @@ export function Badge({
   tone = "default",
 }: {
   children: ReactNode;
-  tone?: "default" | "ok" | "wait" | "danger" | "scanning" | "seen";
+  tone?: "default" | "ok" | "wait" | "danger";
 }) {
   const c =
-    tone === "ok" || tone === "scanning"
+    tone === "ok"
       ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
       : tone === "wait"
         ? "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
-        : tone === "seen"
-          ? "bg-emerald-500/10 text-emerald-800 ring-1 ring-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
-          : tone === "danger"
-            ? "bg-danger-soft text-danger ring-1 ring-danger/25"
-            : "bg-background text-muted ring-1 ring-border/80";
+        : tone === "danger"
+          ? "bg-danger-soft text-danger ring-1 ring-danger/25"
+          : "bg-background text-muted ring-1 ring-border/80";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold transition-all duration-150 ${c}`}

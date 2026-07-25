@@ -1,5 +1,8 @@
 # Specification: SNP Camps UI/UX Deep Overhaul
 
+> **Superseded by [spec #41](https://github.com/Piyushmanyata/snp-camps/issues/41)** (Fast & Simple: performance and workflow overhaul).  
+> Retained as a historical record of the Emerald & Slate aspiration. Do not reconcile the product against this document — later tickets (e.g. #43) strip the effects it describes rather than completing them.
+
 ## Problem Statement
 
 The SNP Camps medical desk application serves patients, volunteers, doctors, and administrators during high-volume, fast-paced eye treatment camps organized by Sikar Nagarik Parishad (Kolkata).

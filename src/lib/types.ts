@@ -47,15 +47,4 @@ export function queueTone(status: string): "default" | "ok" | "wait" {
   return "default";
 }
 
-export function formatCampDay(isoDate: string) {
-  try {
-    return new Date(isoDate + "T12:00:00").toLocaleDateString("en-IN", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return isoDate;
-  }
-}
+export { formatCampDay } from "./format-camp-day";
