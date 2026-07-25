@@ -122,6 +122,17 @@ Add the same env vars in Vercel. Set `NEXT_PUBLIC_SITE_URL` to the production UR
 npm run verify
 ```
 
+### Closing a ticket
+
+A ticket is closed only when its closing comment contains:
+
+1. The literal terminal output of `npm run verify` — lint, unit tests and production build, all three, from one run.
+2. The literal terminal output of `npm run test:e2e`, or a named specific environment blocker (missing credential, no Docker daemon). "Not run this session" is not a blocker.
+3. An explicit statement of what test coverage the change **removed**, or "no coverage removed".
+4. For a bug fix: proof the new test can fail — remove the fix, record the red output, restore it, record the green output. Both go in the comment.
+
+`npm test` alone and `npx tsc --noEmit` alone are diagnostics, not gates.
+
 Run load tests only against a production-like staging deployment:
 
 ```bash

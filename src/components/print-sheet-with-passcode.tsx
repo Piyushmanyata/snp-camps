@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { PrintSheet } from "@/components/print-sheet";
 import { readDeskPasscode } from "@/lib/desk-passcode";
 
@@ -21,6 +21,11 @@ type Camp = {
   camp_date: string | null;
 } | null;
 
+/** Passcode is written before mount and does not change while mounted. */
+function subscribe() {
+  return () => {};
+}
+
 /**
  * Loads a just-issued desk passcode from sessionStorage (same browser tab as
  * registration/reissue) and injects it into the printable slip.
@@ -40,11 +45,11 @@ export function PrintSheetWithPasscode({
   today: string;
   qrValue?: string;
 }) {
-  const [loginPasscode, setLoginPasscode] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoginPasscode(readDeskPasscode(patient.id));
-  }, [patient.id]);
+  const loginPasscode = useSyncExternalStore(
+    subscribe,
+    () => readDeskPasscode(patient.id),
+    () => null,
+  );
 
   return (
     <PrintSheet
