@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createRegistrationAttempt,
+  parseAadhaarDuplicateError,
   publicRegistrationBody,
   staffRegistrationRpcArgs,
   submitRegistrationOutbound,
@@ -168,6 +169,7 @@ test("public and staff payload builders include the attempt id (not optional)", 
 
   assert.equal(publicBody.requestId, attempt.id);
   assert.equal(staffArgs.p_request_id, attempt.id);
+  assert.equal(staffArgs.p_aadhaar_duplicate_override, false);
   // API rejects missing/invalid UUIDs — builders must not drop the field.
   assert.equal(
     Object.prototype.hasOwnProperty.call(publicBody, "requestId"),
@@ -177,4 +179,48 @@ test("public and staff payload builders include the attempt id (not optional)", 
     Object.prototype.hasOwnProperty.call(staffArgs, "p_request_id"),
     true,
   );
+});
+
+test("parseAadhaarDuplicateError extracts reg no and ignores noise", () => {
+  assert.deepEqual(parseAadhaarDuplicateError("AADHAAR_DUPLICATE:reg=1042"), {
+    regNo: 1042,
+  });
+  assert.equal(parseAadhaarDuplicateError("duplicate key value"), null);
+  assert.equal(parseAadhaarDuplicateError(null), null);
+});
+
+test("staff RPC passes one-shot aadhaar override flag", async () => {
+  const attempt = newAttempt();
+  /** @type {unknown} */
+  let capturedArgs = null;
+
+  await submitRegistrationOutbound({
+    isStaff: true,
+    attempt,
+    staffFields: { ...staffFields, aadhaarDuplicateOverride: true },
+    rpc: async (_fn, args) => {
+      capturedArgs = args;
+      return { data: null, error: { message: "AADHAAR_DUPLICATE:reg=99" } };
+    },
+  });
+
+  const args = /** @type {{ p_aadhaar_duplicate_override?: boolean }} */ (
+    capturedArgs
+  );
+  assert.equal(args.p_aadhaar_duplicate_override, true);
+});
+
+test("staff outbound surfaces aadhaarDuplicateRegNo from RPC error", async () => {
+  const attempt = newAttempt();
+  const result = await submitRegistrationOutbound({
+    isStaff: true,
+    attempt,
+    staffFields,
+    rpc: async () => ({
+      data: null,
+      error: { message: "AADHAAR_DUPLICATE:reg=2048" },
+    }),
+  });
+  assert.equal(result.aadhaarDuplicateRegNo, 2048);
+  assert.match(String(result.error), /AADHAAR_DUPLICATE:reg=2048/);
 });

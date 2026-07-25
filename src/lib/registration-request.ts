@@ -66,7 +66,21 @@ export type StaffRegistrationFields = {
   userId: string | null;
   createdBy: string | null;
   campDayId: string;
+  /** Explicit one-shot Aadhaar last-4 + name duplicate override (staff only). */
+  aadhaarDuplicateOverride?: boolean;
 };
+
+/** Parse `AADHAAR_DUPLICATE:reg=N` from RPC / API error text. */
+export function parseAadhaarDuplicateError(
+  message: string | null | undefined,
+): { regNo: number } | null {
+  if (!message) return null;
+  const m = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
+  if (!m) return null;
+  const regNo = Number(m[1]);
+  if (!Number.isInteger(regNo) || regNo <= 0) return null;
+  return { regNo };
+}
 
 /** Args for supabase.rpc("register_patient_idempotent", …). */
 export function staffRegistrationRpcArgs(
@@ -86,6 +100,7 @@ export function staffRegistrationRpcArgs(
     p_user_id: fields.userId,
     p_created_by: fields.createdBy,
     p_camp_day_id: fields.campDayId,
+    p_aadhaar_duplicate_override: Boolean(fields.aadhaarDuplicateOverride),
   };
 }
 
@@ -104,7 +119,11 @@ export async function submitRegistrationOutbound(options: {
     fn: "register_patient_idempotent",
     args: ReturnType<typeof staffRegistrationRpcArgs>,
   ) => Promise<{ data: unknown; error: { message: string } | null }>;
-}): Promise<{ data: unknown; error: string | null }> {
+}): Promise<{
+  data: unknown;
+  error: string | null;
+  aadhaarDuplicateRegNo?: number | null;
+}> {
   const {
     isStaff,
     attempt,
@@ -123,15 +142,19 @@ export async function submitRegistrationOutbound(options: {
         "register_patient_idempotent",
         staffRegistrationRpcArgs(attempt, staffFields),
       );
+      const errMsg = result.error?.message || null;
+      const dup = parseAadhaarDuplicateError(errMsg);
       return {
         data: result.data,
-        error: result.error?.message || null,
+        error: errMsg,
+        aadhaarDuplicateRegNo: dup?.regNo ?? null,
       };
     } catch {
       return {
         data: null,
         error:
           "Registration service is unavailable. Check your connection and try again.",
+        aadhaarDuplicateRegNo: null,
       };
     }
   }
@@ -150,15 +173,20 @@ export async function submitRegistrationOutbound(options: {
       patient?: unknown;
       error?: string;
     };
+    const errMsg = response.ok
+      ? null
+      : payload.error || "Registration failed";
     return {
       data: payload.patient,
-      error: response.ok ? null : payload.error || "Registration failed",
+      error: errMsg,
+      aadhaarDuplicateRegNo: parseAadhaarDuplicateError(errMsg)?.regNo ?? null,
     };
   } catch {
     return {
       data: null,
       error:
         "Registration service is unavailable. Check your connection and try again.",
+      aadhaarDuplicateRegNo: null,
     };
   }
 }

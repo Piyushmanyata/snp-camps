@@ -26,7 +26,7 @@ async function connect() {
     await c.connect();
     const { rows } = await c.query(
       `select to_regprocedure(
-         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid)'
+         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean)'
        ) is not null as ok`,
     );
     if (!rows[0]?.ok) {

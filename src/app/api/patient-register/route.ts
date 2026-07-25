@@ -24,6 +24,10 @@ const UUID =
 
 function publicError(message?: string) {
   if (!message) return "Registration failed. Try again or ask the desk.";
+  const aadhaarDup = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
+  if (aadhaarDup) {
+    return `A registration with this name and Aadhaar last-4 already exists (reg no ${aadhaarDup[1]}). Ask the desk if this is a different person.`;
+  }
   if (/day is full|select a camp day/i.test(message)) {
     return "That camp day is full. Choose another day.";
   }

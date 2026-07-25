@@ -97,6 +97,13 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** Staff-only: conflicting reg no when Aadhaar last-4 + name collides. */
+  const [aadhaarDuplicateRegNo, setAadhaarDuplicateRegNo] = useState<
+    number | null
+  >(null);
+  /** One-shot; never sticky across walk-ins. */
+  const aadhaarOverrideOnceRef = useRef(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
 
@@ -431,6 +438,11 @@ export function PatientForm({
     setError(null);
     setFieldErrors({});
     setQueueNote(null);
+    const aadhaarDuplicateOverride = aadhaarOverrideOnceRef.current;
+    aadhaarOverrideOnceRef.current = false;
+    if (!aadhaarDuplicateOverride) {
+      setAadhaarDuplicateRegNo(null);
+    }
 
     if (!campDayId) {
       failValidation(
@@ -552,55 +564,72 @@ export function PatientForm({
     }
 
     const supabase = createClient();
-    const { data, error: registrationError } = await submitRegistrationOutbound({
-      isStaff,
-      attempt: registrationAttempt.current,
-      publicFields: isStaff
-        ? undefined
-        : {
-            campId,
-            campDayId,
-            fullName: fullName.trim(),
-            gender: gender || null,
-            age: ageValue,
-            address: address.trim() || null,
-            phone: phone10,
-            email: email.trim() || null,
-            aadhaarLast4: last4 || null,
-          },
-      staffFields: isStaff
-        ? {
-            campId,
-            fullName: fullName.trim(),
-            gender: gender || null,
-            age: ageValue,
-            address: address.trim() || null,
-            phone: phone10 || null,
-            email: email.trim() || null,
-            aadhaarLast4: last4 || null,
-            userId,
-            createdBy,
-            campDayId,
-          }
-        : undefined,
-      rpc: isStaff
-        ? async (fn, args) => {
-            const result = await supabase.rpc(fn, args);
-            return {
-              data: result.data,
-              error: result.error
-                ? { message: result.error.message }
-                : null,
-            };
-          }
-        : undefined,
-    });
+    const submitOnce = (aadhaarDuplicateOverride: boolean) =>
+      submitRegistrationOutbound({
+        isStaff,
+        attempt: registrationAttempt.current,
+        publicFields: isStaff
+          ? undefined
+          : {
+              campId,
+              campDayId,
+              fullName: fullName.trim(),
+              gender: gender || null,
+              age: ageValue,
+              address: address.trim() || null,
+              phone: phone10,
+              email: email.trim() || null,
+              aadhaarLast4: last4 || null,
+            },
+        staffFields: isStaff
+          ? {
+              campId,
+              fullName: fullName.trim(),
+              gender: gender || null,
+              age: ageValue,
+              address: address.trim() || null,
+              phone: phone10 || null,
+              email: email.trim() || null,
+              aadhaarLast4: last4 || null,
+              userId,
+              createdBy,
+              campDayId,
+              aadhaarDuplicateOverride,
+            }
+          : undefined,
+        rpc: isStaff
+          ? async (fn, args) => {
+              const result = await supabase.rpc(fn, args);
+              return {
+                data: result.data,
+                error: result.error
+                  ? { message: result.error.message }
+                  : null,
+              };
+            }
+          : undefined,
+      });
+
+    const {
+      data,
+      error: registrationError,
+      aadhaarDuplicateRegNo: dupReg,
+    } = await submitOnce(aadhaarDuplicateOverride);
 
     if (registrationError) {
-      setError(registrationError);
+      if (isStaff && dupReg) {
+        setAadhaarDuplicateRegNo(dupReg);
+        setError(
+          `Name and Aadhaar last-4 match existing reg no ${dupReg}. Look that patient up first. Override only if this is a different person.`,
+        );
+      } else {
+        setAadhaarDuplicateRegNo(null);
+        setError(registrationError);
+      }
       setLoading(false);
       return;
     }
+    setAadhaarDuplicateRegNo(null);
 
     const row = Array.isArray(data) ? data[0] : data;
     if (!row) {
@@ -745,6 +774,8 @@ export function PatientForm({
     setCreated(null);
     setQueueNote(null);
     setError(null);
+    setAadhaarDuplicateRegNo(null);
+    aadhaarOverrideOnceRef.current = false;
     setFullName("");
     setGender("");
     setAge("");
@@ -1017,7 +1048,12 @@ export function PatientForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3.5 sm:space-y-4" noValidate>
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      className="space-y-3.5 sm:space-y-4"
+      noValidate
+    >
       {!isStaff ? (
         <div className="rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-brand">
           Phone verified
@@ -1291,6 +1327,28 @@ export function PatientForm({
           : "After save you stay signed in with phone OTP. Doctor can scan without a print."}
       </p>
       <ErrorBox message={error} />
+      {isStaff && aadhaarDuplicateRegNo != null ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-sm text-amber-950">
+            Conflicting registration:{" "}
+            <span className="font-bold tabular">#{aadhaarDuplicateRegNo}</span>.
+            Override is recorded against the new registration with your staff
+            account and the current time. Not sticky for the next walk-in.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={loading}
+            onClick={() => {
+              aadhaarOverrideOnceRef.current = true;
+              formRef.current?.requestSubmit();
+            }}
+          >
+            Override and register as different person
+          </Button>
+        </div>
+      ) : null}
       <div className={isStaff ? "sticky-submit" : undefined}>
         <Button
           type="submit"
