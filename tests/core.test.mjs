@@ -18,6 +18,8 @@ import {
 import {
   generatePatientPassword,
   generateStaffPassword,
+  isPasswordLongEnough,
+  MIN_PASSWORD_LENGTH,
 } from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
@@ -154,6 +156,13 @@ test("registration number parser rejects overflow and malformed values", () => {
   assert.equal(parseRegistrationNumber(undefined), null);
 });
 
+test("password policy matches Supabase Auth minimum length", () => {
+  assert.equal(MIN_PASSWORD_LENGTH, 6);
+  assert.equal(isPasswordLongEnough("12345"), false);
+  assert.equal(isPasswordLongEnough("123456"), true);
+  assert.equal(isPasswordLongEnough(""), false);
+});
+
 test("patient URLs are staff-scan canonical and passwords avoid ambiguous characters", () => {
   const id = "a0b1c2d3-e4f5-4678-9abc-def012345678";
   assert.equal(patientScanUrl(id, "https://camp.example/"), "snp:" + id);
@@ -170,6 +179,7 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
   assert.equal(generated.size, 20);
   for (const password of generated) {
     assert.match(password, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
+    assert.ok(isPasswordLongEnough(password));
   }
   assert.match(
     generatePatientPassword(),

@@ -1,5 +1,15 @@
 import { randomInt } from "node:crypto";
 
+/**
+ * Minimum password length enforced by Supabase Auth (project default).
+ * Client and API must reject shorter values before the auth call.
+ */
+export const MIN_PASSWORD_LENGTH = 6;
+
+export function isPasswordLongEnough(password: string) {
+  return password.length >= MIN_PASSWORD_LENGTH;
+}
+
 /** Returns a crypto-random patient login password (default 12 chars). */
 export function generatePatientPassword(length = 12): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

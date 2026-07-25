@@ -4,7 +4,11 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { parseRegistrationNumber, patientScanUrl } from "@/lib/qr";
-import { generatePatientPassword } from "@/lib/patient-password";
+import {
+  generatePatientPassword,
+  isPasswordLongEnough,
+  MIN_PASSWORD_LENGTH,
+} from "@/lib/patient-password";
 import {
   notifyConfigured,
   notifyPatient,
@@ -66,9 +70,11 @@ export async function POST(req: Request) {
   }
   const safeRegNo = regNo;
 
-  if (passwordRaw && passwordRaw.length < 4) {
+  if (passwordRaw && !isPasswordLongEnough(passwordRaw)) {
     return NextResponse.json(
-      { error: "Password must be at least 4 characters" },
+      {
+        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      },
       { status: 400 },
     );
   }
