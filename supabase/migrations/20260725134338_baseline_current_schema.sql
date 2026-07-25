@@ -1,7 +1,8 @@
--- SNP Camps canonical fresh-project schema.
--- Generated from the reviewed production migration lineage on PostgreSQL 17.6.
--- Run only on an empty Supabase project; upgrades use supabase/migrations.
-
+-- SNP Camps baseline schema (squashed migration lineage).
+-- Reproduces the full post-lineage schema on an empty database.
+-- Source: reviewed production dump (PostgreSQL 17.6) previously at supabase/schema.sql.
+-- Future schema changes: npx supabase migration new <name> then apply via CLI.
+-- Do NOT re-run this baseline against a database that already has the schema.
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;

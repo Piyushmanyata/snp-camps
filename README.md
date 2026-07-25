@@ -23,28 +23,38 @@ Next.js · Supabase · Vercel · GitHub: [Piyushmanyata/snp-camps](https://githu
 
 ## Setup
 
-### 1. Supabase SQL
+### 1. Database schema (Supabase CLI)
 
-For a new, empty Supabase project, run `supabase/schema.sql` once in the SQL
-Editor. It is the canonical schema and already contains the complete reviewed
-migration lineage. Do not run it on an existing database.
+Schema lives only under `supabase/migrations/`. There is one **baseline**
+migration that reproduces the full current schema on an empty database, plus
+any later incremental files. The CLI keeps the migration ledger.
 
-For an existing deployment, apply only unapplied files from
-`supabase/migrations` in timestamp order. Rehearse every migration on a
-production-shaped disposable database before applying it to production. The
-current release is deliberately split so neither the old nor new app sees an
-incompatible schema:
+**Empty project (local or new remote):**
 
-1. Apply `20260722000000_disabled_staff_expand.sql` (backward-compatible
-   column, disabled-account guards, and profile immutability).
-2. Deploy the matching application and pass `/api/health?ready=1`.
-3. Apply `20260722010000_production_hardening.sql` to enforce the new RLS, ACL,
-   attribution, and queue contracts.
-4. Re-run readiness, role smoke tests, and database privilege postconditions.
+```bash
+npx supabase start          # local Docker stack (optional)
+npx supabase db reset       # apply all local migrations on a clean DB
+# or, linked remote empty project:
+npx supabase link           # prompts for project ref; uses dashboard DB password
+npx supabase db push        # applies pending migrations transactionally
+```
 
-Do not batch both migrations ahead of the application deployment. After the
-enforcement step, recover with a forward-fix migration; do not restore claim
-token grants or remove `disabled_at`.
+Do **not** re-run the baseline against a database that already has this schema
+(production already does). If remote migration history needs aligning after a
+squash, use `npx supabase migration repair` only with an explicit plan — never
+as a casual fix.
+
+**How to change the schema:**
+
+1. `npx supabase migration new <descriptive_name>` — creates an empty SQL file
+   under `supabase/migrations/` with a CLI timestamp.
+2. Write the incremental SQL in that file (prefer reversible, small steps).
+3. Apply and verify on a disposable DB first:
+   - Local: `npx supabase db reset` (or `migration up`)
+   - Linked remote (non-prod): `npx supabase db push`
+4. Commit the migration file. Never hardcode a project ref or scrape passwords
+   from `.env.local` in scripts — use `supabase link` / env vars the CLI
+   documents, or the dashboard password prompt.
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 

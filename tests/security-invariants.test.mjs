@@ -62,13 +62,30 @@ test("service-role admin client is server-only", () => {
   assert.match(admin, /SUPABASE_SERVICE_ROLE_KEY/);
 });
 
-test("every public table in the schema dump has RLS enabled", () => {
-  const schema = read("supabase/schema.sql");
+function baselineMigrationPath() {
+  const dir = path.join(root, "supabase", "migrations");
+  const files = fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+  assert.ok(files.length > 0, "expected at least one migration under supabase/migrations");
+  // RLS is declared in the baseline (full schema). Later migrations may only alter it.
+  const baseline =
+    files.find((name) => name.includes("baseline")) ?? files[0];
+  return path.join("supabase", "migrations", baseline);
+}
+
+test("every public table in the baseline migration has RLS enabled", () => {
+  const relative = baselineMigrationPath();
+  const schema = read(relative);
   const tables = [
-    ...schema.matchAll(/CREATE TABLE public\.([a-z_]+)/gi),
+    ...schema.matchAll(/CREATE TABLE(?:\s+IF NOT EXISTS)?\s+public\.([a-z_]+)/gi),
   ].map((m) => m[1].toLowerCase());
 
-  assert.ok(tables.length > 0, "expected public tables in schema.sql");
+  assert.ok(
+    tables.length > 0,
+    `expected public tables in ${relative}`,
+  );
 
   for (const table of tables) {
     const enabled = new RegExp(
