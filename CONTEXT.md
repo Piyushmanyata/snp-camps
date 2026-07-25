@@ -16,6 +16,8 @@
 * **Desk Slip**: Physical registration token printed at the volunteer desk. **Required** for the reg-number login path because it carries the one-time-shown **login passcode**. Also used for queue tracking and staff-scan QR. Losing the slip is normal — staff reissue a new passcode (old one stops working) and reprint.
 * **Passcode**: Short random secret issued at desk registration (or on reissue), printed on the desk slip, used with the registration number for patient login. Stored only as a Supabase Auth password hash; plaintext returned only once to authenticated staff after issue/reissue.
 * **Seen**: Final state of patient consultation. Re-scanning a `seen` patient is permanently blocked.
+* **Phone number → patient relationship**: A phone number identifies a *household*, not a Patient. A Patient is identified by registration number. Several family members may share one phone for OTP or contact; login and PHI are always scoped to the registration number (and Passcode / session), never to “whoever has this phone.”
+* **Print-then-queue ordering**: Printing a Desk Slip moves the Patient into the FCFS Queue *before* the print dialog opens, deliberately — the queue entry is the operationally meaningful act and the paper is a convenience. A cancelled print therefore leaves the Patient queued, which is correct because they are physically at the desk.
 
 ## System-Wide Design & UX Goals
 

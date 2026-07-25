@@ -2,20 +2,24 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-## Camp flow (v3)
+## Camp flow (v4)
 
-1. **Self-register** with **phone OTP** → details → account linked → **auto sign-in**
-2. Patient sees **reg number + optional one-time backup password** (also **SMS/WhatsApp** when configured)
-3. **Logout** ends the session without changing patient credentials; phone OTP remains available for recovery
-4. Explicit **desk print** (optional) → joins FCFS **queue** (`waiting`)
-5. **Doctor scan** → review patient → confirm → **seen** (once only) — **no print required**
-6. Volunteer/admin can print for queue or assign a doctor on scan
-7. Re-scan of a seen patient is **blocked** (“Already seen by Dr X”)
+Two registration paths, then one shared queue:
 
-- Patient QR is for **volunteer/doctor scan only** (payload `/p/{uuid}` — no phone QR login)
-- Print is optional desk convenience; doctors only need to scan
-- One active camp, single FCFS queue; doctor recorded when seen
+1. **Desk registration (Staff):** Staff registers the patient at the Volunteer Desk → a **Passcode** is shown once and stored for the Desk Slip → **print** joins the **FCFS Queue** (`waiting`) and prints the Desk Slip (reg number + Passcode + Patient QR).
+2. **Self-register (phone OTP):** When SMS is configured, the patient verifies phone OTP → details → account linked → **auto sign-in**. A Desk Slip can still be printed later by Staff if the reg-number login path is needed.
+3. **Patient login:** registration number + **Passcode** from the Desk Slip (phone OTP remains an alternative when configured). Logout ends the session without changing credentials.
+4. **Lost slip is expected:** Staff **reissue** a new Passcode (the old one stops working) and reprint the Desk Slip. The Desk Slip is **required** for the reg-number login path because it carries the Passcode.
+5. **Doctor scan** → review patient → confirm → **Seen** (once only) — print is not required for the doctor path.
+6. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
+
+- Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` — no phone QR login)
+- One active camp, single FCFS Queue; doctor recorded when Seen
 - Aadhaar: full number used only for verify/lookup in memory; **last 4 digits only** stored
+
+## Auth model
+
+Patients prove identity with **registration number + Passcode** printed on the **Desk Slip**, or with phone OTP when SMS is configured. The Passcode is the Supabase Auth password for the synthetic account; plaintext is shown only once to Staff at issue/reissue and never returned to unauthenticated callers. The authority for this model is [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md). Any future change to the auth model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
 
 ## Stack
 
@@ -70,7 +74,7 @@ per-IP rate-limited (12/min) so it cannot be used as an amplification vector.
 - **Phone**: enable Phone Auth and configure a supported SMS provider/sender.
   Confirm a real `+91` test number receives and verifies an OTP before launch.
   Review Supabase Auth OTP expiry and rate limits for expected camp traffic.
-- Patient accounts use synthetic emails (`reg{N}@patients.snp.local`) + password.
+- Patient accounts use synthetic emails (`reg{N}@patients.snp.local`) + **Passcode** (Auth password issued at the desk and printed on the Desk Slip).
 
 ### 3. Env
 
@@ -174,7 +178,7 @@ Set `SMS_WEBHOOK_URL` and/or `WHATSAPP_WEBHOOK_URL`. App POSTs JSON:
 { "phone": "+91…", "message": "…", "template": "registration", "channel": "sms|whatsapp" }
 ```
 
-Until configured, registration may show the one-time backup password on screen; notify status reports “not configured yet”. Logout never rotates or reveals credentials.
+Until configured, notify status reports “not configured yet”; desk registration still issues a Passcode on the Desk Slip for the reg-number login path. Logout never rotates or reveals credentials.
 
 These notification webhooks do not deliver Supabase Auth OTPs. Configure the
 Phone Auth SMS provider separately under Auth settings and keep readiness at
