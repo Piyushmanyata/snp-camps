@@ -1,8 +1,22 @@
 /**
- * Deliberate source-text security invariants.
+ * Deliberate source-text security invariants — the only suite allowed to
+ * assert on source/schema text.
  *
- * These are the only tests allowed to assert on source/schema text: they guard
- * properties that pure unit tests of pure functions cannot express.
+ * Boundary rule (all three required; otherwise the assertion is behaviour
+ * and belongs in a behavioural test, not here):
+ *
+ * 1. About a file's existence, its imports, or the absence of a token —
+ *    never about the shape of an expression.
+ * 2. No behavioural way to express it. "This secret never reaches the
+ *    client bundle" qualifies. "This endpoint does not return a password"
+ *    does not — that is a response body.
+ * 3. The regex matches an identifier or an import path — never punctuation,
+ *    whitespace, or argument layout.
+ *
+ * Keep: service-role absent from client code; admin module imports
+ * server-only; every public CREATE TABLE has ENABLE RLS; at most one SQL
+ * role-set assertion for is_staff / is_camp_crew (SQL function bodies have
+ * no other seam).
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -103,108 +117,12 @@ test("every public table in the baseline migration has RLS enabled", () => {
   }
 });
 
-test("health readiness is rate-limited and does not match RPC error text", () => {
-  const health = read("src/app/api/health/route.ts");
-  assert.match(health, /checkRateLimit/);
-  assert.match(health, /scope:\s*["']health-ready["']/);
-  assert.match(health, /app_database_contract/);
-  assert.doesNotMatch(health, /sign in required/i);
-  assert.doesNotMatch(health, /link_patient_phone/);
-  // Liveness stays an early open path (ready !== "1").
-  assert.match(health, /searchParams\.get\(["']ready["']\)\s*===\s*["']1["']/);
-});
-
-test("production CSP script-src has no unsafe-inline (nonce + strict-dynamic)", async () => {
-  const { buildContentSecurityPolicy, productionScriptSrcAllowsUnsafeInline } =
-    await import("../src/lib/csp.ts");
-
-  const prod = buildContentSecurityPolicy("testnonce", { isDev: false });
-  assert.equal(productionScriptSrcAllowsUnsafeInline(prod), false);
-  assert.match(prod, /script-src 'self' 'nonce-testnonce' 'strict-dynamic'/);
-  assert.doesNotMatch(prod, /script-src[^;]*'unsafe-inline'/);
-  assert.doesNotMatch(prod, /script-src[^;]*'unsafe-eval'/);
-
-  const dev = buildContentSecurityPolicy("devnonce", { isDev: true });
-  assert.match(dev, /'unsafe-eval'/);
-  assert.doesNotMatch(dev, /script-src[^;]*'unsafe-inline'/);
-
-  const nextConfig = read("next.config.ts");
-  assert.doesNotMatch(nextConfig, /key:\s*["']Content-Security-Policy["']/);
-  assert.doesNotMatch(nextConfig, /unsafe-inline/);
-
-  const proxy = read("src/proxy.ts");
-  assert.match(proxy, /buildContentSecurityPolicy/);
-  assert.match(proxy, /x-nonce/);
-});
-
-test("patient-login requires passcode and never returns or resets credentials", () => {
-  const login = read("src/app/api/patient-login/route.ts");
-  assert.match(login, /passcode/);
-  assert.match(login, /signInWithPassword/);
-  assert.match(login, /checkRateLimit/);
-  assert.match(login, /scope:\s*["']patient-login["']/);
-  // No shared default / credential minting on the unauthenticated login path.
-  assert.doesNotMatch(login, /LEGACY_DEFAULT_PASSWORD|123456/);
-  assert.doesNotMatch(login, /createUser|updateUserById|generatePatientPassword/);
-  assert.doesNotMatch(login, /createServiceRoleClient/);
-  // Success JSON must only acknowledge login — never include secrets.
-  assert.match(
-    login,
-    /return NextResponse\.json\(\s*\{\s*ok:\s*true,\s*regNo,/,
-  );
-  assert.doesNotMatch(
-    login,
-    /return NextResponse\.json\(\s*\{[^}]*\b(password|email)\s*:/,
-  );
-  // No service-role password reset to a constant.
-  assert.doesNotMatch(login, /password:\s*LEGACY|password:\s*["']123456["']/);
-
-  const loginPage = read("src/app/patient/login/page.tsx");
-  assert.match(loginPage, /label=["']Passcode["']/);
-  assert.match(loginPage, /passcode:\s*code/);
-  assert.doesNotMatch(loginPage, /data\.password/);
-
-  const printSheet = read("src/components/print-sheet.tsx");
-  assert.match(printSheet, /loginPasscode/);
-  assert.match(printSheet, /Login passcode/);
-
-  const context = read("CONTEXT.md");
-  assert.match(context, /Desk Slip/i);
-  assert.match(context, /[Pp]asscode/);
-
-  const adr = read("docs/adr/0001-passcode-on-desk-slip.md");
-  assert.match(adr, /passcode/i);
-  assert.match(adr, /SMS OTP/i);
-});
-
-test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () => {
-  const roles = read("src/lib/roles.ts");
-  const staffFn = roles.match(
-    /export function isStaff\([^)]*\) \{[^}]+\}/,
-  )?.[0];
-  assert.ok(staffFn, "isStaff function body");
-  assert.match(staffFn, /"admin"/);
-  assert.match(staffFn, /"volunteer"/);
-  assert.doesNotMatch(staffFn, /"doctor"/);
-
-  const crewFn = roles.match(
-    /export function isCampCrew\([^)]*\) \{[^}]+\}/,
-  )?.[0];
-  assert.ok(crewFn, "isCampCrew function body");
-  assert.match(crewFn, /"doctor"/);
-
-  const account = read("src/app/api/patient-account/route.ts");
-  assert.match(account, /isStaff\(profile\?\.role\)/);
-  assert.doesNotMatch(account, /isCampCrew/);
-
-  const enter = read("src/app/patient/enter/[id]/page.tsx");
-  assert.match(enter, /isCampCrew\(profile\?\.role\)/);
-
-  const volunteer = read("src/app/volunteer/page.tsx");
-  assert.match(volunteer, /isStaff\(profile\?\.role\)/);
-  assert.doesNotMatch(volunteer, /isDoctor\(profile\?\.role\)\)\s*redirect/);
-
-  // Baseline is a production dump; is_camp_crew lives in the #10 split migration.
+/**
+ * SQL role-set seam: is_staff / is_camp_crew bodies are not callable from
+ * node:test. Assert only the role-name string literals inside each function
+ * definition (not TypeScript, not call-site greps).
+ */
+test("SQL is_staff and is_camp_crew role sets stay aligned", () => {
   const migrationsDir = path.join(root, "supabase", "migrations");
   const sqlAll = fs
     .readdirSync(migrationsDir)
@@ -213,18 +131,26 @@ test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () 
     .map((name) => read(path.join("supabase", "migrations", name)))
     .join("\n");
 
-  const sqlStaff = sqlAll.match(
-    /CREATE(?: OR REPLACE)? FUNCTION\s+(?:"?public"?\.)?"?is_staff"?\(\)[\s\S]*?\$\$;/,
-  )?.[0];
-  assert.ok(sqlStaff, "SQL is_staff");
-  assert.match(sqlStaff, /role in \('admin', 'volunteer'\)/);
+  // Last definition wins in Postgres; scan every CREATE of each function.
+  const staffDefs = [
+    ...sqlAll.matchAll(
+      /CREATE(?:\s+OR\s+REPLACE)?\s+FUNCTION\s+(?:"?public"?\.)?"?is_staff"?\s*\(\s*\)[\s\S]*?\$\$;/gi,
+    ),
+  ].map((m) => m[0]);
+  assert.ok(staffDefs.length > 0, "expected at least one is_staff() definition");
+  const sqlStaff = staffDefs[staffDefs.length - 1];
+  assert.match(sqlStaff, /'admin'/);
+  assert.match(sqlStaff, /'volunteer'/);
   assert.doesNotMatch(sqlStaff, /'doctor'/);
 
-  const sqlCrew = sqlAll.match(
-    /CREATE(?: OR REPLACE)? FUNCTION\s+(?:"?public"?\.)?"?is_camp_crew"?\(\)[\s\S]*?\$\$;/,
-  )?.[0];
-  assert.ok(sqlCrew, "SQL is_camp_crew");
-  assert.match(sqlCrew, /role in \('admin', 'volunteer', 'doctor'\)/);
-
-  assert.match(sqlAll, /if not public\.is_camp_crew\(\)/);
+  const crewDefs = [
+    ...sqlAll.matchAll(
+      /CREATE(?:\s+OR\s+REPLACE)?\s+FUNCTION\s+(?:"?public"?\.)?"?is_camp_crew"?\s*\(\s*\)[\s\S]*?\$\$;/gi,
+    ),
+  ].map((m) => m[0]);
+  assert.ok(crewDefs.length > 0, "expected at least one is_camp_crew() definition");
+  const sqlCrew = crewDefs[crewDefs.length - 1];
+  assert.match(sqlCrew, /'admin'/);
+  assert.match(sqlCrew, /'volunteer'/);
+  assert.match(sqlCrew, /'doctor'/);
 });

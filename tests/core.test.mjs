@@ -36,6 +36,10 @@ import {
   isStaff,
   roleHome,
 } from "../src/lib/roles.ts";
+import {
+  buildContentSecurityPolicy,
+  productionScriptSrcAllowsUnsafeInline,
+} from "../src/lib/csp.ts";
 import { validateSupabaseProjectUrl } from "../scripts/bootstrap-admin.mjs";
 
 const VALID_UUID = "e3b0c442-98fc-41c4-a012-3456789abcde";
@@ -141,6 +145,29 @@ test("Staff excludes doctor; Camp crew includes all three desk roles", () => {
   assert.equal(roleHome("volunteer"), "/volunteer");
   assert.equal(roleHome("admin"), "/admin");
   assert.equal(roleHome("patient"), "/patient");
+});
+
+test("production CSP script-src uses nonce without unsafe-inline", () => {
+  const prod = buildContentSecurityPolicy("testnonce", { isDev: false });
+  assert.equal(productionScriptSrcAllowsUnsafeInline(prod), false);
+  assert.match(prod, /nonce-testnonce/);
+  assert.match(prod, /strict-dynamic/);
+  const prodScript = prod
+    .split(";")
+    .map((d) => d.trim())
+    .find((d) => d.startsWith("script-src"));
+  assert.ok(prodScript);
+  assert.doesNotMatch(prodScript, /'unsafe-inline'/);
+  assert.doesNotMatch(prodScript, /'unsafe-eval'/);
+
+  const dev = buildContentSecurityPolicy("devnonce", { isDev: true });
+  const devScript = dev
+    .split(";")
+    .map((d) => d.trim())
+    .find((d) => d.startsWith("script-src"));
+  assert.ok(devScript);
+  assert.match(devScript, /'unsafe-eval'/);
+  assert.doesNotMatch(devScript, /'unsafe-inline'/);
 });
 
 test("registration number parser rejects overflow and malformed values", () => {
