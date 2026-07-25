@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
+import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
 import {
   Badge,
   Button,
@@ -12,6 +13,7 @@ import {
   ErrorBox,
   Spinner,
 } from "@/components/ui";
+import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/lib/types";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
@@ -96,7 +98,15 @@ export function LiveQueue({
     refreshQueue();
   }
 
-  useFixedPoll(refreshQueue, pollMs, Boolean(campId));
+  // Staff-only component: always live when a camp is set. Poll stays until #26.
+  const liveStatus = useCampDeskRealtime(campId, refreshQueue, Boolean(campId));
+  const reconnecting = liveStatus === "reconnecting";
+  const effectivePollMs = reconnecting ? POLL_MS : pollMs;
+  useFixedPoll(
+    refreshQueue,
+    effectivePollMs,
+    Boolean(campId) && (reconnecting || pollMs > 0),
+  );
 
   async function assign(patientId: string, chosen: string | null) {
     if (busyId) return;
@@ -190,6 +200,7 @@ export function LiveQueue({
   return (
     <div>
       <ErrorBox message={error} />
+      <ReconnectingIndicator show={reconnecting} />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       ) : null}
@@ -204,9 +215,13 @@ export function LiveQueue({
           {total > rows.length
             ? "Showing first " + rows.length + " of " + total
             : total + " waiting"}
-          {pollMs > 0
-            ? ` · auto every ${Math.round(pollMs / 60_000)} min`
-            : ""}
+          {reconnecting
+            ? " · reconnecting"
+            : liveStatus === "live"
+              ? " · live"
+              : pollMs > 0
+                ? ` · auto every ${Math.round(pollMs / 60_000)} min`
+                : ""}
         </span>
         <button
           type="button"

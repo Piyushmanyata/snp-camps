@@ -3,7 +3,9 @@
 import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
+import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
+import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 import {
   Badge,
   Card,
@@ -19,6 +21,8 @@ export function SeatBoard({
   title = "Camp days & seats",
   compact = false,
   pollMs = POLL_MS,
+  /** Staff desks only — patient screens keep poll-only (live=false). */
+  live = false,
 }: {
   days: CampDayStats[];
   campId?: string | null;
@@ -26,6 +30,7 @@ export function SeatBoard({
   compact?: boolean;
   /** Auto-refresh interval; 0 = manual only. Default 2 min. */
   pollMs?: number;
+  live?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -38,12 +43,24 @@ export function SeatBoard({
 
   const days = initialDays;
 
-  useFixedPoll(refresh, pollMs, Boolean(campId));
+  const liveStatus = useCampDeskRealtime(
+    campId,
+    refresh,
+    live && Boolean(campId),
+  );
+  const reconnecting = liveStatus === "reconnecting";
+  const effectivePollMs = reconnecting ? POLL_MS : pollMs;
+  useFixedPoll(
+    refresh,
+    effectivePollMs,
+    Boolean(campId) && (reconnecting || pollMs > 0),
+  );
 
   if (!days.length) {
     return (
       <Card>
         <SectionTitle>{title}</SectionTitle>
+        <ReconnectingIndicator show={reconnecting} />
         <EmptyState>
           No camp days configured yet. Admin can add days and seat limits.
         </EmptyState>
@@ -53,13 +70,18 @@ export function SeatBoard({
 
   return (
     <Card padding={compact ? "sm" : "md"}>
+      <ReconnectingIndicator show={reconnecting} />
       <div className="mb-1 flex items-start justify-between gap-2">
         <SectionTitle
           hint={
             campId
-              ? pollMs > 0
-                ? `Updates every ${Math.round(pollMs / 60_000)} min · or Refresh`
-                : "Tap Refresh for latest seats"
+              ? reconnecting
+                ? "Reconnecting — poll fallback"
+                : liveStatus === "live"
+                  ? "Live · or Refresh"
+                  : pollMs > 0
+                    ? `Updates every ${Math.round(pollMs / 60_000)} min · or Refresh`
+                    : "Tap Refresh for latest seats"
               : "All days listed"
           }
         >

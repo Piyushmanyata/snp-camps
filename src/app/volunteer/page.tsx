@@ -331,6 +331,7 @@ export default async function VolunteerPage() {
               title="Seat board"
               compact
               pollMs={0}
+              live
             />
           )
         ) : null}

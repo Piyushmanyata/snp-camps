@@ -147,7 +147,13 @@ async function AdminSeatBoardSection({
 
   return (
     <div className="space-y-3">
-      <SeatBoard days={days} campId={active.id} title="Seat board" pollMs={0} />
+      <SeatBoard
+        days={days}
+        campId={active.id}
+        title="Seat board"
+        pollMs={0}
+        live
+      />
       <CollapsibleSection
         title="Camps & camp days"
         hint={`${camps.length} camp${camps.length === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}

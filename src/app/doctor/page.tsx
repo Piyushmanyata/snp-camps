@@ -13,6 +13,7 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
+import { CampDeskLiveBridge } from "@/components/camp-desk-live-bridge";
 import { mapDbError } from "@/lib/public-error";
 import { SectionLoadError } from "@/components/section-load-error";
 
@@ -251,6 +252,7 @@ export default async function DoctorPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
+        {camp ? <CampDeskLiveBridge campId={camp.id} /> : null}
         <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>
