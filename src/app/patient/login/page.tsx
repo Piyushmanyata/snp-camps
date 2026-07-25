@@ -17,6 +17,11 @@ import {
   Shell,
   WarningBox,
 } from "@/components/ui";
+import { PhoneLinkChooser } from "@/components/phone-link-chooser";
+import {
+  parsePhoneLinkResult,
+  type PhoneLinkCandidate,
+} from "@/lib/link-patient-phone";
 
 const LOGIN_ERRORS: Record<string, string> = {
   invalid_qr:
@@ -38,7 +43,14 @@ export default function PatientLoginPage() {
 
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [otpStep, setOtpStep] = useState<"phone" | "otp">("phone");
+  const [otpStep, setOtpStep] = useState<"phone" | "otp" | "choose">("phone");
+  const [phoneLinkCandidates, setPhoneLinkCandidates] = useState<
+    PhoneLinkCandidate[]
+  >([]);
+  const [phoneLinkAskDesk, setPhoneLinkAskDesk] = useState(false);
+  const [verifiedPhoneE164, setVerifiedPhoneE164] = useState<string | null>(
+    null,
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -181,7 +193,7 @@ export default function PatientLoginPage() {
         return;
       }
 
-      const { data: linkedId, error: linkErr } = await supabase.rpc(
+      const { data: linkData, error: linkErr } = await supabase.rpc(
         "link_patient_phone",
         { p_phone: phoneE164 },
       );
@@ -194,8 +206,21 @@ export default function PatientLoginPage() {
         return;
       }
 
-      if (!linkedId) {
+      const link = parsePhoneLinkResult(linkData);
+      if (!link) {
+        await supabase.auth.signOut();
+        setError("Could not claim a registration for this phone number.");
+        return;
+      }
+      if (link.status === "no_match") {
         router.replace("/register");
+        return;
+      }
+      if (link.status === "choose") {
+        setVerifiedPhoneE164(phoneE164);
+        setPhoneLinkCandidates(link.candidates);
+        setPhoneLinkAskDesk(link.ask_desk);
+        setOtpStep("choose");
         return;
       }
 
@@ -204,6 +229,56 @@ export default function PatientLoginPage() {
       await supabase.auth.signOut().catch(() => undefined);
       setError("Could not verify the OTP. Check your connection and try again.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function choosePhoneLinkPatient(patientId: string) {
+    setError(null);
+    const phoneE164 = verifiedPhoneE164 || normalizePhoneE164(phone);
+    if (!phoneE164) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      return;
+    }
+    setLoading(true);
+    const supabase = createClient();
+    try {
+      const { data: linkData, error: linkErr } = await supabase.rpc(
+        "link_patient_phone",
+        { p_phone: phoneE164, p_patient_id: patientId },
+      );
+      if (linkErr) {
+        setError(
+          linkErr.message ||
+            "Could not link that registration. Try again or ask the desk.",
+        );
+        return;
+      }
+      const link = parsePhoneLinkResult(linkData);
+      if (link?.status === "linked") {
+        router.replace("/patient");
+        return;
+      }
+      setError("Could not link that registration. Try again or ask the desk.");
+    } catch {
+      setError("Could not link that registration. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cancelPhoneLinkChoose() {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut().catch(() => undefined);
+    } finally {
+      setPhoneLinkCandidates([]);
+      setPhoneLinkAskDesk(false);
+      setVerifiedPhoneE164(null);
+      setOtpStep("phone");
+      setOtp("");
+      setError(null);
       setLoading(false);
     }
   }
@@ -298,6 +373,15 @@ export default function PatientLoginPage() {
                   {loading ? "Sending…" : "Send OTP"}
                 </Button>
               </form>
+            ) : otpStep === "choose" ? (
+              <PhoneLinkChooser
+                candidates={phoneLinkCandidates}
+                askDesk={phoneLinkAskDesk}
+                loading={loading}
+                error={error}
+                onSelect={choosePhoneLinkPatient}
+                onCancel={cancelPhoneLinkChoose}
+              />
             ) : (
               <form method="post" onSubmit={verifyOtp} className="space-y-4">
                 <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-brand">

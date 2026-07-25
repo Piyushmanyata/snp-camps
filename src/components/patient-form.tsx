@@ -29,6 +29,11 @@ import {
 } from "@/components/ui";
 import { ChangeDay } from "@/components/change-day";
 import { storeDeskPasscode } from "@/lib/desk-passcode";
+import {
+  parsePhoneLinkResult,
+  type PhoneLinkCandidate,
+} from "@/lib/link-patient-phone";
+import { PhoneLinkChooser } from "@/components/phone-link-chooser";
 
 type Props = {
   campId: string;
@@ -112,10 +117,17 @@ export function PatientForm({
   const [queueNote, setQueueNote] = useState<string | null>(null);
 
   // Self-reg: phone OTP gate (primary).
-  const [otpStep, setOtpStep] = useState<"phone" | "otp" | "form">(
+  const [otpStep, setOtpStep] = useState<"phone" | "otp" | "choose" | "form">(
     isStaff || hasVerifiedPatientSession ? "form" : "phone",
   );
   const [otp, setOtp] = useState("");
+  const [phoneLinkCandidates, setPhoneLinkCandidates] = useState<
+    PhoneLinkCandidate[]
+  >([]);
+  const [phoneLinkAskDesk, setPhoneLinkAskDesk] = useState(false);
+  const [verifiedPhoneE164, setVerifiedPhoneE164] = useState<string | null>(
+    null,
+  );
   const [phoneVerified, setPhoneVerified] = useState(isStaff);
   const [sessionUserId, setSessionUserId] = useState<string | null>(userId);
 
@@ -318,7 +330,7 @@ export function PatientForm({
         return;
       }
 
-      const { data: linkedId, error: linkErr } = await supabase.rpc(
+      const { data: linkData, error: linkErr } = await supabase.rpc(
         "link_patient_phone",
         { p_phone: phoneE164 },
       );
@@ -330,8 +342,23 @@ export function PatientForm({
         );
         return;
       }
-      if (linkedId) {
+      const link = parsePhoneLinkResult(linkData);
+      if (!link) {
+        await supabase.auth.signOut();
+        setOtpStep("phone");
+        setError("Could not link your phone to a registration. Try again.");
+        return;
+      }
+      if (link.status === "linked") {
         router.replace("/patient");
+        return;
+      }
+      if (link.status === "choose") {
+        setVerifiedPhoneE164(phoneE164);
+        setPhoneLinkCandidates(link.candidates);
+        setPhoneLinkAskDesk(link.ask_desk);
+        setSessionUserId(user.id);
+        setOtpStep("choose");
         return;
       }
 
@@ -343,6 +370,57 @@ export function PatientForm({
       await supabase.auth.signOut().catch(() => undefined);
       setError("Could not verify OTP. Check your connection and try again.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function choosePhoneLinkPatient(patientId: string) {
+    setError(null);
+    const phoneE164 = verifiedPhoneE164 || normalizePhoneE164(phone);
+    if (!phoneE164) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      return;
+    }
+    setLoading(true);
+    const supabase = createClient();
+    try {
+      const { data: linkData, error: linkErr } = await supabase.rpc(
+        "link_patient_phone",
+        { p_phone: phoneE164, p_patient_id: patientId },
+      );
+      if (linkErr) {
+        setError(
+          linkErr.message ||
+            "Could not link that registration. Try again or ask the desk.",
+        );
+        return;
+      }
+      const link = parsePhoneLinkResult(linkData);
+      if (link?.status === "linked") {
+        router.replace("/patient");
+        return;
+      }
+      setError("Could not link that registration. Try again or ask the desk.");
+    } catch {
+      setError("Could not link that registration. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cancelPhoneLinkChoose() {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut().catch(() => undefined);
+    } finally {
+      setPhoneLinkCandidates([]);
+      setPhoneLinkAskDesk(false);
+      setVerifiedPhoneE164(null);
+      setSessionUserId(null);
+      setOtpStep("phone");
+      setOtp("");
+      setError(null);
       setLoading(false);
     }
   }
@@ -922,6 +1000,19 @@ export function PatientForm({
           Change number
         </Button>
       </form>
+    );
+  }
+
+  if (!isStaff && otpStep === "choose") {
+    return (
+      <PhoneLinkChooser
+        candidates={phoneLinkCandidates}
+        askDesk={phoneLinkAskDesk}
+        loading={loading}
+        error={error}
+        onSelect={choosePhoneLinkPatient}
+        onCancel={cancelPhoneLinkChoose}
+      />
     );
   }
 

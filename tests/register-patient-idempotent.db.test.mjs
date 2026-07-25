@@ -85,16 +85,28 @@ async function asServiceRole(fn) {
 async function seedCampWithDay({ seatLimit = 10, dayDate = "2099-01-15" } = {}) {
   const campId = randomUUID();
   const dayId = randomUUID();
-  await client.query(
-    `insert into public.camps (id, name, is_active, venue)
-     values ($1, $2, true, 'db-test')`,
-    [campId, `DB test camp ${campId.slice(0, 8)}`],
-  );
-  await client.query(
-    `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, $3::date, $4)`,
-    [dayId, campId, dayDate, seatLimit],
-  );
+  // Only one active camp is allowed (camps_one_active). Claim the slot.
+  await client.query("begin");
+  try {
+    await client.query("select pg_advisory_xact_lock(918273645)");
+    await client.query(
+      `update public.camps set is_active = false where is_active = true`,
+    );
+    await client.query(
+      `insert into public.camps (id, name, is_active, venue)
+       values ($1, $2, true, 'db-test')`,
+      [campId, `DB test camp ${campId.slice(0, 8)}`],
+    );
+    await client.query(
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
+       values ($1, $2, $3::date, $4)`,
+      [dayId, campId, dayDate, seatLimit],
+    );
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  }
   return { campId, dayId };
 }
 
