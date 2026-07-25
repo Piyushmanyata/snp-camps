@@ -13,6 +13,10 @@ import {
   type AadhaarProfile,
 } from "@/lib/aadhaar";
 import { normalizePhoneE164 } from "@/lib/phone";
+import {
+  createRegistrationAttempt,
+  submitRegistrationOutbound,
+} from "@/lib/registration-request";
 import { createRequestId } from "@/lib/request-id";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
@@ -120,7 +124,7 @@ export function PatientForm({
   const lastLookedUp = useRef<string>("");
   const lookupRequest = useRef(0);
   /** Stable idempotency key for the in-flight registration attempt (retries reuse it). */
-  const registrationRequestId = useRef<string>(createRequestId());
+  const registrationAttempt = useRef(createRegistrationAttempt(createRequestId));
   const lookupAbort = useRef<AbortController | null>(null);
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
@@ -467,40 +471,12 @@ export function PatientForm({
     }
 
     const supabase = createClient();
-    let data: unknown;
-    let registrationError: string | null = null;
-
-    const requestId = registrationRequestId.current;
-
-    if (isStaff) {
-      try {
-        const result = await supabase.rpc("register_patient_idempotent", {
-          p_request_id: requestId,
-          p_camp_id: campId,
-          p_full_name: fullName.trim(),
-          p_gender: gender || null,
-          p_age: ageValue,
-          p_address: address.trim() || null,
-          p_phone: phone10 || null,
-          p_email: email.trim() || null,
-          p_aadhaar_last4: last4 || null,
-          p_user_id: userId,
-          p_created_by: createdBy,
-          p_camp_day_id: campDayId,
-        });
-        data = result.data;
-        registrationError = result.error?.message || null;
-      } catch {
-        registrationError =
-          "Registration service is unavailable. Check your connection and try again.";
-      }
-    } else {
-      try {
-        const response = await fetch("/api/patient-register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            requestId,
+    const { data, error: registrationError } = await submitRegistrationOutbound({
+      isStaff,
+      attempt: registrationAttempt.current,
+      publicFields: isStaff
+        ? undefined
+        : {
             campId,
             campDayId,
             fullName: fullName.trim(),
@@ -510,21 +486,34 @@ export function PatientForm({
             phone: phone10,
             email: email.trim() || null,
             aadhaarLast4: last4 || null,
-          }),
-        });
-        const payload = (await response.json()) as {
-          patient?: Created;
-          error?: string;
-        };
-        data = payload.patient;
-        registrationError = response.ok
-          ? null
-          : payload.error || "Registration failed";
-      } catch {
-        registrationError =
-          "Registration service is unavailable. Check your connection and try again.";
-      }
-    }
+          },
+      staffFields: isStaff
+        ? {
+            campId,
+            fullName: fullName.trim(),
+            gender: gender || null,
+            age: ageValue,
+            address: address.trim() || null,
+            phone: phone10 || null,
+            email: email.trim() || null,
+            aadhaarLast4: last4 || null,
+            userId,
+            createdBy,
+            campDayId,
+          }
+        : undefined,
+      rpc: isStaff
+        ? async (fn, args) => {
+            const result = await supabase.rpc(fn, args);
+            return {
+              data: result.data,
+              error: result.error
+                ? { message: result.error.message }
+                : null,
+            };
+          }
+        : undefined,
+    });
 
     if (registrationError) {
       setError(registrationError);
@@ -540,7 +529,7 @@ export function PatientForm({
     }
 
     // Success: rotate idempotency key so the next walk-in is a new request.
-    registrationRequestId.current = createRequestId();
+    registrationAttempt.current.rotate();
 
     const base = row as Created;
 
@@ -680,7 +669,7 @@ export function PatientForm({
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
-    registrationRequestId.current = createRequestId();
+    registrationAttempt.current.rotate();
   }
 
   function moveDay(currentId: string, direction: -1 | 1) {
