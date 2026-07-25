@@ -9,6 +9,7 @@ import {
   isPasswordLongEnough,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/patient-password";
+import { passcodeIssuedPatchOnAuthWrite } from "@/lib/passcode-issued";
 import {
   notifyConfigured,
   notifyPatient,
@@ -81,21 +82,29 @@ export async function POST(req: Request) {
     );
   }
 
-  const admin = createServiceRoleClient();
-  if (!admin) {
+  const adminClient = createServiceRoleClient();
+  if (!adminClient) {
     return NextResponse.json(
       { error: "Patient account service is unavailable" },
       { status: 500 },
     );
   }
+  const admin = adminClient;
 
   const { data: patient, error: pErr } = await admin
     .from("patients")
     .select(
-      "id, reg_no, full_name, user_id, phone, account_provisioning_token",
+      "id, reg_no, full_name, user_id, phone, account_provisioning_token, passcode_issued_at",
     )
     .eq("id", patientId)
     .maybeSingle();
+
+  /** Stamp only after Auth password write succeeds; never on failure. */
+  async function stampPasscodeIssued() {
+    const patch = passcodeIssuedPatchOnAuthWrite(true);
+    if (!patch) return;
+    await admin.from("patients").update(patch).eq("id", patientId);
+  }
 
   if (pErr || !patient) {
     return NextResponse.json({ error: "Patient not found" }, { status: 404 });
@@ -179,6 +188,7 @@ export async function POST(req: Request) {
     if (updErr) {
       return NextResponse.json({ error: "Patient login could not be updated." }, { status: 400 });
     }
+    await stampPasscodeIssued();
     const { error: profileError } = await admin
       .from("profiles")
       .update({ role: "patient", full_name: name, email: emailToUpdate })
@@ -315,6 +325,7 @@ export async function POST(req: Request) {
             { status: 500 },
           );
         }
+        await stampPasscodeIssued();
         return NextResponse.json({
           ok: true,
           linked: true,
@@ -385,6 +396,9 @@ export async function POST(req: Request) {
       { status: linkErr ? 400 : 409 },
     );
   }
+
+  // Auth user created with passcode; stamp only after link succeeds.
+  await stampPasscodeIssued();
 
   const notificationQueued = queueNotification(regNo);
 

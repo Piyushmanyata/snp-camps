@@ -19,6 +19,10 @@ import {
   clearDeskPasscode,
   storeDeskPasscode,
 } from "@/lib/desk-passcode";
+import {
+  isPasscodeNeverIssued,
+  PASSCODE_NEVER_ISSUED_MARKER,
+} from "@/lib/passcode-issued";
 
 export type AdminPatientRow = {
   id: string;
@@ -41,6 +45,8 @@ export type AdminPatientRow = {
   volunteer_name?: string | null;
   checked_in_by_name?: string | null;
   doctor_name?: string | null;
+  /** Null = never issued under the current scheme. */
+  passcode_issued_at?: string | null;
 };
 
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -136,12 +142,14 @@ function mapRows(
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
+      passcode_issued_at:
+        (patient.passcode_issued_at as string | null | undefined) ?? null,
     };
   });
 }
 
 const SELECT =
-  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, passcode_issued_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -360,21 +368,28 @@ export function AdminPatients({
         passcode: result.password,
       });
       setCopied(false);
-      if (result.userId) {
-        setSnapshot((prev) => {
-          const sourceRows = prev?.source === initial ? prev.rows : initial;
-          return {
-            source: initial,
-            rows: sourceRows.map((patient) =>
-              patient.id === row.id
-                ? { ...patient, user_id: result.userId ?? patient.user_id }
-                : patient,
-            ),
-            total: prev?.source === initial ? prev.total : (totalCount ?? initial.length),
-            isDefault: prev?.source === initial ? prev.isDefault : isDefaultView,
-          };
-        });
-      }
+      setSnapshot((prev) => {
+        const sourceRows = prev?.source === initial ? prev.rows : initial;
+        return {
+          source: initial,
+          rows: sourceRows.map((patient) =>
+            patient.id === row.id
+              ? {
+                  ...patient,
+                  user_id: result.userId ?? patient.user_id,
+                  // Successful issue/reissue stamps passcode_issued_at server-side.
+                  passcode_issued_at: new Date().toISOString(),
+                }
+              : patient,
+          ),
+          total:
+            prev?.source === initial
+              ? prev.total
+              : (totalCount ?? initial.length),
+          isDefault:
+            prev?.source === initial ? prev.isDefault : isDefaultView,
+        };
+      });
     } catch {
       setError("Could not manage this passcode. Check your connection and try again.");
     } finally {
@@ -538,6 +553,14 @@ export function AdminPatients({
                     <span className="tabular text-brand">#{r.reg_no}</span>{" "}
                     {r.full_name}
                   </p>
+                  {isPasscodeNeverIssued(r.passcode_issued_at) ? (
+                    <p
+                      className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-950"
+                      role="status"
+                    >
+                      {PASSCODE_NEVER_ISSUED_MARKER}
+                    </p>
+                  ) : null}
                   <p className="truncate text-xs text-muted">
                     {[
                       r.day_date ? formatCampDay(r.day_date) : null,
