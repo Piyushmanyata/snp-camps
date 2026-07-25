@@ -61,7 +61,7 @@ const AdminVolunteers = dynamic(
 );
 
 export default async function VolunteerPage() {
-  const { profile } = await getSessionProfile();
+  const { userId, profile } = await getSessionProfile();
   // Staff only (admin | volunteer). Doctors hit roleHome → /doctor; no
   // second-order redirect that depends on check order.
   if (!isStaff(profile?.role)) {
@@ -159,7 +159,7 @@ export default async function VolunteerPage() {
   let myWait = 0;
   let mySeen = 0;
 
-  if (camp) {
+  if (camp && userId) {
     try {
       const [waitingRes, doctorsList, dayStatsRes, myCountsRes] =
         await Promise.all([
@@ -174,7 +174,13 @@ export default async function VolunteerPage() {
             .limit(100),
           getDoctorsList(),
           supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
-          supabase.rpc("volunteer_my_counts", { p_since: startOfDay }),
+          // Same RPC as admin staff panel (#20) — camp-scoped, zeros if no camp.
+          supabase.rpc("staff_person_kpis", {
+            p_user_id: userId,
+            p_role: "volunteer",
+            p_camp_id: camp.id,
+            p_since: startOfDay,
+          }),
         ]);
 
       waiting = (waitingRes.data || []) as LiveQueuePatient[];
@@ -233,6 +239,12 @@ export default async function VolunteerPage() {
               <Stat label="In queue" value={myWait} tone="wait" />
               <Stat label="Doctor seen" value={mySeen} tone="ok" />
             </div>
+            {!camp ? (
+              <p className="mt-2 text-sm text-muted" role="status">
+                No active camp — these numbers stay at zero until an admin
+                activates one. They are not a career total.
+              </p>
+            ) : null}
           </div>
 
           {/* Always visible on phone — desk-inline-actions is desktop-only */}

@@ -18,6 +18,7 @@
 * **Seen**: Final state of patient consultation. Re-scanning a `seen` patient is permanently blocked.
 * **Phone number → patient relationship**: A phone number identifies a *household*, not a Patient. A Patient is identified by registration number. Several family members may share one phone for OTP or contact; login and PHI are always scoped to the registration number (and Passcode / session), never to “whoever has this phone.”
 * **Print-then-queue ordering**: Printing a Desk Slip moves the Patient into the FCFS Queue *before* the print dialog opens, deliberately — the queue entry is the operationally meaningful act and the paper is a convenience. A cancelled print therefore leaves the Patient queued, which is correct because they are physically at the desk.
+* **Volunteer / staff KPIs**: One function (`staff_person_kpis`) defines a volunteer’s numbers for both the volunteer desk and the admin staff panel. Counts are always scoped to an explicit active camp. **With no active camp, every metric is zero** — not an all-time career total, not null. The desk explains “No active camp” so zeros are not read as “you have done nothing.” Do not reintroduce all-time counting or a second KPI RPC.
 
 ## System-Wide Design & UX Goals
 
