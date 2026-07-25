@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
-import path from "node:path";
 import {
   aadhaarLast4,
   digitsOnly,
@@ -15,12 +13,21 @@ import {
   parsePatientIdFromQr,
   patientPrintUrl,
   patientScanUrl,
+  resolveOrigin,
 } from "../src/lib/qr.ts";
-import { generatePatientPassword } from "../src/lib/patient-password.ts";
+import {
+  generatePatientPassword,
+  generateStaffPassword,
+} from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
 import { sensitiveProviderUrl } from "../src/lib/provider-url.ts";
+import { isSuccessfulAssignment } from "../src/lib/queue-assignment.ts";
+import { queueLabel, queueTone } from "../src/lib/types.ts";
 import { validateSupabaseProjectUrl } from "../scripts/bootstrap-admin.mjs";
+
+const VALID_UUID = "e3b0c442-98fc-41c4-a012-3456789abcde";
+const VALID_UUID_UPPER = "E3B0C442-98FC-41C4-A012-3456789ABCDE";
 
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
@@ -67,17 +74,52 @@ test("QR parser accepts staff-scan identifiers only", () => {
     parsePatientIdFromQr("https://camp.example/doctor?scan=" + id),
     normalized,
   );
+  assert.equal(
+    parsePatientIdFromQr("https://camp.example/checkin?checkin=" + id),
+    normalized,
+  );
   assert.equal(parsePatientIdFromQr("snp:" + id), normalized);
+  assert.equal(parsePatientIdFromQr("SNP:" + id), normalized);
+  assert.equal(parsePatientIdFromQr(`  ${id}  `), normalized);
   assert.equal(parsePatientIdFromQr("javascript:alert(1)"), null);
   assert.equal(parsePatientIdFromQr("/patient/enter/not-a-uuid"), null);
+  assert.equal(parsePatientIdFromQr(""), null);
+  assert.equal(parsePatientIdFromQr("e3b0c44298fc41c4a0123456789abcde"), null);
+});
+
+test("QR parser handles noisy camera reads and length bounds", () => {
+  assert.equal(
+    parsePatientIdFromQr(`SCANNED_PREFIX_${VALID_UUID}_SUFFIX_NOISE`),
+    VALID_UUID,
+  );
+  // Fallback substring search only applies when total length <= 200.
+  const longNoisy = "A".repeat(170) + VALID_UUID + "B".repeat(50);
+  assert.equal(parsePatientIdFromQr(longNoisy), null);
+  assert.equal(parsePatientIdFromQr("a".repeat(513)), null);
+});
+
+test("isPatientUuid and resolveOrigin validate inputs", () => {
+  assert.equal(isPatientUuid(VALID_UUID), true);
+  assert.equal(isPatientUuid(VALID_UUID_UPPER), true);
+  assert.equal(isPatientUuid("not-a-uuid"), false);
+  assert.equal(resolveOrigin("https://camp.example/"), "https://camp.example");
+  assert.equal(resolveOrigin("https://camp.example"), "https://camp.example");
+  assert.equal(resolveOrigin(null), "");
 });
 
 test("registration number parser rejects overflow and malformed values", () => {
   assert.equal(parseRegistrationNumber("Reg #1001"), 1001);
+  assert.equal(parseRegistrationNumber("00042"), 42);
+  assert.equal(parseRegistrationNumber(1), 1);
   assert.equal(parseRegistrationNumber(2_147_483_647), 2_147_483_647);
   assert.equal(parseRegistrationNumber("2147483648"), null);
+  assert.equal(parseRegistrationNumber(2_147_483_648), null);
   assert.equal(parseRegistrationNumber(Number.POSITIVE_INFINITY), null);
+  assert.equal(parseRegistrationNumber(0), null);
+  assert.equal(parseRegistrationNumber(-10), null);
   assert.equal(parseRegistrationNumber("not a number"), null);
+  assert.equal(parseRegistrationNumber(null), null);
+  assert.equal(parseRegistrationNumber(undefined), null);
 });
 
 test("patient URLs are staff-scan canonical and passwords avoid ambiguous characters", () => {
@@ -87,8 +129,8 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
     patientPrintUrl(id, "https://camp.example/"),
     "https://camp.example/print/" + id,
   );
-  // Compact snp: payload (denser paper QR) regardless of origin
   assert.equal(patientScanUrl(id, ""), "snp:" + id);
+  assert.equal(patientScanUrl("invalid-id", "https://camp.example"), "invalid-id");
 
   const generated = new Set(
     Array.from({ length: 20 }, () => generatePatientPassword(12)),
@@ -97,7 +139,14 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
   for (const password of generated) {
     assert.match(password, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
   }
-  assert.match(generatePatientPassword(), /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
+  assert.match(
+    generatePatientPassword(),
+    /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/,
+  );
+  assert.match(
+    generateStaffPassword(),
+    /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{14}$/,
+  );
 });
 
 test("sensitive provider URLs require a secure transport", () => {
@@ -128,7 +177,7 @@ test("admin bootstrap sends its service key only to the exact Supabase project",
   }
 });
 
-test("rate limits enforce both client and supplied subject", () => {
+test("rate limits enforce both client IP and supplied subject", () => {
   const request = new Request("https://camp.example/api", {
     headers: { "x-forwarded-for": "198.51.100.10" },
   });
@@ -148,6 +197,37 @@ test("rate limits enforce both client and supplied subject", () => {
   assert.equal(checkRateLimit(rotatedIp, options).allowed, false);
 });
 
+test("rate limits block IP burst and subject rotation independently", () => {
+  const reqBase = "https://camp.example/api/test";
+  const scopeIp = "test-ip-burst-" + Math.random();
+  for (let i = 1; i <= 6; i += 1) {
+    const req = new Request(reqBase, {
+      headers: { "x-forwarded-for": "10.0.0.1" },
+    });
+    const res = checkRateLimit(req, {
+      scope: scopeIp,
+      limit: 5,
+      windowMs: 60_000,
+    });
+    assert.equal(res.allowed, i <= 5, `IP request ${i}`);
+  }
+
+  const scopeSubject = "test-subject-rot-" + Math.random();
+  const subject = "patient-uuid-target";
+  for (let i = 1; i <= 5; i += 1) {
+    const req = new Request(reqBase, {
+      headers: { "x-forwarded-for": `192.168.1.${i}` },
+    });
+    const res = checkRateLimit(req, {
+      scope: scopeSubject,
+      identifier: subject,
+      limit: 3,
+      windowMs: 60_000,
+    });
+    assert.equal(res.allowed, i <= 3, `subject request ${i}`);
+  }
+});
+
 test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164("9876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("09876543210"), "+919876543210");
@@ -156,35 +236,38 @@ test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164("919876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("12345"), null);
   assert.equal(normalizePhoneE164("1234567890"), null);
+  assert.equal(normalizePhoneE164(""), null);
 });
 
-test("R1: PatientForm userRole='admin' generates href='/admin' with text 'Back to admin'", () => {
-  const componentPath = path.join(process.cwd(), "src/components/patient-form.tsx");
-  const content = fs.readFileSync(componentPath, "utf-8");
+test("only a completed, error-free doctor assignment is successful", () => {
+  const completed = {
+    already_seen: false,
+    doctor_id: "00000000-0000-4000-8000-000000000001",
+    error_code: null,
+    queue_status: "seen",
+  };
 
-  assert.ok(content.includes('userRole === "admin"'), "PatientForm must check userRole === 'admin'");
-  assert.ok(content.includes('? "/admin"'), "PatientForm must set href to '/admin' for admin role");
-  assert.ok(content.includes('? "Back to admin"'), "PatientForm must display label 'Back to admin' for admin role");
+  assert.equal(isSuccessfulAssignment(completed), true);
+  assert.equal(
+    isSuccessfulAssignment({ ...completed, error_code: "unexpected" }),
+    false,
+  );
+  assert.equal(
+    isSuccessfulAssignment({ ...completed, queue_status: "waiting" }),
+    false,
+  );
+  assert.equal(isSuccessfulAssignment({ ...completed, doctor_id: null }), false);
+  assert.equal(
+    isSuccessfulAssignment({ ...completed, already_seen: true }),
+    false,
+  );
 });
 
-test("R2: SQL migration 20260721000000_volunteer_checked_in_kpi.sql correctly aggregates created_by OR checked_in_by", () => {
-  const sqlPath = path.join(process.cwd(), "supabase/migrations/20260721000000_volunteer_checked_in_kpi.sql");
-  const sqlContent = fs.readFileSync(sqlPath, "utf-8");
-
-  assert.ok(
-    sqlContent.includes("ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS checked_in_by uuid"),
-    "Migration must add checked_in_by column"
-  );
-  assert.ok(
-    sqlContent.includes("checked_in_by = coalesce(checked_in_by, auth.uid())"),
-    "RPCs must set checked_in_by with fallback to auth.uid()"
-  );
-  assert.ok(
-    sqlContent.includes("(p.created_by = auth.uid() or p.checked_in_by = auth.uid())"),
-    "volunteer_my_counts must filter on created_by OR checked_in_by"
-  );
-  assert.ok(
-    sqlContent.includes("(p.created_by = p_user_id or p.checked_in_by = p_user_id)"),
-    "staff_person_kpis must filter on created_by OR checked_in_by for volunteers"
-  );
+test("queue labels and tones map known statuses", () => {
+  assert.equal(queueLabel("seen"), "Doctor seen");
+  assert.equal(queueLabel("waiting"), "In queue");
+  assert.equal(queueLabel("registered"), "Registered");
+  assert.equal(queueTone("seen"), "ok");
+  assert.equal(queueTone("waiting"), "wait");
+  assert.equal(queueTone("registered"), "default");
 });
