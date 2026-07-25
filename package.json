@@ -13,7 +13,8 @@
     "test": "node --no-warnings --import ./tests/route-loader.mjs --test --test-concurrency=1 tests/*.test.mjs",
     "test:db": "node --no-warnings --test tests/register-patient-idempotent.db.test.mjs tests/link-patient-phone.db.test.mjs tests/staff-person-kpis.db.test.mjs tests/aadhaar-duplicate.db.test.mjs",
     "test:e2e": "node e2e/run-local.mjs",
-    "verify": "npm run lint && npm test && npm run build",
+    "check:js-budget": "node scripts/check-js-budget.mjs",
+    "verify": "npm run lint && npm test && npm run build && npm run check:js-budget",
     "load:smoke": "node scripts/load-test.mjs",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
   },
