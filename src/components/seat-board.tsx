@@ -14,7 +14,10 @@ import {
   Spinner,
 } from "@/components/ui";
 
-/** Seat board. Auto-refresh every pollMs (default 2 min) or manual Refresh. */
+/**
+ * Seat board. Staff (`live`) uses Realtime + reconnect poll only.
+ * Patient screens keep fixed poll (`live=false`, default pollMs 2 min).
+ */
 export function SeatBoard({
   days: initialDays,
   campId = null,
@@ -28,7 +31,7 @@ export function SeatBoard({
   campId?: string | null;
   title?: string;
   compact?: boolean;
-  /** Auto-refresh interval; 0 = manual only. Default 2 min. */
+  /** Patient auto-refresh interval; 0 = manual only. Ignored while live. */
   pollMs?: number;
   live?: boolean;
 }) {
@@ -49,12 +52,10 @@ export function SeatBoard({
     live && Boolean(campId),
   );
   const reconnecting = liveStatus === "reconnecting";
-  const effectivePollMs = reconnecting ? POLL_MS : pollMs;
-  useFixedPoll(
-    refresh,
-    effectivePollMs,
-    Boolean(campId) && (reconnecting || pollMs > 0),
-  );
+  // Live desks: poll only while reconnecting. Patient path: unchanged fixed poll.
+  const pollEnabled =
+    Boolean(campId) && (live ? reconnecting : pollMs > 0);
+  useFixedPoll(refresh, live || reconnecting ? POLL_MS : pollMs, pollEnabled);
 
   if (!days.length) {
     return (
@@ -76,11 +77,11 @@ export function SeatBoard({
           hint={
             campId
               ? reconnecting
-                ? "Reconnecting — poll fallback"
+                ? "Reconnecting"
                 : liveStatus === "live"
-                  ? "Live · or Refresh"
+                  ? "Live"
                   : pollMs > 0
-                    ? `Updates every ${Math.round(pollMs / 60_000)} min · or Refresh`
+                    ? `Updates every ${Math.round(pollMs / 60_000)} min`
                     : "Tap Refresh for latest seats"
               : "All days listed"
           }

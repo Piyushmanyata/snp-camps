@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Next 16 Cache Components — required for "use cache" / cacheTag / cacheLife
+  // (replaces unstable_cache; see node_modules/next/dist/docs/.../use-cache.md).
+  cacheComponents: true,
   turbopack: {
     root: path.join(__dirname),
   },

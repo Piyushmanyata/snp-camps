@@ -172,6 +172,86 @@ test("volunteer doctor picker is populated (not silently empty)", async ({
   ).toBeVisible();
 });
 
+/**
+ * #26 — revalidateTag("doctors-list") after staff mutation must refresh the
+ * volunteer picker without a hard browser reload (soft navigation is enough).
+ *
+ * Order matters: warm the volunteer desk first so the cross-request cache holds
+ * a list without the new doctor, then mutate, then soft-navigate again.
+ */
+test("admin doctor create invalidates volunteer picker without hard reload", async ({
+  browser,
+}) => {
+  const stamp = Date.now();
+  const doctorName = `E2E Cache Doc ${stamp}`;
+  const doctorEmail = `e2e-cache-doc-${stamp}@example.com`;
+
+  const volunteerContext = await browser.newContext();
+  const volunteerPage = await volunteerContext.newPage();
+  await blockRemoteRequests(volunteerPage);
+  await loginStaff(volunteerPage, "volunteer");
+  await volunteerPage.goto("/volunteer");
+  await volunteerPage.waitForLoadState("networkidle");
+  await volunteerPage
+    .getByLabel("Reg no / QR link")
+    .fill(env("E2E_PATIENT_REG_NO"));
+  await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
+  const reviewBefore = volunteerPage.getByRole("region", {
+    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+  });
+  await expect(reviewBefore).toBeVisible();
+  const pickerBefore = reviewBefore.getByRole("group", {
+    name: "Select doctor",
+  });
+  await expect(
+    pickerBefore.getByRole("button", { name: /Codex E2E doctor/i }),
+  ).toBeVisible();
+  await expect(
+    pickerBefore.getByRole("button", { name: doctorName }),
+  ).toHaveCount(0);
+
+  const adminContext = await browser.newContext();
+  const adminPage = await adminContext.newPage();
+  await blockRemoteRequests(adminPage);
+  await loginStaff(adminPage, "admin");
+
+  // Admin manages doctors on /doctor (not the main admin dashboard).
+  await adminPage.goto("/doctor");
+  await expect(
+    adminPage.getByRole("heading", { name: "Doctor desk" }),
+  ).toBeVisible();
+  await adminPage.getByRole("button", { name: "Add doctor" }).click();
+  await adminPage.getByLabel("Full name").fill(doctorName);
+  await adminPage.getByLabel("Email").fill(doctorEmail);
+  await adminPage
+    .getByRole("button", { name: "Create doctor & get password" })
+    .click();
+  await expect(
+    adminPage.getByText("Doctor created. Share the temporary password below", {
+      exact: false,
+    }),
+  ).toBeVisible();
+
+  // Soft navigation only — proves tag invalidation, not a full browser hard reload.
+  await volunteerPage.goto("/volunteer");
+  await volunteerPage.waitForLoadState("networkidle");
+  await volunteerPage
+    .getByLabel("Reg no / QR link")
+    .fill(env("E2E_PATIENT_REG_NO"));
+  await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
+  const reviewAfter = volunteerPage.getByRole("region", {
+    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+  });
+  await expect(reviewAfter).toBeVisible();
+  const pickerAfter = reviewAfter.getByRole("group", { name: "Select doctor" });
+  await expect(
+    pickerAfter.getByRole("button", { name: doctorName }),
+  ).toBeVisible();
+
+  await adminContext.close();
+  await volunteerContext.close();
+});
+
 test("doctor can sign in and review without mutating patient status", async ({
   page,
 }) => {

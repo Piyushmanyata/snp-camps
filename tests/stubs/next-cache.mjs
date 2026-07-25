@@ -14,6 +14,6 @@ export function __resetRevalidateTagCalls() {
   __revalidateTagCalls.length = 0;
 }
 
-export function unstable_cache(fn) {
-  return fn;
-}
+/** Cache Components APIs used by src/lib after #26 (no-ops under node:test). */
+export function cacheTag() {}
+export function cacheLife() {}

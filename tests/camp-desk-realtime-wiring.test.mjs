@@ -1,5 +1,5 @@
 /**
- * Wiring proofs for #25 — patient screens stay poll-only; staff opt into live.
+ * Wiring proofs for #25/#26 — patient screens stay poll-only; staff live, no continuous poll.
  * Asserts on call sites, not on Realtime protocol behaviour (that is the pure module).
  */
 import assert from "node:assert/strict";
@@ -50,11 +50,75 @@ test("SeatBoard live defaults false so patient poll path is unchanged", () => {
   assert.match(src, /useCampDeskRealtime/);
 });
 
-test("poll module is still used by staff and patient seat paths", () => {
+test("poll module still exists for patient + reconnect fallback", () => {
   const poll = read("src/lib/poll.ts");
   assert.match(poll, /export const POLL_MS = 120_000/);
   assert.match(poll, /export function useFixedPoll/);
-  // #25 must not remove the hook — #26 retires staff poll later
-  assert.match(read("src/components/live-queue.tsx"), /useFixedPoll/);
   assert.match(read("src/components/seat-board.tsx"), /useFixedPoll/);
+  assert.match(read("src/components/live-queue.tsx"), /useFixedPoll/);
+  assert.match(read("src/components/camp-desk-live-bridge.tsx"), /useFixedPoll/);
+});
+
+test("#26 staff continuous poll retired — poll only while reconnecting", () => {
+  const liveQueue = read("src/components/live-queue.tsx");
+  const seatBoard = read("src/components/seat-board.tsx");
+  const bridge = read("src/components/camp-desk-live-bridge.tsx");
+
+  // LiveQueue is staff-only: fixed poll gated on reconnecting only.
+  assert.match(liveQueue, /useFixedPoll\([^;]+reconnecting/);
+  assert.doesNotMatch(
+    liveQueue,
+    /pollMs\s*>\s*0/,
+    "LiveQueue must not continuous-poll via pollMs",
+  );
+
+  // SeatBoard: when live, poll only on reconnect; patient path still uses pollMs.
+  assert.match(seatBoard, /live\s*\?\s*reconnecting/);
+  assert.match(seatBoard, /pollMs\s*>\s*0/);
+
+  // Bridge already reconnect-only.
+  assert.match(bridge, /useFixedPoll\(\s*refresh\s*,\s*POLL_MS\s*,\s*reconnecting\s*\)/);
+});
+
+test("#26 no staff copy instructs manual-only refresh on Realtime desks", () => {
+  const volunteer = read("src/app/volunteer/page.tsx");
+  const admin = read("src/app/admin/page.tsx");
+  assert.doesNotMatch(volunteer, /refresh manually/i);
+  assert.doesNotMatch(admin, /auto-refresh/i);
+  assert.match(volunteer, /FCFS · live/);
+  assert.match(admin, /FCFS · assign doctor · live/);
+});
+
+test("#26 no unstable_cache in src/", () => {
+  function walk(dir) {
+    /** @type {string[]} */
+    const hits = [];
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) hits.push(...walk(p));
+      else if (/\.(ts|tsx|js|mjs)$/.test(ent.name)) {
+        const text = fs.readFileSync(p, "utf8");
+        if (text.includes("unstable_cache")) hits.push(p);
+      }
+    }
+    return hits;
+  }
+  const hits = walk(path.join(root, "src"));
+  assert.deepEqual(hits, [], `unstable_cache still present: ${hits.join(", ")}`);
+});
+
+test("#26 doctor list uses use cache + doctors-list tag", () => {
+  const src = read("src/lib/metadata.ts");
+  assert.match(src, /["']use cache["']/);
+  assert.match(src, /cacheTag\(\s*["']doctors-list["']\s*\)/);
+  assert.match(src, /cacheLife\(/);
+  assert.doesNotMatch(src, /unstable_cache/);
+});
+
+test("#26 active camp snapshot uses use cache + tag", () => {
+  const src = read("src/lib/camp.ts");
+  assert.match(src, /["']use cache["']/);
+  assert.match(src, /cacheTag\(\s*["']active-camp-snapshot["']\s*\)/);
+  assert.match(src, /cacheLife\(/);
+  assert.doesNotMatch(src, /unstable_cache/);
 });

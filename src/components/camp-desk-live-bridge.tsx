@@ -8,7 +8,7 @@ import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 
 /**
  * Realtime catch-up for staff screens that have no LiveQueue/SeatBoard
- * (doctor station stats + patients-seen). Same reconnect + poll fallback.
+ * (doctor station stats + patients-seen). Poll only while reconnecting (#26).
  */
 export function CampDeskLiveBridge({
   campId,

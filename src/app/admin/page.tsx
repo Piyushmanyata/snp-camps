@@ -215,7 +215,7 @@ async function AdminOperationsSection({ campId }: { campId: string }) {
 
       <Card padding="sm" id="queue">
         <div className="px-1 pt-1">
-          <SectionTitle hint="FCFS · assign doctor · auto-refresh">
+          <SectionTitle hint="FCFS · assign doctor · live">
             Queue
           </SectionTitle>
         </div>

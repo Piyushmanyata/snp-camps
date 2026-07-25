@@ -33,15 +33,12 @@ export function LiveQueue({
   campId,
   doctors = [],
   mode = "volunteer",
-  pollMs = POLL_MS,
 }: {
   initial: LiveQueuePatient[];
   initialTotal?: number;
   campId: string | null;
   doctors?: DoctorOption[];
   mode?: "volunteer" | "doctor" | "admin";
-  /** Auto-refresh interval; 0 = manual only. Default 2 min. */
-  pollMs?: number;
 }) {
   const router = useRouter();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -98,15 +95,10 @@ export function LiveQueue({
     refreshQueue();
   }
 
-  // Staff-only component: always live when a camp is set. Poll stays until #26.
+  // Staff-only: Realtime when camp is set; fixed poll only while reconnecting (#26).
   const liveStatus = useCampDeskRealtime(campId, refreshQueue, Boolean(campId));
   const reconnecting = liveStatus === "reconnecting";
-  const effectivePollMs = reconnecting ? POLL_MS : pollMs;
-  useFixedPoll(
-    refreshQueue,
-    effectivePollMs,
-    Boolean(campId) && (reconnecting || pollMs > 0),
-  );
+  useFixedPoll(refreshQueue, POLL_MS, Boolean(campId) && reconnecting);
 
   async function assign(patientId: string, chosen: string | null) {
     if (busyId) return;
@@ -219,9 +211,7 @@ export function LiveQueue({
             ? " · reconnecting"
             : liveStatus === "live"
               ? " · live"
-              : pollMs > 0
-                ? ` · auto every ${Math.round(pollMs / 60_000)} min`
-                : ""}
+              : ""}
         </span>
         <button
           type="button"

@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { unstable_cache } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Camp, DoctorOption } from "@/lib/types";
@@ -19,8 +19,15 @@ export const getCampsList = cache(async (): Promise<Camp[]> => {
   return (data || []) as Camp[];
 });
 
-/** Single doctor-list query — service-role only; no session/RLS fallback. */
+/**
+ * Cross-request doctor list (service-role only).
+ * Tagged so admin staff mutations can invalidate via revalidateTag("doctors-list").
+ */
 async function fetchDoctorsList(): Promise<DoctorOption[]> {
+  "use cache";
+  cacheTag("doctors-list");
+  cacheLife({ revalidate: 60 });
+
   const supabase = createServiceRoleClient();
   if (!supabase) throw new Error(DOCTOR_LIST_UNAVAILABLE);
   const { data, error } = await supabase
@@ -33,12 +40,6 @@ async function fetchDoctorsList(): Promise<DoctorOption[]> {
   return (data || []) as DoctorOption[];
 }
 
-const getUnstableCachedDoctorsList = unstable_cache(
-  fetchDoctorsList,
-  ["doctors-list-metadata-v1"],
-  { revalidate: 60, tags: ["doctors-list"] },
-);
-
 /**
  * Shared doctor metadata, invalidated by admin staff mutations (`doctors-list` tag).
  * Throws when the service-role key is missing or the query fails — never silent empty.
@@ -47,5 +48,5 @@ export const getDoctorsList = cache(async (): Promise<DoctorOption[]> => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(DOCTOR_LIST_UNAVAILABLE);
   }
-  return getUnstableCachedDoctorsList();
+  return fetchDoctorsList();
 });

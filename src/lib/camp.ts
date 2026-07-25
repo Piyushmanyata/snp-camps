@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { unstable_cache } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { CampDayStats } from "@/lib/types";
@@ -30,7 +30,12 @@ function parseSnapshot(data: unknown): ActiveCampSnapshot | null {
   };
 }
 
+/** Cross-request active-camp snapshot; short revalidate for public seat boards. */
 async function fetchCachedSnapshot() {
+  "use cache";
+  cacheTag("active-camp-snapshot");
+  cacheLife({ revalidate: 5 });
+
   const supabase = createServiceRoleClient();
   if (!supabase) throw new Error("Camp service is not configured");
 
@@ -39,16 +44,10 @@ async function fetchCachedSnapshot() {
   return parseSnapshot(data);
 }
 
-const getCachedSnapshot = unstable_cache(
-  fetchCachedSnapshot,
-  ["active-camp-snapshot-v1"],
-  { revalidate: 5, tags: ["active-camp-snapshot"] },
-);
-
 /** Public-only camp data; registration capacity is still enforced in Postgres. */
 export const getActiveCampSnapshot = cache(async () => {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return getCachedSnapshot();
+    return fetchCachedSnapshot();
   }
 
   const supabase = await createClient();

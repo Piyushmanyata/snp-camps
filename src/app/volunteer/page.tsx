@@ -361,7 +361,7 @@ export default async function VolunteerPage() {
 
           <Card padding="sm" id="queue">
             <div className="px-1 pt-1">
-              <SectionTitle hint="FCFS · refresh manually">
+              <SectionTitle hint="FCFS · live">
                 Queue
               </SectionTitle>
             </div>
