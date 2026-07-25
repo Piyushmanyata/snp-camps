@@ -100,6 +100,29 @@ test("every public table in the baseline migration has RLS enabled", () => {
   }
 });
 
+test("production CSP script-src has no unsafe-inline (nonce + strict-dynamic)", async () => {
+  const { buildContentSecurityPolicy, productionScriptSrcAllowsUnsafeInline } =
+    await import("../src/lib/csp.ts");
+
+  const prod = buildContentSecurityPolicy("testnonce", { isDev: false });
+  assert.equal(productionScriptSrcAllowsUnsafeInline(prod), false);
+  assert.match(prod, /script-src 'self' 'nonce-testnonce' 'strict-dynamic'/);
+  assert.doesNotMatch(prod, /script-src[^;]*'unsafe-inline'/);
+  assert.doesNotMatch(prod, /script-src[^;]*'unsafe-eval'/);
+
+  const dev = buildContentSecurityPolicy("devnonce", { isDev: true });
+  assert.match(dev, /'unsafe-eval'/);
+  assert.doesNotMatch(dev, /script-src[^;]*'unsafe-inline'/);
+
+  const nextConfig = read("next.config.ts");
+  assert.doesNotMatch(nextConfig, /key:\s*["']Content-Security-Policy["']/);
+  assert.doesNotMatch(nextConfig, /unsafe-inline/);
+
+  const proxy = read("src/proxy.ts");
+  assert.match(proxy, /buildContentSecurityPolicy/);
+  assert.match(proxy, /x-nonce/);
+});
+
 test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () => {
   const roles = read("src/lib/roles.ts");
   const staffFn = roles.match(

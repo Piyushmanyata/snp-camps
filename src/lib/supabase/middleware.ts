@@ -1,8 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+/**
+ * Refresh auth cookies when a session is present.
+ * Optional requestHeaders (e.g. nonce + CSP) are forwarded so Next.js can
+ * attach nonces to framework scripts during SSR.
+ */
+export async function updateSession(
+  request: NextRequest,
+  requestHeaders?: Headers,
+) {
+  const headersForRequest = requestHeaders ?? request.headers;
+  let supabaseResponse = NextResponse.next({
+    request: { headers: headersForRequest },
+  });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,7 +42,9 @@ export async function updateSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
-        supabaseResponse = NextResponse.next({ request });
+        supabaseResponse = NextResponse.next({
+          request: { headers: headersForRequest },
+        });
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options),
         );

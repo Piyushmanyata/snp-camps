@@ -1,33 +1,6 @@
 import type { NextConfig } from "next";
 import path from "path";
 
-const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL)
-  : null;
-const supabaseHttpOrigin =
-  configuredSupabaseUrl?.origin ?? "https://*.supabase.co";
-const supabaseSocketOrigin = configuredSupabaseUrl
-  ? `${configuredSupabaseUrl.protocol === "http:" ? "ws:" : "wss:"}//${configuredSupabaseUrl.host}`
-  : "wss://*.supabase.co";
-const scriptSource =
-  process.env.NODE_ENV === "development"
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'";
-
-const CSP = [
-  "default-src 'self'",
-  `connect-src 'self' ${supabaseHttpOrigin} ${supabaseSocketOrigin}`,
-  scriptSource,
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self'",
-  "img-src 'self' data: blob: https:",
-  "media-src 'self' blob:",
-  "worker-src 'self' blob:",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join("; ");
-
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
@@ -43,6 +16,7 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    // CSP (with per-request nonce) is set in src/proxy.ts — not here.
     return [
       {
         source: "/(.*)",
@@ -61,10 +35,6 @@ const nextConfig: NextConfig = {
           {
             key: "X-DNS-Prefetch-Control",
             value: "on",
-          },
-          {
-            key: "Content-Security-Policy",
-            value: CSP,
           },
         ],
       },
