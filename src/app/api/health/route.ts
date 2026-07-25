@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const [phoneOtpReady, camps, profileShape, patientShape, contract] =
+  const [phoneOtpReady, camps, profileShape, patientShape, migrationHead] =
     await Promise.all([
       phoneOtpIsConfigured(),
       supabase.from("camps").select("id").limit(1),
@@ -66,24 +66,26 @@ export async function GET(request: Request) {
         .from("patients")
         .select("id, phone_normalized, full_name_normalized")
         .limit(1),
-      supabase.rpc("app_database_contract"),
+      supabase.rpc("latest_applied_migration"),
     ]);
 
-  // Catalog-backed contract (to_regprocedure), not exception message text.
-  const contractOk =
-    !contract.error &&
-    typeof contract.data === "string" &&
-    contract.data.length > 0 &&
-    contract.data !== "incomplete";
+  const migrationVersion =
+    !migrationHead.error && typeof migrationHead.data === "string"
+      ? migrationHead.data
+      : null;
+  // Table-shape probes only for structural readiness (contract RPC is gone).
   const database =
     !camps.error &&
     !profileShape.error &&
-    !patientShape.error &&
-    contractOk;
+    !patientShape.error;
   const ok = phoneOtpReady && database;
 
   return NextResponse.json(
-    { ok, checks: { database, phoneOtp: phoneOtpReady } },
+    {
+      ok,
+      checks: { database, phoneOtp: phoneOtpReady },
+      migrationVersion,
+    },
     {
       status: ok ? 200 : 503,
       headers,

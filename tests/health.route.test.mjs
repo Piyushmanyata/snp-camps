@@ -1,10 +1,14 @@
 /**
- * Behavioural coverage for GET /api/health readiness rate limiting.
+ * Behavioural coverage for GET /api/health (#14 rate limit + #22 readiness).
  * Liveness (?ready absent) must never be rate-limited.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { GET } from "../src/app/api/health/route.ts";
+import {
+  __resetServiceRoleClient,
+  __setServiceRoleClient,
+} from "./stubs/service-role-admin.mjs";
 
 function clearRateLimits() {
   globalThis.__snpRateLimits?.clear();
@@ -16,13 +20,80 @@ function healthRequest(path, ip) {
   });
 }
 
+/** Minimal chainable supabase mock for readiness probes. */
+function mockServiceRole({
+  campsError = null,
+  profilesError = null,
+  patientsError = null,
+  migrationVersion = "20260725232000",
+  migrationError = null,
+} = {}) {
+  return {
+    from(table) {
+      const err =
+        table === "camps"
+          ? campsError
+          : table === "profiles"
+            ? profilesError
+            : table === "patients"
+              ? patientsError
+              : { message: "unknown table" };
+      const chain = {
+        select() {
+          return chain;
+        },
+        limit() {
+          return Promise.resolve({ data: err ? null : [], error: err });
+        },
+      };
+      return chain;
+    },
+    rpc(name) {
+      assert.equal(name, "latest_applied_migration");
+      if (migrationError) {
+        return Promise.resolve({ data: null, error: migrationError });
+      }
+      return Promise.resolve({ data: migrationVersion, error: null });
+    },
+  };
+}
+
+async function mockPhoneOtp(ready) {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/auth/v1/settings")) {
+      if (!ready) {
+        return new Response("{}", { status: 500 });
+      }
+      return new Response(
+        JSON.stringify({
+          external: { phone: true },
+          sms_provider: "test",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return original(input);
+  };
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
 test.beforeEach(() => {
   clearRateLimits();
-  // No service-role key → readiness returns 503 after the rate-limit gate.
-  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  __resetServiceRoleClient();
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+});
+
+test.afterEach(() => {
+  __resetServiceRoleClient();
 });
 
 test("thirteenth readiness probe in the window is 429", async () => {
+  // No service-role client → 503 after the rate-limit gate (unchanged #14).
   const ip = "198.51.100.10";
   const statuses = [];
   for (let i = 0; i < 13; i++) {
@@ -45,4 +116,82 @@ test("liveness is never rate-limited across thirty requests", async () => {
     const body = await res.json();
     assert.equal(body.ok, true);
   }
+});
+
+test("ready-ok reports migrationVersion from the ledger", async () => {
+  const restoreFetch = await mockPhoneOtp(true);
+  __setServiceRoleClient(
+    mockServiceRole({ migrationVersion: "20260725232000" }),
+  );
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.30"),
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.checks.database, true);
+    assert.equal(body.checks.phoneOtp, true);
+    assert.equal(body.migrationVersion, "20260725232000");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("ready-db-fail when a table-shape probe errors (503)", async () => {
+  const restoreFetch = await mockPhoneOtp(true);
+  __setServiceRoleClient(
+    mockServiceRole({ patientsError: { message: "relation missing" } }),
+  );
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.31"),
+    );
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.checks.database, false);
+    assert.equal(body.checks.phoneOtp, true);
+    // Ledger field is still reported when the RPC works.
+    assert.equal(body.migrationVersion, "20260725232000");
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("ready-otp-fail when phone OTP is unconfigured (503)", async () => {
+  const restoreFetch = await mockPhoneOtp(false);
+  __setServiceRoleClient(mockServiceRole());
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.32"),
+    );
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.checks.phoneOtp, false);
+    assert.equal(body.checks.database, true);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test("no code path references app_database_contract", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const root = path.resolve("src");
+  /** @type {string[]} */
+  const hits = [];
+  function walk(dir) {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(p);
+      else if (/\.(ts|tsx|js|mjs)$/.test(ent.name)) {
+        const text = fs.readFileSync(p, "utf8");
+        if (text.includes("app_database_contract")) hits.push(p);
+      }
+    }
+  }
+  walk(root);
+  assert.deepEqual(hits, [], `unexpected references: ${hits.join(", ")}`);
 });

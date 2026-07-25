@@ -75,10 +75,12 @@ Do **not** re-run the baseline against a database that already has this schema
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
 `GET /api/health` is a cheap, open liveness probe. `GET /api/health?ready=1`
-also checks the required database shape (via `app_database_contract` and table
-probes), service-role configuration, and Supabase Phone Auth/SMS provider
-settings; it returns 503 until all are ready. The readiness path is
-per-IP rate-limited (12/min) so it cannot be used as an amplification vector.
+also checks service-role configuration, table-shape probes (`camps`,
+`profiles`, `patients`), and Supabase Phone Auth/SMS provider settings; it
+returns 503 until those pass. The JSON includes `migrationVersion` from the
+migration ledger (`latest_applied_migration()`), not a hand-maintained contract
+string. The readiness path is per-IP rate-limited (12/min) so it cannot be used
+as an amplification vector.
 
 ### 2. Auth settings
 

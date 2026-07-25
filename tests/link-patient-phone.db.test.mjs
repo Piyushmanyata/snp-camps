@@ -377,9 +377,14 @@ test("catalog exposes (text,uuid) not bare (text)", async (t) => {
     `select
        to_regprocedure('public.link_patient_phone(text,uuid)') is not null as new_sig,
        to_regprocedure('public.link_patient_phone(text)') is not null as old_sig,
-       public.app_database_contract() as contract`,
+       to_regprocedure('public.app_database_contract()') is null as contract_gone,
+       public.latest_applied_migration() as migration_version`,
   );
   assert.equal(rows[0].new_sig, true);
   assert.equal(rows[0].old_sig, false);
-  assert.notEqual(rows[0].contract, "incomplete");
+  assert.equal(rows[0].contract_gone, true);
+  assert.ok(
+    typeof rows[0].migration_version === "string" &&
+      rows[0].migration_version.length > 0,
+  );
 });
