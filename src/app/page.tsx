@@ -101,7 +101,7 @@ export default async function HomePage() {
             <ActionCard
               href="/patient/login"
               title="Patient login"
-              description="Phone OTP or reg no + password"
+              description="Reg no + desk-slip passcode, or phone OTP"
               variant="secondary"
             />
 

@@ -86,8 +86,8 @@ export async function notifyPatient(
 export function registrationMessage(regNo: number): string {
   return (
     `SNP Camp: Registered. Reg no #${regNo}. ` +
-    `Keep this number to view your queue status. ` +
-    `Show your reg no at the desk if needed.`
+    `Keep your desk slip: login needs reg no + passcode on the slip. ` +
+    `Lost slip? Ask the volunteer desk to reissue.`
   );
 }
 

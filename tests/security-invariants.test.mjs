@@ -134,6 +134,46 @@ test("production CSP script-src has no unsafe-inline (nonce + strict-dynamic)", 
   assert.match(proxy, /x-nonce/);
 });
 
+test("patient-login requires passcode and never returns or resets credentials", () => {
+  const login = read("src/app/api/patient-login/route.ts");
+  assert.match(login, /passcode/);
+  assert.match(login, /signInWithPassword/);
+  assert.match(login, /checkRateLimit/);
+  assert.match(login, /scope:\s*["']patient-login["']/);
+  // No shared default / credential minting on the unauthenticated login path.
+  assert.doesNotMatch(login, /LEGACY_DEFAULT_PASSWORD|123456/);
+  assert.doesNotMatch(login, /createUser|updateUserById|generatePatientPassword/);
+  assert.doesNotMatch(login, /createServiceRoleClient/);
+  // Success JSON must only acknowledge login — never include secrets.
+  assert.match(
+    login,
+    /return NextResponse\.json\(\s*\{\s*ok:\s*true,\s*regNo,/,
+  );
+  assert.doesNotMatch(
+    login,
+    /return NextResponse\.json\(\s*\{[^}]*\b(password|email)\s*:/,
+  );
+  // No service-role password reset to a constant.
+  assert.doesNotMatch(login, /password:\s*LEGACY|password:\s*["']123456["']/);
+
+  const loginPage = read("src/app/patient/login/page.tsx");
+  assert.match(loginPage, /label=["']Passcode["']/);
+  assert.match(loginPage, /passcode:\s*code/);
+  assert.doesNotMatch(loginPage, /data\.password/);
+
+  const printSheet = read("src/components/print-sheet.tsx");
+  assert.match(printSheet, /loginPasscode/);
+  assert.match(printSheet, /Login passcode/);
+
+  const context = read("CONTEXT.md");
+  assert.match(context, /Desk Slip/i);
+  assert.match(context, /[Pp]asscode/);
+
+  const adr = read("docs/adr/0001-passcode-on-desk-slip.md");
+  assert.match(adr, /passcode/i);
+  assert.match(adr, /SMS OTP/i);
+});
+
 test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () => {
   const roles = read("src/lib/roles.ts");
   const staffFn = roles.match(

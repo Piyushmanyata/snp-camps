@@ -40,7 +40,7 @@ export default async function QrHelpPage({
             href="/patient/login"
             className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
           >
-            Patient login (reg no + password)
+            Patient login (reg no + passcode)
           </Link>
           <Link
             href="/register"

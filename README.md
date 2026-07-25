@@ -140,7 +140,7 @@ below 1.5 seconds before treating the result as a capacity signal.
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats, **scan only** (self-assign, no print required) |
-| Patient | Phone OTP self-registration and login; registration profile, QR, day and queue status |
+| Patient | Reg number + desk-slip passcode login (phone OTP alternative); registration profile, staff-scan QR, day and queue status |
 
 ## Privacy
 

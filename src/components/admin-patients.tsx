@@ -15,6 +15,10 @@ import {
   Stat,
   SuccessBox,
 } from "@/components/ui";
+import {
+  clearDeskPasscode,
+  storeDeskPasscode,
+} from "@/lib/desk-passcode";
 
 export type AdminPatientRow = {
   id: string;
@@ -186,7 +190,8 @@ export function AdminPatients({
   const [credential, setCredential] = useState<{
     rowId: string;
     regNo: number;
-    password: string;
+    /** Desk-slip passcode (Auth password); shown once after issue/reissue. */
+    passcode: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const credentialHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -316,10 +321,10 @@ export function AdminPatients({
 
   async function provisionLogin(row: AdminPatientRow) {
     if (mutationBusy) return;
-    const action = row.user_id ? "reset" : "create";
+    const action = row.user_id ? "reissue" : "issue";
     if (
       !window.confirm(
-        `${action === "reset" ? "Reset" : "Create"} login credentials for #${row.reg_no} ${row.full_name}?`,
+        `${action === "reissue" ? "Reissue" : "Issue"} desk-slip passcode for #${row.reg_no} ${row.full_name}? The previous passcode will stop working.`,
       )
     ) {
       return;
@@ -345,13 +350,14 @@ export function AdminPatients({
         regNo?: number;
       };
       if (!response.ok || !result.password) {
-        setError(result.error || "Patient login could not be created or reset.");
+        setError(result.error || "Passcode could not be issued or reissued.");
         return;
       }
+      storeDeskPasscode(row.id, result.password);
       setCredential({
         rowId: row.id,
         regNo: result.regNo ?? row.reg_no,
-        password: result.password,
+        passcode: result.password,
       });
       setCopied(false);
       if (result.userId) {
@@ -370,7 +376,7 @@ export function AdminPatients({
         });
       }
     } catch {
-      setError("Could not manage this login. Check your connection and try again.");
+      setError("Could not manage this passcode. Check your connection and try again.");
     } finally {
       setAccountBusyId(null);
     }
@@ -380,13 +386,13 @@ export function AdminPatients({
     if (!credential) return;
     try {
       await navigator.clipboard.writeText(
-        `Patient login\nReg #${credential.regNo}\nTemporary password: ${credential.password}`,
+        `Patient login\nReg #${credential.regNo}\nPasscode: ${credential.passcode}`,
       );
       setCopied(true);
       setError(null);
     } catch {
       setCopied(false);
-      setError("Could not copy. Select the temporary password manually.");
+      setError("Could not copy. Select the passcode manually.");
     }
   }
 
@@ -457,20 +463,28 @@ export function AdminPatients({
           aria-labelledby="patient-credential-heading"
           className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
         >
-          <SuccessBox message="One-time patient login is ready. Save it before dismissing." />
+          <SuccessBox message="Desk-slip passcode is ready. Print the slip or save it before dismissing." />
           <h3
             id="patient-credential-heading"
             ref={credentialHeadingRef}
             tabIndex={-1}
             className="text-sm font-bold text-amber-950"
           >
-            Share temporary patient login (shown once)
+            Passcode shown once — print on desk slip
           </h3>
           <p className="text-sm text-amber-950">
-            Reg <strong>#{credential.regNo}</strong> · temporary password{" "}
-            <strong className="font-mono" translate="no">{credential.password}</strong>
+            Reg <strong>#{credential.regNo}</strong> · passcode{" "}
+            <strong className="font-mono" translate="no">
+              {credential.passcode}
+            </strong>
           </p>
           <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/print/${credential.rowId}?auto=1`}
+              className="pressable inline-flex min-h-9 items-center justify-center rounded-xl bg-brand px-3 text-xs font-semibold text-white shadow-sm hover:bg-brand-dark"
+            >
+              Print desk slip
+            </Link>
             <Button type="button" size="sm" className="w-auto" onClick={() => void copyCredential()}>
               {copied ? "Copied" : "Copy login"}
             </Button>
@@ -480,7 +494,12 @@ export function AdminPatients({
               variant="ghost"
               className="w-auto"
               onClick={() => {
-                if (window.confirm("Have you securely saved or shared this temporary password?")) {
+                if (
+                  window.confirm(
+                    "Have you printed the slip or securely shared this passcode?",
+                  )
+                ) {
+                  clearDeskPasscode(credential.rowId);
                   setCredential(null);
                   setCopied(false);
                 }
@@ -595,8 +614,8 @@ export function AdminPatients({
                     {accountBusyId === r.id
                       ? "Working…"
                       : r.user_id
-                        ? "Reset login"
-                        : "Create login"}
+                        ? "Reissue passcode"
+                        : "Issue passcode"}
                   </Button>
                   <Button
                     type="button"

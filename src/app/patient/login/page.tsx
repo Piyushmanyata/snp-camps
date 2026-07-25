@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { parseRegistrationNumber } from "@/lib/qr";
-import { patientAuthEmail } from "@/lib/patient-auth";
+import { MIN_PASSWORD_LENGTH } from "@/lib/patient-password";
 import {
   Button,
   Card,
@@ -20,7 +20,7 @@ import {
 
 const LOGIN_ERRORS: Record<string, string> = {
   invalid_qr:
-    "That link is for camp staff only. Use your reg number below, or ask the desk.",
+    "That link is for camp staff only. Use your reg number and passcode below, or ask the desk.",
   not_found: "Patient not found. Check your registration number.",
   server: "Server is missing configuration. Ask staff to check setup.",
   account: "Could not open your account. Try again or ask the desk.",
@@ -34,6 +34,7 @@ export default function PatientLoginPage() {
   const [mode, setMode] = useState<Mode>("regno");
 
   const [regNo, setRegNo] = useState("");
+  const [passcode, setPasscode] = useState("");
 
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -58,39 +59,39 @@ export default function PatientLoginPage() {
       setError("Enter your registration number.");
       return;
     }
+    const code = passcode.trim();
+    if (!code || code.length < MIN_PASSWORD_LENGTH) {
+      setError(
+        `Enter the passcode from your desk slip (at least ${MIN_PASSWORD_LENGTH} characters).`,
+      );
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await fetch("/api/patient-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regNo: n }),
+        credentials: "same-origin",
+        body: JSON.stringify({ regNo: n, passcode: code }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
         error?: string;
-        email?: string;
-        password?: string;
+        // Deliberately ignore any credential fields if a misbehaving build returns them.
+        password?: unknown;
+        email?: unknown;
       };
 
-      if (!res.ok || !data.ok || !data.email || !data.password) {
+      if (!res.ok || !data.ok) {
         setError(
-          data.error || "Patient not found. Check your registration number.",
+          data.error ||
+            "Invalid registration number or passcode. Check your desk slip or ask the desk.",
         );
         return;
       }
 
-      const supabase = createClient();
-      const { error: err } = await supabase.auth.signInWithPassword({
-        email: data.email || patientAuthEmail(n),
-        password: data.password,
-      });
-
-      if (err) {
-        setError("Could not start your session. Try again.");
-        return;
-      }
-
+      // Session cookies are set by the route handler; hard navigation refreshes RSC.
       router.replace("/patient");
       router.refresh();
       window.location.href = "/patient";
@@ -120,7 +121,7 @@ export default function PatientLoginPage() {
       if (err) {
         setError(
           err.message +
-            " — Phone OTP needs SMS configured in Supabase. Use reg no login above for now.",
+            " — Phone OTP needs SMS configured in Supabase. Use reg number + passcode above, or ask the desk.",
         );
         return;
       }
@@ -217,8 +218,9 @@ export default function PatientLoginPage() {
     >
       <Card>
         <InfoBox>
-          Enter your <strong className="text-foreground">Registration Number</strong>{" "}
-          (e.g., 1001) to sign in directly. QR codes are for camp staff only.
+          Sign in with your <strong className="text-foreground">Registration Number</strong>{" "}
+          and the <strong className="text-foreground">passcode</strong> printed on your desk
+          slip. QR codes are for camp staff only.
         </InfoBox>
 
         <div className="mt-4 mb-4">
@@ -230,7 +232,7 @@ export default function PatientLoginPage() {
               setError(null);
             }}
             options={[
-              { value: "regno", label: "Reg number" },
+              { value: "regno", label: "Reg + passcode" },
               { value: "otp", label: "Phone OTP" },
             ]}
           />
@@ -248,7 +250,19 @@ export default function PatientLoginPage() {
               placeholder="e.g. 1001"
               autoComplete="username"
               spellCheck={false}
-              hint="Found on your registration slip or confirmation screen"
+              hint="Found on your registration slip"
+            />
+            <Input
+              label="Passcode"
+              name="passcode"
+              type="password"
+              required
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              placeholder="From your desk slip"
+              autoComplete="current-password"
+              spellCheck={false}
+              hint="Short code printed on the desk slip — ask the desk if you lost it"
             />
             <ErrorBox message={error} />
             <Button type="submit" loading={loading} disabled={loading}>
@@ -259,7 +273,7 @@ export default function PatientLoginPage() {
           <div className="space-y-4">
             <WarningBox>
               Phone OTP is for self-registration when SMS is configured. If a code does not arrive, use{" "}
-              <strong>Reg number login</strong> above or ask the camp desk.
+              <strong>Reg + passcode</strong> above or ask the camp desk.
             </WarningBox>
             {otpStep === "phone" ? (
               <form method="post" onSubmit={sendOtp} className="space-y-4">
@@ -322,6 +336,7 @@ export default function PatientLoginPage() {
       </Card>
 
       <p className="mt-4 text-center text-sm text-muted">
+        Lost your slip? Ask the volunteer desk to reissue a passcode.{" "}
         New patient?{" "}
         <Link
           href="/register"

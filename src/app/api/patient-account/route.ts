@@ -30,7 +30,9 @@ type Body = {
 
 /**
  * Create / ensure a patient login after registration.
- * Self-reg: returnCredentials + notify → password once + WhatsApp/SMS stub.
+ * Staff desk: adminProvision + returnCredentials → one-time desk-slip passcode
+ * (Auth password) for print; never returned to unauthenticated callers.
+ * Self-reg (phone OTP already linked): optional password rotate for the patient session.
  * QR is for staff scan only — not passwordless patient login.
  */
 export async function POST(req: Request) {

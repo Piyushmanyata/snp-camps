@@ -12,10 +12,10 @@ const PrintActions = dynamic(
     })),
 );
 
-const PrintSheet = dynamic(
+const PrintSheetWithPasscode = dynamic(
   () =>
-    import("@/components/print-sheet").then((m) => ({
-      default: m.PrintSheet,
+    import("@/components/print-sheet-with-passcode").then((m) => ({
+      default: m.PrintSheetWithPasscode,
     })),
   {
     loading: () => (
@@ -109,7 +109,7 @@ export default async function PrintPage({
         }
       />
 
-      <PrintSheet
+      <PrintSheetWithPasscode
         patient={{
           id: patient.id,
           reg_no: patient.reg_no,
@@ -129,7 +129,9 @@ export default async function PrintPage({
 
       <p className="no-print mt-3 text-center text-xs text-muted">
         Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>{" "}
-        (not login).{" "}
+        (not login). Login uses <strong>reg number + passcode</strong> on the slip
+        when just issued in this tab. Lost passcode: reissue from Patients, then
+        print again.{" "}
         {patient.queue_status === "seen" ? (
           <>The consultation is complete; reprinting does not change its status.</>
         ) : patient.queue_status === "waiting" ? (

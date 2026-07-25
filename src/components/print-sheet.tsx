@@ -35,6 +35,11 @@ type Props = {
   today: string;
   /** Staff-scan QR on paper (enter URL preferred). */
   qrValue?: string;
+  /**
+   * One-time desk-slip passcode for patient login (reg no + passcode).
+   * Only present when staff just issued/reissued it in this browser tab.
+   */
+  loginPasscode?: string | null;
 };
 
 /** Dense one-page A4 prescription matching SNP eye-clinic form. */
@@ -45,6 +50,7 @@ export function PrintSheet({
   origin,
   today,
   qrValue,
+  loginPasscode,
 }: Props) {
   const qr =
     qrValue || `${origin.replace(/\/$/, "")}/patient/enter/${patient.id}`;
@@ -97,6 +103,22 @@ export function PrintSheet({
                 {patient.reg_no}
               </p>
             </div>
+            {loginPasscode ? (
+              <div className="w-full rounded border border-[#1a3a8a] bg-[#f0f4ff] px-1.5 py-1 text-right">
+                <p className="text-[8px] font-semibold uppercase leading-none">
+                  Login passcode
+                </p>
+                <p
+                  className="text-sm font-extrabold leading-tight tracking-wide sm:text-base"
+                  translate="no"
+                >
+                  {loginPasscode}
+                </p>
+                <p className="mt-0.5 text-[7px] font-medium leading-tight opacity-90">
+                  Patient login · keep private
+                </p>
+              </div>
+            ) : null}
             <p className="w-full text-right text-[9px]">
               <span className="font-semibold">Printed</span> {today}
             </p>

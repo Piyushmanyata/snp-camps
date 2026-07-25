@@ -28,6 +28,7 @@ import {
   WarningBox,
 } from "@/components/ui";
 import { ChangeDay } from "@/components/change-day";
+import { storeDeskPasscode } from "@/lib/desk-passcode";
 
 type Props = {
   campId: string;
@@ -51,6 +52,8 @@ type Created = {
   notifyNote?: string;
   loginRegNo?: number;
   phone?: string | null;
+  /** One-time desk-slip passcode (shown after provision; also in sessionStorage for print). */
+  loginPasscode?: string | null;
 };
 
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
@@ -549,25 +552,40 @@ export function PatientForm({
         const acc = (await accRes.json().catch(() => ({}))) as {
           error?: string;
           regNo?: number;
+          password?: string;
           notifyConfigured?: { sms?: boolean; whatsapp?: boolean };
         };
+        const loginPasscode =
+          typeof acc.password === "string" && acc.password.trim()
+            ? acc.password.trim()
+            : null;
+        if (loginPasscode) {
+          storeDeskPasscode(base.id, loginPasscode);
+        }
         const smsOn = acc.notifyConfigured?.sms;
-        const notifyMsg = (phone10 || base.phone)
-          ? (smsOn ? "SMS sent with reg details." : "SMS details queued (SMS gateway pending configuration).")
-          : `No phone provided — patient can log in using Reg #${base.reg_no}.`;
+        const notifyMsg = loginPasscode
+          ? (phone10 || base.phone)
+            ? smsOn
+              ? "SMS sent with reg details. Passcode is on the desk slip — print now."
+              : "SMS queued (gateway pending). Passcode is on the desk slip — print now."
+            : "No phone on file. Passcode is on the desk slip — print now."
+          : acc.error
+            ? `Registered, but login passcode was not issued: ${acc.error}. Reissue from Patients.`
+            : `Registered as Reg #${base.reg_no}. Reissue a passcode from Patients if print has none.`;
 
         setCreated({
           ...base,
           loginRegNo: acc.regNo || base.reg_no,
+          loginPasscode,
           notifyNote: notifyMsg,
         });
         setQueueNote(
-          `Registered at desk. Patient Reg #${base.reg_no}. Print prescription to join queue.`,
+          `Registered at desk. Patient Reg #${base.reg_no}. Print the desk slip (includes login passcode) to join queue.`,
         );
       } catch {
         setCreated({
           ...base,
-          notifyNote: `Patient Reg #${base.reg_no}`,
+          notifyNote: `Patient Reg #${base.reg_no}. Login passcode may need reissue from Patients.`,
         });
         setQueueNote(`Registered at desk. Reg #${base.reg_no}.`);
       }
@@ -706,9 +724,26 @@ export function PatientForm({
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
             {isStaff
-              ? `Registered at desk — patient can log in anytime using Reg #${loginRegNo}`
+              ? `Registered at desk — login is Reg #${loginRegNo} + passcode on the slip`
               : "You are logged in with phone OTP"}
           </p>
+          {isStaff && created.loginPasscode ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-950">
+                Desk-slip passcode (shown once)
+              </p>
+              <p
+                className="mt-1 font-mono text-xl font-bold tracking-wider text-amber-950"
+                translate="no"
+              >
+                {created.loginPasscode}
+              </p>
+              <p className="mt-1 text-xs text-amber-900">
+                Printed on the desk slip. Patient needs this to sign in. Do not
+                share over open channels.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {!isStaff ? (
@@ -725,11 +760,11 @@ export function PatientForm({
             {queueNote ? <SuccessBox message={queueNote} /> : null}
             <div>
               <p className="text-sm font-semibold text-foreground">
-                Print prescription (optional)
+                Print desk slip (required for passcode)
               </p>
               <p className="prose-help mt-0.5 text-xs text-muted">
-                Print puts them in the FCFS queue. Doctors can also scan a
-                registered patient directly without printing.
+                The slip carries the login passcode and staff-scan QR. Print also
+                puts them in the FCFS queue when you use Join queue &amp; print.
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -737,7 +772,7 @@ export function PatientForm({
                 href={`/print/${created.id}?auto=1`}
                 className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
               >
-                Print now (join queue)
+                Print desk slip (join queue)
               </Link>
               <Button type="button" variant="secondary" onClick={resetForm}>
                 Register another walk-in

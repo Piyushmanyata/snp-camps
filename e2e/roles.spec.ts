@@ -164,14 +164,12 @@ test("doctor can sign in and review without mutating patient status", async ({
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("patient can sign in with registration number and sign out", async ({
+test("patient can sign in with registration number and passcode and sign out", async ({
   page,
 }) => {
   await gotoHydrated(page, "/patient/login");
   await page.getByLabel("Registration number").fill(env("E2E_PATIENT_REG_NO"));
-  if (await page.getByLabel("Password").isVisible().catch(() => false)) {
-    await page.getByLabel("Password").fill(env("E2E_PATIENT_PASSWORD"));
-  }
+  await page.getByLabel("Passcode").fill(env("E2E_PATIENT_PASSWORD"));
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/patient$/);

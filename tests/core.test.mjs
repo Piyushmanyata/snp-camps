@@ -17,9 +17,11 @@ import {
 } from "../src/lib/qr.ts";
 import {
   generatePatientPassword,
+  generatePatientPasscode,
   generateStaffPassword,
   isPasswordLongEnough,
   MIN_PASSWORD_LENGTH,
+  PATIENT_PASSCODE_LENGTH,
 } from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
@@ -158,6 +160,7 @@ test("registration number parser rejects overflow and malformed values", () => {
 
 test("password policy matches Supabase Auth minimum length", () => {
   assert.equal(MIN_PASSWORD_LENGTH, 6);
+  assert.equal(PATIENT_PASSCODE_LENGTH, 12);
   assert.equal(isPasswordLongEnough("12345"), false);
   assert.equal(isPasswordLongEnough("123456"), true);
   assert.equal(isPasswordLongEnough(""), false);
@@ -183,8 +186,11 @@ test("patient URLs are staff-scan canonical and passwords avoid ambiguous charac
   }
   assert.match(
     generatePatientPassword(),
-    /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/,
+    new RegExp(
+      `^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{${PATIENT_PASSCODE_LENGTH}}$`,
+    ),
   );
+  assert.equal(generatePatientPasscode, generatePatientPassword);
   assert.match(
     generateStaffPassword(),
     /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{14}$/,

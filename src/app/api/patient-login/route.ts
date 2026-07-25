@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
+import { isPasswordLongEnough } from "@/lib/patient-password";
 import { parseRegistrationNumber } from "@/lib/qr";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-// Local to this legacy endpoint only — not a shared module export (see #11, #15, #16).
-const LEGACY_DEFAULT_PASSWORD = "123456";
-
 type Body = {
   regNo?: number | string;
+  /** Desk-slip passcode (Auth password for reg{N}@patients.snp.local). */
+  passcode?: string;
+  /** Accepted as an alias for passcode for older clients / e2e. */
+  password?: string;
 };
 
+/** Same message for wrong reg, wrong passcode, missing account, disabled — no oracle. */
+const INVALID =
+  "Invalid registration number or passcode. Check your desk slip or ask the desk.";
+
+/**
+ * Patient sign-in with registration number + desk-slip passcode.
+ *
+ * Does not create users, reset passwords, or return credentials.
+ * Passcodes are stored only as Supabase Auth password hashes.
+ */
 export async function POST(req: Request) {
   const body = await readJsonBody<Body>(req);
   if (!body) {
@@ -19,120 +32,91 @@ export async function POST(req: Request) {
   }
 
   const regNo = parseRegistrationNumber(body.regNo);
-  if (regNo === null) {
-    return NextResponse.json(
-      { error: "Enter a valid registration number (e.g. 1001)." },
-      { status: 400 },
-    );
-  }
+  const passcode = String(body.passcode ?? body.password ?? "").trim();
 
   const rate = checkRateLimit(req, {
     scope: "patient-login",
-    identifier: String(regNo),
-    limit: 20,
-    windowMs: 10 * 60_000,
+    identifier: regNo != null ? String(regNo) : "invalid",
+    limit: 12,
+    windowMs: 15 * 60_000,
   });
+  const headers: Record<string, string> = {
+    ...rate.headers,
+    "Cache-Control": "no-store, max-age=0",
+  };
+
   if (!rate.allowed) {
     return NextResponse.json(
       { error: "Too many login attempts. Try again later." },
-      { status: 429, headers: rate.headers },
+      { status: 429, headers },
     );
   }
 
-  const admin = createServiceRoleClient();
-  if (!admin) {
+  // Format failures use the same status/message as auth failures (no oracle).
+  if (regNo === null || !passcode || !isPasswordLongEnough(passcode)) {
+    return NextResponse.json({ error: INVALID }, { status: 401, headers });
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) {
     return NextResponse.json(
       { error: "Login service is unavailable." },
-      { status: 503 },
+      { status: 503, headers },
     );
   }
 
-  const { data: patient, error: patientErr } = await admin
-    .from("patients")
-    .select("id, reg_no, full_name, user_id, phone")
-    .eq("reg_no", regNo)
-    .maybeSingle();
-
-  if (patientErr || !patient) {
-    return NextResponse.json(
-      { error: "Patient not found. Check your registration number." },
-      { status: 404 },
-    );
-  }
+  const cookieStore = await cookies();
+  const supabase = createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        } catch {
+          /* Route Handler should allow set; ignore if called in a read-only context. */
+        }
+      },
+    },
+  });
 
   const email = patientAuthEmail(regNo);
-  const name = patient.full_name || `Patient ${regNo}`;
-
-  let userId = patient.user_id;
-
-  if (userId) {
-    const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
-      password: LEGACY_DEFAULT_PASSWORD,
-      email_confirm: true,
-    });
-    if (updErr) {
-      return NextResponse.json(
-        { error: "Could not prepare patient login. Try again." },
-        { status: 500 },
-      );
-    }
-  } else {
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+  const { data: signIn, error: signErr } =
+    await supabase.auth.signInWithPassword({
       email,
-      password: LEGACY_DEFAULT_PASSWORD,
-      email_confirm: true,
-      user_metadata: { full_name: name, patient_reg_no: regNo },
+      password: passcode,
     });
 
-    if (createErr) {
-      const { data: existingProfile } = await admin
-        .from("profiles")
-        .select("id")
-        .eq("email", email)
-        .maybeSingle();
-
-      if (existingProfile?.id) {
-        userId = existingProfile.id;
-        const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
-          password: LEGACY_DEFAULT_PASSWORD,
-          email_confirm: true,
-        });
-        if (updErr) {
-          return NextResponse.json(
-            { error: "Could not provision login session." },
-            { status: 500 },
-          );
-        }
-      } else {
-        return NextResponse.json(
-          { error: "Could not provision login session." },
-          { status: 500 },
-        );
-      }
-    } else if (created.user) {
-      userId = created.user.id;
-    }
-
-    if (userId) {
-      await admin.from("profiles").upsert({
-        id: userId,
-        role: "patient",
-        full_name: name,
-        email,
-        phone: patient.phone || null,
-      });
-
-      await admin
-        .from("patients")
-        .update({ user_id: userId })
-        .eq("id", patient.id);
-    }
+  if (signErr || !signIn.user) {
+    return NextResponse.json({ error: INVALID }, { status: 401, headers });
   }
 
-  return NextResponse.json({
-    ok: true,
-    email,
-    password: LEGACY_DEFAULT_PASSWORD,
-    regNo: patient.reg_no,
-  });
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("role, disabled_at")
+    .eq("id", signIn.user.id)
+    .maybeSingle();
+
+  if (
+    profileErr ||
+    !profile ||
+    profile.disabled_at ||
+    profile.role !== "patient"
+  ) {
+    await supabase.auth.signOut();
+    return NextResponse.json({ error: INVALID }, { status: 401, headers });
+  }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      regNo,
+      // Never return password/passcode/email secrets.
+    },
+    { status: 200, headers },
+  );
 }

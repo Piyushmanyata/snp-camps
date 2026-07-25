@@ -4,8 +4,8 @@
 
 * **Camp**: A medical camp event organized by Sikar Nagarik Parishad. Only one camp can be active at a time.
 * **Camp Day**: A specific calendar date on which a camp operates.
-* **Patient**: An individual registering for medical examination. Authenticated via phone OTP and assigned a sequential registration number (`reg{N}@patients.snp.local`).
-* **Staff**: An admin or volunteer. Runs the volunteer desk and patient management (register, print, provision logins, change camp day). Does **not** include doctor. Predicates: TypeScript `isStaff`, SQL `is_staff()`.
+* **Patient**: An individual registering for medical examination. Assigned a sequential registration number. Auth identity for desk-issued logins is `reg{N}@patients.snp.local` plus a desk-slip **passcode** (Auth password, stored hashed by Supabase Auth). Phone OTP remains an alternative path when SMS is configured.
+* **Staff**: An admin or volunteer. Runs the volunteer desk and patient management (register, print, issue/reissue passcodes, change camp day). Does **not** include doctor. Predicates: TypeScript `isStaff`, SQL `is_staff()`.
   _Avoid_: Using “staff” for doctors or for “any signed-in camp role.”
 * **Camp crew**: An admin, volunteer, or doctor — any non-patient operational role at a camp. Used for QR scan handoff and role-desk access that all three share. Predicates: TypeScript `isCampCrew`, SQL `is_camp_crew()`.
   _Avoid_: Calling this “staff” (that term excludes doctors).
@@ -13,7 +13,8 @@
 * **FCFS Queue**: First-Come, First-Served line of registered patients waiting for doctor examination (`waiting` status).
 * **Volunteer Desk**: Station operated by staff (volunteers; admins may act as staff) for patient onboarding, Aadhaar auto-fill, desk slip printing, queue routing, and doctor assignment.
 * **Doctor Station**: View used by attending doctors to scan patient QR codes, review records, and mark patient as `seen`.
-* **Desk Print / Slip**: Optional physical registration token printed at the volunteer desk for queue tracking.
+* **Desk Slip**: Physical registration token printed at the volunteer desk. **Required** for the reg-number login path because it carries the one-time-shown **login passcode**. Also used for queue tracking and staff-scan QR. Losing the slip is normal — staff reissue a new passcode (old one stops working) and reprint.
+* **Passcode**: Short random secret issued at desk registration (or on reissue), printed on the desk slip, used with the registration number for patient login. Stored only as a Supabase Auth password hash; plaintext returned only once to authenticated staff after issue/reissue.
 * **Seen**: Final state of patient consultation. Re-scanning a `seen` patient is permanently blocked.
 
 ## System-Wide Design & UX Goals
