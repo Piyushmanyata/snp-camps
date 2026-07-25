@@ -21,6 +21,10 @@ const exact = new Map([
     "@supabase/ssr",
     pathToFileURL(path.join(stubs, "supabase-ssr.mjs")).href,
   ],
+  [
+    "@/lib/supabase/admin",
+    pathToFileURL(path.join(stubs, "service-role-admin.mjs")).href,
+  ],
 ]);
 
 function resolveAt(base, rel) {

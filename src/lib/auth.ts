@@ -13,10 +13,15 @@ export {
   roleHome,
 } from "@/lib/roles";
 
-export const getSessionProfile = cache(async (): Promise<{
+/**
+ * Uncached session load for API route handlers (and tests).
+ * Prefer this in route handlers so role checks are not stuck on a
+ * request-scoped React cache entry from an earlier call in the same process.
+ */
+export async function loadSessionProfile(): Promise<{
   userId: string | null;
   profile: Profile | null;
-}> => {
+}> {
   const cookieStore = await cookies();
   const hasSessionCookie = cookieStore
     .getAll()
@@ -46,7 +51,10 @@ export const getSessionProfile = cache(async (): Promise<{
   }
 
   return { userId, profile: profile as Profile };
-});
+}
+
+/** Request-deduped session for Server Components / layouts. */
+export const getSessionProfile = cache(loadSessionProfile);
 
 /** API guard: requires signed-in admin. Returns JSON error response or user+profile. */
 export async function requireAdmin() {

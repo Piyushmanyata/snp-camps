@@ -9,6 +9,8 @@ let authMock = {
     error: { message: "Invalid login credentials" },
   }),
   signOut: async () => ({ error: null }),
+  getClaims: null,
+  userId: null,
   profile: null,
   profileError: null,
 };
@@ -24,6 +26,8 @@ export function __resetAuthMock() {
       error: { message: "Invalid login credentials" },
     }),
     signOut: async () => ({ error: null }),
+    getClaims: null,
+    userId: null,
     profile: null,
     profileError: null,
   };
@@ -34,6 +38,18 @@ export function createServerClient() {
     auth: {
       signInWithPassword: (...args) => authMock.signInWithPassword(...args),
       signOut: (...args) => authMock.signOut(...args),
+      async getClaims() {
+        if (typeof authMock.getClaims === "function") {
+          return authMock.getClaims();
+        }
+        if (authMock.userId) {
+          return {
+            data: { claims: { sub: authMock.userId } },
+            error: null,
+          };
+        }
+        return { data: { claims: null }, error: null };
+      },
     },
     from(table) {
       if (table !== "profiles") {

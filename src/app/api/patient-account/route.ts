@@ -1,15 +1,17 @@
 import { after, NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { getSessionProfile, isStaff, readJsonBody } from "@/lib/auth";
+import { isStaff, loadSessionProfile, readJsonBody } from "@/lib/auth";
 import { patientAuthEmail } from "@/lib/patient-auth";
 import { parseRegistrationNumber, patientScanUrl } from "@/lib/qr";
 import {
-  generatePatientPassword,
   isPasswordLongEnough,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/patient-password";
-import { passcodeIssuedPatchOnAuthWrite } from "@/lib/passcode-issued";
+import {
+  issuePatientPasscode,
+  provisionPatientAccount,
+  type PatientAccountRow,
+} from "@/lib/patient-account-ops";
 import {
   notifyConfigured,
   notifyPatient,
@@ -21,20 +23,26 @@ type Body = {
   patientId?: string;
   regNo?: number | string;
   password?: string;
-  /** Return plaintext password once to the authenticated patient or admin. */
+  /** Return plaintext passcode once to the authenticated patient or Staff. */
   returnCredentials?: boolean;
-  /** Send reg+password via SMS/WhatsApp stubs when phone on file. */
+  /** Send reg details via SMS/WhatsApp stubs when phone on file. */
   notify?: boolean;
-  /** Staff-only: provision a login for a desk-created registration. */
+  /**
+   * Staff-only: ensure Auth user exists and patient.user_id is linked.
+   * Returns no secret. Pair with returnCredentials for desk issue.
+   */
   adminProvision?: boolean;
 };
 
 /**
- * Create / ensure a patient login after registration.
- * Staff desk: adminProvision + returnCredentials → one-time desk-slip passcode
- * (Auth password) for print; never returned to unauthenticated callers.
- * Self-reg (phone OTP already linked): optional password rotate for the patient session.
- * QR is for staff scan only — not passwordless patient login.
+ * Patient login lifecycle after registration (ADR 0001, issue #17).
+ *
+ * - Provision (adminProvision): Auth user + link. Idempotent. No secret.
+ * - Issue/reissue (returnCredentials / password): set Auth password, stamp
+ *   passcode_issued_at, return plaintext once to Staff or the patient self.
+ *
+ * Doctors are Camp crew, not Staff — 403 on both operations.
+ * Never deletes an Auth user.
  */
 export async function POST(req: Request) {
   const body = await readJsonBody<Body>(req);
@@ -91,34 +99,27 @@ export async function POST(req: Request) {
   }
   const admin = adminClient;
 
-  const { data: patient, error: pErr } = await admin
+  const { data: patientRaw, error: pErr } = await admin
     .from("patients")
-    .select(
-      "id, reg_no, full_name, user_id, phone, account_provisioning_token, passcode_issued_at",
-    )
+    .select("id, reg_no, full_name, user_id, phone, passcode_issued_at")
     .eq("id", patientId)
     .maybeSingle();
 
-  /** Stamp only after Auth password write succeeds; never on failure. */
-  async function stampPasscodeIssued() {
-    const patch = passcodeIssuedPatchOnAuthWrite(true);
-    if (!patch) return;
-    await admin.from("patients").update(patch).eq("id", patientId);
-  }
-
-  if (pErr || !patient) {
+  if (pErr || !patientRaw) {
     return NextResponse.json({ error: "Patient not found" }, { status: 404 });
   }
+
+  let patient = patientRaw as PatientAccountRow;
   if (patient.reg_no !== regNo) {
     return NextResponse.json({ error: "Reg no mismatch" }, { status: 400 });
   }
 
   const email = patientAuthEmail(regNo);
   const name = patient.full_name || `Patient ${regNo}`;
-  // Staff-scan QR only — not a patient login link
   const scanUrl = patientScanUrl(patientId, process.env.NEXT_PUBLIC_SITE_URL);
   const configured = notifyConfigured();
   const phoneOnFile = patient.phone;
+  const { userId: sessionUserId, profile } = await loadSessionProfile();
 
   function queueNotification(loginRegNo = safeRegNo) {
     if (!doNotify || !phoneOnFile) {
@@ -135,11 +136,64 @@ export async function POST(req: Request) {
     return true;
   }
 
-  // Already linked — only the patient session or Staff (admin|volunteer) may
-  // reset credentials. Doctors are camp crew, not staff — must not reset.
-  if (patient.user_id) {
-    const { userId, profile } = await getSessionProfile();
-    const allowed = userId === patient.user_id || isStaff(profile?.role);
+  // --- Provision (Staff only) ---
+  if (adminProvisionRequested) {
+    if (!isStaff(profile?.role)) {
+      return NextResponse.json(
+        { error: "Staff authorization required" },
+        { status: 403 },
+      );
+    }
+
+    const provisioned = await provisionPatientAccount(admin, patient, {
+      email,
+      name,
+      regNo: safeRegNo,
+    });
+    if (!provisioned.ok) {
+      return NextResponse.json(
+        { error: provisioned.error },
+        { status: provisioned.status },
+      );
+    }
+
+    patient = { ...patient, user_id: provisioned.userId };
+
+    // Provision alone: no secret in the response.
+    if (!returnCredentials && !passwordRaw) {
+      return NextResponse.json({
+        ok: true,
+        linked: true,
+        scanUrl,
+        patientId,
+        userId: provisioned.userId,
+        regNo: safeRegNo,
+        notifyConfigured: configured,
+      });
+    }
+  }
+
+  // --- Issue / reissue / patient self-reset ---
+  if (returnCredentials || passwordRaw) {
+    if (!patient.user_id) {
+      // Unlinked without adminProvision: Staff must provision first.
+      if (!isStaff(profile?.role)) {
+        return NextResponse.json(
+          { error: "Staff authorization required" },
+          { status: 403 },
+        );
+      }
+      return NextResponse.json(
+        {
+          error:
+            "Patient login is not provisioned yet. Provision the account first.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const allowed =
+      sessionUserId === patient.user_id || isStaff(profile?.role);
     if (!allowed) {
       return NextResponse.json(
         { error: "Login already exists for this patient." },
@@ -147,269 +201,57 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!passwordRaw && !returnCredentials) {
-      return NextResponse.json({
-        ok: true,
-        linked: true,
-        scanUrl,
-        patientId,
-        userId: patient.user_id,
-        regNo,
-        notifyConfigured: configured,
-      });
-    }
-
-    const { data: userAuth, error: userAuthError } =
-      await admin.auth.admin.getUserById(patient.user_id);
-    if (userAuthError || !userAuth.user) {
+    const issued = await issuePatientPasscode(admin, patient, {
+      email,
+      name,
+      regNo: safeRegNo,
+      password: passwordRaw || undefined,
+    });
+    if (!issued.ok) {
       return NextResponse.json(
-        { error: "Patient login could not be loaded." },
-        { status: 500 },
+        { error: issued.error },
+        { status: issued.status },
       );
     }
-    const currentEmail = userAuth?.user?.email;
-    const isOtpUser = Boolean(userAuth?.user?.phone);
 
-    let emailToUpdate = email;
-    let regNoToReturn = regNo;
-    if (isOtpUser && currentEmail && currentEmail.startsWith("reg")) {
-      emailToUpdate = currentEmail;
-      const match = currentEmail.match(/^reg(\d+)@/);
-      if (match && match[1]) {
-        regNoToReturn = Number(match[1]);
-      }
-    }
+    const notificationQueued = queueNotification(issued.regNo);
+    return NextResponse.json({
+      ok: true,
+      linked: true,
+      scanUrl,
+      patientId,
+      userId: issued.userId,
+      regNo: issued.regNo,
+      ...(returnCredentials ? { password: issued.password } : {}),
+      notificationQueued,
+      notifyConfigured: configured,
+    });
+  }
 
-    const password = passwordRaw || generatePatientPassword();
-    const { error: updErr } = await admin.auth.admin.updateUserById(
-      patient.user_id,
-      { email: emailToUpdate, password, email_confirm: true },
-    );
-    if (updErr) {
-      return NextResponse.json({ error: "Patient login could not be updated." }, { status: 400 });
+  // Status / no-op path: already linked, no password change requested.
+  if (patient.user_id) {
+    const allowed =
+      sessionUserId === patient.user_id || isStaff(profile?.role);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Login already exists for this patient." },
+        { status: 403 },
+      );
     }
-    await stampPasscodeIssued();
-    const { error: profileError } = await admin
-      .from("profiles")
-      .update({ role: "patient", full_name: name, email: emailToUpdate })
-      .eq("id", patient.user_id);
-    if (profileError) {
-      return NextResponse.json({ error: "Patient profile could not be updated." }, { status: 500 });
-    }
-
-    const notificationQueued = queueNotification(regNoToReturn);
     return NextResponse.json({
       ok: true,
       linked: true,
       scanUrl,
       patientId,
       userId: patient.user_id,
-      regNo: regNoToReturn,
-      ...(returnCredentials ? { password } : {}),
-      notificationQueued,
+      regNo: safeRegNo,
       notifyConfigured: configured,
     });
   }
 
-  // Unlinked rows are desk-created; only Staff (admin|volunteer) may provision.
-  const { profile } = await getSessionProfile();
-  if (!adminProvisionRequested || !isStaff(profile?.role)) {
-    return NextResponse.json({ error: "Staff authorization required" }, { status: 403 });
-  }
-  if (!returnCredentials) {
-    return NextResponse.json(
-      { error: "One-time credentials must be returned for admin provisioning." },
-      { status: 400 },
-    );
-  }
-
-  // Atomically reserve this row before crossing the database/Auth transaction
-  // boundary. Only one admin request may create or link its Auth user.
-  const originalProvisioningToken = patient.account_provisioning_token;
-  const reservationToken = randomBytes(24).toString("hex");
-  let reservation = admin
-    .from("patients")
-    .update({ account_provisioning_token: reservationToken })
-    .eq("id", patientId)
-    .is("user_id", null);
-  reservation = originalProvisioningToken
-    ? reservation.eq("account_provisioning_token", originalProvisioningToken)
-    : reservation.is("account_provisioning_token", null);
-
-  const { data: reserved, error: reserveError } = await reservation
-    .select("id")
-    .maybeSingle();
-  if (reserveError || !reserved) {
-    return NextResponse.json(
-      { error: "Patient login is already being provisioned. Refresh and retry." },
-      { status: 409 },
-    );
-  }
-
-  async function restoreProvisioningReservation() {
-    const client = admin;
-    if (!client) return;
-    await client
-      .from("patients")
-      .update({ account_provisioning_token: originalProvisioningToken })
-      .eq("id", patientId)
-      .is("user_id", null)
-      .eq("account_provisioning_token", reservationToken);
-  }
-
-  const password = passwordRaw || generatePatientPassword();
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: name, patient_reg_no: regNo },
-  });
-
-  if (createErr) {
-    if (/already|registered|exists/i.test(createErr.message)) {
-      // Auth user exists but patient not linked — link only, no password reissue without auth
-      const { data: existingProfile } = await admin
-        .from("profiles")
-        .select("id, role")
-        .eq("email", email)
-        .maybeSingle();
-      if (existingProfile?.id && existingProfile.role === "patient") {
-        const { error: existingProfileError } = await admin
-          .from("profiles")
-          .upsert({
-          id: existingProfile.id,
-          role: "patient",
-          full_name: name,
-          email,
-        });
-        if (existingProfileError) {
-          await restoreProvisioningReservation();
-          return NextResponse.json(
-            { error: "Patient login could not be provisioned. Try again." },
-            { status: 500 },
-          );
-        }
-        const { data: linked, error: linkErr } = await admin
-          .from("patients")
-          .update({
-            user_id: existingProfile.id,
-            account_provisioning_token: null,
-          })
-          .eq("id", patientId)
-          .is("user_id", null)
-          .eq("account_provisioning_token", reservationToken)
-          .select("id")
-          .maybeSingle();
-        if (linkErr || !linked) {
-          await restoreProvisioningReservation();
-          return NextResponse.json(
-            { error: "Patient login was already provisioned" },
-            { status: 409 },
-          );
-        }
-        const { error: resetError } = await admin.auth.admin.updateUserById(
-          existingProfile.id,
-          { password, email_confirm: true },
-        );
-        if (resetError) {
-          await admin
-            .from("patients")
-            .update({
-              user_id: null,
-              account_provisioning_token: originalProvisioningToken,
-            })
-            .eq("id", patientId)
-            .eq("user_id", existingProfile.id);
-          return NextResponse.json(
-            { error: "Patient login could not be reset." },
-            { status: 500 },
-          );
-        }
-        await stampPasscodeIssued();
-        return NextResponse.json({
-          ok: true,
-          linked: true,
-          scanUrl,
-          patientId,
-          userId: existingProfile.id,
-          regNo,
-          password,
-          notifyConfigured: configured,
-          message:
-            "Patient login linked and reset. Share the one-time password securely.",
-        });
-      }
-      await restoreProvisioningReservation();
-      return NextResponse.json(
-        {
-          error:
-            "A login already exists for this reg no. Use patient login or ask admin.",
-        },
-        { status: 400 },
-      );
-    }
-    await restoreProvisioningReservation();
-    return NextResponse.json(
-      { error: "Patient login could not be created. Try again." },
-      { status: 400 },
-    );
-  }
-
-  if (!created.user) {
-    await restoreProvisioningReservation();
-    return NextResponse.json({ error: "No user created" }, { status: 400 });
-  }
-
-  const { error: profileError } = await admin.from("profiles").upsert({
-    id: created.user.id,
-    role: "patient",
-    full_name: name,
-    email,
-    phone: phoneOnFile,
-  });
-  if (profileError) {
-    await admin.auth.admin.deleteUser(created.user.id);
-    await restoreProvisioningReservation();
-    return NextResponse.json(
-      { error: "Patient login could not be provisioned. Try again." },
-      { status: 500 },
-    );
-  }
-
-  const { data: linked, error: linkErr } = await admin
-    .from("patients")
-    .update({
-      user_id: created.user.id,
-      account_provisioning_token: null,
-    })
-    .eq("id", patientId)
-    .is("user_id", null)
-    .eq("account_provisioning_token", reservationToken)
-    .select("id")
-    .maybeSingle();
-
-  if (linkErr || !linked) {
-    await admin.auth.admin.deleteUser(created.user.id);
-    await restoreProvisioningReservation();
-    return NextResponse.json(
-      { error: linkErr?.message || "Patient login was already provisioned" },
-      { status: linkErr ? 400 : 409 },
-    );
-  }
-
-  // Auth user created with passcode; stamp only after link succeeds.
-  await stampPasscodeIssued();
-
-  const notificationQueued = queueNotification(regNo);
-
-  return NextResponse.json({
-    ok: true,
-    userId: created.user.id,
-    scanUrl,
-    patientId,
-    regNo,
-    ...(returnCredentials ? { password } : {}),
-    notificationQueued,
-    notifyConfigured: configured,
-  });
+  // Unlinked, no provision flag.
+  return NextResponse.json(
+    { error: "Staff authorization required" },
+    { status: 403 },
+  );
 }

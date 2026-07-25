@@ -11,3 +11,15 @@ export class NextResponse extends Response {
     return new NextResponse(JSON.stringify(body), { ...init, headers });
   }
 }
+
+/** next/server after() — fire-and-forget in production; no-op in unit tests. */
+export function after(fn) {
+  try {
+    const result = fn();
+    if (result && typeof result.catch === "function") {
+      result.catch(() => {});
+    }
+  } catch {
+    /* ignore test side effects */
+  }
+}
