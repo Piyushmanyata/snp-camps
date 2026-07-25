@@ -13,6 +13,9 @@ let authMock = {
   userId: null,
   profile: null,
   profileError: null,
+  /** Optional list results for .from().select().eq().order() chains (staff GET). */
+  listByRole: null,
+  listError: null,
 };
 
 export function __setAuthMock(next) {
@@ -30,6 +33,8 @@ export function __resetAuthMock() {
     userId: null,
     profile: null,
     profileError: null,
+    listByRole: null,
+    listError: null,
   };
 }
 
@@ -57,18 +62,36 @@ export function createServerClient() {
       }
       return {
         select() {
-          return {
-            eq() {
+          let roleFilter = null;
+          const chain = {
+            eq(col, val) {
+              if (col === "role") roleFilter = val;
+              return chain;
+            },
+            order() {
+              return chain;
+            },
+            then(resolve, reject) {
+              const run = async () => {
+                if (authMock.listError) {
+                  return { data: null, error: authMock.listError };
+                }
+                if (authMock.listByRole && roleFilter != null) {
+                  const rows = authMock.listByRole[roleFilter] || [];
+                  return { data: rows, error: null };
+                }
+                return { data: [], error: null };
+              };
+              return run().then(resolve, reject);
+            },
+            async maybeSingle() {
               return {
-                async maybeSingle() {
-                  return {
-                    data: authMock.profile,
-                    error: authMock.profileError,
-                  };
-                },
+                data: authMock.profile,
+                error: authMock.profileError,
               };
             },
           };
+          return chain;
         },
       };
     },

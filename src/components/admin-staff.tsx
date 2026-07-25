@@ -15,7 +15,7 @@ import {
   type StaffPerson,
 } from "@/components/staff-detail";
 
-type Volunteer = StaffPerson;
+export type ManageableStaffRole = "doctor" | "volunteer";
 
 type CredentialShare = {
   id: string;
@@ -24,13 +24,66 @@ type CredentialShare = {
   name: string;
 };
 
-export function AdminVolunteers({
+function roleCopy(role: ManageableStaffRole) {
+  if (role === "doctor") {
+    return {
+      intro: "Tap a doctor for KPIs and patients they saw.",
+      empty: "No doctors yet — add the first below.",
+      addButton: "Add doctor",
+      createSubmit: "Create doctor & get password",
+      createOk: "Doctor created. Share the temporary password below (shown once).",
+      createFail: "Failed to create doctor",
+      resetFail: "Failed to reset doctor password",
+      reactivateFail: "Failed to reactivate doctor",
+      deactivateFail: "Failed to deactivate doctor",
+      credentialTitle: "SNP Camps doctor login",
+      defaultName: "Doctor",
+      formId: "doctor-create-form",
+      credentialHeadingId: "doctor-credential-heading",
+      detailIdPrefix: "doctor-detail",
+      historyOnDeactivate:
+        "They will no longer be able to sign in. Their patient history and name will be preserved.",
+      namePlaceholder: undefined as string | undefined,
+      emailPlaceholder: undefined as string | undefined,
+      emailHint: undefined as string | undefined,
+    };
+  }
+  return {
+    intro:
+      "Create a volunteer with name + email. A temporary password is generated for you to share once. Tap a name for KPIs.",
+    empty: "No volunteers yet — add the first below.",
+    addButton: "Register new volunteer",
+    createSubmit: "Create volunteer & get password",
+    createOk: "Volunteer created. Share the temporary password below (shown once).",
+    createFail: "Failed to create volunteer",
+    resetFail: "Failed to reset volunteer password",
+    reactivateFail: "Failed to reactivate volunteer",
+    deactivateFail: "Failed to deactivate volunteer",
+    credentialTitle: "SNP Camps volunteer login",
+    defaultName: "Volunteer",
+    formId: "volunteer-create-form",
+    credentialHeadingId: "volunteer-credential-heading",
+    detailIdPrefix: "volunteer-detail",
+    historyOnDeactivate:
+      "They will no longer be able to sign in. Their activity history will be preserved.",
+    namePlaceholder: "Volunteer name",
+    emailPlaceholder: "volunteer@example.com",
+    emailHint: "Must stay the same — they sign in with this email",
+  };
+}
+
+export function AdminStaff({
+  role,
   initial,
   canManage = true,
 }: {
-  initial: Volunteer[];
+  role: ManageableStaffRole;
+  initial: StaffPerson[];
+  /** Create, reset, deactivate, and reactivate accounts — admin only */
   canManage?: boolean;
 }) {
+  const copy = roleCopy(role);
+  const apiBase = `/api/admin/staff/${role}`;
   const router = useRouter();
   const [list, setList] = useState(initial);
   const [prevInitial, setPrevInitial] = useState(initial);
@@ -70,32 +123,32 @@ export function AdminVolunteers({
     setOk(null);
 
     try {
-      const res = await fetch("/api/admin/volunteers", {
+      const res = await fetch(apiBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullName, email }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
-        volunteer?: Volunteer;
+        staff?: StaffPerson;
         temporaryPassword?: string;
       };
-      if (!res.ok || !json.volunteer || !json.temporaryPassword) {
-        setError(json.error || "Failed to create volunteer");
+      if (!res.ok || !json.staff || !json.temporaryPassword) {
+        setError(json.error || copy.createFail);
         return;
       }
 
       setList((prev) => [
-        { ...json.volunteer!, phone: null, role: "volunteer" },
+        { ...json.staff!, phone: null, role },
         ...prev,
       ]);
       setCredential({
-        id: json.volunteer.id,
-        email: json.volunteer.email || email,
+        id: json.staff.id,
+        email: json.staff.email || email,
         password: json.temporaryPassword,
-        name: json.volunteer.full_name || fullName,
+        name: json.staff.full_name || fullName,
       });
-      setOk("Volunteer created. Share the temporary password below (shown once).");
+      setOk(copy.createOk);
       setFullName("");
       setEmail("");
       setShowForm(false);
@@ -110,12 +163,12 @@ export function AdminVolunteers({
   async function copyCredential() {
     if (!credential) return;
     const text = [
-      `SNP Camps volunteer login`,
+      copy.credentialTitle,
       `Name: ${credential.name}`,
       `Email: ${credential.email}`,
       `Temporary password: ${credential.password}`,
       `Sign in: ${window.location.origin}/login`,
-      `Change this password after signing in.`,
+      "Change this password after signing in.",
     ].join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -128,9 +181,9 @@ export function AdminVolunteers({
     }
   }
 
-  async function onReset(v: Volunteer) {
+  async function onReset(person: StaffPerson) {
     if (busy) return;
-    const label = v.full_name || v.email || "this volunteer";
+    const label = person.full_name || person.email || `this ${role}`;
     if (
       !window.confirm(
         `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
@@ -139,30 +192,30 @@ export function AdminVolunteers({
       return;
     }
 
-    setResettingId(v.id);
+    setResettingId(person.id);
     setError(null);
     setOk(null);
     try {
-      const res = await fetch("/api/admin/volunteers", {
+      const res = await fetch(apiBase, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: v.id, action: "reset_password" }),
+        body: JSON.stringify({ id: person.id, action: "reset_password" }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         temporaryPassword?: string;
-        volunteer?: Pick<Volunteer, "id" | "full_name" | "email">;
+        staff?: Pick<StaffPerson, "id" | "full_name" | "email">;
       };
       if (!res.ok || !json.temporaryPassword) {
-        setError(json.error || "Failed to reset volunteer password");
+        setError(json.error || copy.resetFail);
         return;
       }
 
       setCredential({
-        id: v.id,
-        email: json.volunteer?.email || v.email || "",
+        id: person.id,
+        email: json.staff?.email || person.email || "",
         password: json.temporaryPassword,
-        name: json.volunteer?.full_name || v.full_name || "Volunteer",
+        name: json.staff?.full_name || person.full_name || copy.defaultName,
       });
       setOk("Temporary password reset. Share it below (shown once).");
     } catch {
@@ -172,35 +225,37 @@ export function AdminVolunteers({
     }
   }
 
-  async function onReactivate(v: Volunteer) {
-    if (busy || !v.disabled_at) return;
-    const label = v.full_name || v.email || "this volunteer";
-    if (!window.confirm(`Reactivate ${label}? They will be able to sign in again.`)) {
+  async function onReactivate(person: StaffPerson) {
+    if (busy || !person.disabled_at) return;
+    const label = person.full_name || person.email || `this ${role}`;
+    if (
+      !window.confirm(`Reactivate ${label}? They will be able to sign in again.`)
+    ) {
       return;
     }
 
-    setReactivatingId(v.id);
+    setReactivatingId(person.id);
     setError(null);
     setOk(null);
     try {
-      const res = await fetch("/api/admin/volunteers", {
+      const res = await fetch(apiBase, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: v.id, action: "reactivate" }),
+        body: JSON.stringify({ id: person.id, action: "reactivate" }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
-        volunteer?: Volunteer;
+        staff?: StaffPerson;
       };
-      if (!res.ok || !json.volunteer) {
-        setError(json.error || "Failed to reactivate volunteer");
+      if (!res.ok || !json.staff) {
+        setError(json.error || copy.reactivateFail);
         return;
       }
       setList((prev) =>
-        prev.map((volunteer) =>
-          volunteer.id === v.id
-            ? { ...volunteer, ...json.volunteer, disabled_at: null }
-            : volunteer,
+        prev.map((row) =>
+          row.id === person.id
+            ? { ...row, ...json.staff, disabled_at: null }
+            : row,
         ),
       );
       setOk(`Reactivated ${label}.`);
@@ -212,22 +267,20 @@ export function AdminVolunteers({
     }
   }
 
-  async function onDelete(v: Volunteer) {
+  async function onDelete(person: StaffPerson) {
     if (busy) return;
-    const label = v.full_name || v.email || "this volunteer";
+    const label = person.full_name || person.email || `this ${role}`;
     if (
-      !window.confirm(
-        `Deactivate ${label}? They will no longer be able to sign in. Their activity history will be preserved.`,
-      )
+      !window.confirm(`Deactivate ${label}? ${copy.historyOnDeactivate}`)
     ) {
       return;
     }
-    setDeletingId(v.id);
+    setDeletingId(person.id);
     setError(null);
     setOk(null);
     try {
       const res = await fetch(
-        `/api/admin/volunteers?id=${encodeURIComponent(v.id)}`,
+        `${apiBase}?id=${encodeURIComponent(person.id)}`,
         { method: "DELETE" },
       );
       const json = (await res.json().catch(() => ({}))) as {
@@ -235,17 +288,20 @@ export function AdminVolunteers({
         disabledAt?: string;
       };
       if (!res.ok) {
-        setError(json.error || "Failed to deactivate volunteer");
+        setError(json.error || copy.deactivateFail);
         return;
       }
       setList((prev) =>
-        prev.map((volunteer) =>
-          volunteer.id === v.id
-            ? { ...volunteer, disabled_at: json.disabledAt || new Date().toISOString() }
-            : volunteer,
+        prev.map((row) =>
+          row.id === person.id
+            ? {
+                ...row,
+                disabled_at: json.disabledAt || new Date().toISOString(),
+              }
+            : row,
         ),
       );
-      if (selectedId === v.id) setSelectedId(null);
+      if (selectedId === person.id) setSelectedId(null);
       setOk(`Deactivated ${label}.`);
       router.refresh();
     } catch {
@@ -257,10 +313,7 @@ export function AdminVolunteers({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
-        Create a volunteer with name + email. A temporary password is generated
-        for you to share once. Tap a name for KPIs.
-      </p>
+      <p className="text-sm text-muted">{copy.intro}</p>
       <p
         className="sr-only"
         role="status"
@@ -268,83 +321,100 @@ export function AdminVolunteers({
         aria-atomic="true"
       >
         {loading
-          ? "Creating volunteer account."
+          ? `Creating ${role} account.`
           : resettingId
-            ? "Resetting volunteer password."
+            ? `Resetting ${role} password.`
             : reactivatingId
-              ? "Reactivating volunteer account."
-            : deletingId
-              ? "Deactivating volunteer account."
-              : ""}
+              ? `Reactivating ${role} account.`
+              : deletingId
+                ? `Deactivating ${role} account.`
+                : ""}
       </p>
       <ErrorBox message={error} />
       <SuccessBox message={ok} />
       <ul className="divide-y divide-border rounded-xl border border-border bg-white">
-        {list.map((v) => {
-          const open = selectedId === v.id;
+        {list.map((person) => {
+          const open = selectedId === person.id;
+          const detailId = `${copy.detailIdPrefix}-${person.id}`;
           return (
-            <li key={v.id}>
+            <li key={person.id}>
               <div className="flex flex-col items-stretch gap-2 px-3 py-2.5 sm:flex-row sm:items-center">
                 <button
-                  id={`staff-detail-trigger-${v.id}`}
+                  id={`staff-detail-trigger-${person.id}`}
                   type="button"
-                  onClick={() => setSelectedId(open ? null : v.id)}
+                  onClick={() => setSelectedId(open ? null : person.id)}
                   aria-expanded={open}
-                  aria-controls={`volunteer-detail-${v.id}`}
+                  aria-controls={detailId}
                   className="min-w-0 flex-1 text-left"
                 >
                   <p className="truncate font-medium text-foreground">
-                    {v.full_name || "—"}
+                    {person.full_name || "—"}
                   </p>
                   <p className="truncate text-xs text-muted">
-                    {v.email || "no email"}
-                    {v.disabled_at ? " · disabled" : open ? " · viewing KPIs" : " · tap for KPIs"}
+                    {person.email || "no email"}
+                    {person.disabled_at
+                      ? " · disabled"
+                      : open
+                        ? " · viewing KPIs"
+                        : " · tap for KPIs"}
                   </p>
                 </button>
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
-                  <Badge tone="ok">volunteer</Badge>
-                  {v.disabled_at ? <Badge tone="danger">disabled</Badge> : null}
+                  <Badge tone="ok">{role}</Badge>
+                  {person.disabled_at ? (
+                    <Badge tone="danger">disabled</Badge>
+                  ) : null}
                   {canManage ? (
-                    v.disabled_at ? (
+                    person.disabled_at ? (
                       <button
                         type="button"
                         disabled={busy}
-                        aria-busy={reactivatingId === v.id || undefined}
-                        onClick={() => void onReactivate(v)}
+                        aria-busy={
+                          reactivatingId === person.id || undefined
+                        }
+                        onClick={() => void onReactivate(person)}
                         className="pressable min-h-11 rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-1.5 text-xs font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                       >
-                        {reactivatingId === v.id ? "Reactivating…" : "Reactivate"}
+                        {reactivatingId === person.id
+                          ? "Reactivating…"
+                          : "Reactivate"}
                       </button>
                     ) : (
                       <>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-busy={resettingId === v.id || undefined}
-                        onClick={() => void onReset(v)}
-                        className="pressable min-h-11 rounded-lg border border-border bg-brand-soft px-2.5 py-1.5 text-xs font-semibold text-brand transition hover:bg-white disabled:opacity-50"
-                      >
-                        {resettingId === v.id ? "Resetting…" : "Reset password"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-busy={deletingId === v.id || undefined}
-                        onClick={() => void onDelete(v)}
-                        className="pressable min-h-11 rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
-                      >
-                        {deletingId === v.id ? "Deactivating…" : "Deactivate"}
-                      </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-busy={
+                            resettingId === person.id || undefined
+                          }
+                          onClick={() => void onReset(person)}
+                          className="pressable min-h-11 rounded-lg border border-border bg-brand-soft px-2.5 py-1.5 text-xs font-semibold text-brand transition hover:bg-white disabled:opacity-50"
+                        >
+                          {resettingId === person.id
+                            ? "Resetting…"
+                            : "Reset password"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-busy={deletingId === person.id || undefined}
+                          onClick={() => void onDelete(person)}
+                          className="pressable min-h-11 rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
+                        >
+                          {deletingId === person.id
+                            ? "Deactivating…"
+                            : "Deactivate"}
+                        </button>
                       </>
                     )
                   ) : null}
                 </div>
               </div>
               {open ? (
-                <div id={`volunteer-detail-${v.id}`} className="px-3 pb-3">
+                <div id={detailId} className="px-3 pb-3">
                   <StaffDetailPanel
-                    person={v}
-                    role="volunteer"
+                    person={person}
+                    role={role}
                     onClose={() => setSelectedId(null)}
                   />
                 </div>
@@ -354,18 +424,18 @@ export function AdminVolunteers({
         })}
         {!list.length ? (
           <li className="px-3 py-3">
-            <EmptyState>No volunteers yet — add the first below.</EmptyState>
+            <EmptyState>{copy.empty}</EmptyState>
           </li>
         ) : null}
       </ul>
 
       {credential ? (
         <section
-          aria-labelledby="volunteer-credential-heading"
+          aria-labelledby={copy.credentialHeadingId}
           className="rounded-2xl border border-brand/25 bg-brand-soft/40 p-4"
         >
           <h3
-            id="volunteer-credential-heading"
+            id={copy.credentialHeadingId}
             ref={credentialHeadingRef}
             tabIndex={-1}
             className="text-sm font-bold text-brand"
@@ -426,17 +496,17 @@ export function AdminVolunteers({
               variant="secondary"
               disabled={busy}
               aria-expanded={showForm}
-              aria-controls="volunteer-create-form"
+              aria-controls={copy.formId}
               onClick={() => {
                 setShowForm(true);
                 setError(null);
                 setOk(null);
               }}
             >
-              Register new volunteer
+              {copy.addButton}
             </Button>
           ) : (
-            <form id="volunteer-create-form" onSubmit={onSubmit} className="space-y-3">
+            <form id={copy.formId} onSubmit={onSubmit} className="space-y-3">
               <p className="text-sm text-muted">
                 A secure temporary password is generated after creation and
                 shown only once. They sign in at <strong>Staff login</strong>.
@@ -447,7 +517,7 @@ export function AdminVolunteers({
                 disabled={busy}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Volunteer name"
+                placeholder={copy.namePlaceholder}
               />
               <Input
                 label="Email"
@@ -456,12 +526,17 @@ export function AdminVolunteers({
                 disabled={busy}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="volunteer@example.com"
-                hint="Must stay the same — they sign in with this email"
+                placeholder={copy.emailPlaceholder}
+                hint={copy.emailHint}
               />
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="submit" loading={loading} disabled={busy} variant="secondary">
-                  Create volunteer & get password
+                <Button
+                  type="submit"
+                  loading={loading}
+                  disabled={busy}
+                  variant="secondary"
+                >
+                  {copy.createSubmit}
                 </Button>
                 <Button
                   type="button"

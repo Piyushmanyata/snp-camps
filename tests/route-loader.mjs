@@ -25,6 +25,7 @@ const exact = new Map([
     "@/lib/supabase/admin",
     pathToFileURL(path.join(stubs, "service-role-admin.mjs")).href,
   ],
+  ["next/cache", pathToFileURL(path.join(stubs, "next-cache.mjs")).href],
 ]);
 
 function resolveAt(base, rel) {

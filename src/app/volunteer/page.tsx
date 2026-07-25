@@ -48,10 +48,10 @@ const QrScanner = dynamic(
   },
 );
 
-const AdminVolunteers = dynamic(
+const AdminStaff = dynamic(
   () =>
-    import("@/components/admin-volunteers").then((m) => ({
-      default: m.AdminVolunteers,
+    import("@/components/admin-staff").then((m) => ({
+      default: m.AdminStaff,
     })),
   {
     loading: () => (
@@ -128,7 +128,7 @@ export default async function VolunteerPage() {
           </Card>
           <Card>
             <Suspense fallback={<p role="status" className="py-4 text-xs text-muted">Loading volunteers…</p>}>
-              <AdminVolunteers initial={volunteers || []} canManage />
+              <AdminStaff role="volunteer" initial={volunteers || []} canManage />
             </Suspense>
           </Card>
         </div>

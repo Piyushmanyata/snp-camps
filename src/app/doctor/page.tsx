@@ -24,10 +24,10 @@ const QrScanner = dynamic(
   },
 );
 
-const AdminDoctors = dynamic(
+const AdminStaff = dynamic(
   () =>
-    import("@/components/admin-doctors").then((m) => ({
-      default: m.AdminDoctors,
+    import("@/components/admin-staff").then((m) => ({
+      default: m.AdminStaff,
     })),
   {
     loading: () => (
@@ -209,7 +209,7 @@ export default async function DoctorPage() {
             </div>
           </Card>
           <Card>
-            <AdminDoctors initial={doctorsFull || []} canManage />
+            <AdminStaff role="doctor" initial={doctorsFull || []} canManage />
           </Card>
         </div>
       </Shell>

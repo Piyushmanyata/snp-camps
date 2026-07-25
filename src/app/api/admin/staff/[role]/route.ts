@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody, requireAdmin } from "@/lib/auth";
+
+export type StaffRole = "doctor" | "volunteer";
+
+const STAFF_ROLES = new Set<string>(["doctor", "volunteer"]);
 
 /** Shareable temporary password: 14 chars, no ambiguous glyphs. */
 function generateTemporaryPassword(length = 14): string {
@@ -12,27 +17,58 @@ function generateTemporaryPassword(length = 14): string {
   return out;
 }
 
-export async function GET() {
+function roleLabel(role: StaffRole): string {
+  return role === "doctor" ? "Doctor" : "Volunteer";
+}
+
+async function parseRole(
+  params: Promise<{ role: string }>,
+): Promise<StaffRole | NextResponse> {
+  const { role: raw } = await params;
+  if (!STAFF_ROLES.has(raw)) {
+    return NextResponse.json({ error: "Invalid staff role" }, { status: 400 });
+  }
+  return raw as StaffRole;
+}
+
+/** Invalidate desk caches that depend on staff lists (over-invalidate is cheap). */
+function invalidateStaffCaches() {
+  revalidateTag("doctors-list", { expire: 0 });
+}
+
+type RouteCtx = { params: Promise<{ role: string }> };
+
+export async function GET(_req: Request, { params }: RouteCtx) {
+  const roleOrErr = await parseRole(params);
+  if (roleOrErr instanceof NextResponse) return roleOrErr;
+
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
 
+  const role = roleOrErr;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, email, phone, role, created_at, disabled_at")
-    .eq("role", "volunteer")
+    .eq("role", role)
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ volunteers: data || [] });
+  return NextResponse.json({ staff: data || [] });
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request, { params }: RouteCtx) {
+  const roleOrErr = await parseRole(params);
+  if (roleOrErr instanceof NextResponse) return roleOrErr;
+
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
+
+  const role = roleOrErr;
+  const label = roleLabel(role);
 
   const body = await readJsonBody<{
     fullName?: string;
@@ -89,7 +125,7 @@ export async function POST(req: Request) {
 
   const { error: profileErr } = await admin.from("profiles").upsert({
     id: created.user.id,
-    role: "volunteer",
+    role,
     full_name: fullName,
     email,
   });
@@ -97,28 +133,39 @@ export async function POST(req: Request) {
   if (profileErr) {
     await admin.auth.admin.deleteUser(created.user.id);
     return NextResponse.json(
-      { error: "Volunteer account could not be provisioned. Try again." },
+      { error: `${label} account could not be provisioned. Try again.` },
       { status: 500 },
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    temporaryPassword: password,
-    volunteer: {
-      id: created.user.id,
-      full_name: fullName,
-      email,
-      role: "volunteer",
+  invalidateStaffCaches();
+
+  return NextResponse.json(
+    {
+      ok: true,
+      temporaryPassword: password,
+      staff: {
+        id: created.user.id,
+        full_name: fullName,
+        email,
+        role,
+      },
     },
-  }, {
-    headers: { "Cache-Control": "no-store" },
-  });
+    {
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: Request, { params }: RouteCtx) {
+  const roleOrErr = await parseRole(params);
+  if (roleOrErr instanceof NextResponse) return roleOrErr;
+
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
+
+  const role = roleOrErr;
+  const label = roleLabel(role);
 
   const body = await readJsonBody<{
     id?: string;
@@ -133,13 +180,13 @@ export async function PATCH(req: Request) {
     )
   ) {
     return NextResponse.json(
-      { error: "Valid volunteer id required" },
+      { error: `Valid ${role} id required` },
       { status: 400 },
     );
   }
   if (action !== "reset_password" && action !== "reactivate") {
     return NextResponse.json(
-      { error: "Invalid volunteer action" },
+      { error: `Invalid ${role} action` },
       { status: 400 },
     );
   }
@@ -160,12 +207,12 @@ export async function PATCH(req: Request) {
 
   if (profileError) {
     return NextResponse.json(
-      { error: "Volunteer account could not be checked." },
+      { error: `${label} account could not be checked.` },
       { status: 500 },
     );
   }
-  if (!profile || profile.role !== "volunteer") {
-    return NextResponse.json({ error: "Volunteer not found" }, { status: 404 });
+  if (!profile || profile.role !== role) {
+    return NextResponse.json({ error: `${label} not found` }, { status: 404 });
   }
 
   if (action === "reactivate") {
@@ -175,7 +222,7 @@ export async function PATCH(req: Request) {
     });
     if (unbanError) {
       return NextResponse.json(
-        { error: "Volunteer sign-in could not be reactivated. Try again." },
+        { error: `${label} sign-in could not be reactivated. Try again.` },
         { status: 500 },
       );
     }
@@ -183,7 +230,7 @@ export async function PATCH(req: Request) {
     if (!disabledAt) {
       return NextResponse.json({
         ok: true,
-        volunteer: { ...profile, disabled_at: null },
+        staff: { ...profile, disabled_at: null },
       });
     }
 
@@ -191,7 +238,7 @@ export async function PATCH(req: Request) {
       .from("profiles")
       .update({ disabled_at: null })
       .eq("id", id)
-      .eq("role", "volunteer")
+      .eq("role", role)
       .eq("disabled_at", disabledAt)
       .select("id, full_name, email, phone, role, created_at, disabled_at")
       .maybeSingle();
@@ -203,19 +250,20 @@ export async function PATCH(req: Request) {
       return NextResponse.json(
         {
           error: rebanError
-            ? "Volunteer profile stayed disabled, but the sign-in ban could not be restored. Retry deactivation immediately."
-            : "Volunteer account changed during reactivation. Refresh and retry.",
+            ? `${label} profile stayed disabled, but the sign-in ban could not be restored. Retry deactivation immediately.`
+            : `${label} account changed during reactivation. Refresh and retry.`,
         },
         { status: reactivateError || rebanError ? 500 : 409 },
       );
     }
 
-    return NextResponse.json({ ok: true, volunteer: reactivated });
+    invalidateStaffCaches();
+    return NextResponse.json({ ok: true, staff: reactivated });
   }
 
   if (profile.disabled_at) {
     return NextResponse.json(
-      { error: "Active volunteer not found" },
+      { error: `Active ${role} not found` },
       { status: 404 },
     );
   }
@@ -226,16 +274,18 @@ export async function PATCH(req: Request) {
   });
   if (resetError) {
     return NextResponse.json(
-      { error: "Volunteer password could not be reset. Try again." },
+      { error: `${label} password could not be reset. Try again.` },
       { status: 500 },
     );
   }
+
+  invalidateStaffCaches();
 
   return NextResponse.json(
     {
       ok: true,
       temporaryPassword,
-      volunteer: {
+      staff: {
         id: profile.id,
         full_name: profile.full_name,
         email: profile.email,
@@ -245,9 +295,15 @@ export async function PATCH(req: Request) {
   );
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: Request, { params }: RouteCtx) {
+  const roleOrErr = await parseRole(params);
+  if (roleOrErr instanceof NextResponse) return roleOrErr;
+
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
+
+  const role = roleOrErr;
+  const label = roleLabel(role);
 
   const url = new URL(req.url);
   let id = url.searchParams.get("id")?.trim() || "";
@@ -262,7 +318,10 @@ export async function DELETE(req: Request) {
       id,
     )
   ) {
-    return NextResponse.json({ error: "Valid volunteer id required" }, { status: 400 });
+    return NextResponse.json(
+      { error: `Valid ${role} id required` },
+      { status: 400 },
+    );
   }
 
   if (id === auth.userId) {
@@ -289,11 +348,8 @@ export async function DELETE(req: Request) {
   if (pErr) {
     return NextResponse.json({ error: pErr.message }, { status: 400 });
   }
-  if (!profile || profile.role !== "volunteer") {
-    return NextResponse.json(
-      { error: "Volunteer not found" },
-      { status: 404 },
-    );
+  if (!profile || profile.role !== role) {
+    return NextResponse.json({ error: `${label} not found` }, { status: 404 });
   }
 
   let disabledAt = profile.disabled_at;
@@ -304,13 +360,13 @@ export async function DELETE(req: Request) {
       .from("profiles")
       .update({ disabled_at: candidate })
       .eq("id", id)
-      .eq("role", "volunteer")
+      .eq("role", role)
       .is("disabled_at", null)
       .select("disabled_at")
       .maybeSingle();
     if (disableErr) {
       return NextResponse.json(
-        { error: "Volunteer account could not be deactivated." },
+        { error: `${label} account could not be deactivated.` },
         { status: 500 },
       );
     }
@@ -318,7 +374,9 @@ export async function DELETE(req: Request) {
     changedByThisRequest = Boolean(disabledAt);
     if (!disabledAt) {
       return NextResponse.json(
-        { error: "Volunteer account changed during deactivation. Refresh and retry." },
+        {
+          error: `${label} account changed during deactivation. Refresh and retry.`,
+        },
         { status: 409 },
       );
     }
@@ -341,12 +399,13 @@ export async function DELETE(req: Request) {
       {
         error:
           changedByThisRequest && !rollbackFailed
-            ? "Volunteer sign-in could not be disabled; the profile change was rolled back."
-            : "Volunteer remains deactivated, but the sign-in ban could not be confirmed. Retry to enforce the ban.",
+            ? `${label} sign-in could not be disabled; the profile change was rolled back.`
+            : `${label} remains deactivated, but the sign-in ban could not be confirmed. Retry to enforce the ban.`,
       },
       { status: 500 },
     );
   }
 
+  invalidateStaffCaches();
   return NextResponse.json({ ok: true, id, disabledAt });
 }
