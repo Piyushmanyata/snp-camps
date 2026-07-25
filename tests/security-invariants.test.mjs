@@ -78,8 +78,11 @@ function baselineMigrationPath() {
 test("every public table in the baseline migration has RLS enabled", () => {
   const relative = baselineMigrationPath();
   const schema = read(relative);
+  // pg_dump may quote identifiers: public.patients or "public"."patients"
   const tables = [
-    ...schema.matchAll(/CREATE TABLE(?:\s+IF NOT EXISTS)?\s+public\.([a-z_]+)/gi),
+    ...schema.matchAll(
+      /CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(?:"?public"?\.)"?([a-z_]+)"?/gi,
+    ),
   ].map((m) => m[1].toLowerCase());
 
   assert.ok(
@@ -89,7 +92,7 @@ test("every public table in the baseline migration has RLS enabled", () => {
 
   for (const table of tables) {
     const enabled = new RegExp(
-      `ALTER TABLE public\\.${table}\\s+ENABLE ROW LEVEL SECURITY`,
+      `ALTER TABLE\\s+(?:"?public"?\\.)?"?${table}"?\\s+ENABLE ROW LEVEL SECURITY`,
       "i",
     );
     assert.match(
@@ -201,19 +204,27 @@ test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () 
   assert.match(volunteer, /isStaff\(profile\?\.role\)/);
   assert.doesNotMatch(volunteer, /isDoctor\(profile\?\.role\)\)\s*redirect/);
 
-  const baseline = read(baselineMigrationPath());
-  const sqlStaff = baseline.match(
-    /CREATE FUNCTION public\.is_staff\(\)[\s\S]*?\$\$;/,
+  // Baseline is a production dump; is_camp_crew lives in the #10 split migration.
+  const migrationsDir = path.join(root, "supabase", "migrations");
+  const sqlAll = fs
+    .readdirSync(migrationsDir)
+    .filter((name) => /^\d+_.*\.sql$/.test(name))
+    .sort()
+    .map((name) => read(path.join("supabase", "migrations", name)))
+    .join("\n");
+
+  const sqlStaff = sqlAll.match(
+    /CREATE(?: OR REPLACE)? FUNCTION\s+(?:"?public"?\.)?"?is_staff"?\(\)[\s\S]*?\$\$;/,
   )?.[0];
   assert.ok(sqlStaff, "SQL is_staff");
   assert.match(sqlStaff, /role in \('admin', 'volunteer'\)/);
   assert.doesNotMatch(sqlStaff, /'doctor'/);
 
-  const sqlCrew = baseline.match(
-    /CREATE FUNCTION public\.is_camp_crew\(\)[\s\S]*?\$\$;/,
+  const sqlCrew = sqlAll.match(
+    /CREATE(?: OR REPLACE)? FUNCTION\s+(?:"?public"?\.)?"?is_camp_crew"?\(\)[\s\S]*?\$\$;/,
   )?.[0];
   assert.ok(sqlCrew, "SQL is_camp_crew");
   assert.match(sqlCrew, /role in \('admin', 'volunteer', 'doctor'\)/);
 
-  assert.match(baseline, /if not public\.is_camp_crew\(\)/);
+  assert.match(sqlAll, /if not public\.is_camp_crew\(\)/);
 });
