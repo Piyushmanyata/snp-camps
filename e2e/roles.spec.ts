@@ -144,6 +144,34 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("volunteer doctor picker is populated (not silently empty)", async ({
+  page,
+}) => {
+  await loginStaff(page, "volunteer");
+  await expect(
+    page.getByRole("heading", { name: "Volunteer desk" }),
+  ).toBeVisible();
+
+  // Error path must not appear when service-role is configured.
+  await expect(
+    page.getByText("Doctor list unavailable. Tell an admin."),
+  ).toHaveCount(0);
+  await expect(page.getByText("No doctors added yet.")).toHaveCount(0);
+
+  await page.getByLabel("Reg no / QR link").fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByRole("button", { name: "Look up patient" }).click();
+  const review = page.getByRole("region", {
+    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+  });
+  await expect(review).toBeVisible();
+
+  const doctorPicker = review.getByRole("group", { name: "Select doctor" });
+  await expect(doctorPicker).toBeVisible();
+  await expect(
+    doctorPicker.getByRole("button", { name: /Codex E2E doctor/i }),
+  ).toBeVisible();
+});
+
 test("doctor can sign in and review without mutating patient status", async ({
   page,
 }) => {

@@ -19,6 +19,12 @@ export type Camp = {
   created_at: string;
 };
 
+/** Doctor picker option shared by desk RSC loaders and client scanners. */
+export type DoctorOption = {
+  id: string;
+  full_name: string | null;
+};
+
 export type CampDayStats = {
   id: string;
   camp_id: string;

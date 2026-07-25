@@ -16,11 +16,7 @@ import {
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import { mapDbError } from "@/lib/public-error";
-
-export type DoctorOption = {
-  id: string;
-  full_name: string | null;
-};
+import type { DoctorOption } from "@/lib/types";
 
 type LookupRow = {
   id: string;
@@ -846,8 +842,7 @@ export function QrScanner({
               </div>
               {doctors.length === 0 ? (
                 <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                  No doctors yet. Admin must add doctors first — or a doctor can
-                  self-scan.
+                  No doctors added yet.
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
@@ -945,7 +940,7 @@ export function QrScanner({
               </p>
               {doctors.length === 0 ? (
                 <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                  No doctors yet. Admin must add doctors first.
+                  No doctors added yet.
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">

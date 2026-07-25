@@ -13,7 +13,7 @@ import {
   Spinner,
 } from "@/components/ui";
 import { Toast } from "@/components/toast";
-import type { DoctorOption } from "@/components/qr-scanner";
+import type { DoctorOption } from "@/lib/types";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 import { mapDbError } from "@/lib/public-error";
 
@@ -284,7 +284,7 @@ export function LiveQueue({
                 </p>
                 {doctors.length === 0 ? (
                   <p className="text-xs text-amber-800">
-                    No doctors yet — ask admin to add doctors.
+                    No doctors added yet.
                   </p>
                 ) : (
                   <div

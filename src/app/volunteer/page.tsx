@@ -17,10 +17,13 @@ import {
   Shell,
   Stat,
 } from "@/components/ui";
-import type { DoctorOption } from "@/components/qr-scanner";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
-import { getDoctorsList } from "@/lib/metadata";
+import {
+  DOCTOR_LIST_UNAVAILABLE,
+  getDoctorsList,
+} from "@/lib/metadata";
+import type { DoctorOption } from "@/lib/types";
 import { mapDbError } from "@/lib/public-error";
 import { SectionLoadError } from "@/components/section-load-error";
 
@@ -204,7 +207,7 @@ export default async function VolunteerPage() {
     if (!doctorsOutcome.ok) {
       doctorsError = mapDbError(doctorsOutcome.err, {
         context: "volunteer-page.doctors",
-        fallback: "Doctor list could not be loaded — retry.",
+        fallback: DOCTOR_LIST_UNAVAILABLE,
       });
     } else {
       doctors = doctorsOutcome.list;
@@ -347,7 +350,7 @@ export default async function VolunteerPage() {
                 disabledReason={
                   camp
                     ? doctorsError
-                      ? "Doctor list unavailable — retry above, then scan."
+                      ? DOCTOR_LIST_UNAVAILABLE
                       : undefined
                     : "No active camp. Ask an admin to activate a camp first."
                 }
