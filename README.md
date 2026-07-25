@@ -33,6 +33,19 @@ Schema lives only under `supabase/migrations/`. There is one **baseline**
 migration that reproduces the full current schema on an empty database, plus
 any later incremental files. The CLI keeps the migration ledger.
 
+**Baseline is append-never.** Do not edit
+`supabase/migrations/*_baseline_*.sql` after it is committed. Every schema
+change is a new file from `npx supabase migration new <descriptive_name>`.
+Hand-editing the baseline is how the ledger and production drift apart.
+
+**Before any `db push`:** run `npx supabase migration list` against the linked
+project and confirm every local file has a definite remote status
+(applied or pending). If the remote column is empty for a file that already
+exists in production (e.g. after a squash), repair the ledger with
+`npx supabase migration repair --status applied <version>` — that writes a
+history row only and **does not** execute SQL. Never treat an empty remote
+column as “safe to push.”
+
 **Empty project (local or new remote):**
 
 ```bash
@@ -40,13 +53,12 @@ npx supabase start          # local Docker stack (optional)
 npx supabase db reset       # apply all local migrations on a clean DB
 # or, linked remote empty project:
 npx supabase link           # prompts for project ref; uses dashboard DB password
+npx supabase migration list # confirm ledger before push
 npx supabase db push        # applies pending migrations transactionally
 ```
 
 Do **not** re-run the baseline against a database that already has this schema
-(production already does). If remote migration history needs aligning after a
-squash, use `npx supabase migration repair` only with an explicit plan — never
-as a casual fix.
+(production already does). Do **not** run `db reset` against production.
 
 **How to change the schema:**
 
