@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getSessionProfile,
   isStaff,
-  isDoctor,
   isAdmin,
   roleHome,
 } from "@/lib/auth";
@@ -63,10 +62,11 @@ const AdminVolunteers = dynamic(
 
 export default async function VolunteerPage() {
   const { profile } = await getSessionProfile();
+  // Staff only (admin | volunteer). Doctors hit roleHome → /doctor; no
+  // second-order redirect that depends on check order.
   if (!isStaff(profile?.role)) {
     redirect(roleHome(profile?.role) || "/login");
   }
-  if (isDoctor(profile?.role)) redirect("/doctor");
 
   const supabase = await createClient();
   const admin = isAdmin(profile?.role);

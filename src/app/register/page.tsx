@@ -1,7 +1,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSessionProfile, isStaff } from "@/lib/auth";
+import { getSessionProfile, isStaff, isDoctor, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { createClient } from "@/lib/supabase/server";
 import { Card, EmptyState, Shell } from "@/components/ui";
@@ -23,10 +23,13 @@ export default async function RegisterPage() {
   ]);
   const { userId, profile } = session;
   const days = camp?.days || [];
-  const staff = isStaff(profile?.role);
   const role = profile?.role;
 
-  if (role === "doctor") redirect("/doctor");
+  // Doctors are camp crew, not staff — send them to their desk before any
+  // public registration UI. Guard is role-specific, not order-dependent on isStaff.
+  if (isDoctor(role)) redirect(roleHome(role) || "/doctor");
+
+  const staff = isStaff(role);
   if (role === "patient" && userId && camp) {
     const supabase = await createClient();
     const { data: existing, error } = await supabase

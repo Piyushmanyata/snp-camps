@@ -118,7 +118,8 @@ export async function POST(req: Request) {
     return true;
   }
 
-  // Already linked — only the patient session or staff may provision credentials.
+  // Already linked — only the patient session or Staff (admin|volunteer) may
+  // reset credentials. Doctors are camp crew, not staff — must not reset.
   if (patient.user_id) {
     const { userId, profile } = await getSessionProfile();
     const allowed = userId === patient.user_id || isStaff(profile?.role);
@@ -192,7 +193,7 @@ export async function POST(req: Request) {
     });
   }
 
-  // Unlinked rows are desk-created.
+  // Unlinked rows are desk-created; only Staff (admin|volunteer) may provision.
   const { profile } = await getSessionProfile();
   if (!adminProvisionRequested || !isStaff(profile?.role)) {
     return NextResponse.json({ error: "Staff authorization required" }, { status: 403 });

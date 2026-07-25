@@ -24,6 +24,14 @@ import { normalizePhoneE164 } from "../src/lib/phone.ts";
 import { sensitiveProviderUrl } from "../src/lib/provider-url.ts";
 import { isSuccessfulAssignment } from "../src/lib/queue-assignment.ts";
 import { queueLabel, queueTone } from "../src/lib/types.ts";
+import {
+  canRegisterPatients,
+  isAdmin,
+  isCampCrew,
+  isDoctor,
+  isStaff,
+  roleHome,
+} from "../src/lib/roles.ts";
 import { validateSupabaseProjectUrl } from "../scripts/bootstrap-admin.mjs";
 
 const VALID_UUID = "e3b0c442-98fc-41c4-a012-3456789abcde";
@@ -105,6 +113,30 @@ test("isPatientUuid and resolveOrigin validate inputs", () => {
   assert.equal(resolveOrigin("https://camp.example/"), "https://camp.example");
   assert.equal(resolveOrigin("https://camp.example"), "https://camp.example");
   assert.equal(resolveOrigin(null), "");
+});
+
+test("Staff excludes doctor; Camp crew includes all three desk roles", () => {
+  for (const role of ["admin", "volunteer"]) {
+    assert.equal(isStaff(role), true, `isStaff(${role})`);
+    assert.equal(isCampCrew(role), true, `isCampCrew(${role})`);
+    assert.equal(canRegisterPatients(role), true);
+  }
+  assert.equal(isStaff("doctor"), false);
+  assert.equal(canRegisterPatients("doctor"), false);
+  assert.equal(isCampCrew("doctor"), true);
+  assert.equal(isDoctor("doctor"), true);
+  assert.equal(isAdmin("admin"), true);
+  assert.equal(isAdmin("volunteer"), false);
+
+  assert.equal(isStaff("patient"), false);
+  assert.equal(isCampCrew("patient"), false);
+  assert.equal(isStaff(null), false);
+  assert.equal(isCampCrew(undefined), false);
+
+  assert.equal(roleHome("doctor"), "/doctor");
+  assert.equal(roleHome("volunteer"), "/volunteer");
+  assert.equal(roleHome("admin"), "/admin");
+  assert.equal(roleHome("patient"), "/patient");
 });
 
 test("registration number parser rejects overflow and malformed values", () => {

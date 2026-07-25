@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import type { Profile, UserRole } from "@/lib/types";
+import type { Profile } from "@/lib/types";
 import { cache } from "react";
+
+export {
+  isStaff,
+  isCampCrew,
+  isAdmin,
+  isDoctor,
+  canRegisterPatients,
+  roleHome,
+} from "@/lib/roles";
 
 export const getSessionProfile = cache(async (): Promise<{
   userId: string | null;
@@ -38,30 +47,6 @@ export const getSessionProfile = cache(async (): Promise<{
 
   return { userId, profile: profile as Profile };
 });
-
-export function isStaff(role?: UserRole | null) {
-  return role === "admin" || role === "volunteer" || role === "doctor";
-}
-
-export function isAdmin(role?: UserRole | null) {
-  return role === "admin";
-}
-
-export function isDoctor(role?: UserRole | null) {
-  return role === "doctor";
-}
-
-export function canRegisterPatients(role?: UserRole | null) {
-  return role === "admin" || role === "volunteer";
-}
-
-export function roleHome(role?: UserRole | null) {
-  if (role === "admin") return "/admin";
-  if (role === "volunteer") return "/volunteer";
-  if (role === "doctor") return "/doctor";
-  if (role === "patient") return "/patient";
-  return null;
-}
 
 /** API guard: requires signed-in admin. Returns JSON error response or user+profile. */
 export async function requireAdmin() {

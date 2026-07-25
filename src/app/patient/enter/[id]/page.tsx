@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
-import { getSessionProfile, isStaff } from "@/lib/auth";
+import { getSessionProfile, isCampCrew } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 
 /**
- * Staff-scan QR entry — never logs patients in.
+ * Camp-crew QR entry — never logs patients in.
  *
- * Staff (volunteer / doctor / admin) are routed to their own desk. The scanner
- * performs a read-only lookup; patient state changes only after confirmation.
+ * Camp crew (volunteer / doctor / admin) are routed to their own desk. The
+ * scanner performs a read-only lookup; patient state changes only after
+ * confirmation.
  *
  * Anyone else → "show this at the desk" help page.
  *
@@ -26,7 +27,7 @@ export default async function PatientEnterPage({
   }
 
   const { profile } = await getSessionProfile();
-  if (!isStaff(profile?.role)) {
+  if (!isCampCrew(profile?.role)) {
     redirect(`/patient/qr-help?id=${encodeURIComponent(id)}`);
   }
 

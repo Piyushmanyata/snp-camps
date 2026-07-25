@@ -5,9 +5,13 @@
 * **Camp**: A medical camp event organized by Sikar Nagarik Parishad. Only one camp can be active at a time.
 * **Camp Day**: A specific calendar date on which a camp operates.
 * **Patient**: An individual registering for medical examination. Authenticated via phone OTP and assigned a sequential registration number (`reg{N}@patients.snp.local`).
-* **Patient QR**: A unique patient identification QR code containing payload `/p/{uuid}` for staff scanning (not for login).
+* **Staff**: An admin or volunteer. Runs the volunteer desk and patient management (register, print, provision logins, change camp day). Does **not** include doctor. Predicates: TypeScript `isStaff`, SQL `is_staff()`.
+  _Avoid_: Using “staff” for doctors or for “any signed-in camp role.”
+* **Camp crew**: An admin, volunteer, or doctor — any non-patient operational role at a camp. Used for QR scan handoff and role-desk access that all three share. Predicates: TypeScript `isCampCrew`, SQL `is_camp_crew()`.
+  _Avoid_: Calling this “staff” (that term excludes doctors).
+* **Patient QR**: A unique patient identification QR code containing payload `/p/{uuid}` for camp-crew scanning (not for login).
 * **FCFS Queue**: First-Come, First-Served line of registered patients waiting for doctor examination (`waiting` status).
-* **Volunteer Desk**: Station operated by volunteers for patient onboarding, Aadhaar auto-fill, desk slip printing, queue routing, and doctor assignment.
+* **Volunteer Desk**: Station operated by staff (volunteers; admins may act as staff) for patient onboarding, Aadhaar auto-fill, desk slip printing, queue routing, and doctor assignment.
 * **Doctor Station**: View used by attending doctors to scan patient QR codes, review records, and mark patient as `seen`.
 * **Desk Print / Slip**: Optional physical registration token printed at the volunteer desk for queue tracking.
 * **Seen**: Final state of patient consultation. Re-scanning a `seen` patient is permanently blocked.

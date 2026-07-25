@@ -99,3 +99,47 @@ test("every public table in the baseline migration has RLS enabled", () => {
     );
   }
 });
+
+test("Staff vs Camp crew predicates stay aligned across TypeScript and SQL", () => {
+  const roles = read("src/lib/roles.ts");
+  const staffFn = roles.match(
+    /export function isStaff\([^)]*\) \{[^}]+\}/,
+  )?.[0];
+  assert.ok(staffFn, "isStaff function body");
+  assert.match(staffFn, /"admin"/);
+  assert.match(staffFn, /"volunteer"/);
+  assert.doesNotMatch(staffFn, /"doctor"/);
+
+  const crewFn = roles.match(
+    /export function isCampCrew\([^)]*\) \{[^}]+\}/,
+  )?.[0];
+  assert.ok(crewFn, "isCampCrew function body");
+  assert.match(crewFn, /"doctor"/);
+
+  const account = read("src/app/api/patient-account/route.ts");
+  assert.match(account, /isStaff\(profile\?\.role\)/);
+  assert.doesNotMatch(account, /isCampCrew/);
+
+  const enter = read("src/app/patient/enter/[id]/page.tsx");
+  assert.match(enter, /isCampCrew\(profile\?\.role\)/);
+
+  const volunteer = read("src/app/volunteer/page.tsx");
+  assert.match(volunteer, /isStaff\(profile\?\.role\)/);
+  assert.doesNotMatch(volunteer, /isDoctor\(profile\?\.role\)\)\s*redirect/);
+
+  const baseline = read(baselineMigrationPath());
+  const sqlStaff = baseline.match(
+    /CREATE FUNCTION public\.is_staff\(\)[\s\S]*?\$\$;/,
+  )?.[0];
+  assert.ok(sqlStaff, "SQL is_staff");
+  assert.match(sqlStaff, /role in \('admin', 'volunteer'\)/);
+  assert.doesNotMatch(sqlStaff, /'doctor'/);
+
+  const sqlCrew = baseline.match(
+    /CREATE FUNCTION public\.is_camp_crew\(\)[\s\S]*?\$\$;/,
+  )?.[0];
+  assert.ok(sqlCrew, "SQL is_camp_crew");
+  assert.match(sqlCrew, /role in \('admin', 'volunteer', 'doctor'\)/);
+
+  assert.match(baseline, /if not public\.is_camp_crew\(\)/);
+});

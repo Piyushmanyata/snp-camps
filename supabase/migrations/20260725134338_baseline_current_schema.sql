@@ -599,6 +599,26 @@ $$;
 
 
 --
+-- Name: is_camp_crew(); Type: FUNCTION; Schema: public; Owner: -
+--
+-- Camp crew = admin | volunteer | doctor (any non-patient camp role).
+-- Distinct from is_staff() which is admin | volunteer only.
+
+CREATE FUNCTION public.is_camp_crew() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = (select auth.uid())
+      and p.role in ('admin', 'volunteer', 'doctor')
+      and p.disabled_at is null
+  );
+$$;
+
+
+--
 -- Name: link_patient_phone(text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -666,16 +686,14 @@ declare
   v_caller_role public.user_role;
   v_doctor_name text;
 begin
+  if not public.is_camp_crew() then
+    raise exception 'active camp crew only';
+  end if;
+
   select p.role
   into v_caller_role
   from public.profiles p
-  where p.id = (select auth.uid())
-    and p.role in ('admin', 'volunteer', 'doctor')
-    and p.disabled_at is null;
-
-  if v_caller_role is null then
-    raise exception 'active staff only';
-  end if;
+  where p.id = (select auth.uid());
 
   if p_patient_id is not null then
     select * into r
@@ -726,7 +744,7 @@ $$;
 -- Name: FUNCTION lookup_patient_scan(p_patient_id uuid, p_reg_no integer); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) IS 'Staff-only patient lookup for QR/reg scan. No side effects. QR is not for patient login.';
+COMMENT ON FUNCTION public.lookup_patient_scan(p_patient_id uuid, p_reg_no integer) IS 'Camp-crew patient lookup for QR/reg scan. No side effects. QR is not for patient login.';
 
 
 --
@@ -1859,6 +1877,14 @@ GRANT EXECUTE ON FUNCTION public.is_doctor() TO authenticated, service_role, pos
 
 REVOKE ALL ON FUNCTION public.is_staff() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_staff() TO authenticated, service_role, postgres;
+
+
+--
+-- Name: FUNCTION is_camp_crew(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.is_camp_crew() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_camp_crew() TO authenticated, service_role, postgres;
 
 
 --
