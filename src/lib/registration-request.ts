@@ -1,3 +1,5 @@
+import { publicRegistrationError } from "@/lib/public-error";
+
 /**
  * Stable idempotency key for one registration attempt.
  * Retries of the same walk-in reuse `id`; call `rotate()` after success or resetForm.
@@ -144,9 +146,15 @@ export async function submitRegistrationOutbound(options: {
       );
       const errMsg = result.error?.message || null;
       const dup = parseAadhaarDuplicateError(errMsg);
+      // Keep AADHAAR_DUPLICATE raw so the form can offer staff override;
+      // every other DB error is mapped to camp-worker copy (#31).
       return {
         data: result.data,
-        error: errMsg,
+        error: errMsg
+          ? dup
+            ? errMsg
+            : publicRegistrationError(result.error, "staff-register.rpc")
+          : null,
         aadhaarDuplicateRegNo: dup?.regNo ?? null,
       };
     } catch {

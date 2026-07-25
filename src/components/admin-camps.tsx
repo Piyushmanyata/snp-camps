@@ -11,6 +11,7 @@ import {
   Input,
 } from "@/components/ui";
 import type { Camp } from "@/lib/types";
+import { mapDbError } from "@/lib/public-error";
 
 export function AdminCamps({ camps }: { camps: Camp[] }) {
   const router = useRouter();
@@ -42,8 +43,14 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
         camp_date: campDate || null,
         is_active: camps.length === 0,
       });
-      if (err) setCreateError(err.message);
-      else {
+      if (err) {
+        setCreateError(
+          mapDbError(err, {
+            context: "admin-camps.create",
+            fallback: "Could not create the camp. Try again.",
+          }),
+        );
+      } else {
         setName("");
         setVenue("");
         setCampDate("");
@@ -65,12 +72,23 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
       const { error: err } = await supabase.rpc("set_active_camp", {
         p_camp_id: id,
       });
-      if (err) setCampError({ campId: id, message: err.message });
-      else router.refresh();
-    } catch {
+      if (err) {
+        setCampError({
+          campId: id,
+          message: mapDbError(err, {
+            context: "admin-camps.activate",
+            fallback: "Could not activate this camp. Try again.",
+          }),
+        });
+      } else router.refresh();
+    } catch (e) {
       setCampError({
         campId: id,
-        message: "Could not activate this camp. Check your connection and try again.",
+        message: mapDbError(e, {
+          context: "admin-camps.activate.network",
+          fallback:
+            "Could not activate this camp. Check your connection and try again.",
+        }),
       });
     } finally {
       setActivatingId(null);
@@ -94,12 +112,23 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
       const { error: err } = await supabase.rpc("delete_camp", {
         p_camp_id: c.id,
       });
-      if (err) setCampError({ campId: c.id, message: err.message });
-      else router.refresh();
-    } catch {
+      if (err) {
+        setCampError({
+          campId: c.id,
+          message: mapDbError(err, {
+            context: "admin-camps.delete",
+            fallback: "Could not delete this camp. Try again.",
+          }),
+        });
+      } else router.refresh();
+    } catch (e) {
       setCampError({
         campId: c.id,
-        message: "Could not delete this camp. Check your connection and try again.",
+        message: mapDbError(e, {
+          context: "admin-camps.delete.network",
+          fallback:
+            "Could not delete this camp. Check your connection and try again.",
+        }),
       });
     } finally {
       setDeletingId(null);

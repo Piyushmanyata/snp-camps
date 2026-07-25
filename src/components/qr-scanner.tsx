@@ -15,6 +15,7 @@ import {
 } from "@/lib/passcode-issued";
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
+import { mapDbError } from "@/lib/public-error";
 
 export type DoctorOption = {
   id: string;
@@ -197,7 +198,12 @@ export function QrScanner({
 
         if (err) {
           handledRef.current = false;
-          setError(err.message);
+          setError(
+            mapDbError(err, {
+              context: "qr-scanner.assign",
+              fallback: "Could not assign doctor. Try again.",
+            }),
+          );
           return null;
         }
 
@@ -281,7 +287,12 @@ export function QrScanner({
 
         if (err) {
           handledRef.current = false;
-          setError(err.message);
+          setError(
+            mapDbError(err, {
+              context: "qr-scanner.lookup",
+              fallback: "Could not look up this patient. Try again.",
+            }),
+          );
           return null;
         }
 

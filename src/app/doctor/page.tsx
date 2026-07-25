@@ -13,6 +13,8 @@ import {
   Stat,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
+import { mapDbError } from "@/lib/public-error";
+import { SectionLoadError } from "@/components/section-load-error";
 
 const QrScanner = dynamic(
   () =>
@@ -41,31 +43,30 @@ async function DoctorStatsSection({
 }: {
   campId: string;
 }) {
-  let seenToday = 0;
-  let myTotal = 0;
+  const supabase = await createClient();
+  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
 
-  try {
-    const supabase = await createClient();
-    const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
+  const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
+    p_camp_id: campId,
+    p_since: startOfDay.toISOString(),
+  });
 
-    const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
-      p_camp_id: campId,
-      p_since: startOfDay.toISOString(),
+  if (error) {
+    const message = mapDbError(error, {
+      context: "doctor-page.stats",
+      fallback: "Your stats could not be loaded — retry.",
     });
-    if (!error && countsRes?.[0]) {
-      seenToday = Number(countsRes[0].seen_today ?? 0);
-      myTotal = Number(countsRes[0].seen_total ?? 0);
-    }
-  } catch {
-    seenToday = 0;
-    myTotal = 0;
+    return <SectionLoadError message={message} />;
   }
+
+  const seenToday = Number(countsRes?.[0]?.seen_today ?? 0);
+  const myTotal = Number(countsRes?.[0]?.seen_total ?? 0);
 
   return (
     <div className="grid w-full grid-cols-2 gap-2">
@@ -80,25 +81,36 @@ async function DoctorSeenSection({
 }: {
   campId: string;
 }) {
-  let mySeen: {
+  const supabase = await createClient();
+  const { data: mySeenRes, error } = await supabase.rpc(
+    "doctor_recent_patients",
+    { p_camp_id: campId, p_limit: 50 },
+  );
+
+  if (error) {
+    const message = mapDbError(error, {
+      context: "doctor-page.seen",
+      fallback: "Patients you saw could not be loaded — retry.",
+    });
+    return (
+      <div id="seen">
+        <CollapsibleSection
+          title="Patients you saw"
+          hint="unavailable"
+          defaultOpen
+        >
+          <SectionLoadError message={message} />
+        </CollapsibleSection>
+      </div>
+    );
+  }
+
+  const mySeen = (mySeenRes || []) as {
     id: string;
     reg_no: number;
     full_name: string;
     seen_at: string | null;
-  }[] = [];
-
-  try {
-    const supabase = await createClient();
-    const { data: mySeenRes, error } = await supabase.rpc(
-      "doctor_recent_patients",
-      { p_camp_id: campId, p_limit: 50 },
-    );
-    if (!error && mySeenRes) {
-      mySeen = mySeenRes as typeof mySeen;
-    }
-  } catch {
-    mySeen = [];
-  }
+  }[];
 
   return (
     <div id="seen">
@@ -155,22 +167,17 @@ export default async function DoctorPage() {
   const admin = isAdmin(profile?.role);
 
   if (admin) {
-    let { data: doctorsFull, error } = await supabase
+    // No narrower-query fallback — column failures (incl. RLS) surface as errors.
+    const { data: doctorsFull, error } = await supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "doctor")
       .order("created_at", { ascending: false });
 
     if (error) {
-      const fallback = await supabase
-        .from("profiles")
-        .select("id, full_name, email, phone, role, created_at")
-        .eq("role", "doctor")
-        .order("created_at", { ascending: false });
-      doctorsFull = fallback.data as typeof doctorsFull;
-      error = fallback.error;
+      mapDbError(error, { context: "doctor-page.admin-list" });
+      throw new Error("Doctor desk data could not be loaded");
     }
-    if (error) throw new Error("Doctor desk data could not be loaded");
     const activeDoctors = doctorsFull?.filter((doctor) => !doctor.disabled_at).length ?? 0;
     const disabledDoctors = (doctorsFull?.length ?? 0) - activeDoctors;
 
@@ -223,6 +230,7 @@ export default async function DoctorPage() {
     .maybeSingle();
 
   if (campError) {
+    mapDbError(campError, { context: "doctor-page.active-camp" });
     throw new Error("Doctor desk data could not be loaded");
   }
 

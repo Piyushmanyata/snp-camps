@@ -4,6 +4,7 @@ import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody, requireAdmin } from "@/lib/auth";
+import { mapDbError } from "@/lib/public-error";
 
 export type StaffRole = "doctor" | "volunteer";
 
@@ -54,7 +55,15 @@ export async function GET(_req: Request, { params }: RouteCtx) {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: mapDbError(error, {
+          context: `admin-staff.${role}.list`,
+          fallback: "Staff list could not be loaded. Try again.",
+        }),
+      },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ staff: data || [] });
@@ -113,7 +122,10 @@ export async function POST(req: Request, { params }: RouteCtx) {
       {
         error: msg.includes("already")
           ? "That email is already registered. Share their existing login or use a different email."
-          : createErr.message,
+          : mapDbError(createErr, {
+              context: `admin-staff.${role}.create-user`,
+              fallback: `${label} account could not be created. Try again.`,
+            }),
       },
       { status: 400 },
     );
@@ -346,7 +358,15 @@ export async function DELETE(req: Request, { params }: RouteCtx) {
     .maybeSingle();
 
   if (pErr) {
-    return NextResponse.json({ error: pErr.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: mapDbError(pErr, {
+          context: `admin-staff.${role}.load`,
+          fallback: `${label} could not be loaded. Try again.`,
+        }),
+      },
+      { status: 400 },
+    );
   }
   if (!profile || profile.role !== role) {
     return NextResponse.json({ error: `${label} not found` }, { status: 404 });

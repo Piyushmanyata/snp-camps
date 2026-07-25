@@ -15,6 +15,7 @@ import {
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/components/qr-scanner";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
+import { mapDbError } from "@/lib/public-error";
 
 export type LiveQueuePatient = {
   id: string;
@@ -110,7 +111,12 @@ export function LiveQueue({
       });
 
       if (err) {
-        setError(err.message);
+        setError(
+          mapDbError(err, {
+            context: "live-queue.assign",
+            fallback: "Could not assign this patient. Try again.",
+          }),
+        );
         return;
       }
 

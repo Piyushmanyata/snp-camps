@@ -23,6 +23,7 @@ import {
   isPasscodeNeverIssued,
   PASSCODE_NEVER_ISSUED_MARKER,
 } from "@/lib/passcode-issued";
+import { mapDbError } from "@/lib/public-error";
 
 export type AdminPatientRow = {
   id: string;
@@ -301,7 +302,12 @@ export function AdminPatients({
         .eq("id", row.id);
 
       if (err) {
-        setError(err.message);
+        setError(
+          mapDbError(err, {
+            context: "admin-patients.delete",
+            fallback: "Could not remove this patient. Try again.",
+          }),
+        );
         return;
       }
 

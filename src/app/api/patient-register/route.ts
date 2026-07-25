@@ -4,6 +4,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { normalizePhoneE164 } from "@/lib/phone";
+import { publicRegistrationError } from "@/lib/public-error";
 
 type Body = {
   requestId?: string;
@@ -21,30 +22,6 @@ type Body = {
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function publicError(message?: string) {
-  if (!message) return "Registration failed. Try again or ask the desk.";
-  const aadhaarDup = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
-  if (aadhaarDup) {
-    return `A registration with this name and Aadhaar last-4 already exists (reg no ${aadhaarDup[1]}). Ask the desk if this is a different person.`;
-  }
-  if (/day is full|select a camp day/i.test(message)) {
-    return "That camp day is full. Choose another day.";
-  }
-  if (/already registered|duplicate key/i.test(message)) {
-    return "A matching registration already exists for this camp.";
-  }
-  if (/verification/i.test(message)) {
-    return "Verification expired. Verify again.";
-  }
-  if (/active camp|invalid camp day/i.test(message)) {
-    return "The selected camp or day is no longer available.";
-  }
-  if (/phone/i.test(message)) {
-    return "Enter a valid phone number, or leave phone blank at the desk.";
-  }
-  return "Registration failed. Try again or ask the desk.";
-}
 
 function normalizePhone10(raw: string | null | undefined) {
   return normalizePhoneE164(String(raw || ""))?.slice(-10) || "";
@@ -255,7 +232,7 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json(
-      { error: publicError(error.message) },
+      { error: publicRegistrationError(error, "patient-register.rpc") },
       { status: 409, headers },
     );
   }

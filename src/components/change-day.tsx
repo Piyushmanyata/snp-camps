@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Select, SuccessBox } from "@/components/ui";
+import { mapDbError } from "@/lib/public-error";
 
 export function ChangeDay({
   patientId,
@@ -79,7 +80,12 @@ export function ChangeDay({
         p_new_day_id: dayId,
       });
       if (err) {
-        setError(err.message);
+        setError(
+          mapDbError(err, {
+            context: "change-day.rpc",
+            fallback: "Could not change the day. Try again.",
+          }),
+        );
         return;
       }
       const row = Array.isArray(data) ? data[0] : data;

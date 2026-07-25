@@ -11,6 +11,7 @@ import {
   ErrorBox,
   Input,
 } from "@/components/ui";
+import { mapDbError } from "@/lib/public-error";
 
 export function AdminCampDays({
   campId,
@@ -68,8 +69,14 @@ export function AdminCampDays({
         p_seat_limit: limit,
         p_day_id: null,
       });
-      if (err) setAddError(err.message);
-      else {
+      if (err) {
+        setAddError(
+          mapDbError(err, {
+            context: "admin-camp-days.add",
+            fallback: "Could not save this camp day. Try again.",
+          }),
+        );
+      } else {
         setDayDate("");
         setSeats("100");
         await refresh();
@@ -113,8 +120,15 @@ export function AdminCampDays({
         p_seat_limit: limit,
         p_day_id: dayId,
       });
-      if (err) setDayError({ dayId, message: err.message });
-      else {
+      if (err) {
+        setDayError({
+          dayId,
+          message: mapDbError(err, {
+            context: "admin-camp-days.save-seats",
+            fallback: "Could not update the seat limit. Try again.",
+          }),
+        });
+      } else {
         setEditing((prev) => {
           const next = { ...prev };
           delete next[dayId];
@@ -144,12 +158,23 @@ export function AdminCampDays({
       const { error: err } = await supabase.rpc("delete_camp_day", {
         p_day_id: dayId,
       });
-      if (err) setDayError({ dayId, message: err.message });
-      else await refresh();
-    } catch {
+      if (err) {
+        setDayError({
+          dayId,
+          message: mapDbError(err, {
+            context: "admin-camp-days.delete",
+            fallback: "Could not delete this camp day. Try again.",
+          }),
+        });
+      } else await refresh();
+    } catch (e) {
       setDayError({
         dayId,
-        message: "Could not delete this camp day. Check your connection and try again.",
+        message: mapDbError(e, {
+          context: "admin-camp-days.delete.network",
+          fallback:
+            "Could not delete this camp day. Check your connection and try again.",
+        }),
       });
     } finally {
       setDeletingId(null);

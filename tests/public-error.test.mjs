@@ -1,0 +1,111 @@
+/**
+ * Behaviour tests for the shared DB → camp-worker error mapper (#31).
+ * Known codes map to safe copy; unknown codes never leak raw Postgres text.
+ */
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  mapDbError,
+  publicRegistrationError,
+} from "../src/lib/public-error.ts";
+
+test("known Postgres unique violation maps to camp-worker copy", () => {
+  const msg = mapDbError(
+    { code: "23505", message: 'duplicate key value violates unique constraint "camps_one_active"' },
+    { log: false },
+  );
+  assert.equal(msg, "That record already exists.");
+  assert.doesNotMatch(msg, /duplicate key|camps_one_active/i);
+});
+
+test("RLS / permission denial maps to permission copy", () => {
+  const msg = mapDbError(
+    {
+      code: "42501",
+      message: 'permission denied for table patients',
+    },
+    { log: false },
+  );
+  assert.equal(msg, "You do not have permission for this action.");
+  assert.doesNotMatch(msg, /permission denied for table/i);
+});
+
+test("foreign key violation maps without leaking table names", () => {
+  const msg = mapDbError(
+    {
+      code: "23503",
+      message:
+        'insert or update on table "camp_days" violates foreign key constraint "camp_days_camp_id_fkey"',
+    },
+    { log: false },
+  );
+  assert.equal(msg, "Related data is missing or still in use.");
+  assert.doesNotMatch(msg, /camp_days_camp_id_fkey|foreign key constraint/i);
+});
+
+test("AADHAAR_DUPLICATE keeps structured desk copy", () => {
+  const msg = mapDbError("AADHAAR_DUPLICATE:reg=1042", { log: false });
+  assert.match(msg, /reg no 1042/);
+  assert.doesNotMatch(msg, /AADHAAR_DUPLICATE/);
+});
+
+test("registration day-full phrase maps", () => {
+  const msg = publicRegistrationError(
+    { message: "day is full — select a camp day with seats" },
+    "test",
+  );
+  // publicRegistrationError logs by default; still maps cleanly
+  assert.equal(msg, "That camp day is full. Choose another day.");
+});
+
+test("unknown code maps to safe generic and never returns raw text", () => {
+  const raw =
+    "ERROR: relation \"secret_internal_table\" does not exist (SQLSTATE 42P01)";
+  const msg = mapDbError({ code: "42P01", message: raw }, { log: false });
+  assert.equal(msg, "Something went wrong. Try again or ask the desk.");
+  assert.doesNotMatch(msg, /secret_internal_table|42P01|SQLSTATE|relation/i);
+});
+
+test("unknown error logs raw text when log is enabled", () => {
+  const raw = "super_secret_postgres_detail_xyz";
+  /** @type {unknown[]} */
+  const calls = [];
+  const original = console.error;
+  console.error = (...args) => {
+    calls.push(args);
+  };
+  try {
+    const msg = mapDbError(
+      { code: "XX000", message: raw },
+      { context: "unit-test", log: true },
+    );
+    assert.equal(msg, "Something went wrong. Try again or ask the desk.");
+    assert.ok(calls.length >= 1, "console.error should be called");
+    const flat = JSON.stringify(calls);
+    assert.match(flat, /super_secret_postgres_detail_xyz/);
+    assert.match(flat, /unit-test/);
+    assert.doesNotMatch(msg, /super_secret/);
+  } finally {
+    console.error = original;
+  }
+});
+
+test("custom fallback is used when nothing matches", () => {
+  const msg = mapDbError(
+    { code: "XX000", message: "weird internal boom" },
+    { log: false, fallback: "Queue could not be loaded — retry." },
+  );
+  assert.equal(msg, "Queue could not be loaded — retry.");
+  assert.doesNotMatch(msg, /weird internal boom/);
+});
+
+test("publicRegistrationError uses registration fallback", () => {
+  const msg = mapDbError(
+    { message: "completely unknown xyz" },
+    {
+      log: false,
+      fallback: "Registration failed. Try again or ask the desk.",
+    },
+  );
+  assert.equal(msg, "Registration failed. Try again or ask the desk.");
+});
