@@ -47,66 +47,29 @@ test("cron rejects unauthenticated calls", async () => {
 test("cron with valid secret runs job (empty candidates)", async () => {
   await withCronSecret("super-secret", async () => {
     __setServiceRoleClient({
-      from() {
-        const chain = {
-          select() {
-            return chain;
-          },
-          eq() {
-            return chain;
-          },
-          is() {
-            return chain;
-          },
-          not() {
-            return chain;
-          },
-          then(resolve) {
-            resolve({ data: [], error: null });
-          },
-        };
-        // Make awaitable terminal: last .eq returns a thenable
-        chain.eq = function eq() {
+      from(table) {
+        if (table === "sms_deliveries") {
           return {
-            then(resolve) {
-              resolve({ data: [], error: null });
+            select() {
+              return {
+                eq() {
+                  return {
+                    in: async () => ({ data: [], error: null }),
+                  };
+                },
+              };
             },
-            eq: chain.eq,
-            is: chain.is,
-            not: chain.not,
-            select: chain.select,
           };
-        };
+        }
         return {
           select() {
             return {
               eq() {
                 return {
-                  is() {
+                  not() {
                     return {
-                      not() {
-                        return {
-                          eq() {
-                            return Promise.resolve({ data: [], error: null });
-                          },
-                        };
-                      },
-                    };
-                  },
-                };
-              },
-            };
-          },
-          update() {
-            return {
-              eq() {
-                return {
-                  is() {
-                    return {
-                      select() {
-                        return {
-                          maybeSingle: async () => ({ data: null, error: null }),
-                        };
+                      eq() {
+                        return Promise.resolve({ data: [], error: null });
                       },
                     };
                   },
@@ -115,6 +78,10 @@ test("cron with valid secret runs job (empty candidates)", async () => {
             };
           },
         };
+      },
+      rpc: async (fn) => {
+        if (fn === "prune_sms_deliveries") return { data: 0, error: null };
+        return { data: null, error: null };
       },
     });
 
@@ -130,6 +97,50 @@ test("cron with valid secret runs job (empty candidates)", async () => {
       assert.equal(body.ok, true);
       assert.equal(body.sent, 0);
       assert.ok(typeof body.tomorrow === "string");
+    } finally {
+      __resetServiceRoleClient();
+    }
+  });
+});
+
+test("cron list failure returns non-2xx and ok:false", async () => {
+  await withCronSecret("super-secret", async () => {
+    __setServiceRoleClient({
+      from() {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  not() {
+                    return {
+                      eq() {
+                        return Promise.resolve({
+                          data: null,
+                          error: { message: "relation missing" },
+                        });
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+      rpc: async () => ({ data: null, error: null }),
+    });
+    try {
+      const res = await POST(
+        new Request("http://local/api/cron/reminder-sms", {
+          method: "POST",
+          headers: { authorization: "Bearer super-secret" },
+        }),
+      );
+      assert.equal(res.status, 500);
+      const body = await res.json();
+      assert.equal(body.ok, false);
+      assert.match(String(body.error), /relation missing|list/i);
     } finally {
       __resetServiceRoleClient();
     }

@@ -39,6 +39,7 @@ test("GET test-sms requires admin and reports configuration", async () => {
   delete process.env.MSG91_AUTH_KEY;
   delete process.env.MSG91_SENDER_ID;
   delete process.env.MSG91_TEMPLATE_REGISTRATION;
+  // Session stub may lack rpc — route falls back to empty durable failures.
   const res = await GET();
   assert.equal(res.status, 200);
   const body = await res.json();

@@ -15,7 +15,12 @@ export type Msg91SendInput = {
 
 export type Msg91SendResult =
   | { ok: true; requestId?: string }
-  | { ok: false; detail: string };
+  | {
+      ok: false;
+      detail: string;
+      /** rejected = provider responded without send; uncertain = timeout/network */
+      failureKind?: "rejected" | "uncertain";
+    };
 
 const FLOW_URL = "https://control.msg91.com/api/v5/flow/";
 
@@ -67,6 +72,7 @@ export async function sendMsg91TemplateSms(
       return {
         ok: false,
         detail: `MSG91 HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`,
+        failureKind: res.status >= 500 ? "uncertain" : "rejected",
       };
     }
     let requestId: string | undefined;
@@ -85,6 +91,7 @@ export async function sendMsg91TemplateSms(
           detail: String(
             (parsed as { message?: string }).message || "MSG91 type=error",
           ).slice(0, 200),
+          failureKind: "rejected",
         };
       }
     } catch {
@@ -94,6 +101,10 @@ export async function sendMsg91TemplateSms(
   } catch (err) {
     const detail =
       err instanceof Error ? err.message : "MSG91 request failed";
-    return { ok: false, detail: detail.slice(0, 200) };
+    return {
+      ok: false,
+      detail: detail.slice(0, 200),
+      failureKind: "uncertain",
+    };
   }
 }

@@ -6,8 +6,10 @@ import {
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 /**
- * Vercel Cron: day-before reminder SMS (#52).
- * Auth: Authorization: Bearer $CRON_SECRET (Vercel sets this when CRON_SECRET is configured).
+ * Vercel Cron: day-before reminder SMS (#52 + #65).
+ * Auth: Authorization: Bearer $CRON_SECRET
+ * Job-level failures (list/schema/config) return non-2xx + ok:false.
+ * Per-patient failures still return 200 with truthful counts.
  */
 export async function GET(request: Request) {
   return handleCron(request);
@@ -31,7 +33,6 @@ async function handleCron(request: Request) {
 
   const supabase = createServiceRoleClient();
   if (!supabase) {
-    // Misconfig — do not throw; cron should not crash the platform.
     console.error("[reminder-sms] service role client unavailable");
     return NextResponse.json(
       { ok: false, error: "Service unavailable" },
@@ -42,14 +43,23 @@ async function handleCron(request: Request) {
   try {
     const store = createReminderJobStore(supabase);
     const summary = await runDayBeforeReminders(store);
+    if (!summary.ok) {
+      return NextResponse.json(summary, { status: 500 });
+    }
     return NextResponse.json(summary);
   } catch (err) {
-    // Belt-and-braces: job is designed not to throw; still never 500 the camp.
     const detail = err instanceof Error ? err.message : "reminder job failed";
-    console.error("[reminder-sms] unexpected", detail);
+    console.error("[reminder-sms] unexpected", detail.slice(0, 300));
     return NextResponse.json(
-      { ok: true, sent: 0, failed: 0, skipped: 0, error: detail },
-      { status: 200 },
+      {
+        ok: false,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        ambiguous: 0,
+        error: detail.slice(0, 300),
+      },
+      { status: 500 },
     );
   }
 }

@@ -8,6 +8,12 @@
 import { formatCampDaySms } from "@/lib/format-camp-day";
 import { sendMsg91TemplateSms } from "@/lib/msg91";
 import { normalizePhoneE164 } from "@/lib/phone";
+import {
+  claimSmsDelivery,
+  completeSmsDelivery,
+  phoneLast4FromRaw,
+  type SmsDeliveryClient,
+} from "@/lib/sms-deliveries";
 
 /**
  * Exact DLT body to register with TRAI / MSG91 (Roman Hinglish, GSM-7).
@@ -148,13 +154,18 @@ export function resetSmsFailuresForTests(): void {
 
 export type SendRegistrationResult =
   | { status: "sent"; requestId?: string }
-  | { status: "skipped"; reason: "no_phone" | "unconfigured" }
-  | { status: "failed"; detail: string };
+  | {
+      status: "skipped";
+      reason: "no_phone" | "unconfigured" | "already_handled" | "not_claimed";
+    }
+  | { status: "failed"; detail: string }
+  | { status: "ambiguous"; detail: string };
 
 type SendFn = typeof sendMsg91TemplateSms;
 
 /**
  * Send the registration template. Never throws — desk must not care.
+ * When `patientId` + `ledger` are provided, uses durable claim/complete (#65).
  */
 export async function sendRegistrationSms(
   input: {
@@ -163,8 +174,14 @@ export async function sendRegistrationSms(
     dayDate: string;
     venue: string | null | undefined;
     statusUrl: string;
+    /** When set with ledger, dispatch is lease-protected and durable. */
+    patientId?: string | null;
   },
-  options: { send?: SendFn; template?: "registration" | "test" } = {},
+  options: {
+    send?: SendFn;
+    template?: "registration" | "test";
+    ledger?: SmsDeliveryClient | null;
+  } = {},
 ): Promise<SendRegistrationResult> {
   const template = options.template ?? "registration";
   const phone = input.phone ? normalizePhoneE164(input.phone) : null;
@@ -182,6 +199,29 @@ export async function sendRegistrationSms(
   const mobiles = phone.replace(/\D/g, "");
   const phoneLast4 = mobiles.slice(-4);
 
+  const useLedger =
+    template === "registration" &&
+    Boolean(options.ledger && input.patientId);
+
+  let claim: { deliveryId: string; claimToken: string } | null = null;
+  if (useLedger && options.ledger && input.patientId) {
+    try {
+      claim = await claimSmsDelivery(options.ledger, {
+        patientId: input.patientId,
+        kind: "registration",
+        phoneLast4: phoneLast4FromRaw(phone) ?? phoneLast4,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "SMS claim failed";
+      recordSmsFailure({ template, detail, phoneLast4 });
+      return { status: "failed", detail };
+    }
+    if (!claim) {
+      // Already sent/ambiguous or live lease held by another worker.
+      return { status: "skipped", reason: "not_claimed" };
+    }
+  }
+
   let variables: Record<string, string>;
   try {
     variables = registrationSmsVariables({
@@ -194,6 +234,14 @@ export async function sendRegistrationSms(
     const detail =
       err instanceof Error ? err.message : "SMS variable build failed";
     recordSmsFailure({ template, detail, phoneLast4 });
+    if (claim && options.ledger) {
+      await completeSmsDelivery(options.ledger, {
+        deliveryId: claim.deliveryId,
+        claimToken: claim.claimToken,
+        outcome: "failed",
+        lastError: detail,
+      }).catch(() => {});
+    }
     return { status: "failed", detail };
   }
 
@@ -207,15 +255,45 @@ export async function sendRegistrationSms(
       variables,
     });
     if (!result.ok) {
+      const uncertain =
+        result.failureKind === "uncertain" ||
+        /timeout|aborted|network|fetch failed/i.test(result.detail);
+      const outcome = uncertain ? "ambiguous" : "failed";
       recordSmsFailure({ template, detail: result.detail, phoneLast4 });
-      return { status: "failed", detail: result.detail };
+      if (claim && options.ledger) {
+        await completeSmsDelivery(options.ledger, {
+          deliveryId: claim.deliveryId,
+          claimToken: claim.claimToken,
+          outcome,
+          lastError: result.detail,
+        }).catch(() => {});
+      }
+      return uncertain
+        ? { status: "ambiguous", detail: result.detail }
+        : { status: "failed", detail: result.detail };
+    }
+    if (claim && options.ledger) {
+      await completeSmsDelivery(options.ledger, {
+        deliveryId: claim.deliveryId,
+        claimToken: claim.claimToken,
+        outcome: "sent",
+        providerRequestId: result.requestId ?? null,
+      }).catch(() => {});
     }
     return { status: "sent", requestId: result.requestId };
   } catch (err) {
     const detail =
       err instanceof Error ? err.message : "SMS send threw";
     recordSmsFailure({ template, detail, phoneLast4 });
-    return { status: "failed", detail };
+    if (claim && options.ledger) {
+      await completeSmsDelivery(options.ledger, {
+        deliveryId: claim.deliveryId,
+        claimToken: claim.claimToken,
+        outcome: "ambiguous",
+        lastError: detail,
+      }).catch(() => {});
+    }
+    return { status: "ambiguous", detail };
   }
 }
 

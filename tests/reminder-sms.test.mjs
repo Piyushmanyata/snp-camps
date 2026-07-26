@@ -132,10 +132,12 @@ test("provider failure does not throw from send or job", async () => {
         },
       },
     );
-    assert.equal(result.status, "failed");
+    // Throw/timeout after dispatch starts → ambiguous (not auto-retried).
+    assert.equal(result.status, "ambiguous");
     assert.match(listSmsFailures()[0].detail, /MSG91 down/);
 
-    const claimed = new Set();
+    /** @type {Map<string, string>} */
+    const states = new Map();
     const summary = await runDayBeforeReminders({
       now: new Date("2026-07-26T03:00:00.000Z"), // tomorrow IST = 2026-07-27
       preFiltered: false,
@@ -150,23 +152,26 @@ test("provider failure does not throw from send or job", async () => {
           reminderSmsSentAt: null,
         },
       ],
-      claimSent: async (id) => {
-        if (claimed.has(id)) return false;
-        claimed.add(id);
-        return true;
+      claimReminder: async (id) => {
+        if (states.get(id) === "sent" || states.get(id) === "ambiguous") {
+          return null;
+        }
+        states.set(id, "sending");
+        return { deliveryId: `d-${id}`, claimToken: `t-${id}` };
       },
-      clearSent: async (id) => {
-        claimed.delete(id);
+      completeReminder: async ({ deliveryId, outcome }) => {
+        const id = deliveryId.replace(/^d-/, "");
+        states.set(id, outcome === "release" ? "pending" : outcome);
       },
       send: async () => {
         throw new Error("provider outage");
       },
     });
     assert.equal(summary.ok, true);
-    assert.equal(summary.failed, 1);
+    assert.equal(summary.ambiguous, 1);
     assert.equal(summary.sent, 0);
-    // Claim released so a later run can retry.
-    assert.equal(claimed.has("p1"), false);
+    // Ambiguous is not released for automatic retry.
+    assert.equal(states.get("p1"), "ambiguous");
   } finally {
     delete process.env.MSG91_AUTH_KEY;
     delete process.env.MSG91_SENDER_ID;
@@ -181,7 +186,7 @@ test("running the job twice sends exactly once per patient", async () => {
   process.env.MSG91_TEMPLATE_REMINDER = "tpl-rem";
   try {
     /** @type {Map<string, string | null>} */
-    const sentAt = new Map([["p1", null], ["p2", null]]);
+    const states = new Map([["p1", null], ["p2", null]]);
     let sendCalls = 0;
 
     const candidates = () =>
@@ -194,7 +199,7 @@ test("running the job twice sends exactly once per patient", async () => {
             queueStatus: "registered",
             dayDate: "2026-07-27",
             venue: "Hall A",
-            reminderSmsSentAt: sentAt.get("p1"),
+            reminderDeliveryState: states.get("p1"),
           },
           {
             id: "p2",
@@ -203,7 +208,7 @@ test("running the job twice sends exactly once per patient", async () => {
             queueStatus: "waiting", // already checked in — never
             dayDate: "2026-07-27",
             venue: "Hall A",
-            reminderSmsSentAt: sentAt.get("p2"),
+            reminderDeliveryState: states.get("p2"),
           },
         ],
       );
@@ -212,13 +217,15 @@ test("running the job twice sends exactly once per patient", async () => {
       now: new Date("2026-07-26T03:00:00.000Z"),
       preFiltered: false,
       listCandidates: candidates,
-      claimSent: async (id) => {
-        if (sentAt.get(id)) return false;
-        sentAt.set(id, new Date().toISOString());
-        return true;
+      claimReminder: async (id) => {
+        const st = states.get(id);
+        if (st === "sent" || st === "ambiguous" || st === "sending") return null;
+        states.set(id, "sending");
+        return { deliveryId: `d-${id}`, claimToken: `t-${id}` };
       },
-      clearSent: async (id) => {
-        sentAt.set(id, null);
+      completeReminder: async ({ deliveryId, outcome }) => {
+        const id = deliveryId.replace(/^d-/, "");
+        states.set(id, outcome === "release" ? "pending" : outcome);
       },
       send: async () => {
         sendCalls += 1;
@@ -232,13 +239,27 @@ test("running the job twice sends exactly once per patient", async () => {
     assert.equal(first.sent, 1);
     assert.equal(second.sent, 0);
     assert.equal(sendCalls, 1);
-    assert.ok(sentAt.get("p1"));
-    assert.equal(sentAt.get("p2"), null);
+    assert.equal(states.get("p1"), "sent");
+    assert.equal(states.get("p2"), null);
   } finally {
     delete process.env.MSG91_AUTH_KEY;
     delete process.env.MSG91_SENDER_ID;
     delete process.env.MSG91_TEMPLATE_REMINDER;
   }
+});
+
+test("listCandidates failure marks job ok:false", async () => {
+  const summary = await runDayBeforeReminders({
+    now: new Date("2026-07-26T03:00:00.000Z"),
+    listCandidates: async () => {
+      throw new Error("schema missing");
+    },
+    claimReminder: async () => null,
+    completeReminder: async () => {},
+  });
+  assert.equal(summary.ok, false);
+  assert.match(String(summary.error), /schema missing/);
+  assert.equal(summary.sent, 0);
 });
 
 test("isMsg91ReminderConfigured requires reminder template id", () => {

@@ -155,7 +155,8 @@ test("provider throw is recorded and does not throw to caller", async () => {
         },
       },
     );
-    assert.equal(result.status, "failed");
+    // Throw after dispatch starts is ambiguous (at-most-one; #65).
+    assert.equal(result.status, "ambiguous");
     const fails = listSmsFailures();
     assert.equal(fails.length, 1);
     assert.match(fails[0].detail, /MSG91 down/);

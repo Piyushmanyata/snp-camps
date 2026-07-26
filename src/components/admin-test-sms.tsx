@@ -179,9 +179,9 @@ export function AdminTestSms() {
           </ul>
         )}
         <p className="mt-1 text-[0.6875rem] text-muted">
-          Failures also go to host logs as{" "}
-          <code className="font-mono">[sms-failure]</code>. This list is
-          in-process only (resets on redeploy).
+          Shows durable failed/ambiguous rows from the SMS ledger (survives
+          redeploy). Host logs still record{" "}
+          <code className="font-mono">[sms-failure]</code>.
         </p>
       </div>
     </div>

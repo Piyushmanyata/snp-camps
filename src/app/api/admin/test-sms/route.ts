@@ -3,23 +3,37 @@ import { readJsonBody, requireAdmin } from "@/lib/auth";
 import {
   fillRegistrationSms,
   isMsg91Configured,
-  listSmsFailures,
   maxLengthRegistrationInputs,
   sendRegistrationSms,
   statusUrlForToken,
 } from "@/lib/registration-sms";
 import { normalizePhoneE164 } from "@/lib/phone";
+import { listRecentSmsDeliveryIssues } from "@/lib/sms-deliveries";
+import { createClient } from "@/lib/supabase/server";
 
-/** Admin SMS status + recent failures (in-process log + host logs). */
+/** Admin SMS status + durable failed/ambiguous ledger rows (#65). */
 export async function GET() {
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
 
   const sample = fillRegistrationSms(maxLengthRegistrationInputs());
+  let failures: Awaited<ReturnType<typeof listRecentSmsDeliveryIssues>> = [];
+  try {
+    const supabase = await createClient();
+    failures = await listRecentSmsDeliveryIssues(supabase, 50);
+  } catch {
+    failures = [];
+  }
 
   return NextResponse.json({
     configured: isMsg91Configured(),
-    failures: listSmsFailures(),
+    failures: failures.map((f) => ({
+      at: f.at,
+      template: f.template,
+      detail: f.detail,
+      phoneLast4: f.phoneLast4,
+      state: f.state,
+    })),
     sampleMaxLengthMessage: sample,
     sampleMaxLengthChars: sample.length,
   });

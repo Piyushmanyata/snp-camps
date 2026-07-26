@@ -56,6 +56,16 @@ export function createServerClient() {
         return { data: { claims: null }, error: null };
       },
     },
+    async rpc(fn) {
+      if (typeof authMock.rpc === "function") {
+        return authMock.rpc(fn);
+      }
+      // Default: empty durable SMS issues / benign no-op RPCs for route tests.
+      if (fn === "list_recent_sms_delivery_issues") {
+        return { data: [], error: null };
+      }
+      return { data: null, error: null };
+    },
     from(table) {
       if (table !== "profiles") {
         throw new Error(`unexpected table ${table}`);
