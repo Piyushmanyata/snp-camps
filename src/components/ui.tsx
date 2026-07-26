@@ -37,7 +37,7 @@ function MobileDock({
           <Link
             key={item.href + item.label}
             href={item.href}
-            className={`pressable mobile-dock-item inline-flex items-center justify-center rounded-xl px-1.5 text-center text-[0.8125rem] font-bold leading-tight transition-colors duration-150 sm:text-sm ${
+            className={`pressable mobile-dock-item inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl px-1.5 text-center text-[0.8125rem] font-bold leading-tight transition-colors duration-150 sm:text-sm ${
               item.primary
                 ? "bg-brand text-white hover:bg-brand-dark"
                 : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"

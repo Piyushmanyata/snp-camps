@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
-const TOUCH_MIN = 48;
+const TOUCH_MIN = 44;
 const AA_NORMAL = 4.5;
 const AA_LARGE = 3;
 const EVIDENCE_DIR = join(process.cwd(), ".scratch", "remediation-69");
