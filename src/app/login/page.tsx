@@ -12,6 +12,7 @@ import {
   Input,
   Shell,
 } from "@/components/ui";
+import { mapAuthError } from "@/lib/public-error";
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -31,11 +32,11 @@ export default function StaffLoginPage() {
         password,
       });
       if (err) {
-        const msg = err.message.toLowerCase();
         setError(
-          msg.includes("invalid") || msg.includes("credentials")
-            ? "Wrong email or password. Check and try again."
-            : err.message,
+          mapAuthError(err, {
+            kind: "sign-in",
+            context: "login.sign-in",
+          }),
         );
         return;
       }

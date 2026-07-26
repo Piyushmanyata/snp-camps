@@ -35,6 +35,8 @@ export function SeatBoard({
   pollMs = POLL_MS,
   /** Staff desks only — patient screens keep poll-only (live=false). */
   live = false,
+  /** False when SSR seats failed — do not treat empty as success (#63). */
+  initialLoadKnown = true,
 }: {
   days: CampDayStats[];
   campId?: string | null;
@@ -43,12 +45,14 @@ export function SeatBoard({
   /** Patient auto-refresh interval; 0 = manual only. Ignored while live. */
   pollMs?: number;
   live?: boolean;
+  initialLoadKnown?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const desk = useCampDeskLive(live ? campId : null, {
     days: initialDays,
+    daysKnown: initialLoadKnown,
   });
 
   const patientRefresh = useCallback(() => {
@@ -67,15 +71,18 @@ export function SeatBoard({
   const days = live && campId ? desk.days : initialDays;
   const busy = live ? desk.refreshing : isPending;
   const freshness = live ? desk.freshness : "off";
+  const daysKnown = live && campId ? desk.daysKnown : true;
 
   const hint = !campId
     ? "All days listed"
     : live
       ? freshness === "stale-error"
         ? "Stale"
-        : freshness === "refreshing"
-          ? "Refreshing"
-          : "Live"
+        : freshness === "error"
+          ? "Unavailable"
+          : freshness === "refreshing"
+            ? "Refreshing"
+            : "Live"
       : pollHint(pollMs);
 
   function onRefresh() {
@@ -86,19 +93,35 @@ export function SeatBoard({
     patientRefresh();
   }
 
+  const seatsFailed =
+    live &&
+    !daysKnown &&
+    (freshness === "error" || freshness === "stale-error");
+
   if (!days.length) {
     return (
       <Card>
-        <SectionTitle>{title}</SectionTitle>
+        <SectionTitle hint={live ? hint : undefined}>{title}</SectionTitle>
         {live ? (
           <DeskFreshnessIndicator
             freshness={freshness}
             onRetry={() => desk.refresh()}
+            hasKnownData={daysKnown}
           />
         ) : null}
-        <EmptyState>
-          No camp days configured yet. Admin can add days and seat limits.
-        </EmptyState>
+        {seatsFailed ? (
+          <p
+            className="rounded-xl bg-red-50 px-3 py-3 text-sm font-medium text-red-900 ring-1 ring-red-200"
+            role="alert"
+          >
+            Seat board could not be loaded. Use Refresh or Try again — this is
+            not an empty schedule.
+          </p>
+        ) : (
+          <EmptyState>
+            No camp days configured yet. Admin can add days and seat limits.
+          </EmptyState>
+        )}
       </Card>
     );
   }
@@ -109,6 +132,7 @@ export function SeatBoard({
         <DeskFreshnessIndicator
           freshness={freshness}
           onRetry={() => desk.refresh()}
+          hasKnownData={daysKnown}
         />
       ) : null}
       <div className="mb-1 flex items-start justify-between gap-2">

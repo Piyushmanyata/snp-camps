@@ -26,16 +26,26 @@ function initialView(
       waitingTotal: 0,
       days: [],
       freshness: "off",
+      waitingKnown: false,
+      daysKnown: false,
       generation: 0,
       pendingRemovals: new Set(),
     };
   }
+  const waitingKnown =
+    seed?.waitingKnown === true ||
+    (seed?.waitingKnown !== false && Array.isArray(seed?.waiting));
+  const daysKnown =
+    seed?.daysKnown === true ||
+    (seed?.daysKnown !== false && Array.isArray(seed?.days));
   return {
     campId,
     waiting: seed?.waiting ? [...seed.waiting] : [],
     waitingTotal: seed?.waitingTotal ?? seed?.waiting?.length ?? 0,
     days: seed?.days ? [...seed.days] : [],
-    freshness: seed?.waiting || seed?.days ? "fresh" : "refreshing",
+    freshness: waitingKnown || daysKnown ? "fresh" : "refreshing",
+    waitingKnown,
+    daysKnown,
     generation: 0,
     pendingRemovals: new Set(),
   };
@@ -53,9 +63,12 @@ export function useCampDeskLive(
   waitingTotal: number;
   days: CampDayStats[];
   freshness: DeskLiveFreshness;
+  waitingKnown: boolean;
+  daysKnown: boolean;
   generation: number;
   refreshing: boolean;
   stale: boolean;
+  failed: boolean;
   refresh: () => void;
   markRemoved: (patientId: string) => void;
   clearRemoved: (patientId: string) => void;
@@ -86,9 +99,12 @@ export function useCampDeskLive(
     waitingTotal: activeView.waitingTotal,
     days: activeView.days,
     freshness: activeView.freshness,
+    waitingKnown: activeView.waitingKnown,
+    daysKnown: activeView.daysKnown,
     generation: activeView.generation,
     refreshing: activeView.freshness === "refreshing",
     stale: activeView.freshness === "stale-error",
+    failed: activeView.freshness === "error",
     refresh: () => {
       if (campId) refreshCampDeskLive(campId);
     },

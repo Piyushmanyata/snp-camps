@@ -383,3 +383,92 @@ export function publicRegistrationError(
     fallback: "Registration failed. Try again or ask the desk.",
   });
 }
+
+/**
+ * Map Supabase Auth / GoTrue provider errors to staff-safe copy (#63).
+ * Known credential and rate-limit cases get specific sentences; everything
+ * else logs raw text and returns a generic message — never provider internals.
+ */
+export function mapAuthError(
+  error: DbErrorLike | string | unknown,
+  options: MapDbErrorOptions & {
+    /** Default: staff sign-in flavour. */
+    kind?: "sign-in" | "change-password";
+  } = {},
+): string {
+  const {
+    context = options.kind === "change-password" ? "auth.change-password" : "auth.sign-in",
+    log = true,
+    kind = "sign-in",
+    fallback =
+      kind === "change-password"
+        ? "Could not update password. Try again."
+        : "Could not sign in. Check your connection and try again.",
+  } = options;
+
+  const parts = normalizeErrorParts(error);
+  const message = parts.message;
+  const lower = message.toLowerCase();
+  const code = parts.code.toLowerCase();
+
+  let publicMessage: string | null = null;
+
+  if (
+    code === "invalid_credentials" ||
+    /invalid (login|credentials)|invalid email or password|wrong (email|password)|user not found/i.test(
+      lower,
+    )
+  ) {
+    publicMessage =
+      kind === "change-password"
+        ? "Could not update password. Check the new password and try again."
+        : "Wrong email or password. Check and try again.";
+  } else if (
+    code === "email_not_confirmed" ||
+    /email not confirmed|confirm your email/i.test(lower)
+  ) {
+    publicMessage =
+      "This account is not ready yet. Ask an admin for help.";
+  } else if (
+    code === "user_banned" ||
+    /user is banned|disabled|account.*disabled/i.test(lower)
+  ) {
+    publicMessage =
+      "This staff account is unavailable. Ask an admin for help.";
+  } else if (
+    code === "over_request_rate_limit" ||
+    code === "over_email_send_rate_limit" ||
+    /rate limit|too many requests|email rate/i.test(lower)
+  ) {
+    publicMessage = "Too many attempts. Wait a moment and try again.";
+  } else if (
+    code === "weak_password" ||
+    /password.*(weak|short|least|characters)/i.test(lower)
+  ) {
+    publicMessage =
+      "Password is too weak. Use a longer password and try again.";
+  } else if (
+    code === "same_password" ||
+    /same password|should be different/i.test(lower)
+  ) {
+    publicMessage = "Choose a password that is different from the current one.";
+  } else if (/network|fetch failed|failed to fetch|offline/i.test(lower)) {
+    publicMessage =
+      kind === "change-password"
+        ? "Could not update password. Check your connection and try again."
+        : "Could not sign in. Check your connection and try again.";
+  }
+
+  if (!publicMessage) {
+    publicMessage = fallback;
+  }
+
+  if (log) {
+    logDbError(error, context, {
+      category: publicMessage === fallback ? "unknown" : "validation",
+      retryable: false,
+    });
+  }
+
+  return publicMessage;
+}

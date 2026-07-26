@@ -6,6 +6,8 @@ import { getSessionProfile } from "@/lib/auth";
 import { Card, EmptyState, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import type { AdminPatientRow } from "@/components/admin-patients";
+import { mapDbError } from "@/lib/public-error";
+import { CampsLoadFailed } from "@/components/section-data";
 
 const AdminPatients = dynamic(
   () =>
@@ -44,8 +46,28 @@ async function PatientDeskContent() {
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (campError || patientsRes.error || (camp && queueCountsRes.error)) {
-    throw new Error("Patient desk data could not be loaded");
+  if (campError) {
+    mapDbError(campError, { context: "admin-patients.active-camp" });
+  }
+  if (patientsRes.error) {
+    const message = mapDbError(patientsRes.error, {
+      context: "admin-patients.list",
+      fallback: "Patient list could not be loaded — retry.",
+    });
+    return (
+      <CampsLoadFailed
+        message={message}
+        title="Patients"
+        retryLabel="Reload patients"
+      />
+    );
+  }
+  // Stats failure is non-fatal — list still renders (#63).
+  if (camp && queueCountsRes.error) {
+    mapDbError(queueCountsRes.error, {
+      context: "admin-patients.queue-counts",
+      fallback: "Dashboard stats could not be loaded — retry.",
+    });
   }
 
   const patients: AdminPatientRow[] = (patientsRes.data || []).map((p) => {
@@ -107,9 +129,12 @@ async function PatientDeskContent() {
     };
   });
 
-  const queueCounts = Array.isArray(queueCountsRes.data)
-    ? queueCountsRes.data[0]
-    : queueCountsRes.data;
+  const countsFailed = Boolean(camp && queueCountsRes.error);
+  const queueCounts =
+    !countsFailed &&
+    (Array.isArray(queueCountsRes.data)
+      ? queueCountsRes.data[0]
+      : queueCountsRes.data);
   const registered = Number(queueCounts?.registered_count ?? 0);
   const waiting = Number(queueCounts?.waiting_count ?? 0);
   const doctorSeen = Number(queueCounts?.seen_count ?? 0);
@@ -120,12 +145,16 @@ async function PatientDeskContent() {
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {camp ? (
+      {camp && !countsFailed ? (
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <Stat label="Active registered" value={registered} />
           <Stat label="Active queue" value={waiting} tone="wait" />
           <Stat label="Active seen" value={doctorSeen} tone="ok" />
         </div>
+      ) : camp && countsFailed ? (
+        <p className="text-sm text-muted" role="status">
+          Active-camp stats unavailable — patient list below still works.
+        </p>
       ) : (
         <EmptyState>
           No active camp. Historical patients remain available below.

@@ -89,6 +89,8 @@ test("staff desks enable live seat board or live bridge", () => {
 test("#50 doctor station marks seen without confirm dialog copy", () => {
   const scanner = read("src/components/qr-scanner.tsx");
   const doctor = read("src/app/doctor/page.tsx");
+  // Patients-you-saw collapsible lives on the isolated section island (#63).
+  const seenPanel = read("src/components/section-data.tsx");
 
   assert.match(scanner, /Mark seen/);
   assert.doesNotMatch(scanner, /Confirm patient · mark seen/);
@@ -96,7 +98,8 @@ test("#50 doctor station marks seen without confirm dialog copy", () => {
   assert.match(scanner, /readyForNext/);
   assert.match(scanner, /#\$\{row\.reg_no\} marked seen/);
   assert.match(doctor, /mode="doctor"/);
-  assert.match(doctor, /defaultOpen=\{false\}/);
+  assert.match(doctor, /DoctorSeenPanel/);
+  assert.match(seenPanel, /defaultOpen=\{false\}/);
 });
 
 test("#57 doctor registered review has no Mark seen; check-in instruction present", () => {
@@ -155,10 +158,12 @@ test("doctor bridge polls continuously without Realtime", () => {
 test("#56 no staff copy instructs manual-only refresh on live desks", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
   const admin = read("src/app/admin/page.tsx");
+  // Queue titles live on the shared scan/queue island (#63).
+  const scanQueue = read("src/components/desk-scan-queue.tsx");
   assert.doesNotMatch(volunteer, /refresh manually/i);
   assert.doesNotMatch(admin, /auto-refresh/i);
-  assert.match(volunteer, /Line · live/);
-  assert.match(admin, /FCFS · assign doctor · live/);
+  assert.match(scanQueue, /Line · live/);
+  assert.match(scanQueue, /FCFS · assign doctor · live/);
 });
 
 test("#26 no unstable_cache in src/", () => {

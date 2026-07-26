@@ -1,21 +1,23 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Button, ErrorBox, Spinner } from "@/components/ui";
 
 /**
- * Distinct from EmptyState: failed load, not "nothing here".
- * Retry re-runs the parent RSC tree for this section via router.refresh.
+ * Distinct from EmptyState: failed load, not "nothing here" (#31, #63).
+ * Retry must call a narrow section seam via `onRetry` — never a whole-route
+ * refresh as the only recovery path.
  */
 export function SectionLoadError({
   message,
+  onRetry,
   retryLabel = "Retry",
 }: {
   message: string;
+  /** Narrow re-read for this section only. Required for the Retry control. */
+  onRetry: () => void | Promise<void>;
   retryLabel?: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   return (
@@ -29,7 +31,7 @@ export function SectionLoadError({
         disabled={pending}
         onClick={() => {
           startTransition(() => {
-            router.refresh();
+            void onRetry();
           });
         }}
       >

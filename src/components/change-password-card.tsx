@@ -6,6 +6,7 @@ import {
   isPasswordLongEnough,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/patient-password";
+import { mapAuthError } from "@/lib/public-error";
 import {
   Button,
   Card,
@@ -53,7 +54,12 @@ export function ChangePasswordForm({
       });
 
       if (err) {
-        setError(err.message);
+        setError(
+          mapAuthError(err, {
+            kind: "change-password",
+            context: "change-password",
+          }),
+        );
         return;
       }
 

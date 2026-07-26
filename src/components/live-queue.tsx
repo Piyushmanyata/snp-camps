@@ -30,12 +30,15 @@ export function LiveQueue({
   campId,
   doctors = [],
   mode = "volunteer",
+  /** False when SSR queue failed — do not treat empty as success (#63). */
+  initialLoadKnown = true,
 }: {
   initial: LiveQueuePatient[];
   initialTotal?: number;
   campId: string | null;
   doctors?: DoctorOption[];
   mode?: "volunteer" | "doctor" | "admin";
+  initialLoadKnown?: boolean;
 }) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export function LiveQueue({
     waiting: rows,
     waitingTotal: total,
     freshness,
+    waitingKnown,
     refreshing,
     refresh,
     markRemoved,
@@ -54,6 +58,9 @@ export function LiveQueue({
   } = useCampDeskLive(campId, {
     waiting: initial,
     waitingTotal: initialTotal ?? initial.length,
+    // SSR always seeds known when this component mounts with a successful
+    // or empty initial list; pass waitingKnown=false from pages on SSR fail.
+    waitingKnown: initialLoadKnown,
   });
 
   function manualRefresh() {
@@ -127,25 +134,43 @@ export function LiveQueue({
   const statusHint =
     freshness === "stale-error"
       ? " · stale"
-      : freshness === "refreshing"
-        ? " · refreshing"
-        : freshness === "fresh"
-          ? " · live"
-          : "";
+      : freshness === "error"
+        ? " · unavailable"
+        : freshness === "refreshing"
+          ? " · refreshing"
+          : freshness === "fresh"
+            ? " · live"
+            : "";
+
+  const queueFailed =
+    !waitingKnown &&
+    (freshness === "error" ||
+      freshness === "stale-error" ||
+      (freshness === "refreshing" && rows.length === 0 && !initialLoadKnown));
+  const showEmpty = waitingKnown && rows.length === 0;
+  const showRows = waitingKnown || rows.length > 0;
 
   return (
     <div>
       <ErrorBox message={error} />
-      <DeskFreshnessIndicator freshness={freshness} onRetry={manualRefresh} />
+      <DeskFreshnessIndicator
+        freshness={freshness}
+        onRetry={manualRefresh}
+        hasKnownData={waitingKnown}
+      />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
         <span aria-live="polite">
-          {total > rows.length
-            ? "Showing first " + rows.length + " of " + total
-            : total + " waiting"}
-          {statusHint}
+          {!waitingKnown && freshness === "refreshing"
+            ? "Loading queue…"
+            : queueFailed
+              ? "Queue unavailable"
+              : total > rows.length
+                ? "Showing first " + rows.length + " of " + total
+                : total + " waiting"}
+          {waitingKnown || freshness === "fresh" ? statusHint : ""}
         </span>
         <button
           type="button"
@@ -161,7 +186,8 @@ export function LiveQueue({
         className="divide-y divide-border lg:max-h-[70vh] lg:overflow-y-auto"
         aria-label="Patients waiting in queue"
       >
-        {rows.map((p, index) => (
+        {showRows
+          ? rows.map((p, index) => (
           <li key={p.id} className="px-1 py-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-start gap-2.5">
@@ -272,8 +298,17 @@ export function LiveQueue({
               </div>
             ) : null}
           </li>
-        ))}
-        {!rows.length ? (
+        ))
+          : null}
+        {queueFailed && !rows.length ? (
+          <li className="px-1 py-2">
+            {/* Distinct from empty: hard load failure, not "nothing here". */}
+            <p className="rounded-xl bg-red-50 px-3 py-3 text-sm font-medium text-red-900 ring-1 ring-red-200" role="alert">
+              Queue could not be loaded. Use Refresh or Try again — this is not an empty line.
+            </p>
+          </li>
+        ) : null}
+        {showEmpty ? (
           <li className="px-1 py-2">
             <EmptyState>
               Queue is empty. Check-in puts patients here in arrival order. Doctors can

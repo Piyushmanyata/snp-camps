@@ -144,27 +144,55 @@ export default async function globalSetup() {
     const createStaff = async (role: "admin" | "volunteer" | "doctor") => {
       const email = `${USER_PREFIX}${role}@snp.local`;
       const secret = password();
-      const { data, error } = await admin.auth.admin.createUser({
+      const meta = {
+        full_name: `Codex E2E ${role}`,
+        e2e_suite: "snp-camps",
+      };
+
+      const created = await admin.auth.admin.createUser({
         email,
         password: secret,
         email_confirm: true,
-        user_metadata: {
-          full_name: `Codex E2E ${role}`,
-          e2e_suite: "snp-camps",
-        },
+        user_metadata: meta,
       });
-      if (error || !data?.user) {
-        process.env[`E2E_${role.toUpperCase()}_EMAIL`] = email;
-        process.env[`E2E_${role.toUpperCase()}_PASSWORD`] = secret;
-        return `mock-${role}-id`;
+
+      let userId = created.data?.user?.id ?? null;
+
+      // Auth listUsers can 500; recover via profiles email when user already exists.
+      if (!userId && /already|registered|exists/i.test(created.error?.message || "")) {
+        const { data: existing } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (existing?.id) {
+          const updated = await admin.auth.admin.updateUserById(existing.id, {
+            password: secret,
+            email_confirm: true,
+            user_metadata: meta,
+          });
+          if (updated.error || !updated.data?.user) {
+            throw new Error(
+              `E2E createStaff(${role}) reset failed: ${updated.error?.message || "no user"}`,
+            );
+          }
+          userId = updated.data.user.id;
+        }
       }
-      userIds.push(data.user.id);
+
+      if (!userId) {
+        throw new Error(
+          `E2E createStaff(${role}) failed: ${created.error?.message || "no user"}`,
+        );
+      }
+
+      userIds.push(userId);
       await admin
         .from("profiles")
-        .upsert({ id: data.user.id, role, full_name: `Codex E2E ${role}`, email });
+        .upsert({ id: userId, role, full_name: `Codex E2E ${role}`, email });
       process.env[`E2E_${role.toUpperCase()}_EMAIL`] = email;
       process.env[`E2E_${role.toUpperCase()}_PASSWORD`] = secret;
-      return data.user.id;
+      return userId;
     };
 
     await createStaff("admin");

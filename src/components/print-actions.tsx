@@ -72,12 +72,17 @@ export function PrintActions({
       });
       window.print();
     } catch (error) {
+      // Prefer server-safe payload messages already thrown above; never show
+      // unexpected raw stack/provider text (#63).
+      const text =
+        error instanceof Error &&
+        error.message &&
+        !/postgres|supabase|postgrest|stack|at\s+\w+/i.test(error.message)
+          ? error.message
+          : "Could not prepare the print. Please try again.";
       setMessage({
         tone: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Could not prepare the print. Please try again.",
+        text,
       });
     } finally {
       setIsPrinting(false);

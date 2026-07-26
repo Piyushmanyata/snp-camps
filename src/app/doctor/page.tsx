@@ -1,12 +1,9 @@
-import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin, roleHome } from "@/lib/auth";
 import {
   Card,
-  CollapsibleSection,
-  EmptyState,
   NavLink,
   SectionTitle,
   Shell,
@@ -14,8 +11,15 @@ import {
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { CampDeskLiveBridge } from "@/components/camp-desk-live-bridge";
+import {
+  DoctorSeenPanel,
+  DoctorStatsPanel,
+} from "@/components/section-data";
+import {
+  loadDoctorSeenSection,
+  loadDoctorStatsSection,
+} from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { SectionLoadError } from "@/components/section-load-error";
 
 const QrScanner = dynamic(
   () =>
@@ -38,124 +42,6 @@ const AdminStaff = dynamic(
     ),
   },
 );
-
-async function DoctorStatsSection({
-  campId,
-}: {
-  campId: string;
-}) {
-  const supabase = await createClient();
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30");
-
-  const { data: countsRes, error } = await supabase.rpc("doctor_my_counts", {
-    p_camp_id: campId,
-    p_since: startOfDay.toISOString(),
-  });
-
-  if (error) {
-    const message = mapDbError(error, {
-      context: "doctor-page.stats",
-      fallback: "Your stats could not be loaded — retry.",
-    });
-    return <SectionLoadError message={message} />;
-  }
-
-  const seenToday = Number(countsRes?.[0]?.seen_today ?? 0);
-  const myTotal = Number(countsRes?.[0]?.seen_total ?? 0);
-
-  return (
-    <div className="grid w-full grid-cols-2 gap-2">
-      <Stat label="You saw today" value={seenToday} tone="ok" />
-      <Stat label="Total seen" value={myTotal} />
-    </div>
-  );
-}
-
-async function DoctorSeenSection({
-  campId,
-}: {
-  campId: string;
-}) {
-  const supabase = await createClient();
-  const { data: mySeenRes, error } = await supabase.rpc(
-    "doctor_recent_patients",
-    { p_camp_id: campId, p_limit: 50 },
-  );
-
-  if (error) {
-    const message = mapDbError(error, {
-      context: "doctor-page.seen",
-      fallback: "Patients you saw could not be loaded — retry.",
-    });
-    return (
-      <div id="seen">
-        <CollapsibleSection
-          title="Patients you saw"
-          hint="unavailable"
-          defaultOpen={false}
-        >
-          <SectionLoadError message={message} />
-        </CollapsibleSection>
-      </div>
-    );
-  }
-
-  const mySeen = (mySeenRes || []) as {
-    id: string;
-    reg_no: number;
-    full_name: string;
-    seen_at: string | null;
-  }[];
-
-  return (
-    <div id="seen">
-      <CollapsibleSection
-        title="Patients you saw"
-        hint={`${mySeen.length} recent`}
-        defaultOpen={false}
-      >
-        {mySeen.length ? (
-          <ul className="divide-y divide-border">
-            {mySeen.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between gap-2 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">
-                    <span className="tabular text-brand">#{p.reg_no}</span>{" "}
-                    {p.full_name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {p.seen_at
-                      ? new Date(p.seen_at).toLocaleString("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          day: "numeric",
-                          month: "short",
-                        })
-                      : "—"}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState>
-            No patients assigned to you yet. Scan a registered patient or enter
-            their reg number when they arrive.
-          </EmptyState>
-        )}
-      </CollapsibleSection>
-    </div>
-  );
-}
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -235,6 +121,14 @@ export default async function DoctorPage() {
     throw new Error("Doctor desk data could not be loaded");
   }
 
+  // Independent section reads — stats failure must not blank scanner/seen (#63).
+  const [statsInitial, seenInitial] = camp
+    ? await Promise.all([
+        loadDoctorStatsSection(camp.id),
+        loadDoctorSeenSection(camp.id),
+      ])
+    : [null, null];
+
   return (
     <Shell
       title="Doctor"
@@ -263,19 +157,10 @@ export default async function DoctorPage() {
                 {camp?.name || "None"}
               </p>
             </div>
-            {camp ? (
-              <Suspense
-                fallback={
-                  <div className="grid w-full grid-cols-2 gap-2 opacity-60 sm:w-auto sm:min-w-[14rem]">
-                    <Stat label="You saw today" value="…" tone="ok" />
-                    <Stat label="Total seen" value="…" />
-                  </div>
-                }
-              >
-                <div className="sm:min-w-[14rem]">
-                  <DoctorStatsSection campId={camp.id} />
-                </div>
-              </Suspense>
+            {camp && statsInitial ? (
+              <div className="sm:min-w-[14rem]">
+                <DoctorStatsPanel campId={camp.id} initial={statsInitial} />
+              </div>
             ) : (
               <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[14rem]">
                 <Stat label="You saw today" value={0} tone="ok" />
@@ -300,16 +185,8 @@ export default async function DoctorPage() {
           />
         </Card>
 
-        {camp ? (
-          <Suspense
-            fallback={
-              <Card className="p-6 text-sm text-muted">
-                <p role="status">Loading patients seen…</p>
-              </Card>
-            }
-          >
-            <DoctorSeenSection campId={camp.id} />
-          </Suspense>
+        {camp && seenInitial ? (
+          <DoctorSeenPanel campId={camp.id} initial={seenInitial} />
         ) : null}
       </div>
     </Shell>

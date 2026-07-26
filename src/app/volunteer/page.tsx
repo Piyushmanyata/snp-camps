@@ -8,7 +8,6 @@ import {
   isAdmin,
   roleHome,
 } from "@/lib/auth";
-import type { CampDayStats } from "@/lib/types";
 import {
   ActionCard,
   Card,
@@ -19,37 +18,22 @@ import {
 } from "@/components/ui";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
+import type { CampDayStats, DoctorOption } from "@/lib/types";
 import {
-  DOCTOR_LIST_UNAVAILABLE,
-  getDoctorsList,
-} from "@/lib/metadata";
-import type { DoctorOption } from "@/lib/types";
+  loadDoctorsSection,
+  loadQueueSection,
+  loadSeatsSection,
+  loadVolunteerKpisSection,
+} from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { SectionLoadError } from "@/components/section-load-error";
-
-const LiveQueue = dynamic(
-  () =>
-    import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading queue…</p>,
-  },
-);
+import { VolunteerKpisSection } from "@/components/section-data";
+import { DeskScanQueue } from "@/components/desk-scan-queue";
 
 const SeatBoard = dynamic(
   () =>
     import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
   {
     loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
-  },
-);
-
-const QrScanner = dynamic(
-  () =>
-    import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
-  {
-    loading: () => (
-      <p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>
-    ),
   },
 );
 
@@ -157,93 +141,52 @@ export default async function VolunteerPage() {
     throw new Error("Volunteer desk data could not be loaded");
   }
 
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
-
   let waiting: LiveQueuePatient[] = [];
   let waitingCount = 0;
-  let doctors: DoctorOption[] = [];
+  let queueKnown = false;
   let days: CampDayStats[] = [];
-  let myTotal = 0;
-  let myToday = 0;
-  let myWait = 0;
-  let mySeen = 0;
-
-  let queueError: string | null = null;
-  let doctorsError: string | null = null;
-  let seatsError: string | null = null;
-  let kpisError: string | null = null;
+  let seatsKnown = false;
+  let doctorsInitial:
+    | { ok: true; data: DoctorOption[] }
+    | { ok: false; error: string } = {
+    ok: true,
+    data: [],
+  };
+  let kpisInitial:
+    | {
+        ok: true;
+        data: {
+          total: number;
+          today: number;
+          waiting: number;
+          seen: number;
+        };
+      }
+    | { ok: false; error: string }
+    | null = null;
 
   if (camp && userId) {
     // Independent loads — one failure must not blank the rest of the desk.
-    const [waitingRes, doctorsOutcome, dayStatsRes, myCountsRes] =
-      await Promise.all([
-        supabase
-          .from("patients")
-          .select("id, reg_no, full_name, phone, queued_at", {
-            count: "exact",
-          })
-          .eq("camp_id", camp.id)
-          .eq("queue_status", "waiting")
-          .order("queued_at", { ascending: true, nullsFirst: false })
-          .limit(100),
-        getDoctorsList()
-          .then((list) => ({ ok: true as const, list }))
-          .catch((err: unknown) => ({ ok: false as const, err })),
-        supabase.rpc("camp_day_stats", { p_camp_id: camp.id }),
-        supabase.rpc("staff_person_kpis", {
-          p_user_id: userId,
-          p_role: "volunteer",
-          p_camp_id: camp.id,
-          p_since: startOfDay,
-        }),
-      ]);
+    const [queueRes, seatsRes, doctorsRes, kpisRes] = await Promise.all([
+      loadQueueSection(camp.id),
+      loadSeatsSection(camp.id),
+      loadDoctorsSection(),
+      loadVolunteerKpisSection(camp.id, userId),
+    ]);
 
-    if (waitingRes.error) {
-      queueError = mapDbError(waitingRes.error, {
-        context: "volunteer-page.queue",
-        fallback: "Queue could not be loaded — retry.",
-      });
-    } else {
-      waiting = (waitingRes.data || []) as LiveQueuePatient[];
-      waitingCount = waitingRes.count ?? waiting.length;
+    if (queueRes.ok) {
+      waiting = queueRes.data.waiting as LiveQueuePatient[];
+      waitingCount = queueRes.data.waitingTotal;
+      queueKnown = true;
     }
 
-    if (!doctorsOutcome.ok) {
-      doctorsError = mapDbError(doctorsOutcome.err, {
-        context: "volunteer-page.doctors",
-        fallback: DOCTOR_LIST_UNAVAILABLE,
-      });
-    } else {
-      doctors = doctorsOutcome.list;
+    if (seatsRes.ok) {
+      days = seatsRes.data.days;
+      seatsKnown = true;
     }
 
-    if (dayStatsRes.error) {
-      seatsError = mapDbError(dayStatsRes.error, {
-        context: "volunteer-page.seats",
-        fallback: "Seat board could not be loaded — retry.",
-      });
-    } else {
-      days = (dayStatsRes.data as CampDayStats[]) || [];
-    }
-
-    if (myCountsRes.error) {
-      kpisError = mapDbError(myCountsRes.error, {
-        context: "volunteer-page.kpis",
-        fallback: "Your stats could not be loaded — retry.",
-      });
-    } else {
-      const myCounts = myCountsRes.data?.[0];
-      myTotal = Number(myCounts?.total ?? 0);
-      myToday = Number(myCounts?.today ?? 0);
-      myWait = Number(myCounts?.waiting ?? 0);
-      mySeen = Number(myCounts?.seen ?? 0);
-    }
+    doctorsInitial = doctorsRes;
+    kpisInitial = kpisRes;
   }
 
   return (
@@ -280,14 +223,14 @@ export default async function VolunteerPage() {
                 </p>
               ) : null}
             </div>
-            {kpisError ? (
-              <SectionLoadError message={kpisError} />
+            {camp && kpisInitial ? (
+              <VolunteerKpisSection campId={camp.id} initial={kpisInitial} />
             ) : (
               <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-                <Stat label="You handled" value={myTotal} tone="ok" />
-                <Stat label="Handled today" value={myToday} />
-                <Stat label="In queue" value={myWait} tone="wait" />
-                <Stat label="Doctor seen" value={mySeen} tone="ok" />
+                <Stat label="You handled" value={0} tone="ok" />
+                <Stat label="Handled today" value={0} />
+                <Stat label="In queue" value={0} tone="wait" />
+                <Stat label="Doctor seen" value={0} tone="ok" />
               </div>
             )}
             {!camp ? (
@@ -333,21 +276,15 @@ export default async function VolunteerPage() {
         </Card>
 
         {camp ? (
-          seatsError ? (
-            <Card>
-              <SectionTitle>Seat board</SectionTitle>
-              <SectionLoadError message={seatsError} />
-            </Card>
-          ) : (
-            <SeatBoard
-              days={days}
-              campId={camp.id}
-              title="Seat board"
-              compact
-              pollMs={0}
-              live
-            />
-          )
+          <SeatBoard
+            days={days}
+            campId={camp.id}
+            title="Seat board"
+            compact
+            pollMs={0}
+            live
+            initialLoadKnown={seatsKnown}
+          />
         ) : null}
 
         <Card id="checkin" className="!p-4 sm:!p-5">
@@ -372,50 +309,19 @@ export default async function VolunteerPage() {
           </Suspense>
         </Card>
 
-        <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
-          <Card id="scan" className="!p-4 sm:!p-5">
-            <SectionTitle hint="Scan paper or phone QR · pick doctor">
-              Scan / assign doctor
-            </SectionTitle>
-            {doctorsError ? (
-              <SectionLoadError message={doctorsError} />
-            ) : null}
-            <Suspense fallback={<p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>}>
-              <QrScanner
-                mode="volunteer"
-                doctors={doctors}
-                disabledReason={
-                  camp
-                    ? doctorsError
-                      ? DOCTOR_LIST_UNAVAILABLE
-                      : undefined
-                    : "No active camp. Ask an admin to activate a camp first."
-                }
-              />
-            </Suspense>
-          </Card>
-
-          <Card padding="sm" id="queue">
-            <div className="px-1 pt-1">
-              <SectionTitle hint="Line · live">
-                Queue
-              </SectionTitle>
-            </div>
-            {queueError ? (
-              <div className="px-1 pb-2">
-                <SectionLoadError message={queueError} />
-              </div>
-            ) : (
-              <LiveQueue
-                initial={waiting}
-                initialTotal={waitingCount}
-                campId={camp?.id ?? null}
-                doctors={doctors}
-                mode="volunteer"
-              />
-            )}
-          </Card>
-        </div>
+        <DeskScanQueue
+          mode="volunteer"
+          campId={camp?.id ?? null}
+          doctorsInitial={doctorsInitial}
+          waiting={waiting}
+          waitingTotal={waitingCount}
+          queueKnown={queueKnown || !camp}
+          noCampReason={
+            camp
+              ? undefined
+              : "No active camp. Ask an admin to activate a camp first."
+          }
+        />
       </div>
     </Shell>
   );

@@ -240,7 +240,7 @@ test("pending removals are id-keyed and independent", async () => {
   }
 });
 
-test("failed refresh preserves rows and marks stale-error", async () => {
+test("failed refresh after client snapshot preserves rows and marks stale-error", async () => {
   const originalFetch = globalThis.fetch;
   let n = 0;
   globalThis.fetch = async () => {
