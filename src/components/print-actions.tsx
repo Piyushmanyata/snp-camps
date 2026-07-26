@@ -82,7 +82,7 @@ export function PrintActions({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${className}`}
+      className={`flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between ${className}`}
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
@@ -107,8 +107,8 @@ export function PrintActions({
           <p
             id="print-action-status"
             className={`mt-2 text-sm font-medium ${
-              message.tone === "error" ? "text-red-700" : "text-emerald-700"
-            }`}
+ message.tone === "error" ? "text-red-700" : "text-emerald-700"
+ }`}
             role={message.tone === "error" ? "alert" : "status"}
           >
             {message.text}

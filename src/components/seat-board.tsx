@@ -116,10 +116,10 @@ export function SeatBoard({
             <li
               key={d.id}
               className={`rounded-xl border p-3 transition-colors ${
-                d.is_full
-                  ? "border-amber-200/80 bg-amber-50/40"
-                  : "border-border bg-background/50"
-              }`}
+ d.is_full
+ ? "border-amber-200/80 bg-amber-50/40"
+ : "border-border bg-background/50"
+ }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -151,8 +151,8 @@ export function SeatBoard({
               >
                 <div
                   className={`h-full rounded-full transition-[width] duration-300 ${
-                    d.is_full ? "bg-amber-500" : "bg-brand"
-                  }`}
+ d.is_full ? "bg-amber-500" : "bg-brand"
+ }`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

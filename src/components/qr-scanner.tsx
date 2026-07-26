@@ -719,9 +719,9 @@ export function QrScanner({
       </p>
 
       <div
-        className={`relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-black/[0.04] to-black/[0.02] ${
-          active ? "min-h-[280px]" : "min-h-[4.5rem]"
-        }`}
+        className={`relative overflow-hidden rounded-2xl border border-border bg-black/[0.03] ${
+ active ? "min-h-[280px]" : "min-h-[4.5rem]"
+ }`}
         aria-label={active ? "Camera scanner active" : "Camera preview area"}
       >
         <video
@@ -741,7 +741,7 @@ export function QrScanner({
         />
         {active ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6" aria-hidden="true">
-            <div className="h-44 w-44 rounded-2xl border-2 border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/40" />
+            <div className="h-44 w-44 rounded-2xl border-2 border-emerald-500/70 ring-1 ring-emerald-400/40" />
           </div>
         ) : null}
         {!active ? (
@@ -774,7 +774,7 @@ export function QrScanner({
             {mode !== "doctor" ? (
               <Link
                 href={`/print/${assigned.id}`}
-                className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-white/90"
+                className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
               >
                 Reprint form
               </Link>
@@ -800,7 +800,7 @@ export function QrScanner({
           aria-live="polite"
           aria-atomic="true"
           aria-labelledby={reviewHeadingId}
-          className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
+          className="rounded-xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-brand/30"
         >
           <p id={reviewHeadingId} className="font-bold text-foreground">
             <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
@@ -820,9 +820,9 @@ export function QrScanner({
                   onClick={(event) => {
                     if (assigning) event.preventDefault();
                   }}
-                  className={`pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft ${
-                    assigning ? "pointer-events-none opacity-50" : ""
-                  }`}
+                  className={`pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft ${
+ assigning ? "pointer-events-none opacity-50" : ""
+ }`}
                 >
                   Print (join queue)
                 </Link>
@@ -849,10 +849,10 @@ export function QrScanner({
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                          doctorId === d.id
-                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
-                            : "border-border bg-white text-foreground hover:border-brand/40"
-                        }`}
+ doctorId === d.id
+ ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+ : "border-border bg-white text-foreground hover:border-brand/40"
+ }`}
                       >
                         {d.full_name || "Doctor"}
                       </button>
@@ -902,7 +902,7 @@ export function QrScanner({
                 {mode !== "doctor" ? (
                   <Link
                     href={`/print/${lookup.id}`}
-                    className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand shadow-sm"
+                    className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
                   >
                     Reprint form
                   </Link>
@@ -947,10 +947,10 @@ export function QrScanner({
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                          doctorId === d.id
-                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
-                            : "border-border bg-white text-foreground hover:border-brand/40"
-                        }`}
+ doctorId === d.id
+ ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+ : "border-border bg-white text-foreground hover:border-brand/40"
+ }`}
                       >
                         {d.full_name || "Doctor"}
                       </button>

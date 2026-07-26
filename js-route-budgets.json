@@ -1,17 +1,17 @@
 {
-  "_comment": "Per-route gzipped client JS budgets (bytes). Baseline after #45 patient-auth deletion 2026-07-25. Later tickets lower these.",
+  "_comment": "Per-route gzipped client JS budgets (bytes). Baseline after #43 visual strip 2026-07-26. Later tickets lower these.",
   "routes": {
     "/": 274000,
     "/_global-error": 193000,
     "/_not-found": 199000,
     "/admin": 524000,
     "/admin/patients": 406000,
-    "/doctor": 524000,
+    "/doctor": 523000,
     "/login": 273000,
     "/p/[id]": 199000,
     "/print/[id]": 213000,
     "/register": 411000,
     "/s/[token]": 199000,
-    "/volunteer": 526000
+    "/volunteer": 525000
   }
 }

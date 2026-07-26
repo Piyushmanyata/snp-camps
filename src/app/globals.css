@@ -19,9 +19,6 @@
   --success-soft: #ecfdf5;
   --warning: #d97706;
   --warning-soft: #fffbeb;
-  --shadow: 0 1px 3px 0 rgb(15 23 42 / 6%), 0 1px 2px -1px rgb(15 23 42 / 6%);
-  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 5%), 0 6px 16px -2px rgb(15 23 42 / 6%);
-  --shadow-lift: 0 4px 6px -1px rgb(15 23 42 / 8%), 0 16px 32px -4px rgb(15 23 42 / 12%);
   --radius: 1rem;
   --print-ink: #0f172a;
   --ring: #059669;
@@ -32,7 +29,7 @@
   --safe-right: env(safe-area-inset-right, 0px);
   /* Sticky mobile dock height (actions + padding + home indicator) */
   --dock-height: 4.75rem;
-  /* Field type scale — optimized for Plus Jakarta Sans & outdoor glare */
+  /* Field type scale — outdoor glare legibility */
   --text-body: 1.0625rem; /* 17px */
   --text-small: 0.9375rem; /* 15px */
   --text-caption: 0.8125rem; /* 13px */
@@ -57,9 +54,7 @@
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
-  --font-sans: var(--font-plus-jakarta-sans);
-  --shadow-card: var(--shadow-card);
-  --shadow-lift: var(--shadow-lift);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 *,
@@ -82,7 +77,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-body);
   line-height: 1.55;
   letter-spacing: 0.005em;
@@ -98,18 +93,6 @@ body {
 @media (max-width: 380px) {
   :root {
     --text-body: 1.075rem;
-  }
-}
-
-/* Soft brand wash — cheap for low-end phones */
-@supports (background: color-mix(in srgb, white, black)) {
-  body {
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--brand-soft) 60%, transparent) 0%,
-        var(--background) 18rem
-      );
   }
 }
 
@@ -158,13 +141,13 @@ body {
   z-index: 100;
   transform: translateY(-120%);
   border-radius: 0.75rem;
+  border: 1px solid var(--border);
   background: var(--brand);
   color: #fff;
   font-size: 0.875rem;
   font-weight: 600;
   padding: 0.65rem 1rem;
   text-decoration: none;
-  box-shadow: var(--shadow-lift);
   transition: transform 0.15s ease;
 }
 
@@ -215,10 +198,7 @@ h3 {
   bottom: 0;
   z-index: 40;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--card) 94%, transparent);
-  backdrop-filter: blur(18px) saturate(1.4);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  box-shadow: 0 -6px 24px rgb(10 22 17 / 8%);
+  background: var(--card);
   padding:
     0.5rem
     max(0.6rem, var(--safe-right))
@@ -286,7 +266,6 @@ h3 {
   font-weight: 700;
   color: var(--brand);
   text-decoration: none;
-  box-shadow: var(--shadow);
 }
 
 .jump-chip:focus-visible,
@@ -329,8 +308,7 @@ h3 {
   cursor: pointer;
   transition:
     border-color 0.12s ease,
-    background-color 0.12s ease,
-    box-shadow 0.12s ease;
+    background-color 0.12s ease;
 }
 
 .day-chip:disabled,
@@ -370,12 +348,8 @@ h3 {
   margin-left: -0.15rem;
   margin-right: -0.15rem;
   padding: 0.55rem 0.15rem 0.15rem;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    color-mix(in srgb, var(--card) 92%, transparent) 28%,
-    var(--card) 55%
-  );
+  background: var(--card);
+  border-top: 1px solid var(--border);
 }
 
 .has-mobile-dock .sticky-submit {
@@ -388,6 +362,7 @@ h3 {
     margin: 0;
     padding: 0;
     background: none;
+    border-top: none;
   }
 }
 
@@ -425,7 +400,6 @@ h3 {
 .pressable {
   transition:
     transform 0.12s ease,
-    box-shadow 0.12s ease,
     background-color 0.12s ease,
     border-color 0.12s ease;
 }
@@ -434,39 +408,24 @@ h3 {
   transform: scale(0.985);
 }
 
-/* Glassmorphic Toast notification */
+/* Toast notification — appear only, no motion */
 .toast {
   position: fixed;
   bottom: calc(var(--dock-height) + var(--safe-bottom) + 0.75rem);
   left: 50%;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(-50%);
   z-index: 60;
-  background: color-mix(in srgb, var(--foreground) 92%, transparent);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  background: var(--foreground);
   color: var(--card);
   font-size: var(--text-small);
   font-weight: 600;
   padding: 0.65rem 1.35rem;
   border-radius: 2rem;
   border: 1px solid rgb(255 255 255 / 16%);
-  box-shadow: 0 10px 25px -5px rgb(15 23 42 / 25%), 0 8px 10px -6px rgb(15 23 42 / 20%);
   pointer-events: none;
   max-width: calc(100vw - 1rem);
   overflow-wrap: anywhere;
   text-align: center;
-  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(0.75rem) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
-  }
 }
 
 @media (min-width: 1024px) {
@@ -494,7 +453,7 @@ h3 {
 }
 
 .print-preview {
-  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
 }
 
 @page {
@@ -554,5 +513,3 @@ h3 {
     display: none !important;
   }
 }
-
-

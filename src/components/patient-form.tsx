@@ -511,7 +511,7 @@ export function PatientForm({
           </p>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-border bg-card p-3.5 shadow-sm sm:rounded-2xl sm:p-4">
+        <div className="space-y-3 rounded-xl border border-border bg-card p-3.5 sm:rounded-2xl sm:p-4">
           {queueNote ? <SuccessBox message={queueNote} /> : null}
           {created.notifyNote ? (
             <p className="text-xs text-muted">{created.notifyNote}</p>
@@ -529,7 +529,7 @@ export function PatientForm({
           <div className="flex flex-col gap-2">
             <Link
               href={`/print/${created.id}?auto=1`}
-              className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
+              className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white transition-colors hover:bg-brand-dark"
             >
               Print desk slip (join queue)
             </Link>
@@ -647,8 +647,8 @@ export function PatientForm({
                   }
                 }}
                 className={`day-chip ${active ? "day-chip-active" : ""} ${
-                  d.is_full ? "day-chip-full" : ""
-                }`}
+ d.is_full ? "day-chip-full" : ""
+ }`}
               >
                 <span className="day-chip-date">
                   {formatCampDay(d.day_date)}
@@ -821,12 +821,12 @@ export function PatientForm({
               <p
                 role="status"
                 className={`rounded-xl px-3 py-2 text-xs ${
-                  lookupState === "ok"
-                    ? "bg-brand-soft text-brand"
-                    : lookupState === "fail"
-                      ? "border border-amber-200 bg-amber-50 text-amber-950"
-                      : "bg-background text-muted"
-                }`}
+ lookupState === "ok"
+ ? "bg-brand-soft text-brand"
+ : lookupState === "fail"
+ ? "border border-amber-200 bg-amber-50 text-amber-950"
+ : "bg-background text-muted"
+ }`}
               >
                 {lookupMsg}
               </p>

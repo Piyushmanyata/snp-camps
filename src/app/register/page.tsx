@@ -124,7 +124,7 @@ export default async function RegisterPage() {
           </Card>
 
           <div className="order-2 space-y-3 sm:space-y-4 lg:order-1 lg:col-span-2">
-            <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
+            <Card className="bg-brand-soft !p-4 sm:!p-5">
               <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-[11px]">
                 Active camp
               </p>

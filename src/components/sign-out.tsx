@@ -83,7 +83,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
           type="button"
           disabled={isLoading}
           onClick={() => void signOut()}
-          className="pressable inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-red-600 px-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="pressable inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-red-600 px-3.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Signing out…" : "Sign out"}
         </button>

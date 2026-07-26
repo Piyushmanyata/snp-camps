@@ -27,7 +27,7 @@ export function QrCard({
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-md transition-all duration-200 hover:shadow-lg ring-1 ring-emerald-500/15">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-6 transition-all duration-200 ring-1 ring-emerald-500/15">
       <div className="text-center">
         <p className="text-xs font-bold uppercase tracking-wider text-muted">
           Registration no.
@@ -39,7 +39,7 @@ export function QrCard({
           {regNo}
         </p>
       </div>
-      <div className="rounded-2xl border border-emerald-500/20 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10">
+      <div className="rounded-2xl border border-emerald-500/20 bg-white p-4 ring-1 ring-emerald-500/10">
         <QrCode
           value={payload}
           size={220}

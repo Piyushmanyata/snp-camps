@@ -44,10 +44,10 @@ function MobileDock({
             key={item.href + item.label}
             href={item.href}
             className={`pressable mobile-dock-item inline-flex items-center justify-center rounded-xl px-1.5 text-center text-[0.8125rem] font-bold leading-tight transition-colors duration-150 sm:text-sm ${
-              item.primary
-                ? "bg-brand text-white shadow-sm hover:bg-brand-dark"
-                : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"
-            }`}
+ item.primary
+ ? "bg-brand text-white hover:bg-brand-dark"
+ : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"
+ }`}
           >
             {item.label}
           </Link>
@@ -84,8 +84,8 @@ export function Shell({
     <>
       <div
         className={`mx-auto flex w-full flex-1 flex-col px-3.5 pt-3 sm:px-6 sm:pt-6 lg:px-8 ${shellWidths[width]} ${
-          hasDock ? "has-mobile-dock" : "pb-8 sm:pb-10"
-        }`}
+ hasDock ? "has-mobile-dock" : "pb-8 sm:pb-10"
+ }`}
         style={{
           paddingTop: "calc(0.75rem + var(--safe-top))",
           ...(hasDock
@@ -93,11 +93,11 @@ export function Shell({
             : { paddingBottom: "calc(2rem + var(--safe-bottom))" }),
         }}
       >
-        <header className="mb-4 flex items-start gap-2.5 rounded-2xl border border-border/50 bg-card/70 p-3.5 backdrop-blur-md shadow-xs sm:mb-6 sm:gap-3 sm:p-4">
+        <header className="mb-4 flex items-start gap-2.5 rounded-2xl border border-border bg-card p-3.5 sm:mb-6 sm:gap-3 sm:p-4">
           {backHref ? (
             <Link
               href={backHref}
-              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm hover:border-brand/30 hover:bg-brand-soft sm:h-12 sm:w-12"
+              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft sm:h-12 sm:w-12"
               aria-label="Go back"
             >
               <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -160,7 +160,7 @@ export function Card({
   return (
     <div
       id={id}
-      className={`min-w-0 rounded-xl border border-border bg-card shadow-[var(--shadow-card)] sm:rounded-2xl ${p} ${className}`}
+      className={`min-w-0 rounded-xl border border-border bg-card sm:rounded-2xl ${p} ${className}`}
     >
       {children}
     </div>
@@ -201,7 +201,7 @@ export function CollapsibleSection({
   return (
     <details
       open={defaultOpen || undefined}
-      className="group rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]"
+      className="group rounded-2xl border border-border bg-card"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="text-lg font-semibold tracking-tight text-foreground">
@@ -246,7 +246,7 @@ export function Button({
       : "min-h-[3.25rem] px-4 text-[1.0625rem]";
   const styles =
     variant === "primary"
-      ? "bg-brand text-white shadow-sm hover:bg-brand-dark"
+      ? "bg-brand text-white hover:bg-brand-dark"
       : variant === "danger"
         ? "bg-danger text-white hover:bg-danger/90"
         : variant === "ghost"
@@ -325,11 +325,11 @@ export function Input({
         aria-describedby={
           [errorId, hintId].filter(Boolean).join(" ") || undefined
         }
-        className={`min-h-[3.25rem] w-full rounded-xl border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
-          error
-            ? "border-danger focus:border-danger focus:ring-danger/20"
-            : "border-border"
-        } ${className}`}
+        className={`min-h-[3.25rem] w-full rounded-xl border bg-card px-3.5 text-[1.0625rem] text-foreground outline-none transition-[border-color] duration-150 placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-background disabled:opacity-70 ${
+ error
+ ? "border-danger focus:border-danger focus:ring-danger/20"
+ : "border-border"
+ } ${className}`}
         {...props}
       />
       {error ? (
@@ -372,7 +372,7 @@ export function Select({
       <select
         id={selectId}
         aria-describedby={hintId}
-        className="min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-card px-3.5 text-[1.0625rem] text-foreground shadow-sm outline-none transition-[border-color,box-shadow] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
+        className="min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-card px-3.5 text-[1.0625rem] text-foreground outline-none transition-[border-color] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
         {...props}
       >
         {children}
@@ -439,9 +439,9 @@ export function Badge({
 }) {
   const c =
     tone === "ok"
-      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30"
       : tone === "wait"
-        ? "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+        ? "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/30"
         : tone === "danger"
           ? "bg-danger-soft text-danger ring-1 ring-danger/25"
           : "bg-background text-muted ring-1 ring-border/80";
@@ -470,7 +470,7 @@ export function Stat({
         ? "text-amber-700"
         : "text-brand-dark";
   return (
-    <div className="rounded-xl border border-border bg-card px-2 py-2.5 text-center shadow-[var(--shadow-card)] sm:rounded-2xl sm:p-3.5">
+    <div className="rounded-xl border border-border bg-card px-2 py-2.5 text-center sm:rounded-2xl sm:p-3.5">
       <p
         className={`tabular text-[1.5rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
       >
@@ -494,7 +494,7 @@ export function NavLink({
 }) {
   const styles =
     variant === "primary"
-      ? "bg-brand text-white shadow-sm hover:bg-brand-dark"
+      ? "bg-brand text-white hover:bg-brand-dark"
       : variant === "soft"
         ? "border border-border bg-brand-soft font-semibold text-brand hover:bg-white hover:border-brand/30"
         : "border border-border bg-card font-semibold text-foreground hover:bg-brand-soft";
@@ -540,10 +540,10 @@ export function ActionCard({
 
   const styles =
     variant === "primary"
-      ? "bg-brand text-white shadow-md hover:bg-brand-dark hover:shadow-[var(--shadow-lift)] hover:-translate-y-0.5"
+      ? "bg-brand text-white hover:bg-brand-dark"
       : variant === "soft"
-        ? "border border-brand/20 bg-brand-soft text-brand hover:bg-white hover:border-brand/35 hover:-translate-y-0.5"
-        : "border border-border bg-card text-foreground shadow-sm hover:border-brand/30 hover:bg-brand-soft hover:-translate-y-0.5";
+        ? "border border-brand/20 bg-brand-soft text-brand hover:bg-white hover:border-brand/35"
+        : "border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft";
 
   const descClass =
     variant === "primary" ? "text-white/90" : "text-muted";
@@ -573,7 +573,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/90 bg-background/60 px-4 py-8 text-center">
       <div
-        className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-muted shadow-xs"
+        className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-muted"
         aria-hidden="true"
       >
         <svg
@@ -658,10 +658,10 @@ export function SegmentedControl<T extends string>({
               onChange(options[nextIndex]!.value);
             }}
             className={`pressable min-h-12 cursor-pointer rounded-lg px-3 py-2.5 text-[0.9375rem] font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
-              selected
-                ? "bg-card text-brand shadow-sm ring-1 ring-border"
-                : "text-muted hover:text-foreground hover:bg-card/60"
-            }`}
+ selected
+ ? "bg-card text-brand ring-1 ring-border"
+ : "text-muted hover:text-foreground hover:bg-card/60"
+ }`}
           >
             {opt.label}
           </button>
@@ -682,7 +682,7 @@ export function StepList({
       {steps.map((s, i) => (
         <li
           key={s.title}
-          className="flex gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-card)]"
+          className="flex gap-3 rounded-xl border border-border bg-card px-3 py-2.5"
         >
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white"

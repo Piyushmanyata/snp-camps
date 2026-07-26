@@ -36,7 +36,7 @@ export default async function HomePage() {
         <div className="space-y-5 text-center lg:text-left">
           <div className="space-y-3">
             <div
-              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-[0.8125rem] font-bold tracking-widest text-white shadow-md lg:mx-0"
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-[0.8125rem] font-bold tracking-widest text-white lg:mx-0"
               aria-hidden="true"
             >
               SNP
@@ -58,7 +58,7 @@ export default async function HomePage() {
           {camp ? (
             <Card
               padding="sm"
-              className="bg-gradient-to-br from-brand-soft to-card"
+              className="bg-brand-soft"
             >
               <p className="text-[11px] font-bold uppercase tracking-wide text-brand">
                 Active camp

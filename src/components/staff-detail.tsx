@@ -125,8 +125,8 @@ export function StaffDetailPanel({
         <>
           <div
             className={`grid gap-2 ${
-              role === "volunteer" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"
-            }`}
+ role === "volunteer" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"
+ }`}
           >
             <Stat label={kpis?.label || "Total"} value={kpis?.total ?? 0} tone="ok" />
             <Stat

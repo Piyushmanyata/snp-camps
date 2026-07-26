@@ -251,7 +251,7 @@ export function LiveQueue({
                 <Badge tone="wait">In queue</Badge>
                 <Link
                   href={`/print/${p.id}`}
-                  className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand shadow-sm transition-colors hover:bg-brand-soft"
+                  className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand-soft"
                 >
                   Reprint
                 </Link>
@@ -304,10 +304,10 @@ export function LiveQueue({
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-10 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                          doctorId === d.id
-                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
-                            : "border-border bg-white hover:bg-brand-soft/50"
-                        }`}
+ doctorId === d.id
+ ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+ : "border-border bg-white hover:bg-brand-soft/50"
+ }`}
                       >
                         {d.full_name || "Doctor"}
                       </button>

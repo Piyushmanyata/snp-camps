@@ -28,7 +28,7 @@ export default async function PrintPage({
   if (!isPatientUuid(id)) {
     return (
       <main id="main" className="mx-auto max-w-lg px-4 py-10">
-        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center">
           <p className="text-lg font-semibold">Invalid patient link</p>
           <p className="mt-1 text-sm text-muted">
             Check the QR or registration number and try again.
@@ -51,7 +51,7 @@ export default async function PrintPage({
   if (patientErr || !patient) {
     return (
       <main id="main" className="mx-auto max-w-lg px-4 py-10">
-        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center">
           <p className="text-lg font-semibold">Patient not found</p>
           <p className="mt-1 text-sm text-muted">
             {patientErr

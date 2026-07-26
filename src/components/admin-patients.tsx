@@ -354,10 +354,10 @@ export function AdminPatients({
                 setError(null);
               }}
               className={`pressable min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                filter === key
-                  ? "bg-brand text-white shadow-sm"
-                  : "border border-border bg-white text-muted hover:bg-brand-soft hover:text-brand"
-              }`}
+ filter === key
+ ? "bg-brand text-white"
+ : "border border-border bg-white text-muted hover:bg-brand-soft hover:text-brand"
+ }`}
             >
               {label}
             </button>
@@ -454,7 +454,7 @@ export function AdminPatients({
                   </Badge>
                   <Link
                     href={`/print/${r.id}`}
-                    className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand shadow-sm hover:bg-brand-soft"
+                    className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
                   >
                     Print
                   </Link>

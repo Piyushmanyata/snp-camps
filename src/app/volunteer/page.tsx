@@ -106,7 +106,7 @@ export default async function VolunteerPage() {
         ]}
       >
         <div className="space-y-3 sm:space-y-4">
-          <Card className="bg-gradient-to-br from-brand-soft to-card">
+          <Card className="bg-brand-soft">
             <p className="text-xs font-bold uppercase tracking-wide text-brand">
               Staff management
             </p>
@@ -254,7 +254,7 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
-        <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
+        <Card className="bg-brand-soft !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>
               <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">

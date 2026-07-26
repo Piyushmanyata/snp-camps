@@ -133,7 +133,7 @@ async function PatientDeskContent() {
         </EmptyState>
       )}
 
-      <Card className="bg-gradient-to-br from-brand-soft/70 to-card !p-4 sm:!p-5">
+      <Card className="bg-brand-soft !p-4 sm:!p-5">
         <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
           Patient desk
         </p>

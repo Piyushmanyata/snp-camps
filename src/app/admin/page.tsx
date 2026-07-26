@@ -281,7 +281,7 @@ export default async function AdminPage() {
           <AdminHeaderStats campId={active?.id ?? null} />
         </Suspense>
 
-        <Card className="bg-gradient-to-br from-brand-soft to-card !p-4 sm:!p-5">
+        <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
             Active camp
           </p>
