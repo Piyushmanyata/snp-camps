@@ -14,32 +14,16 @@ import {
   getBarcodeDetectorConstructor,
   type BarcodeDetectorInstance,
 } from "@/lib/qr-detector";
-import { isSuccessfulAssignment } from "@/lib/queue-assignment";
+import {
+  assignPatientDoctorWithRetries,
+  lookupPatientScanWithRetries,
+  type AssignRow,
+  type LookupRow,
+} from "@/lib/desk-ops";
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import { mapDbError } from "@/lib/public-error";
 import type { DoctorOption } from "@/lib/types";
-
-type LookupRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  queue_status: string;
-  phone: string | null;
-  doctor_id: string | null;
-  doctor_name: string | null;
-};
-
-type AssignRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  queue_status: string;
-  doctor_id: string | null;
-  doctor_name: string | null;
-  already_seen: boolean;
-  error_code: string | null;
-};
 
 type JsQrFn = (
   data: Uint8ClampedArray,
@@ -157,96 +141,86 @@ export function QrScanner({
       assigningRef.current = true;
       setAssigning(true);
       setError(null);
-      try {
-        const supabase = createClient();
-        const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
-          p_patient_id: opts.id ?? null,
-          p_reg_no: opts.regNo ?? null,
-          p_doctor_id: chosenDoctorId,
-        });
-
-        if (err) {
-          handledRef.current = false;
-          setError(
-            mapDbError(err, {
+      // doctorId / lookup stay set on failure so Try Again reuses them (#32).
+      const supabase = createClient();
+      const outcome = await assignPatientDoctorWithRetries({
+        patientId: opts.id ?? null,
+        regNo: opts.regNo ?? null,
+        doctorId: chosenDoctorId,
+        rpc: async (fn, args) => {
+          const result = await supabase.rpc(fn, args);
+          return {
+            data: result.data,
+            error: result.error ? { message: result.error.message } : null,
+          };
+        },
+        mapRpcError: (message) =>
+          mapDbError(
+            { message },
+            {
               context: "qr-scanner.assign",
               fallback: "Could not assign doctor. Try again.",
-            }),
-          );
-          return null;
-        }
+            },
+          ),
+      });
 
-        const row = (Array.isArray(data) ? data[0] : data) as AssignRow | null;
-        if (!row) {
-          handledRef.current = false;
-          setError("Could not assign doctor.");
-          return null;
-        }
+      if (!outcome.ok) {
+        handledRef.current = false;
+        setError(
+          outcome.doctorRequired
+            ? "Select which doctor is seeing this patient."
+            : outcome.error,
+        );
+        assigningRef.current = false;
+        setAssigning(false);
+        return null;
+      }
 
-        if (row.error_code === "already_seen" || row.already_seen) {
-          const msg = row.doctor_name
-            ? `Already seen by ${row.doctor_name}`
-            : "Already seen";
-          setError(msg);
-          if (mode === "doctor") {
-            // Doctor Station: refuse and stay ready — no dismiss screen (#50).
-            readyForNext();
-          } else {
-            setAssigned(row);
-            setLookup(null);
-            handledRef.current = true;
-          }
-          await stopScanner();
-          router.refresh();
-          return row;
-        }
+      const row = outcome.row;
 
-        if (row.error_code === "doctor_required") {
-          setError("Select which doctor is seeing this patient.");
-          return row;
-        }
-
-        if (!isSuccessfulAssignment(row)) {
-          handledRef.current = false;
-          setError(
-            row.error_code
-              ? "Could not mark this patient as seen. Try again or ask an administrator."
-              : "Doctor assignment did not complete. No success was recorded.",
-          );
-          return null;
-        }
-
-        try {
-          if (typeof window !== "undefined" && "vibrate" in navigator) {
-            navigator.vibrate(80);
-          }
-        } catch {
-          /* ignore */
-        }
-
+      if (row.error_code === "already_seen" || row.already_seen) {
+        const msg = row.doctor_name
+          ? `Already seen by ${row.doctor_name}`
+          : "Already seen";
+        setError(msg);
         if (mode === "doctor") {
-          // Brief toast only — no success card to dismiss (#50).
-          setToastMsg(`#${row.reg_no} marked seen`);
+          // Doctor Station: refuse and stay ready — no dismiss screen (#50).
           readyForNext();
         } else {
           setAssigned(row);
           setLookup(null);
-          setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
           handledRef.current = true;
         }
         await stopScanner();
         router.refresh();
-        return row;
-      } catch {
-        handledRef.current = false;
-        setError(
-          "Could not assign this patient. Check the connection and try again.",
-        );
-        return null;
-      } finally {
         assigningRef.current = false;
         setAssigning(false);
+        return row;
       }
+
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(80);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (mode === "doctor") {
+        // Brief toast only — no success card to dismiss (#50).
+        setToastMsg(`#${row.reg_no} marked seen`);
+        readyForNext();
+      } else {
+        setAssigned(row);
+        setLookup(null);
+        setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
+        handledRef.current = true;
+      }
+      await stopScanner();
+      router.refresh();
+      assigningRef.current = false;
+      setAssigning(false);
+      return row;
     },
     [mode, readyForNext, router, stopScanner],
   );
@@ -257,106 +231,103 @@ export function QrScanner({
       setError(null);
       setLookup(null);
       setAssigned(null);
+      // `manual` reg input is not cleared here — survives failure (#32).
 
-      try {
-        const supabase = createClient();
-        const { data, error: err } = await supabase.rpc("lookup_patient_scan", {
-          p_patient_id: opts.id ?? null,
-          p_reg_no: opts.regNo ?? null,
-        });
-
-        if (err) {
-          handledRef.current = false;
-          setError(
-            mapDbError(err, {
+      const supabase = createClient();
+      const outcome = await lookupPatientScanWithRetries({
+        patientId: opts.id ?? null,
+        regNo: opts.regNo ?? null,
+        rpc: async (fn, args) => {
+          const result = await supabase.rpc(fn, args);
+          return {
+            data: result.data,
+            error: result.error ? { message: result.error.message } : null,
+          };
+        },
+        mapRpcError: (message) =>
+          mapDbError(
+            { message },
+            {
               context: "qr-scanner.lookup",
               fallback: "Could not look up this patient. Try again.",
-            }),
-          );
-          return null;
-        }
-
-        let row = (Array.isArray(data) ? data[0] : data) as LookupRow | null;
-        if (!row) {
-          handledRef.current = false;
-          setError("Patient not found.");
-          return null;
-        }
-
-        await stopScanner();
-
-        try {
-          if (typeof window !== "undefined" && "vibrate" in navigator) {
-            navigator.vibrate(40);
-          }
-        } catch {
-          /* ignore */
-        }
-
-        // Desk: scanning a pre-registered patient checks them into the queue (#46).
-        if (
-          row.queue_status === "registered" &&
-          mode !== "doctor"
-        ) {
-          const { data: checkData, error: checkErr } = await supabase.rpc(
-            "check_in_patient",
-            {
-              p_patient_id: row.id,
-              p_reg_no: null,
             },
-          );
-          if (checkErr) {
-            handledRef.current = false;
-            setError(
-              mapDbError(checkErr, {
-                context: "qr-scanner.check-in",
-                fallback: "Could not check in this patient. Try again.",
-              }),
-            );
-            setLookup(row);
-            return row;
-          }
-          const checked = (
-            Array.isArray(checkData) ? checkData[0] : checkData
-          ) as {
-            queue_status?: string;
-            already_waiting?: boolean;
-            error_code?: string | null;
-            doctor_name?: string | null;
-          } | null;
-          if (checked?.error_code === "already_seen") {
-            setError(
-              checked.doctor_name
-                ? `Already seen by ${checked.doctor_name}`
-                : "Already seen",
-            );
-            setLookup({
-              ...row,
-              queue_status: "seen",
-              doctor_name: checked.doctor_name ?? row.doctor_name,
-            });
-            handledRef.current = true;
-            return row;
-          }
-          if (checked?.queue_status === "waiting") {
-            row = { ...row, queue_status: "waiting" };
-            setToastMsg(
-              checked.already_waiting
-                ? `#${row.reg_no} already in queue`
-                : `#${row.reg_no} checked in`,
-            );
-            router.refresh();
-          }
-        }
+          ),
+      });
 
-        setLookup(row);
-        handledRef.current = true;
-        return row;
-      } catch {
+      if (!outcome.ok) {
         handledRef.current = false;
-        setError("Could not look up this patient. Check the connection and try again.");
+        setError(outcome.error);
         return null;
       }
+
+      let row = outcome.row;
+
+      await stopScanner();
+
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(40);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Desk: scanning a pre-registered patient checks them into the queue (#46).
+      if (row.queue_status === "registered" && mode !== "doctor") {
+        const { data: checkData, error: checkErr } = await supabase.rpc(
+          "check_in_patient",
+          {
+            p_patient_id: row.id,
+            p_reg_no: null,
+          },
+        );
+        if (checkErr) {
+          handledRef.current = false;
+          setError(
+            mapDbError(checkErr, {
+              context: "qr-scanner.check-in",
+              fallback: "Could not check in this patient. Try again.",
+            }),
+          );
+          setLookup(row);
+          return row;
+        }
+        const checked = (
+          Array.isArray(checkData) ? checkData[0] : checkData
+        ) as {
+          queue_status?: string;
+          already_waiting?: boolean;
+          error_code?: string | null;
+          doctor_name?: string | null;
+        } | null;
+        if (checked?.error_code === "already_seen") {
+          setError(
+            checked.doctor_name
+              ? `Already seen by ${checked.doctor_name}`
+              : "Already seen",
+          );
+          setLookup({
+            ...row,
+            queue_status: "seen",
+            doctor_name: checked.doctor_name ?? row.doctor_name,
+          });
+          handledRef.current = true;
+          return row;
+        }
+        if (checked?.queue_status === "waiting") {
+          row = { ...row, queue_status: "waiting" };
+          setToastMsg(
+            checked.already_waiting
+              ? `#${row.reg_no} already in queue`
+              : `#${row.reg_no} checked in`,
+          );
+          router.refresh();
+        }
+      }
+
+      setLookup(row);
+      handledRef.current = true;
+      return row;
     },
     [mode, router, stopScanner],
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { changeCampDayWithRetries } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Select, SuccessBox } from "@/components/ui";
 import { mapDbError } from "@/lib/public-error";
@@ -73,39 +74,45 @@ export function ChangeDay({
     setLoading(true);
     setError(null);
     setOk(null);
-    try {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.rpc("change_camp_day", {
-        p_patient_id: patientId,
-        p_new_day_id: dayId,
-      });
-      if (err) {
-        setError(
-          mapDbError(err, {
+    // Selection (dayId) is kept on failure so Try Again reuses it (#32).
+    const supabase = createClient();
+    const outcome = await changeCampDayWithRetries({
+      patientId,
+      newDayId: dayId,
+      rpc: async (fn, args) => {
+        const result = await supabase.rpc(fn, args);
+        return {
+          data: result.data,
+          error: result.error ? { message: result.error.message } : null,
+        };
+      },
+      mapRpcError: (message) =>
+        mapDbError(
+          { message },
+          {
             context: "change-day.rpc",
             fallback: "Could not change the day. Try again.",
-          }),
-        );
-        return;
-      }
-      const row = Array.isArray(data) ? data[0] : data;
-      const updatedDayId = row?.camp_day_id || dayId;
-      setActiveDayId(updatedDayId);
-      setDayId(updatedDayId);
-      if (onDayChanged) {
-        onDayChanged(updatedDayId, row?.day_date);
-      }
-      setOk(
-        row?.day_date
-          ? `Moved to ${formatCampDay(row.day_date)}`
-          : "Day updated",
-      );
-      router.refresh();
-    } catch {
-      setError("Could not change the day. Check the connection and try again.");
-    } finally {
+          },
+        ),
+    });
+    if (!outcome.ok) {
+      setError(outcome.error);
       setLoading(false);
+      return;
     }
+    const updatedDayId = outcome.row.camp_day_id || dayId;
+    setActiveDayId(updatedDayId);
+    setDayId(updatedDayId);
+    if (onDayChanged) {
+      onDayChanged(updatedDayId, outcome.row.day_date);
+    }
+    setOk(
+      outcome.row.day_date
+        ? `Moved to ${formatCampDay(outcome.row.day_date)}`
+        : "Day updated",
+    );
+    router.refresh();
+    setLoading(false);
   }
 
   return (

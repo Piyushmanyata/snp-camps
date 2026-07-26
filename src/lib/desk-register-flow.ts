@@ -1,6 +1,11 @@
 import type { RegistrationAttempt } from "@/lib/registration-request";
 import { submitRegistrationOutbound } from "@/lib/registration-request";
 import type { StaffRegistrationFields } from "@/lib/registration-request";
+import {
+  RETRY_EXHAUSTED_COPY,
+  withRetries,
+  type RetryDelays,
+} from "@/lib/with-retries";
 
 export type DeskRegisterRpc = NonNullable<
   Parameters<typeof submitRegistrationOutbound>[0]["rpc"]
@@ -22,6 +27,8 @@ export type DeskRegisterSubmitResult = {
   likelyDuplicateRegNo?: number | null;
 };
 
+export type { RetryDelays };
+
 /** Transient network/service failures are retried; duplicate warnings are not. */
 export function isRetryableRegistrationError(
   result: DeskRegisterSubmitResult,
@@ -32,16 +39,9 @@ export function isRetryableRegistrationError(
   return true;
 }
 
-export type RetryDelays = {
-  /** Attempts after the first call. Default two → three tries total. */
-  extraAttempts?: number;
-  /** Delay before each retry (ms). Length should match extraAttempts. */
-  delaysMs?: number[];
-};
-
 /**
  * Call `attempt` up to 1 + extraAttempts times, reusing the same work unit.
- * Does not rotate the registration attempt id.
+ * Does not rotate the registration attempt id. Uses shared withRetries (#32).
  */
 export async function withRegistrationRetries(
   attempt: () => Promise<DeskRegisterSubmitResult>,
@@ -49,32 +49,16 @@ export async function withRegistrationRetries(
     sleep?: (ms: number) => Promise<void>;
   } = {},
 ): Promise<DeskRegisterSubmitResult> {
-  const extra = options.extraAttempts ?? 2;
-  const delays = options.delaysMs ?? [250, 750];
-  const sleep =
-    options.sleep ??
-    ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-
-  let last: DeskRegisterSubmitResult = {
-    data: null,
-    error: "Could not save. Check the internet and press Try Again.",
-  };
-
-  for (let i = 0; i <= extra; i += 1) {
-    if (i > 0) {
-      const delay = delays[i - 1] ?? delays[delays.length - 1] ?? 500;
-      await sleep(delay);
-    }
-    last = await attempt();
-    if (!last.error) return last;
-    if (!isRetryableRegistrationError(last)) return last;
-  }
-
-  return {
-    ...last,
-    // Volunteer-facing copy after exhausted retries (#47).
-    error: "Could not save. Check the internet and press Try Again.",
-  };
+  return withRetries(attempt, {
+    extraAttempts: options.extraAttempts,
+    delaysMs: options.delaysMs,
+    sleep: options.sleep,
+    shouldRetry: isRetryableRegistrationError,
+    mapExhausted: (last) => ({
+      ...last,
+      error: RETRY_EXHAUSTED_COPY.register,
+    }),
+  });
 }
 
 /**
@@ -124,7 +108,7 @@ export async function runDeskRegisterAndPrint(options: {
     : result.data) as DeskRegisterRow | null | undefined;
 
   if (!row?.id) {
-    return { ok: false, error: "Could not save. Check the internet and press Try Again." };
+    return { ok: false, error: RETRY_EXHAUSTED_COPY.register };
   }
 
   // Order is deliberate: patient is already registered/queued, then print opens.

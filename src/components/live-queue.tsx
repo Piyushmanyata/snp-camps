@@ -16,7 +16,7 @@ import {
 import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/lib/types";
-import { isSuccessfulAssignment } from "@/lib/queue-assignment";
+import { assignPatientDoctorWithRetries } from "@/lib/desk-ops";
 import { mapDbError } from "@/lib/public-error";
 
 export type LiveQueuePatient = {
@@ -104,89 +104,74 @@ export function LiveQueue({
     if (busyId) return;
     setError(null);
     setBusyId(patientId);
-    try {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.rpc("assign_patient_doctor", {
-        p_patient_id: patientId,
-        p_reg_no: null,
-        p_doctor_id: chosen,
-      });
-
-      if (err) {
-        setError(
-          mapDbError(err, {
+    // doctorId / pickId stay set on failure so Try Again reuses them (#32).
+    const supabase = createClient();
+    const outcome = await assignPatientDoctorWithRetries({
+      patientId,
+      doctorId: chosen,
+      rpc: async (fn, args) => {
+        const result = await supabase.rpc(fn, args);
+        return {
+          data: result.data,
+          error: result.error ? { message: result.error.message } : null,
+        };
+      },
+      mapRpcError: (message) =>
+        mapDbError(
+          { message },
+          {
             context: "live-queue.assign",
             fallback: "Could not assign this patient. Try again.",
-          }),
-        );
-        return;
-      }
+          },
+        ),
+    });
 
-      const row = (Array.isArray(data) ? data[0] : data) as {
-        already_seen: boolean;
-        doctor_id: string | null;
-        doctor_name?: string | null;
-        error_code: string | null;
-        queue_status: string;
-      } | null;
+    if (!outcome.ok) {
+      setError(outcome.error);
+      setBusyId(null);
+      return;
+    }
 
-      if (row?.error_code === "doctor_required") {
-        setError("Select a doctor.");
-        return;
-      }
-      if (row?.error_code === "already_seen" || row?.already_seen) {
-        setError(
-          row.doctor_name
-            ? `Already seen by ${row.doctor_name}`
-            : "Already seen",
-        );
-        updateQueue((current) => ({
-          ...current,
-          rows: current.rows.filter((r) => r.id !== patientId),
-          total: Math.max(0, current.total - 1),
-        }));
-        startTransition(() => {
-          router.refresh();
-        });
-        return;
-      }
-
-      if (!row || !isSuccessfulAssignment(row)) {
-        setError(
-          row?.error_code
-            ? "Could not assign this patient. Refresh and try again."
-            : "Doctor assignment did not complete. No success was recorded.",
-        );
-        return;
-      }
-
-      try {
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate([100, 30, 100]);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      setRefreshSource(null);
-      setToastMsg("Patient assignment complete");
+    const row = outcome.row;
+    if (row.already_seen || row.error_code === "already_seen") {
+      setError(
+        row.doctor_name
+          ? `Already seen by ${row.doctor_name}`
+          : "Already seen",
+      );
       updateQueue((current) => ({
         ...current,
         rows: current.rows.filter((r) => r.id !== patientId),
         total: Math.max(0, current.total - 1),
       }));
-      setPickId(null);
-      setDoctorId("");
       startTransition(() => {
         router.refresh();
       });
-    } catch {
-      setError(
-        "Could not assign this patient. Check the connection and try again.",
-      );
-    } finally {
       setBusyId(null);
+      return;
     }
+
+    try {
+      if (typeof window !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate([100, 30, 100]);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    setRefreshSource(null);
+    setToastMsg("Patient assignment complete");
+    updateQueue((current) => ({
+      ...current,
+      rows: current.rows.filter((r) => r.id !== patientId),
+      total: Math.max(0, current.total - 1),
+    }));
+    setPickId(null);
+    setDoctorId("");
+    startTransition(() => {
+      router.refresh();
+    });
+    setBusyId(null);
   }
 
   return (
