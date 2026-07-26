@@ -53,6 +53,16 @@ const QrScanner = dynamic(
   },
 );
 
+const CheckIn = dynamic(
+  () =>
+    import("@/components/check-in").then((m) => ({ default: m.CheckIn })),
+  {
+    loading: () => (
+      <p role="status" className="py-4 text-xs text-muted">Loading check-in…</p>
+    ),
+  },
+);
+
 const AdminStaff = dynamic(
   () =>
     import("@/components/admin-staff").then((m) => ({
@@ -249,6 +259,7 @@ export default async function VolunteerPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
+        { href: "#checkin", label: "Check-in" },
         { href: "#scan", label: "Scan" },
         { href: "#queue", label: "Queue" },
       ]}
@@ -302,6 +313,9 @@ export default async function VolunteerPage() {
               disabledReason="No active camp. Ask admin to activate one."
             />
             <div className="jump-chip-row" aria-label="Jump to section">
+              <a href="#checkin" className="jump-chip">
+                Check-in
+              </a>
               <a href="#scan" className="jump-chip">
                 Scan QR
               </a>
@@ -335,6 +349,28 @@ export default async function VolunteerPage() {
             />
           )
         ) : null}
+
+        <Card id="checkin" className="!p-4 sm:!p-5">
+          <SectionTitle hint="Pre-registered only · reg # · name · QR paste">
+            Check-in
+          </SectionTitle>
+          <Suspense
+            fallback={
+              <p role="status" className="py-4 text-xs text-muted">
+                Loading check-in…
+              </p>
+            }
+          >
+            <CheckIn
+              campId={camp?.id ?? null}
+              disabledReason={
+                camp
+                  ? undefined
+                  : "No active camp. Ask an admin to activate a camp first."
+              }
+            />
+          </Suspense>
+        </Card>
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
           <Card id="scan" className="!p-4 sm:!p-5">

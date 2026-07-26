@@ -42,6 +42,16 @@ const QrScanner = dynamic(
   },
 );
 
+const CheckIn = dynamic(
+  () =>
+    import("@/components/check-in").then((m) => ({ default: m.CheckIn })),
+  {
+    loading: () => (
+      <p role="status" className="py-4 text-xs text-muted">Loading check-in…</p>
+    ),
+  },
+);
+
 const AdminCamps = dynamic(
   () => import("@/components/admin-camps").then((m) => ({ default: m.AdminCamps })),
   {
@@ -205,28 +215,36 @@ async function AdminOperationsSection({ campId }: { campId: string }) {
   const waitingCount = waitingRes.count ?? waiting.length;
 
   return (
-    <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
-      <Card id="scan" className="!p-4 sm:!p-5">
-        <SectionTitle hint="Scan QR or type reg number · review and assign">
-          Scan / assign doctor
+    <div className="space-y-3 sm:space-y-4">
+      <Card id="checkin" className="!p-4 sm:!p-5">
+        <SectionTitle hint="Pre-registered only · reg # · name · QR paste">
+          Check-in
         </SectionTitle>
-        <QrScanner mode="admin" doctors={doctors} />
+        <CheckIn campId={campId} />
       </Card>
-
-      <Card padding="sm" id="queue">
-        <div className="px-1 pt-1">
-          <SectionTitle hint="FCFS · assign doctor · live">
-            Queue
+      <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
+        <Card id="scan" className="!p-4 sm:!p-5">
+          <SectionTitle hint="Scan QR or type reg number · review and assign">
+            Scan / assign doctor
           </SectionTitle>
-        </div>
-        <LiveQueue
-          initial={waiting}
-          initialTotal={waitingCount}
-          campId={campId}
-          doctors={doctors}
-          mode="admin"
-        />
-      </Card>
+          <QrScanner mode="admin" doctors={doctors} />
+        </Card>
+
+        <Card padding="sm" id="queue">
+          <div className="px-1 pt-1">
+            <SectionTitle hint="FCFS · assign doctor · live">
+              Queue
+            </SectionTitle>
+          </div>
+          <LiveQueue
+            initial={waiting}
+            initialTotal={waitingCount}
+            campId={campId}
+            doctors={doctors}
+            mode="admin"
+          />
+        </Card>
+      </div>
     </div>
   );
 }
@@ -251,8 +269,9 @@ export default async function AdminPage() {
       dock={
         active
           ? [
-              { href: "#scan", label: "Scan", primary: true },
+              { href: "#checkin", label: "Check-in", primary: true },
               { href: "/register", label: "Register" },
+              { href: "#scan", label: "Scan" },
               { href: "#queue", label: "Queue" },
               { href: "/admin/patients", label: "Patients" },
             ]

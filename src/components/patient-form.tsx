@@ -45,6 +45,7 @@ type Created = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
+  queue_status?: "registered" | "waiting" | "seen";
   claim_token?: string | null;
   notifyNote?: string;
   phone?: string | null;
@@ -421,6 +422,7 @@ export function PatientForm({
     registrationAttempt.current.rotate();
 
     const base = row as Created;
+    const inQueue = base.queue_status === "waiting";
     setCreated({
       ...base,
       notifyNote: phone10
@@ -428,7 +430,9 @@ export function PatientForm({
         : "Registered. No phone on file — status is passwordless via desk reprint / SMS when configured.",
     });
     setQueueNote(
-      `Registered as Reg #${base.reg_no}. Print the desk slip to join the queue. Status is passwordless (SMS link later).`,
+      inQueue
+        ? `Reg #${base.reg_no} checked in — in the FCFS queue. Print a desk slip if needed.`
+        : `Reg #${base.reg_no} pre-registered (not in queue). Check them in when they arrive, or print a slip for later.`,
     );
     setLoading(false);
   }
@@ -490,10 +494,13 @@ export function PatientForm({
   }
 
   if (created) {
+    const inQueue = created.queue_status === "waiting";
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
-          <p className="text-sm font-semibold text-brand">Registered</p>
+          <p className="text-sm font-semibold text-brand">
+            {inQueue ? "Registered & in queue" : "Pre-registered"}
+          </p>
           <p
             className="tabular mt-1 text-4xl font-bold tracking-tight text-brand"
             translate="no"
@@ -507,7 +514,9 @@ export function PatientForm({
             {created.day_date
               ? `Day: ${formatCampDay(created.day_date)} · `
               : ""}
-            Registered at desk — print the slip to join the queue
+            {inQueue
+              ? "Walk-in — already checked in to the FCFS queue"
+              : "Not in queue until check-in on camp day"}
           </p>
         </div>
 
@@ -521,9 +530,9 @@ export function PatientForm({
               Print desk slip
             </p>
             <p className="prose-help mt-0.5 text-xs text-muted">
-              The slip carries the staff-scan QR. Print also puts them in the
-              FCFS queue when you use Join queue &amp; print. Patient status is
-              passwordless (SMS link later).
+              The slip carries the staff-scan QR. Printing can also check them
+              into the queue if they are still only pre-registered. Patient
+              status is passwordless (SMS link later).
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -531,10 +540,10 @@ export function PatientForm({
               href={`/print/${created.id}?auto=1`}
               className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white transition-colors hover:bg-brand-dark"
             >
-              Print desk slip (join queue)
+              {inQueue ? "Print desk slip" : "Print desk slip (check-in)"}
             </Link>
             <Button type="button" variant="secondary" onClick={resetForm}>
-              Register another walk-in
+              Register another patient
             </Button>
           </div>
           <ErrorBox message={error} />
@@ -546,7 +555,7 @@ export function PatientForm({
             patientId={created.id}
             currentDayId={created.camp_day_id || campDayId}
             days={days}
-            queueStatus="registered"
+            queueStatus={created.queue_status || "registered"}
             onDayChanged={(newDayId, newDayDate) => {
               setCreated((prev) =>
                 prev

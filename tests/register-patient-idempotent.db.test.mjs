@@ -127,6 +127,10 @@ test("replay with null camp_day returns the original registration", async (t) =>
   const requestId = randomUUID();
   const patientId = randomUUID();
 
+  // camps_one_active: clear any leftover active camp from other suites.
+  await client.query(
+    `update public.camps set is_active = false where is_active = true`,
+  );
   await client.query(
     `insert into public.camps (id, name, is_active, venue)
      values ($1, $2, true, 'db-test')`,

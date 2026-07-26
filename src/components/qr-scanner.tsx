@@ -287,7 +287,7 @@ export function QrScanner({
           return null;
         }
 
-        const row = (Array.isArray(data) ? data[0] : data) as LookupRow | null;
+        let row = (Array.isArray(data) ? data[0] : data) as LookupRow | null;
         if (!row) {
           handledRef.current = false;
           setError("Patient not found.");
@@ -304,13 +304,62 @@ export function QrScanner({
           /* ignore */
         }
 
-        if (row.queue_status === "seen") {
-          setLookup(row);
-          handledRef.current = true;
-          return row;
+        // Desk: scanning a pre-registered patient checks them into the queue (#46).
+        if (
+          row.queue_status === "registered" &&
+          mode !== "doctor"
+        ) {
+          const { data: checkData, error: checkErr } = await supabase.rpc(
+            "check_in_patient",
+            {
+              p_patient_id: row.id,
+              p_reg_no: null,
+            },
+          );
+          if (checkErr) {
+            handledRef.current = false;
+            setError(
+              mapDbError(checkErr, {
+                context: "qr-scanner.check-in",
+                fallback: "Could not check in this patient. Try again.",
+              }),
+            );
+            setLookup(row);
+            return row;
+          }
+          const checked = (
+            Array.isArray(checkData) ? checkData[0] : checkData
+          ) as {
+            queue_status?: string;
+            already_waiting?: boolean;
+            error_code?: string | null;
+            doctor_name?: string | null;
+          } | null;
+          if (checked?.error_code === "already_seen") {
+            setError(
+              checked.doctor_name
+                ? `Already seen by ${checked.doctor_name}`
+                : "Already seen",
+            );
+            setLookup({
+              ...row,
+              queue_status: "seen",
+              doctor_name: checked.doctor_name ?? row.doctor_name,
+            });
+            handledRef.current = true;
+            return row;
+          }
+          if (checked?.queue_status === "waiting") {
+            row = { ...row, queue_status: "waiting" };
+            setToastMsg(
+              checked.already_waiting
+                ? `#${row.reg_no} already in queue`
+                : `#${row.reg_no} checked in`,
+            );
+            router.refresh();
+          }
         }
 
-        // Volunteer/admin: registered → offer print (queue) or assign doctor
         setLookup(row);
         handledRef.current = true;
         return row;
@@ -320,7 +369,7 @@ export function QrScanner({
         return null;
       }
     },
-    [stopScanner],
+    [mode, router, stopScanner],
   );
 
   useEffect(() => {
@@ -711,9 +760,9 @@ export function QrScanner({
           </>
         ) : (
           <>
-            <strong className="text-foreground">Scan</strong> paper or phone QR
-            to assign a doctor (marks seen). Optional: print first to put them
-            in the queue. Re-scan is blocked.
+            <strong className="text-foreground">Scan</strong> paper or phone QR:
+            pre-registered patients are checked in, then you can assign a
+            doctor (marks seen). Re-scan of seen is blocked.
           </>
         )}
       </p>
@@ -809,8 +858,8 @@ export function QrScanner({
           {lookup.queue_status === "registered" && mode !== "doctor" ? (
             <>
               <p className="mt-1 text-sm text-muted">
-                Registered — print to join the queue, or assign a doctor now
-                (no print required).
+                Still pre-registered (check-in may have failed). Use Check-in on
+                the desk, or print the slip to check in.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -824,60 +873,19 @@ export function QrScanner({
  assigning ? "pointer-events-none opacity-50" : ""
  }`}
                 >
-                  Print (join queue)
+                  Print (check-in)
                 </Link>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-auto"
+                  disabled={assigning || looking}
+                  onClick={resetResult}
+                >
+                  Cancel
+                </Button>
               </div>
-              {doctors.length === 0 ? (
-                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                  No doctors added yet.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Or assign doctor now
-                  </p>
-                  <div
-                    className="grid gap-2 sm:grid-cols-2"
-                    role="group"
-                    aria-label="Select doctor"
-                  >
-                    {doctors.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        disabled={assigning || looking}
-                        aria-pressed={doctorId === d.id}
-                        onClick={() => setDoctorId(d.id)}
-                        className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
- doctorId === d.id
- ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
- : "border-border bg-white text-foreground hover:border-brand/40"
- }`}
-                      >
-                        {d.full_name || "Doctor"}
-                      </button>
-                    ))}
-                  </div>
-                  <Button
-                    type="button"
-                    disabled={!doctorId || assigning}
-                    loading={assigning}
-                    onClick={() => void assignDoctor({ id: lookup.id }, doctorId)}
-                  >
-                    {assigning ? "Assigning…" : "Assign doctor · mark seen"}
-                  </Button>
-                </div>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2 w-auto"
-                disabled={assigning || looking}
-                onClick={resetResult}
-              >
-                Cancel
-              </Button>
             </>
           ) : null}
 

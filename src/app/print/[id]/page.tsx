@@ -125,7 +125,7 @@ export default async function PrintPage({
           <>The patient is in queue and waiting for a doctor.</>
         ) : (
           <>
-            Use <strong>Join queue &amp; print</strong> before the patient proceeds
+            Use <strong>Check in &amp; print</strong> before the patient proceeds
             to a doctor.
           </>
         )}

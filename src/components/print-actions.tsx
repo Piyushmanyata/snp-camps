@@ -90,7 +90,7 @@ export function PrintActions({
             ? "Ready to print · consultation complete"
             : queueStatus === "waiting"
               ? "Ready to reprint · already in queue"
-              : "Ready to print · queue not updated yet"}
+              : "Ready to print · will check in"}
         </p>
         <p className="truncate text-base font-semibold">
           {regNo != null ? `#${regNo}` : "Prescription"}
@@ -101,7 +101,7 @@ export function PrintActions({
             ? "Reprinting keeps the completed consultation status unchanged."
             : queueStatus === "waiting"
               ? "The patient is already waiting for a doctor."
-              : "The queue updates only after you press the print button."}
+              : "Printing a pre-registered patient also checks them into the FCFS queue."}
         </p>
         {message ? (
           <p
@@ -130,7 +130,7 @@ export function PrintActions({
               ? "Print completed form"
               : queueStatus === "waiting"
                 ? "Reprint (1 page)"
-                : "Join queue & print"}
+                : "Check in & print"}
         </Button>
         <Link
           href={deskHref}

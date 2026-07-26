@@ -2,18 +2,21 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-## Camp flow (v5)
+## Camp flow (v6 — two-round)
 
-Desk-only registration, one shared queue, passwordless patient status:
+Desk-only registration, **pre-reg + check-in**, one shared queue, passwordless patient status:
 
-1. **Desk registration (Staff):** Staff registers the walk-in at the Volunteer Desk (age & address required; phone optional).
-2. **Print desk slip** → joins the **FCFS Queue** (`waiting`) and prints reg number + **Patient QR** (staff-scan). No passcode on the slip.
-3. **Doctor scan** → review patient → confirm → **Seen** (once only) — print is not required for the doctor path.
-4. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
-5. **Patient status (passwordless):** each patient has a status token; open `/s/<token>` with no sign-in for day/queue info. SMS can carry that link when configured. There is **no patient login** and **no public self-registration**.
+1. **Desk registration (Staff):** Staff registers the patient (age & address required; phone optional).
+   - **Camp day = today** → walk-in: lands in **`waiting`** (in the FCFS Queue) in one step.
+   - **Future camp day** → pre-reg: stays **`registered`** (not in the queue).
+2. **Check-in** (pre-reg only): QR scan, reg number, or name search → `registered` → **`waiting`**. Queue order is by check-in time. Double check-in is a no-op.
+3. **Print desk slip** (optional): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
+4. **Doctor scan** → review → confirm → **Seen** (once only).
+5. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
+6. **Patient status (passwordless):** `/s/<token>` with no sign-in. There is **no patient login** and **no public self-registration**.
 
 - Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` or `snp:{uuid}` — never a login)
-- One active camp, single FCFS Queue; doctor recorded when Seen
+- One active camp; FCFS Queue = **`waiting` only** (physically present)
 - Aadhaar: full number used only for verify/lookup in memory; **last 4 digits only** stored
 
 ## Auth model
