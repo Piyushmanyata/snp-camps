@@ -11,7 +11,7 @@ Desk-only registration, **pre-reg + check-in**, one shared queue, passwordless p
    - **Future camp day** → pre-reg: stays **`registered`** (not in the line).
 2. **Check-in** (pre-reg only): QR scan, reg number, or name search → `registered` → **`waiting`**. Line order is by check-in time. Double check-in is a no-op.
 3. **Print desk slip** (optional reprint): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
-4. **Doctor scan** → review → confirm → **Seen** (once only).
+4. **Doctor Station** → scan or type reg number → read-only details → **Mark seen** (once only; returns immediately to the next patient).
 5. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
 6. **Patient status (passwordless):** `/s/<token>` with no sign-in. There is **no patient login** and **no public self-registration**.
 

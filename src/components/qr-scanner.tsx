@@ -143,6 +143,14 @@ export function QrScanner({
     };
   }, [stopScanner]);
 
+  const readyForNext = useCallback(() => {
+    setLookup(null);
+    setAssigned(null);
+    setManual("");
+    setDoctorId("");
+    handledRef.current = false;
+  }, []);
+
   const assignDoctor = useCallback(
     async (opts: { id?: string; regNo?: number }, chosenDoctorId: string | null) => {
       if (assigningRef.current) return null;
@@ -176,14 +184,18 @@ export function QrScanner({
         }
 
         if (row.error_code === "already_seen" || row.already_seen) {
-          setError(
-            row.doctor_name
-              ? `Already seen by ${row.doctor_name}`
-              : "Already seen",
-          );
-          setAssigned(row);
-          setLookup(null);
-          handledRef.current = true;
+          const msg = row.doctor_name
+            ? `Already seen by ${row.doctor_name}`
+            : "Already seen";
+          setError(msg);
+          if (mode === "doctor") {
+            // Doctor Station: refuse and stay ready — no dismiss screen (#50).
+            readyForNext();
+          } else {
+            setAssigned(row);
+            setLookup(null);
+            handledRef.current = true;
+          }
           await stopScanner();
           router.refresh();
           return row;
@@ -211,10 +223,17 @@ export function QrScanner({
         } catch {
           /* ignore */
         }
-        setAssigned(row);
-        setLookup(null);
-        setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
-        handledRef.current = true;
+
+        if (mode === "doctor") {
+          // Brief toast only — no success card to dismiss (#50).
+          setToastMsg(`#${row.reg_no} marked seen`);
+          readyForNext();
+        } else {
+          setAssigned(row);
+          setLookup(null);
+          setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
+          handledRef.current = true;
+        }
         await stopScanner();
         router.refresh();
         return row;
@@ -229,7 +248,7 @@ export function QrScanner({
         setAssigning(false);
       }
     },
-    [router, stopScanner],
+    [mode, readyForNext, router, stopScanner],
   );
 
   const resolvePatient = useCallback(
@@ -709,12 +728,8 @@ export function QrScanner({
 
   function resetResult() {
     if (assigningRef.current) return;
-    setLookup(null);
-    setAssigned(null);
-    setManual("");
     setError(null);
-    setDoctorId("");
-    handledRef.current = false;
+    readyForNext();
   }
 
   return (
@@ -730,10 +745,10 @@ export function QrScanner({
       <p className="prose-help text-sm text-muted">
         {mode === "doctor" ? (
           <>
-            <strong className="text-foreground">Scan</strong> to check the
-            patient, then confirm before marking them{" "}
-            <strong className="text-foreground">seen</strong>. No print is
-            needed, and re-scan is blocked.
+            <strong className="text-foreground">Scan</strong> or type the reg
+            number, check the name, then{" "}
+            <strong className="text-foreground">Mark seen</strong>. You return
+            straight to the next patient. Re-scan of seen is blocked.
           </>
         ) : (
           <>
@@ -1020,27 +1035,33 @@ export function QrScanner({
           {(lookup.queue_status === "registered" ||
             lookup.queue_status === "waiting") &&
           mode === "doctor" ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-3">
               <p className="text-sm text-muted">
-                Check the patient name and registration number before confirming.
+                Read-only — check the name matches the patient in front of you.
               </p>
+              {lookup.phone ? (
+                <p className="text-sm text-foreground">
+                  <span className="text-muted">Phone </span>
+                  <span className="tabular">{lookup.phone}</span>
+                </p>
+              ) : null}
               <Button
                 type="button"
+                size="lg"
                 disabled={assigning}
                 loading={assigning}
                 onClick={() => void assignDoctor({ id: lookup.id }, null)}
               >
-                {assigning ? "Marking seen…" : "Confirm patient · mark seen"}
+                {assigning ? "Marking seen…" : "Mark seen"}
               </Button>
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 size="sm"
-                className="w-auto"
                 disabled={assigning || looking}
                 onClick={resetResult}
               >
-                Cancel
+                Wrong patient
               </Button>
             </div>
           ) : null}

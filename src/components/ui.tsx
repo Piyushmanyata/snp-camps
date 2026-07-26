@@ -237,13 +237,15 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   loading?: boolean;
 }) {
   const sizes =
     size === "sm"
       ? "min-h-12 px-3.5 text-[0.9375rem]"
-      : "min-h-[3.25rem] px-4 text-[1.0625rem]";
+      : size === "lg"
+        ? "min-h-16 px-5 text-[1.2rem] font-bold"
+        : "min-h-[3.25rem] px-4 text-[1.0625rem]";
   const styles =
     variant === "primary"
       ? "bg-brand text-white hover:bg-brand-dark"

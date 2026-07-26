@@ -42,6 +42,20 @@ test("staff desks enable live seat board or live bridge", () => {
   assert.match(doctor, /CampDeskLiveBridge/);
 });
 
+/** #50 — Doctor Station: one Mark seen control, no confirm dialog copy. */
+test("#50 doctor station marks seen without confirm dialog copy", () => {
+  const scanner = read("src/components/qr-scanner.tsx");
+  const doctor = read("src/app/doctor/page.tsx");
+
+  assert.match(scanner, /Mark seen/);
+  assert.doesNotMatch(scanner, /Confirm patient · mark seen/);
+  assert.match(scanner, /mode === "doctor"/);
+  assert.match(scanner, /readyForNext/);
+  assert.match(scanner, /#\$\{row\.reg_no\} marked seen/);
+  assert.match(doctor, /mode="doctor"/);
+  assert.match(doctor, /defaultOpen=\{false\}/);
+});
+
 test("SeatBoard live defaults false so patient poll path is unchanged", () => {
   const src = read("src/components/seat-board.tsx");
   assert.match(src, /live\s*=\s*false/);

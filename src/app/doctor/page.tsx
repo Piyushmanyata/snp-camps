@@ -98,7 +98,7 @@ async function DoctorSeenSection({
         <CollapsibleSection
           title="Patients you saw"
           hint="unavailable"
-          defaultOpen
+          defaultOpen={false}
         >
           <SectionLoadError message={message} />
         </CollapsibleSection>
@@ -118,7 +118,7 @@ async function DoctorSeenSection({
       <CollapsibleSection
         title="Patients you saw"
         hint={`${mySeen.length} recent`}
-        defaultOpen
+        defaultOpen={false}
       >
         {mySeen.length ? (
           <ul className="divide-y divide-border">
@@ -240,8 +240,8 @@ export default async function DoctorPage() {
       title="Doctor"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · Scan or enter reg number`
-          : "Scan or enter reg number"
+          ? `${profile.full_name} · Scan or type, then Mark seen`
+          : "Scan or type, then Mark seen"
       }
       width="lg"
       roleLabel="Doctor"
@@ -253,52 +253,41 @@ export default async function DoctorPage() {
     >
       <div className="space-y-3 sm:space-y-4">
         {camp ? <CampDeskLiveBridge campId={camp.id} /> : null}
-        <Card className="bg-brand-soft !p-4 sm:!p-5">
-          <div className="flex flex-col gap-3">
-            <div>
+        <Card className="bg-brand-soft !p-3 sm:!p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
                 Active camp
               </p>
-              <p className="text-lg font-bold tracking-tight sm:text-2xl">
+              <p className="truncate text-base font-bold tracking-tight sm:text-lg">
                 {camp?.name || "None"}
               </p>
-              {camp?.venue ? (
-                <p className="text-sm text-muted sm:text-[0.9375rem]">
-                  {camp.venue}
-                </p>
-              ) : null}
             </div>
             {camp ? (
               <Suspense
                 fallback={
-                  <div className="grid w-full grid-cols-2 gap-2 opacity-60">
+                  <div className="grid w-full grid-cols-2 gap-2 opacity-60 sm:w-auto sm:min-w-[14rem]">
                     <Stat label="You saw today" value="…" tone="ok" />
                     <Stat label="Total seen" value="…" />
                   </div>
                 }
               >
-                <DoctorStatsSection campId={camp.id} />
+                <div className="sm:min-w-[14rem]">
+                  <DoctorStatsSection campId={camp.id} />
+                </div>
               </Suspense>
             ) : (
-              <div className="grid w-full grid-cols-2 gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[14rem]">
                 <Stat label="You saw today" value={0} tone="ok" />
                 <Stat label="Total seen" value={0} />
               </div>
             )}
           </div>
-          <div className="jump-chip-row mt-3 lg:hidden" aria-label="Jump">
-            <a href="#scan" className="jump-chip">
-              Scan
-            </a>
-            <a href="#seen" className="jump-chip">
-              Patients seen
-            </a>
-          </div>
         </Card>
 
         <Card id="scan" className="!p-4 sm:!p-5">
-          <SectionTitle hint="Scan QR or type reg number · review and confirm">
-            Scan patient
+          <SectionTitle hint="QR or reg number · one button">
+            Patient
           </SectionTitle>
           <QrScanner
             mode="doctor"

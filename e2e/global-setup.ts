@@ -75,6 +75,7 @@ export default async function globalSetup() {
   });
   const userIds: string[] = [];
   let patientId: string | null = null;
+  let doctorPatientId: string | null = null;
   let createdDayId: string | null = null;
   let createdCampId: string | null = null;
 
@@ -83,6 +84,10 @@ export default async function globalSetup() {
     if (patientId) {
       const { error } = await admin.from("patients").delete().eq("id", patientId);
       if (error) errors.push(`patient: ${error.message}`);
+    }
+    if (doctorPatientId) {
+      const { error } = await admin.from("patients").delete().eq("id", doctorPatientId);
+      if (error) errors.push(`doctor patient: ${error.message}`);
     }
     for (const userId of userIds.reverse()) {
       const { error } = await admin.auth.admin.deleteUser(userId);
@@ -187,8 +192,11 @@ export default async function globalSetup() {
     }
 
     const phone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
+    const doctorPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
     let regNo = 1001;
     let patientName = `${PATIENT_PREFIX} ${Date.now()}`;
+    let doctorRegNo = regNo + 1;
+    let doctorPatientName = `${PATIENT_PREFIX} Doctor ${Date.now()}`;
     if (camp && day) {
       try {
         const latestPatient = await admin
@@ -216,6 +224,31 @@ export default async function globalSetup() {
         if (insertedPatient.data) {
           patientId = insertedPatient.data.id;
           patientName = insertedPatient.data.full_name;
+        }
+
+        // Second patient for Doctor Station mark-seen mutation (#50).
+        doctorRegNo = regNo + 1;
+        doctorPatientName = `${PATIENT_PREFIX} Doctor ${Date.now()}`;
+        const doctorPatient = await admin
+          .from("patients")
+          .insert({
+            camp_id: camp.id,
+            camp_day_id: day.id,
+            reg_no: doctorRegNo,
+            full_name: doctorPatientName,
+            gender: "O",
+            age: 40,
+            phone: `+91${doctorPatientPhone}`,
+            queue_status: "waiting",
+            queued_at: new Date().toISOString(),
+            created_by: null,
+          })
+          .select("id, reg_no, full_name")
+          .single();
+        if (doctorPatient.data) {
+          doctorPatientId = doctorPatient.data.id;
+          doctorRegNo = doctorPatient.data.reg_no;
+          doctorPatientName = doctorPatient.data.full_name;
         }
       } catch {
         // Ignore database connection error in mock setup
@@ -261,6 +294,9 @@ export default async function globalSetup() {
     process.env.E2E_PATIENT_PASSWORD = patientPassword;
     process.env.E2E_PATIENT_NAME = patientName;
     if (patientId) process.env.E2E_PATIENT_ID = patientId;
+    process.env.E2E_DOCTOR_PATIENT_REG_NO = String(doctorRegNo);
+    process.env.E2E_DOCTOR_PATIENT_NAME = doctorPatientName;
+    if (doctorPatientId) process.env.E2E_DOCTOR_PATIENT_ID = doctorPatientId;
 
     return cleanup;
   } catch (error) {

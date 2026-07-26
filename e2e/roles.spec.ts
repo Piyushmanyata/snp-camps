@@ -265,9 +265,11 @@ test("doctor can sign in and review without mutating patient status", async ({
     name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
   });
   await expect(review).toBeVisible();
+  // #50 — one full-width Mark seen; no confirmation dialog label
+  await expect(review.getByRole("button", { name: "Mark seen" })).toBeVisible();
   await expect(
-    review.getByRole("button", { name: "Confirm patient · mark seen" }),
-  ).toBeVisible();
+    review.getByRole("button", { name: /Confirm patient/i }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -325,4 +327,42 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
     }),
   ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible();
+});
+
+/**
+ * #50 — Doctor Station: mark seen returns immediately to scanner.
+ * Uses a dedicated fixture so earlier suite tests keep a registered patient.
+ * Must run after shared-patient lookup tests.
+ */
+test("doctor mark seen returns to scanner with no dismiss screen", async ({
+  page,
+}) => {
+  const reg = env("E2E_DOCTOR_PATIENT_REG_NO");
+  const name = env("E2E_DOCTOR_PATIENT_NAME");
+
+  await loginStaff(page, "doctor");
+  await page.getByLabel("Reg no").fill(reg);
+  await page.getByRole("button", { name: "Look up patient" }).click();
+
+  const review = page.getByRole("region", {
+    name: `#${reg} · ${name}`,
+  });
+  await expect(review).toBeVisible();
+  await review.getByRole("button", { name: "Mark seen" }).click();
+
+  // No success card to dismiss — review region gone, reg field ready.
+  await expect(review).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByLabel("Reg no")).toBeEnabled();
+  await expect(page.getByLabel("Reg no")).toHaveValue("");
+  await expect(page.getByText(`#${reg} marked seen`)).toBeVisible();
+
+  // Re-scan / re-type is refused with existing message shape.
+  await page.getByLabel("Reg no").fill(reg);
+  await page.getByRole("button", { name: "Look up patient" }).click();
+  const again = page.getByRole("region", {
+    name: `#${reg} · ${name}`,
+  });
+  await expect(again).toBeVisible();
+  await expect(again.getByText(/Already [Ss]een/)).toBeVisible();
+  await expect(again.getByRole("button", { name: "Mark seen" })).toHaveCount(0);
 });
