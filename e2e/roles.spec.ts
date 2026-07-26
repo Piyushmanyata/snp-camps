@@ -131,7 +131,7 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
     page.getByRole("heading", { name: "Volunteer desk" }),
   ).toBeVisible();
 
-  await page.getByLabel("Reg no / QR link").fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
   await page.getByRole("button", { name: "Look up patient" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
@@ -159,7 +159,7 @@ test("volunteer doctor picker is populated (not silently empty)", async ({
   ).toHaveCount(0);
   await expect(page.getByText("No doctors added yet.")).toHaveCount(0);
 
-  await page.getByLabel("Reg no / QR link").fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
   await page.getByRole("button", { name: "Look up patient" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
@@ -194,7 +194,7 @@ test("admin doctor create invalidates volunteer picker without hard reload", asy
   await volunteerPage.goto("/volunteer");
   await volunteerPage.waitForLoadState("networkidle");
   await volunteerPage
-    .getByLabel("Reg no / QR link")
+    .getByLabel("Reg no")
     .fill(env("E2E_PATIENT_REG_NO"));
   await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
   const reviewBefore = volunteerPage.getByRole("region", {
@@ -237,7 +237,7 @@ test("admin doctor create invalidates volunteer picker without hard reload", asy
   await volunteerPage.goto("/volunteer");
   await volunteerPage.waitForLoadState("networkidle");
   await volunteerPage
-    .getByLabel("Reg no / QR link")
+    .getByLabel("Reg no")
     .fill(env("E2E_PATIENT_REG_NO"));
   await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
   const reviewAfter = volunteerPage.getByRole("region", {
@@ -259,7 +259,7 @@ test("doctor can sign in and review without mutating patient status", async ({
   await loginStaff(page, "doctor");
   await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible();
 
-  await page.getByLabel("Reg no / QR link").fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
   await page.getByRole("button", { name: "Look up patient" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
@@ -315,7 +315,7 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
 }) => {
   await loginStaff(page, "doctor");
   await page
-    .getByLabel("Reg no / QR link")
+    .getByLabel("Reg no")
     .fill("not-a-patient!!!!!" + "x".repeat(200));
   await page.getByRole("button", { name: "Look up patient" }).click();
   // Desk stays usable; review panel for the e2e patient must not appear

@@ -8,6 +8,12 @@ import {
   parsePatientIdFromQr,
   parseRegistrationNumber,
 } from "@/lib/qr";
+import {
+  canUseNativeQrDetector,
+  decodeQrFromImageData,
+  getBarcodeDetectorConstructor,
+  type BarcodeDetectorInstance,
+} from "@/lib/qr-detector";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
@@ -35,19 +41,11 @@ type AssignRow = {
   error_code: string | null;
 };
 
-interface DetectedBarcode {
-  rawValue: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect: (
-    image: HTMLVideoElement | HTMLCanvasElement | ImageBitmap,
-  ) => Promise<DetectedBarcode[]>;
-}
-
-type BarcodeDetectorConstructor = new (options?: {
-  formats: string[];
-}) => BarcodeDetectorInstance;
+type JsQrFn = (
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+) => { data: string } | null;
 
 const SCANNER_FPS = 10;
 const SCANNER_FRAME_INTERVAL_MS = 1000 / SCANNER_FPS;
@@ -64,25 +62,16 @@ function ensureCanvasSize(
   canvas.height = height;
 }
 
-function getBarcodeDetectorClass(): BarcodeDetectorConstructor | null {
-  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-    return (window as unknown as Record<string, unknown>)
-      .BarcodeDetector as BarcodeDetectorConstructor;
+/** Dynamic import only after native capability fails (#49). */
+let jsQrPromise: Promise<JsQrFn> | null = null;
+function loadJsQr(): Promise<JsQrFn> {
+  if (!jsQrPromise) {
+    jsQrPromise = import("jsqr").then((m) => {
+      const fn = (m as { default?: JsQrFn }).default ?? (m as unknown as JsQrFn);
+      return fn;
+    });
   }
-  return null;
-}
-
-type Html5QrcodeInstance = {
-  stop: () => Promise<void>;
-  clear: () => void;
-};
-
-let html5QrcodePromise: Promise<typeof import("html5-qrcode")> | null = null;
-function getHtml5QrcodeModule() {
-  if (!html5QrcodePromise) {
-    html5QrcodePromise = import("html5-qrcode");
-  }
-  return html5QrcodePromise;
+  return jsQrPromise;
 }
 
 export function QrScanner({
@@ -97,7 +86,6 @@ export function QrScanner({
 }) {
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
-  const regionId = `qr-reader-${uid}`;
   const reviewHeadingId = `qr-review-heading-${uid}`;
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -109,7 +97,6 @@ export function QrScanner({
   const [assigned, setAssigned] = useState<AssignRow | null>(null);
   const [doctorId, setDoctorId] = useState("");
   const [assigning, setAssigning] = useState(false);
-  const [useNative, setUseNative] = useState(false);
 
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
@@ -120,7 +107,6 @@ export function QrScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
-  const html5QrcodeRef = useRef<Html5QrcodeInstance | null>(null);
   const reviewRef = useRef<HTMLDivElement | null>(null);
   const assigningRef = useRef(false);
 
@@ -145,24 +131,8 @@ export function QrScanner({
       videoRef.current.srcObject = null;
     }
 
-    const html5Scanner = html5QrcodeRef.current;
-    html5QrcodeRef.current = null;
-    if (html5Scanner) {
-      try {
-        await html5Scanner.stop();
-      } catch {
-        /* ignore */
-      }
-      try {
-        html5Scanner.clear();
-      } catch {
-        /* ignore */
-      }
-    }
-
     setActive(false);
     setStarting(false);
-    setUseNative(false);
   }, []);
 
   useEffect(() => {
@@ -415,6 +385,209 @@ export function QrScanner({
     return () => window.clearTimeout(timer);
   }, [resolvePatient]);
 
+  function onDecodedText(decoded: string) {
+    if (handledRef.current) return;
+    const id = parsePatientIdFromQr(decoded);
+    if (id) {
+      handledRef.current = true;
+      void resolvePatient({ id });
+      return;
+    }
+    const now = Date.now();
+    if (now - badScanAt.current > 2500) {
+      badScanAt.current = now;
+      setError(
+        "That QR is not a patient staff-scan code. Type the registration number beside the camera.",
+      );
+    }
+  }
+
+  async function applyBestEffortCameraConstraints(stream: MediaStream) {
+    try {
+      const track = stream.getVideoTracks()[0];
+      const caps = track?.getCapabilities?.() as
+        | { focusMode?: string[]; zoom?: { min: number; max: number } }
+        | undefined;
+      const constraints: Record<string, unknown> = {};
+      if (caps?.focusMode?.includes("continuous")) {
+        constraints.focusMode = "continuous";
+      }
+      if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
+        constraints.zoom = Math.min(
+          caps.zoom.max,
+          Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.35),
+        );
+      }
+      if (Object.keys(constraints).length && track) {
+        await track.applyConstraints({
+          advanced: [constraints],
+        } as unknown as MediaTrackConstraints);
+      }
+    } catch {
+      /* ignore unsupported constraints */
+    }
+  }
+
+  async function openCameraStream(generation: number): Promise<MediaStream | null> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: SCANNER_VIDEO_WIDTH },
+          height: { ideal: SCANNER_VIDEO_HEIGHT },
+        },
+        audio: false,
+      });
+      if (!isMounted.current || generation !== scannerGeneration.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return null;
+      }
+      return stream;
+    } catch {
+      if (generation === scannerGeneration.current && isMounted.current) {
+        setError(
+          "Camera unavailable or permission denied. Type the registration number beside the camera.",
+        );
+        setActive(false);
+        setStarting(false);
+      }
+      return null;
+    }
+  }
+
+  function startDecodeLoop(
+    generation: number,
+    options: {
+      detector?: BarcodeDetectorInstance;
+      jsQR?: JsQrFn;
+    },
+  ) {
+    const canvasFull = document.createElement("canvas");
+    const canvasHalf = document.createElement("canvas");
+    const ctxFull = canvasFull.getContext("2d", { willReadFrequently: true });
+    const ctxHalf = canvasHalf.getContext("2d", { willReadFrequently: true });
+    let lastFrameTime = 0;
+    let scaleTick = 0;
+    let consecutiveFrameErrors = 0;
+
+    const tryNative = async (
+      source: HTMLVideoElement | HTMLCanvasElement,
+    ): Promise<boolean> => {
+      if (!options.detector || handledRef.current) return false;
+      const barcodes = await options.detector.detect(source);
+      if (!barcodes?.length) return false;
+      for (const barcode of barcodes) {
+        if (!barcode.rawValue) continue;
+        onDecodedText(barcode.rawValue);
+        if (handledRef.current) return true;
+      }
+      return false;
+    };
+
+    const tryJsQr = (source: HTMLCanvasElement): boolean => {
+      if (!options.jsQR || !ctxFull || handledRef.current) return false;
+      const imageData = ctxFull.getImageData(
+        0,
+        0,
+        source.width,
+        source.height,
+      );
+      const text = decodeQrFromImageData(options.jsQR, imageData);
+      if (!text) return false;
+      onDecodedText(text);
+      return handledRef.current;
+    };
+
+    const processFrame = async () => {
+      if (
+        generation !== scannerGeneration.current ||
+        !isMounted.current ||
+        !videoRef.current
+      ) {
+        return;
+      }
+
+      const now = performance.now();
+      if (now - lastFrameTime >= SCANNER_FRAME_INTERVAL_MS) {
+        lastFrameTime = now;
+        const video = videoRef.current;
+        if (video.readyState >= 2 && !handledRef.current) {
+          try {
+            if (options.detector) {
+              if (await tryNative(video)) return;
+              if (ctxFull && ctxHalf && video.videoWidth > 0) {
+                scaleTick += 1;
+                if (scaleTick % 2 === 0) {
+                  const vw = video.videoWidth;
+                  const vh = video.videoHeight;
+                  const cw = Math.floor(vw * 0.72);
+                  const ch = Math.floor(vh * 0.72);
+                  const sx = Math.floor((vw - cw) / 2);
+                  const sy = Math.floor((vh - ch) / 2);
+                  ensureCanvasSize(canvasFull, cw, ch);
+                  ctxFull.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
+                  if (await tryNative(canvasFull)) return;
+                  ensureCanvasSize(
+                    canvasHalf,
+                    Math.max(320, Math.floor(cw / 2)),
+                    Math.max(240, Math.floor(ch / 2)),
+                  );
+                  ctxHalf.drawImage(
+                    canvasFull,
+                    0,
+                    0,
+                    cw,
+                    ch,
+                    0,
+                    0,
+                    canvasHalf.width,
+                    canvasHalf.height,
+                  );
+                  if (await tryNative(canvasHalf)) return;
+                }
+              }
+            } else if (options.jsQR && ctxFull && video.videoWidth > 0) {
+              const vw = video.videoWidth;
+              const vh = video.videoHeight;
+              // Downscale for jsQR CPU cost on weak phones (~half resolution).
+              const dw = Math.max(320, Math.floor(vw / 2));
+              const dh = Math.max(240, Math.floor(vh / 2));
+              ensureCanvasSize(canvasFull, dw, dh);
+              ctxFull.drawImage(video, 0, 0, dw, dh);
+              if (tryJsQr(canvasFull)) return;
+            }
+            consecutiveFrameErrors = 0;
+          } catch {
+            consecutiveFrameErrors += 1;
+            if (consecutiveFrameErrors >= 5) {
+              await stopScanner();
+              if (isMounted.current) {
+                setError(
+                  "Camera decoding stopped. Type the registration number beside the camera.",
+                );
+              }
+              return;
+            }
+          }
+        }
+      }
+
+      if (
+        generation === scannerGeneration.current &&
+        isMounted.current &&
+        !handledRef.current
+      ) {
+        animFrameRef.current = requestAnimationFrame(() => {
+          void processFrame();
+        });
+      }
+    };
+
+    animFrameRef.current = requestAnimationFrame(() => {
+      void processFrame();
+    });
+  }
+
   async function start() {
     if (starting || active || looking || assigningRef.current) return;
     const generation = ++scannerGeneration.current;
@@ -426,269 +599,73 @@ export function QrScanner({
     setStarting(true);
     setActive(true);
 
-    const BarcodeDetectorClass = getBarcodeDetectorClass();
+    try {
+      const useNative = await canUseNativeQrDetector();
+      if (!isMounted.current || generation !== scannerGeneration.current) return;
 
-    if (BarcodeDetectorClass) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: SCANNER_VIDEO_WIDTH },
-            height: { ideal: SCANNER_VIDEO_HEIGHT },
-          },
-          audio: false,
-        });
-
-        if (!isMounted.current || generation !== scannerGeneration.current) {
-          stream.getTracks().forEach((t) => t.stop());
+      if (useNative) {
+        const Ctor = getBarcodeDetectorConstructor();
+        if (!Ctor) {
+          // formats gate passed but constructor vanished — fall through to jsQR
+        } else {
+          const stream = await openCameraStream(generation);
+          if (!stream) return;
+          streamRef.current = stream;
+          await applyBestEffortCameraConstraints(stream);
+          if (!videoRef.current) {
+            throw new Error("Camera preview is unavailable");
+          }
+          videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute("playsinline", "true");
+          await videoRef.current.play();
+          if (!isMounted.current || generation !== scannerGeneration.current) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          const detector = new Ctor({ formats: ["qr_code"] });
+          startDecodeLoop(generation, { detector });
+          if (generation === scannerGeneration.current) setStarting(false);
           return;
         }
+      }
 
-        const detector = new BarcodeDetectorClass({
-          formats: ["qr_code"],
-        });
-        streamRef.current = stream;
-        setUseNative(true);
-
-        // Best-effort continuous autofocus / torch-off for outdoor desks
-        try {
-          const track = stream.getVideoTracks()[0];
-          const caps = track?.getCapabilities?.() as
-            | { focusMode?: string[]; zoom?: { min: number; max: number } }
-            | undefined;
-          const constraints: Record<string, unknown> = {};
-          if (caps?.focusMode?.includes("continuous")) {
-            constraints.focusMode = "continuous";
-          }
-          if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
-            // Slight zoom improves distant paper QR without losing FOV entirely
-            constraints.zoom = Math.min(
-              caps.zoom.max,
-              Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.35),
-            );
-          }
-          if (Object.keys(constraints).length && track) {
-            await track.applyConstraints({ advanced: [constraints] } as unknown as MediaTrackConstraints);
-          }
-        } catch {
-          /* ignore unsupported constraints */
-        }
-
-        if (!videoRef.current) throw new Error("Camera preview is unavailable");
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true");
-        await videoRef.current.play();
-
-        // Offscreen canvases for multi-scale detect (helps blurry frames)
-        const canvasFull = document.createElement("canvas");
-        const canvasHalf = document.createElement("canvas");
-        const ctxFull = canvasFull.getContext("2d", { willReadFrequently: true });
-        const ctxHalf = canvasHalf.getContext("2d", { willReadFrequently: true });
-        let lastFrameTime = 0;
-        let scaleTick = 0;
-        let consecutiveFrameErrors = 0;
-
-        const tryDecode = async (
-          source: HTMLVideoElement | HTMLCanvasElement,
-        ): Promise<boolean> => {
-          const barcodes = await detector.detect(source);
-          if (!barcodes?.length || handledRef.current) return false;
-          for (const barcode of barcodes) {
-            if (!barcode.rawValue) continue;
-            const id = parsePatientIdFromQr(barcode.rawValue);
-            if (id) {
-              handledRef.current = true;
-              void resolvePatient({ id });
-              return true;
-            }
-            const badNow = Date.now();
-            if (badNow - badScanAt.current > 2500) {
-              badScanAt.current = badNow;
-              setError(
-                "That QR is not a patient staff-scan code. Use the paper form or reg no.",
-              );
-            }
-          }
-          return false;
-        };
-
-        const processFrame = async () => {
-          if (
-            generation !== scannerGeneration.current ||
-            !isMounted.current ||
-            !videoRef.current
-          ) {
-            return;
-          }
-
-          const now = performance.now();
-          if (now - lastFrameTime >= SCANNER_FRAME_INTERVAL_MS) {
-            lastFrameTime = now;
-            const video = videoRef.current;
-            if (video.readyState >= 2 && !handledRef.current) {
-              try {
-                // 1) Full video frame (fast path)
-                if (await tryDecode(video)) return;
-
-                // 2) Multi-scale canvas every other tick — recovers soft/blurry QR
-                if (ctxFull && ctxHalf && video.videoWidth > 0) {
-                  scaleTick += 1;
-                  if (scaleTick % 2 === 0) {
-                    const vw = video.videoWidth;
-                    const vh = video.videoHeight;
-                    // Center crop ~70% then upscale — larger modules for detector
-                    const cw = Math.floor(vw * 0.72);
-                    const ch = Math.floor(vh * 0.72);
-                    const sx = Math.floor((vw - cw) / 2);
-                    const sy = Math.floor((vh - ch) / 2);
-                    ensureCanvasSize(canvasFull, cw, ch);
-                    ctxFull.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
-                    if (await tryDecode(canvasFull)) return;
-
-                    // Half-res pass can help some detectors lock on low-contrast codes
-                    ensureCanvasSize(
-                      canvasHalf,
-                      Math.max(320, Math.floor(cw / 2)),
-                      Math.max(240, Math.floor(ch / 2)),
-                    );
-                    ctxHalf.drawImage(
-                      canvasFull,
-                      0,
-                      0,
-                      cw,
-                      ch,
-                      0,
-                      0,
-                      canvasHalf.width,
-                      canvasHalf.height,
-                    );
-                    if (await tryDecode(canvasHalf)) return;
-                  }
-                }
-                consecutiveFrameErrors = 0;
-              } catch {
-                consecutiveFrameErrors += 1;
-                if (consecutiveFrameErrors >= 5) {
-                  await stopScanner();
-                  if (isMounted.current) {
-                    setError(
-                      "Camera decoding stopped working. Reopen the camera or use registration-number lookup below.",
-                    );
-                  }
-                  return;
-                }
-              }
-            }
-          }
-
-          if (
-            generation === scannerGeneration.current &&
-            isMounted.current &&
-            !handledRef.current
-          ) {
-            animFrameRef.current = requestAnimationFrame(processFrame);
-          }
-        };
-
-        animFrameRef.current = requestAnimationFrame(processFrame);
-        setStarting(false);
-        return;
+      // Fallback: jsQR loaded only when native path is unavailable.
+      let jsQR: JsQrFn;
+      try {
+        jsQR = await loadJsQr();
       } catch {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
+        if (generation === scannerGeneration.current && isMounted.current) {
+          await stopScanner();
+          setError(
+            "QR decoder could not load. Type the registration number beside the camera.",
+          );
         }
-        setUseNative(false);
+        return;
       }
-    }
-
-    try {
-      const { Html5Qrcode } = await getHtml5QrcodeModule();
       if (!isMounted.current || generation !== scannerGeneration.current) return;
-      const scanner = new Html5Qrcode(regionId, { verbose: false });
-      html5QrcodeRef.current = scanner;
 
-      const cameras = await Html5Qrcode.getCameras().catch(() => []);
+      const stream = await openCameraStream(generation);
+      if (!stream) return;
+      streamRef.current = stream;
+      await applyBestEffortCameraConstraints(stream);
+      if (!videoRef.current) {
+        throw new Error("Camera preview is unavailable");
+      }
+      videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute("playsinline", "true");
+      await videoRef.current.play();
       if (!isMounted.current || generation !== scannerGeneration.current) {
-        try {
-          await scanner.stop();
-        } catch {
-          /* scanner was not started */
-        }
-        try {
-          scanner.clear();
-        } catch { /* ignore */ }
+        stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      const back =
-        cameras.find((c) => /back|rear|environment/i.test(c.label)) ||
-        cameras[cameras.length - 1];
-      const cameraId = back?.id || { facingMode: "environment" as const };
-
-      await scanner.start(
-        cameraId,
-        {
-          fps: SCANNER_FPS,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const edge = Math.min(viewfinderWidth, viewfinderHeight);
-            // Large box = more modules in FOV for blurry paper QR
-            const size = Math.max(220, Math.floor(edge * 0.88));
-            return { width: size, height: size };
-          },
-          aspectRatio: 1,
-          disableFlip: false,
-          // html5-qrcode types omit experimental + videoConstraints; runtime supports them
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          videoConstraints: {
-            facingMode: "environment",
-            width: { ideal: SCANNER_VIDEO_WIDTH },
-            height: { ideal: SCANNER_VIDEO_HEIGHT },
-          },
-        } as {
-          fps: number;
-          qrbox: (w: number, h: number) => { width: number; height: number };
-          aspectRatio: number;
-          disableFlip: boolean;
-        },
-        (decoded) => {
-          if (handledRef.current) return;
-          const id = parsePatientIdFromQr(decoded);
-          if (id) {
-            handledRef.current = true;
-            void resolvePatient({ id });
-            return;
-          }
-          // Throttle "not a patient QR" so flicker doesn't spam
-          const now = Date.now();
-          if (now - badScanAt.current > 2500) {
-            badScanAt.current = now;
-            setError(
-              "That QR is not a patient staff-scan code. Use the paper form or reg no.",
-            );
-          }
-        },
-        () => undefined,
-      );
-      if (generation !== scannerGeneration.current) {
-        try {
-          await scanner.stop();
-        } catch {
-          /* ignore */
-        }
-        try {
-          scanner.clear();
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
+      startDecodeLoop(generation, { jsQR });
     } catch (e) {
       if (generation !== scannerGeneration.current || !isMounted.current) return;
       await stopScanner();
       setError(
         e instanceof Error
           ? e.message
-          : "Camera failed — allow permission, or use reg number below.",
+          : "Camera failed. Type the registration number beside the camera.",
       );
       setActive(false);
     } finally {
@@ -714,14 +691,14 @@ export function QrScanner({
         setLooking(false);
         return;
       }
-      setError("Enter registration number (e.g. 1001) or paste QR link.");
+      setError("Enter registration number (e.g. 1001).");
       setLooking(false);
       return;
     }
 
     const reg = parseRegistrationNumber(raw);
     if (reg === null) {
-      setError("Enter registration number (e.g. 1001) or paste QR link.");
+      setError("Enter registration number (e.g. 1001).");
       setLooking(false);
       return;
     }
@@ -767,38 +744,91 @@ export function QrScanner({
         )}
       </p>
 
-      <div
-        className={`relative overflow-hidden rounded-2xl border border-border bg-black/[0.03] ${
- active ? "min-h-[280px]" : "min-h-[4.5rem]"
- }`}
-        aria-label={active ? "Camera scanner active" : "Camera preview area"}
-      >
-        <video
-          ref={videoRef}
-          playsInline
-          autoPlay
-          muted
-          className={
-            active && useNative
-              ? "h-full w-full object-cover rounded-2xl"
-              : "hidden"
-          }
-        />
-        <div
-          id={regionId}
-          className={active && !useNative ? "min-h-[280px] w-full" : "hidden"}
-        />
-        {active ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6" aria-hidden="true">
-            <div className="h-44 w-44 rounded-2xl border-2 border-emerald-500/70 ring-1 ring-emerald-400/40" />
+      <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
+        <div className="flex min-h-[16rem] flex-col gap-2 rounded-2xl border border-border bg-card p-3">
+          <p className="text-sm font-semibold text-foreground">Scan QR</p>
+          <div
+            className={`relative flex-1 overflow-hidden rounded-xl border border-border bg-black/[0.03] ${
+              active ? "min-h-[220px]" : "min-h-[8rem]"
+            }`}
+            aria-label={active ? "Camera scanner active" : "Camera preview area"}
+          >
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              className={
+                active
+                  ? "h-full min-h-[220px] w-full object-cover rounded-xl"
+                  : "hidden"
+              }
+            />
+            {active ? (
+              <div
+                className="pointer-events-none absolute inset-0 flex items-center justify-center p-6"
+                aria-hidden="true"
+              >
+                <div className="h-40 w-40 rounded-2xl border-2 border-emerald-500/70 ring-1 ring-emerald-400/40" />
+              </div>
+            ) : null}
+            {!active ? (
+              <div className="flex h-full min-h-[8rem] items-center justify-center px-3 text-center text-sm text-muted">
+                Camera preview appears here
+              </div>
+            ) : null}
           </div>
-        ) : null}
-        {!active ? (
-          <div className="flex h-[4.5rem] items-center justify-center text-sm text-muted">
-            Camera preview appears here
+          {!active ? (
+            <Button
+              type="button"
+              disabled={Boolean(disabledReason) || assigning || looking || starting}
+              onClick={() => void start()}
+            >
+              {starting ? "Opening camera…" : "Open camera"}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={assigning || looking}
+              onClick={() => void stopScanner()}
+            >
+              Stop camera
+            </Button>
+          )}
+        </div>
+
+        <form
+          onSubmit={(e) => void openManual(e)}
+          className="flex min-h-[16rem] flex-col gap-2 rounded-2xl border border-border bg-card p-3"
+        >
+          <p className="text-sm font-semibold text-foreground">
+            Registration number
+          </p>
+          <p className="text-xs text-muted">
+            Equal path to the camera — type when light is poor or permission is
+            blocked.
+          </p>
+          <Input
+            label="Reg no"
+            inputMode="numeric"
+            enterKeyHint="go"
+            placeholder="e.g. 1001"
+            disabled={Boolean(disabledReason) || assigning || looking}
+            value={manual}
+            onChange={(e) => setManual(e.target.value)}
+          />
+          <div className="mt-auto">
+            <Button
+              type="submit"
+              disabled={looking || assigning || Boolean(disabledReason)}
+            >
+              {looking ? "Looking up…" : "Look up patient"}
+            </Button>
           </div>
-        ) : null}
+        </form>
       </div>
+
       <ErrorBox message={error} />
 
       {assigned ? (
@@ -1017,48 +1047,6 @@ export function QrScanner({
         </div>
       ) : null}
 
-      {!active ? (
-        <Button
-          type="button"
-          disabled={Boolean(disabledReason) || assigning || looking || starting}
-          onClick={() => void start()}
-        >
-          {starting ? "Opening camera…" : "Open camera scanner"}
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={assigning || looking}
-          onClick={() => void stopScanner()}
-        >
-          Stop camera
-        </Button>
-      )}
-
-      <form
-        onSubmit={(e) => void openManual(e)}
-        className="space-y-2 border-t border-border pt-3"
-      >
-        <p className="text-sm font-medium text-foreground/80">
-          Or look up by reg number
-        </p>
-        <Input
-          label="Reg no / QR link"
-          inputMode="text"
-          placeholder="e.g. 1001 or paste QR link"
-          disabled={Boolean(disabledReason) || assigning || looking}
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-        />
-        <Button
-          type="submit"
-          variant="secondary"
-          disabled={looking || assigning || Boolean(disabledReason)}
-        >
-          {looking ? "Looking up…" : "Look up patient"}
-        </Button>
-      </form>
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       ) : null}
