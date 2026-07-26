@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile } from "@/lib/auth";
-import { isCampCrew } from "@/lib/roles";
+import { isCampCrew, isStaff } from "@/lib/roles";
 import {
   DESK_LIVE_WAITING_LIMIT,
   DESK_LIVE_WAITING_SELECT,
@@ -9,14 +9,15 @@ import {
 } from "@/lib/desk-live";
 import { isPatientUuid } from "@/lib/qr";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import type { CampDayStats } from "@/lib/types";
 
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
 /**
- * Minimal desk poll (#53): waiting list + seat counts for one camp.
- * Intentionally omits doctor list and KPI RPCs — those stay on full page load.
- * Staff Realtime (#25/#26) remains primary; this powers reconnect poll + catch-up.
+ * Minimal desk poll (#53/#56): waiting list + seat counts for one camp.
+ * Role-projected: doctors never receive phone (or other PHI columns).
+ * Poll is the sole freshness owner — no Realtime.
  */
 export async function GET(request: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -35,7 +36,6 @@ export async function GET(request: Request) {
 
   const campId = new URL(request.url).searchParams.get("campId")?.trim() ?? "";
   if (!campId || !isPatientUuid(campId)) {
-    // UUID shape check — camp ids are UUIDs (reuse patient UUID validator).
     return NextResponse.json(
       { error: "campId required" },
       { status: 400, headers: NO_STORE },
@@ -43,35 +43,101 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const [waitingRes, dayStatsRes] = await Promise.all([
-    supabase
-      .from("patients")
-      .select(DESK_LIVE_WAITING_SELECT, { count: "exact" })
-      .eq("camp_id", campId)
-      .eq("queue_status", "waiting")
-      .order("queued_at", { ascending: true, nullsFirst: false })
-      .limit(DESK_LIVE_WAITING_LIMIT),
-    supabase.rpc("camp_day_stats", { p_camp_id: campId }),
-  ]);
+  const includePhone = isStaff(profile?.role);
 
-  if (waitingRes.error || dayStatsRes.error) {
+  // Active-camp gate (doctors have no broad patient SELECT after #56).
+  const { data: campRow, error: campErr } = await supabase
+    .from("camps")
+    .select("id, is_active")
+    .eq("id", campId)
+    .maybeSingle();
+
+  if (campErr || !campRow) {
     return NextResponse.json(
-      { error: "Desk live data could not be loaded" },
-      { status: 502, headers: NO_STORE },
+      { error: "Camp not found" },
+      { status: 404, headers: NO_STORE },
+    );
+  }
+  if (!campRow.is_active) {
+    return NextResponse.json(
+      { error: "Inactive camp" },
+      { status: 403, headers: NO_STORE },
     );
   }
 
-  const waiting = (waitingRes.data || []).map((row) => ({
-    id: row.id,
-    reg_no: row.reg_no,
-    full_name: row.full_name,
-    phone: row.phone ?? null,
-  })) as DeskLiveWaitingRow[];
+  // Staff use the session client (RLS). Doctors use service role only for the
+  // projected waiting snapshot — they must not gain table SELECT.
+  let waitingRaw: DeskLiveWaitingRow[] = [];
+  let waitingTotal = 0;
+  let dayStats: CampDayStats[] = [];
+
+  if (includePhone) {
+    const [waitingRes, dayStatsRes] = await Promise.all([
+      supabase
+        .from("patients")
+        .select(DESK_LIVE_WAITING_SELECT, { count: "exact" })
+        .eq("camp_id", campId)
+        .eq("queue_status", "waiting")
+        .order("queued_at", { ascending: true, nullsFirst: false })
+        .limit(DESK_LIVE_WAITING_LIMIT),
+      supabase.rpc("camp_day_stats", { p_camp_id: campId }),
+    ]);
+
+    if (waitingRes.error || dayStatsRes.error) {
+      return NextResponse.json(
+        { error: "Desk live data could not be loaded" },
+        { status: 502, headers: NO_STORE },
+      );
+    }
+
+    waitingRaw = (waitingRes.data || []).map((row) => ({
+      id: row.id,
+      reg_no: row.reg_no,
+      full_name: row.full_name,
+      phone: row.phone ?? null,
+    })) as DeskLiveWaitingRow[];
+    waitingTotal = waitingRes.count ?? waitingRaw.length;
+    dayStats = (dayStatsRes.data || []) as CampDayStats[];
+  } else {
+    const admin = createServiceRoleClient();
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Desk live data could not be loaded" },
+        { status: 503, headers: NO_STORE },
+      );
+    }
+    const [waitingRes, dayStatsRes] = await Promise.all([
+      admin
+        .from("patients")
+        .select("id, reg_no, full_name, queued_at", { count: "exact" })
+        .eq("camp_id", campId)
+        .eq("queue_status", "waiting")
+        .order("queued_at", { ascending: true, nullsFirst: false })
+        .limit(DESK_LIVE_WAITING_LIMIT),
+      supabase.rpc("camp_day_stats", { p_camp_id: campId }),
+    ]);
+
+    if (waitingRes.error || dayStatsRes.error) {
+      return NextResponse.json(
+        { error: "Desk live data could not be loaded" },
+        { status: 502, headers: NO_STORE },
+      );
+    }
+
+    waitingRaw = (waitingRes.data || []).map((row) => ({
+      id: row.id,
+      reg_no: row.reg_no,
+      full_name: row.full_name,
+      phone: null,
+    })) as DeskLiveWaitingRow[];
+    waitingTotal = waitingRes.count ?? waitingRaw.length;
+    dayStats = (dayStatsRes.data || []) as CampDayStats[];
+  }
 
   const body: DeskLivePayload = {
-    waiting,
-    waitingTotal: waitingRes.count ?? waiting.length,
-    days: (dayStatsRes.data || []) as CampDayStats[],
+    waiting: waitingRaw,
+    waitingTotal,
+    days: dayStats,
   };
 
   return NextResponse.json(body, { headers: NO_STORE });

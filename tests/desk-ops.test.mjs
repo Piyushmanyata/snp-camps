@@ -190,6 +190,40 @@ test("assign doctor_required is not retried", async () => {
   assert.equal(result.doctorRequired, true);
 });
 
+test("assign check_in_required is not retried and uses worker copy", async () => {
+  let calls = 0;
+  const result = await assignPatientDoctorWithRetries({
+    patientId: "p1",
+    doctorId: "doc-a",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: [
+          {
+            id: "p1",
+            reg_no: 1,
+            full_name: "A",
+            queue_status: "registered",
+            doctor_id: null,
+            doctor_name: null,
+            already_seen: false,
+            error_code: "check_in_required",
+          },
+        ],
+        error: null,
+      };
+    },
+    mapRpcError,
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.checkInRequired, true);
+  assert.match(result.error, /check.+in first/i);
+  assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
+});
+
 test("change-day retries twice then surfaces exhausted copy", async () => {
   let calls = 0;
   const result = await changeCampDayWithRetries({

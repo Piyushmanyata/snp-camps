@@ -3,14 +3,11 @@
 import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
-import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
-import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 
 /**
- * Realtime catch-up for staff screens that have no LiveQueue/SeatBoard
- * (doctor station stats + patients-seen). Poll only while reconnecting (#26).
- * Uses router.refresh (KPIs are not on the minimal desk-live endpoint).
- * Interval shares POLL_MS (~20s) with queue/seat reconnect poll (#53).
+ * KPI catch-up for staff screens without LiveQueue/SeatBoard
+ * (doctor station stats + patients-seen). Poll-only ~20s while visible (#56).
+ * Uses router.refresh — KPIs are not on the minimal desk-live endpoint.
  */
 export function CampDeskLiveBridge({
   campId,
@@ -26,10 +23,7 @@ export function CampDeskLiveBridge({
     });
   }, [campId, router]);
 
-  const liveStatus = useCampDeskRealtime(campId, refresh, Boolean(campId));
-  const reconnecting = liveStatus === "reconnecting";
+  useFixedPoll(refresh, POLL_MS, Boolean(campId));
 
-  useFixedPoll(refresh, POLL_MS, reconnecting);
-
-  return <ReconnectingIndicator show={reconnecting} />;
+  return null;
 }

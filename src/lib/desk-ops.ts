@@ -128,9 +128,14 @@ export async function lookupPatientScanWithRetries(options: {
   );
 }
 
+/** Worker-facing copy for #57 registered → seen rejection. */
+export const CHECK_IN_REQUIRED_COPY =
+  "Check the patient in first, then mark them seen.";
+
 /**
  * Assign doctor / mark seen.
  * already_seen is a successful terminal outcome (idempotent re-call).
+ * check_in_required is a terminal business rejection (no auto-retry).
  */
 export async function assignPatientDoctorWithRetries(options: {
   patientId?: string | null;
@@ -142,11 +147,21 @@ export async function assignPatientDoctorWithRetries(options: {
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
   | { ok: true; row: AssignRow }
-  | { ok: false; error: string; doctorRequired?: boolean }
+  | {
+      ok: false;
+      error: string;
+      doctorRequired?: boolean;
+      checkInRequired?: boolean;
+    }
 > {
   type Out =
     | { ok: true; row: AssignRow }
-    | { ok: false; error: string; doctorRequired?: boolean };
+    | {
+        ok: false;
+        error: string;
+        doctorRequired?: boolean;
+        checkInRequired?: boolean;
+      };
 
   const doctorId = options.doctorId;
 
@@ -178,6 +193,16 @@ export async function assignPatientDoctorWithRetries(options: {
               ok: false,
               error: "Select a doctor.",
               doctorRequired: true,
+            },
+          };
+        }
+        if (row.error_code === "check_in_required") {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: CHECK_IN_REQUIRED_COPY,
+              checkInRequired: true,
             },
           };
         }

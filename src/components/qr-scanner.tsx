@@ -14,6 +14,8 @@ import {
   getBarcodeDetectorConstructor,
   type BarcodeDetectorInstance,
 } from "@/lib/qr-detector";
+import { QrCameraSession } from "@/lib/qr-camera-session";
+import { QrDecodeOrchestrator } from "@/lib/qr-decode-orchestrator";
 import {
   assignPatientDoctorWithRetries,
   lookupPatientScanWithRetries,
@@ -24,6 +26,8 @@ import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
 import { mapDbError } from "@/lib/public-error";
 import type { DoctorOption } from "@/lib/types";
+
+type LookupOrigin = "camera" | "manual";
 
 type JsQrFn = (
   data: Uint8ClampedArray,
@@ -86,46 +90,86 @@ export function QrScanner({
   const autoScanDone = useRef(false);
   const badScanAt = useRef(0);
   const isMounted = useRef(true);
-  const scannerGeneration = useRef(0);
+  const lookupOriginRef = useRef<LookupOrigin>("manual");
+  const lastCameraRawRef = useRef<string | null>(null);
+  const cameraSessionRef = useRef(new QrCameraSession());
+  const decodeOrchRef = useRef<QrDecodeOrchestrator | null>(null);
+  const sessionTokenRef = useRef(0);
+  const decodeOptionsRef = useRef<{
+    detector?: BarcodeDetectorInstance;
+    jsQR?: JsQrFn;
+  } | null>(null);
+  const restartDecodeLoopRef = useRef<(() => void) | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const reviewRef = useRef<HTMLDivElement | null>(null);
   const assigningRef = useRef(false);
 
-  const stopScanner = useCallback(async () => {
-    scannerGeneration.current += 1;
-
+  const cancelAnimation = useCallback(() => {
     if (animFrameRef.current !== null) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
     }
+  }, []);
 
-    if (streamRef.current) {
-      try {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      } catch {
-        /* ignore */
-      }
-      streamRef.current = null;
-    }
+  /** Hard stop: invalidate generation, stop tracks, no post-unmount setState. */
+  const stopScanner = useCallback(async () => {
+    cameraSessionRef.current.invalidate();
+    sessionTokenRef.current = cameraSessionRef.current.token;
+    cancelAnimation();
+    decodeOrchRef.current = null;
+    decodeOptionsRef.current = null;
+    restartDecodeLoopRef.current = null;
+    lastCameraRawRef.current = null;
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
 
-    setActive(false);
-    setStarting(false);
-  }, []);
+    if (isMounted.current) {
+      setActive(false);
+      setStarting(false);
+    }
+  }, [cancelAnimation]);
+
+  /** Doctor camera review: pause decode, keep stream + session token. */
+  const pauseDecodeKeepStream = useCallback(() => {
+    decodeOrchRef.current?.pause();
+    cancelAnimation();
+  }, [cancelAnimation]);
+
+  /** Resume same stream after Mark seen without getUserMedia. */
+  const resumeDecodeSameSession = useCallback(
+    (opts?: { debounceRaw?: string | null }) => {
+      const orch = decodeOrchRef.current;
+      const token = sessionTokenRef.current;
+      const session = cameraSessionRef.current;
+      if (!orch || !session.isCurrent(token) || !session.mediaStream) {
+        return false;
+      }
+      if (opts?.debounceRaw) {
+        orch.debounceRawValue(opts.debounceRaw);
+      }
+      orch.resume();
+      handledRef.current = false;
+      // Loop is restarted by caller via startDecodeLoop when stream still active.
+      return true;
+    },
+    [],
+  );
 
   useEffect(() => {
     isMounted.current = true;
+    const session = cameraSessionRef.current;
     return () => {
       isMounted.current = false;
-      void stopScanner();
+      session.invalidate();
+      cancelAnimation();
+      decodeOrchRef.current = null;
+      // Stop tracks via session; video element is unmounting — avoid ref race.
     };
-  }, [stopScanner]);
+  }, [cancelAnimation]);
 
   const readyForNext = useCallback(() => {
     setLookup(null);
@@ -165,7 +209,7 @@ export function QrScanner({
       });
 
       if (!outcome.ok) {
-        handledRef.current = false;
+        // Keep review open; decode stays paused until Scan next / Wrong patient.
         setError(
           outcome.doctorRequired
             ? "Select which doctor is seeing this patient."
@@ -177,6 +221,9 @@ export function QrScanner({
       }
 
       const row = outcome.row;
+      const fromCamera =
+        lookupOriginRef.current === "camera" && mode === "doctor";
+      const cameraRaw = lastCameraRawRef.current;
 
       if (row.error_code === "already_seen" || row.already_seen) {
         const msg = row.doctor_name
@@ -186,12 +233,17 @@ export function QrScanner({
         if (mode === "doctor") {
           // Doctor Station: refuse and stay ready — no dismiss screen (#50).
           readyForNext();
+          if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
+            restartDecodeLoopRef.current?.();
+          } else {
+            await stopScanner();
+          }
         } else {
           setAssigned(row);
           setLookup(null);
           handledRef.current = true;
+          await stopScanner();
         }
-        await stopScanner();
         router.refresh();
         assigningRef.current = false;
         setAssigning(false);
@@ -210,28 +262,46 @@ export function QrScanner({
         // Brief toast only — no success card to dismiss (#50).
         setToastMsg(`#${row.reg_no} marked seen`);
         readyForNext();
+        if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
+          restartDecodeLoopRef.current?.();
+        } else {
+          await stopScanner();
+        }
       } else {
         setAssigned(row);
         setLookup(null);
         setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
         handledRef.current = true;
+        await stopScanner();
       }
-      await stopScanner();
       router.refresh();
       assigningRef.current = false;
       setAssigning(false);
       return row;
     },
-    [mode, readyForNext, router, stopScanner],
+    [mode, readyForNext, resumeDecodeSameSession, router, stopScanner],
   );
 
   const resolvePatient = useCallback(
-    async (opts: { id?: string; regNo?: number }) => {
+    async (
+      opts: { id?: string; regNo?: number },
+      origin: LookupOrigin = lookupOriginRef.current,
+    ) => {
       if (assigningRef.current) return null;
+      lookupOriginRef.current = origin;
       setError(null);
       setLookup(null);
       setAssigned(null);
       // `manual` reg input is not cleared here — survives failure (#32).
+
+      const keepCamera =
+        origin === "camera" &&
+        mode === "doctor" &&
+        Boolean(cameraSessionRef.current.mediaStream);
+
+      if (keepCamera) {
+        pauseDecodeKeepStream();
+      }
 
       const supabase = createClient();
       const outcome = await lookupPatientScanWithRetries({
@@ -255,14 +325,22 @@ export function QrScanner({
       });
 
       if (!outcome.ok) {
-        handledRef.current = false;
+        // Terminal lookup: freeze auto decode so the same QR does not loop.
+        if (origin === "camera") {
+          decodeOrchRef.current?.freeze();
+          handledRef.current = true;
+        } else {
+          handledRef.current = false;
+        }
         setError(outcome.error);
         return null;
       }
 
       let row = outcome.row;
 
-      await stopScanner();
+      if (!keepCamera) {
+        await stopScanner();
+      }
 
       try {
         if (typeof window !== "undefined" && "vibrate" in navigator) {
@@ -329,7 +407,7 @@ export function QrScanner({
       handledRef.current = true;
       return row;
     },
-    [mode, router, stopScanner],
+    [mode, pauseDecodeKeepStream, router, stopScanner],
   );
 
   useEffect(() => {
@@ -380,15 +458,21 @@ export function QrScanner({
     const id = parsePatientIdFromQr(decoded);
     if (id) {
       handledRef.current = true;
-      void resolvePatient({ id });
+      lastCameraRawRef.current = decoded;
+      lookupOriginRef.current = "camera";
+      // Pause before async lookup so a pending detect cannot double-fire.
+      decodeOrchRef.current?.pause();
+      void resolvePatient({ id }, "camera");
       return;
     }
     const now = Date.now();
     if (now - badScanAt.current > 2500) {
       badScanAt.current = now;
-      setError(
-        "That QR is not a patient staff-scan code. Type the registration number beside the camera.",
-      );
+      if (isMounted.current) {
+        setError(
+          "That QR is not a patient staff-scan code. Type the registration number beside the camera.",
+        );
+      }
     }
   }
 
@@ -418,40 +502,51 @@ export function QrScanner({
     }
   }
 
-  async function openCameraStream(generation: number): Promise<MediaStream | null> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+  async function openCameraStream(token: number): Promise<MediaStream | null> {
+    const stream = await cameraSessionRef.current.acquire(
+      token,
+      (constraints) => navigator.mediaDevices.getUserMedia(constraints),
+      {
         video: {
           facingMode: { ideal: "environment" },
           width: { ideal: SCANNER_VIDEO_WIDTH },
           height: { ideal: SCANNER_VIDEO_HEIGHT },
         },
         audio: false,
-      });
-      if (!isMounted.current || generation !== scannerGeneration.current) {
-        stream.getTracks().forEach((t) => t.stop());
-        return null;
-      }
-      return stream;
-    } catch {
-      if (generation === scannerGeneration.current && isMounted.current) {
-        setError(
-          "Camera unavailable or permission denied. Type the registration number beside the camera.",
-        );
-        setActive(false);
-        setStarting(false);
-      }
-      return null;
+      },
+    );
+    if (stream) return stream;
+    // Stale token vs permission denial: only surface error when still current.
+    if (
+      cameraSessionRef.current.isCurrent(token) &&
+      isMounted.current
+    ) {
+      setError(
+        "Camera unavailable or permission denied. Type the registration number beside the camera.",
+      );
+      setActive(false);
+      setStarting(false);
     }
+    return null;
   }
 
   function startDecodeLoop(
-    generation: number,
+    token: number,
     options: {
       detector?: BarcodeDetectorInstance;
       jsQR?: JsQrFn;
     },
   ) {
+    decodeOptionsRef.current = options;
+    cancelAnimation();
+
+    const orch = new QrDecodeOrchestrator({
+      isLive: () =>
+        isMounted.current && cameraSessionRef.current.isCurrent(token),
+      onDecoded: onDecodedText,
+    });
+    decodeOrchRef.current = orch;
+
     const canvasFull = document.createElement("canvas");
     const canvasHalf = document.createElement("canvas");
     const ctxFull = canvasFull.getContext("2d", { willReadFrequently: true });
@@ -460,37 +555,9 @@ export function QrScanner({
     let scaleTick = 0;
     let consecutiveFrameErrors = 0;
 
-    const tryNative = async (
-      source: HTMLVideoElement | HTMLCanvasElement,
-    ): Promise<boolean> => {
-      if (!options.detector || handledRef.current) return false;
-      const barcodes = await options.detector.detect(source);
-      if (!barcodes?.length) return false;
-      for (const barcode of barcodes) {
-        if (!barcode.rawValue) continue;
-        onDecodedText(barcode.rawValue);
-        if (handledRef.current) return true;
-      }
-      return false;
-    };
-
-    const tryJsQr = (source: HTMLCanvasElement): boolean => {
-      if (!options.jsQR || !ctxFull || handledRef.current) return false;
-      const imageData = ctxFull.getImageData(
-        0,
-        0,
-        source.width,
-        source.height,
-      );
-      const text = decodeQrFromImageData(options.jsQR, imageData);
-      if (!text) return false;
-      onDecodedText(text);
-      return handledRef.current;
-    };
-
     const processFrame = async () => {
       if (
-        generation !== scannerGeneration.current ||
+        !cameraSessionRef.current.isCurrent(token) ||
         !isMounted.current ||
         !videoRef.current
       ) {
@@ -501,11 +568,19 @@ export function QrScanner({
       if (now - lastFrameTime >= SCANNER_FRAME_INTERVAL_MS) {
         lastFrameTime = now;
         const video = videoRef.current;
-        if (video.readyState >= 2 && !handledRef.current) {
+        if (video.readyState >= 2 && orch.shouldRunFrame()) {
           try {
             if (options.detector) {
-              if (await tryNative(video)) return;
-              if (ctxFull && ctxHalf && video.videoWidth > 0) {
+              const hit = await orch.runNativeDetect(video, (source) =>
+                options.detector!.detect(source),
+              );
+              if (hit) return;
+              if (
+                ctxFull &&
+                ctxHalf &&
+                video.videoWidth > 0 &&
+                orch.shouldRunFrame()
+              ) {
                 scaleTick += 1;
                 if (scaleTick % 2 === 0) {
                   const vw = video.videoWidth;
@@ -516,7 +591,13 @@ export function QrScanner({
                   const sy = Math.floor((vh - ch) / 2);
                   ensureCanvasSize(canvasFull, cw, ch);
                   ctxFull.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
-                  if (await tryNative(canvasFull)) return;
+                  if (
+                    await orch.runNativeDetect(canvasFull, (source) =>
+                      options.detector!.detect(source),
+                    )
+                  ) {
+                    return;
+                  }
                   ensureCanvasSize(
                     canvasHalf,
                     Math.max(320, Math.floor(cw / 2)),
@@ -533,18 +614,25 @@ export function QrScanner({
                     canvasHalf.width,
                     canvasHalf.height,
                   );
-                  if (await tryNative(canvasHalf)) return;
+                  if (
+                    await orch.runNativeDetect(canvasHalf, (source) =>
+                      options.detector!.detect(source),
+                    )
+                  ) {
+                    return;
+                  }
                 }
               }
             } else if (options.jsQR && ctxFull && video.videoWidth > 0) {
               const vw = video.videoWidth;
               const vh = video.videoHeight;
-              // Downscale for jsQR CPU cost on weak phones (~half resolution).
               const dw = Math.max(320, Math.floor(vw / 2));
               const dh = Math.max(240, Math.floor(vh / 2));
               ensureCanvasSize(canvasFull, dw, dh);
               ctxFull.drawImage(video, 0, 0, dw, dh);
-              if (tryJsQr(canvasFull)) return;
+              const imageData = ctxFull.getImageData(0, 0, dw, dh);
+              const text = decodeQrFromImageData(options.jsQR, imageData);
+              if (orch.runSyncDecode(text)) return;
             }
             consecutiveFrameErrors = 0;
           } catch {
@@ -562,15 +650,30 @@ export function QrScanner({
         }
       }
 
+      // Paused (review) or frozen (terminal error): stop rAF until explicit resume.
       if (
-        generation === scannerGeneration.current &&
+        cameraSessionRef.current.isCurrent(token) &&
         isMounted.current &&
-        !handledRef.current
+        !orch.isPaused &&
+        !orch.isFrozen
       ) {
         animFrameRef.current = requestAnimationFrame(() => {
           void processFrame();
         });
       }
+    };
+
+    restartDecodeLoopRef.current = () => {
+      if (
+        !cameraSessionRef.current.isCurrent(token) ||
+        !decodeOptionsRef.current
+      ) {
+        return;
+      }
+      cancelAnimation();
+      animFrameRef.current = requestAnimationFrame(() => {
+        void processFrame();
+      });
     };
 
     animFrameRef.current = requestAnimationFrame(() => {
@@ -580,27 +683,30 @@ export function QrScanner({
 
   async function start() {
     if (starting || active || looking || assigningRef.current) return;
-    const generation = ++scannerGeneration.current;
+    const session = cameraSessionRef.current;
+    const token = session.begin();
+    sessionTokenRef.current = token;
     setError(null);
     setLookup(null);
     setAssigned(null);
     handledRef.current = false;
     badScanAt.current = 0;
+    lastCameraRawRef.current = null;
+    decodeOrchRef.current?.unfreeze();
     setStarting(true);
     setActive(true);
 
     try {
       const useNative = await canUseNativeQrDetector();
-      if (!isMounted.current || generation !== scannerGeneration.current) return;
+      if (!isMounted.current || !session.isCurrent(token)) return;
 
       if (useNative) {
         const Ctor = getBarcodeDetectorConstructor();
         if (!Ctor) {
           // formats gate passed but constructor vanished — fall through to jsQR
         } else {
-          const stream = await openCameraStream(generation);
+          const stream = await openCameraStream(token);
           if (!stream) return;
-          streamRef.current = stream;
           await applyBestEffortCameraConstraints(stream);
           if (!videoRef.current) {
             throw new Error("Camera preview is unavailable");
@@ -608,13 +714,13 @@ export function QrScanner({
           videoRef.current.srcObject = stream;
           videoRef.current.setAttribute("playsinline", "true");
           await videoRef.current.play();
-          if (!isMounted.current || generation !== scannerGeneration.current) {
-            stream.getTracks().forEach((t) => t.stop());
+          if (!isMounted.current || !session.isCurrent(token)) {
+            session.stopTracks();
             return;
           }
           const detector = new Ctor({ formats: ["qr_code"] });
-          startDecodeLoop(generation, { detector });
-          if (generation === scannerGeneration.current) setStarting(false);
+          startDecodeLoop(token, { detector });
+          if (session.isCurrent(token) && isMounted.current) setStarting(false);
           return;
         }
       }
@@ -624,7 +730,7 @@ export function QrScanner({
       try {
         jsQR = await loadJsQr();
       } catch {
-        if (generation === scannerGeneration.current && isMounted.current) {
+        if (session.isCurrent(token) && isMounted.current) {
           await stopScanner();
           setError(
             "QR decoder could not load. Type the registration number beside the camera.",
@@ -632,11 +738,10 @@ export function QrScanner({
         }
         return;
       }
-      if (!isMounted.current || generation !== scannerGeneration.current) return;
+      if (!isMounted.current || !session.isCurrent(token)) return;
 
-      const stream = await openCameraStream(generation);
+      const stream = await openCameraStream(token);
       if (!stream) return;
-      streamRef.current = stream;
       await applyBestEffortCameraConstraints(stream);
       if (!videoRef.current) {
         throw new Error("Camera preview is unavailable");
@@ -644,13 +749,13 @@ export function QrScanner({
       videoRef.current.srcObject = stream;
       videoRef.current.setAttribute("playsinline", "true");
       await videoRef.current.play();
-      if (!isMounted.current || generation !== scannerGeneration.current) {
-        stream.getTracks().forEach((t) => t.stop());
+      if (!isMounted.current || !session.isCurrent(token)) {
+        session.stopTracks();
         return;
       }
-      startDecodeLoop(generation, { jsQR });
+      startDecodeLoop(token, { jsQR });
     } catch (e) {
-      if (generation !== scannerGeneration.current || !isMounted.current) return;
+      if (!session.isCurrent(token) || !isMounted.current) return;
       await stopScanner();
       setError(
         e instanceof Error
@@ -659,7 +764,7 @@ export function QrScanner({
       );
       setActive(false);
     } finally {
-      if (generation === scannerGeneration.current) setStarting(false);
+      if (session.isCurrent(token) && isMounted.current) setStarting(false);
     }
   }
 
@@ -671,13 +776,16 @@ export function QrScanner({
     setLookup(null);
     setAssigned(null);
     handledRef.current = false;
+    lookupOriginRef.current = "manual";
+    // Manual path is independent; freeze recovery is cleared on explicit submit.
+    decodeOrchRef.current?.unfreeze();
     const raw = manual.trim();
 
     const cleanedRaw = raw.trim();
     if (cleanedRaw && !/^\d+$/.test(cleanedRaw)) {
       const asId = parsePatientIdFromQr(cleanedRaw);
       if (asId) {
-        await resolvePatient({ id: asId });
+        await resolvePatient({ id: asId }, "manual");
         setLooking(false);
         return;
       }
@@ -693,7 +801,7 @@ export function QrScanner({
       return;
     }
 
-    await resolvePatient({ regNo: reg });
+    await resolvePatient({ regNo: reg }, "manual");
     setLooking(false);
   }
 
@@ -701,6 +809,24 @@ export function QrScanner({
     if (assigningRef.current) return;
     setError(null);
     readyForNext();
+    // Explicit recovery: unfreeze camera decode or leave manual field ready.
+    const orch = decodeOrchRef.current;
+    const session = cameraSessionRef.current;
+    const token = sessionTokenRef.current;
+    if (
+      orch &&
+      session.isCurrent(token) &&
+      session.mediaStream &&
+      mode === "doctor"
+    ) {
+      orch.unfreeze();
+      orch.resume();
+      handledRef.current = false;
+      restartDecodeLoopRef.current?.();
+    } else if (orch?.isFrozen) {
+      orch.unfreeze();
+      handledRef.current = false;
+    }
   }
 
   return (
@@ -1003,9 +1129,34 @@ export function QrScanner({
             </>
           ) : null}
 
-          {(lookup.queue_status === "registered" ||
-            lookup.queue_status === "waiting") &&
-          mode === "doctor" ? (
+          {lookup.queue_status === "registered" && mode === "doctor" ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-muted">
+                Read-only — this patient is not checked in yet.
+              </p>
+              {lookup.phone ? (
+                <p className="text-sm text-foreground">
+                  <span className="text-muted">Phone </span>
+                  <span className="tabular">{lookup.phone}</span>
+                </p>
+              ) : null}
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Check the patient in at the desk first, then mark them seen.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-auto"
+                disabled={assigning || looking}
+                onClick={resetResult}
+              >
+                Scan next
+              </Button>
+            </div>
+          ) : null}
+
+          {lookup.queue_status === "waiting" && mode === "doctor" ? (
             <div className="mt-4 space-y-3">
               <p className="text-sm text-muted">
                 Read-only — check the name matches the patient in front of you.

@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { POLL_MS, useFixedPoll } from "@/lib/poll";
-import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
-import { fetchDeskLive } from "@/lib/desk-live";
+import { useCampDeskLive } from "@/lib/use-camp-desk-live";
 import {
   Badge,
   Button,
@@ -13,7 +11,7 @@ import {
   ErrorBox,
   Spinner,
 } from "@/components/ui";
-import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
+import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/lib/types";
 import { assignPatientDoctorWithRetries } from "@/lib/desk-ops";
@@ -24,13 +22,6 @@ export type LiveQueuePatient = {
   reg_no: number;
   full_name: string;
   phone: string | null;
-};
-
-type QueueView = {
-  /** Identity of the last props snapshot applied (null after client fetch). */
-  propsSource: LiveQueuePatient[] | null;
-  rows: LiveQueuePatient[];
-  total: number;
 };
 
 /** Waiting queue. Assign doctor marks seen and removes from list. */
@@ -48,56 +39,29 @@ export function LiveQueue({
   mode?: "volunteer" | "doctor" | "admin";
 }) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [queueState, setQueueState] = useState<QueueView | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
 
-  // Derive from RSC props until a client poll/fetch supersedes them (no effect).
-  const current: QueueView =
-    queueState && queueState.propsSource === initial
-      ? queueState
-      : queueState && queueState.propsSource === null
-        ? queueState
-        : {
-            propsSource: initial,
-            rows: initial,
-            total: initialTotal ?? initial.length,
-          };
-  const rows = current.rows;
-  const total = current.total;
-
-  /** Minimal JSON poll — never re-runs doctor list / full RSC tree (#53). */
-  const refreshQueue = useCallback(async () => {
-    if (!campId) return;
-    setRefreshing(true);
-    try {
-      const data = await fetchDeskLive(campId);
-      setQueueState({
-        propsSource: null,
-        rows: data.waiting,
-        total: data.waitingTotal,
-      });
-    } catch {
-      // Failed refresh must not disable future polls (useFixedPoll also guards).
-    } finally {
-      setRefreshing(false);
-    }
-  }, [campId]);
+  const {
+    waiting: rows,
+    waitingTotal: total,
+    freshness,
+    refreshing,
+    refresh,
+    markRemoved,
+    clearRemoved,
+  } = useCampDeskLive(campId, {
+    waiting: initial,
+    waitingTotal: initialTotal ?? initial.length,
+  });
 
   function manualRefresh() {
     setToastMsg(null);
     setError(null);
-    void refreshQueue();
+    refresh();
   }
-
-  // Staff-only: Realtime when camp is set; fixed poll only while reconnecting (#26).
-  // Poll / Realtime catch-up hits /api/desk/live — not a full page reload (#53).
-  const liveStatus = useCampDeskRealtime(campId, refreshQueue, Boolean(campId));
-  const reconnecting = liveStatus === "reconnecting";
-  useFixedPoll(refreshQueue, POLL_MS, Boolean(campId) && reconnecting);
 
   async function assign(patientId: string, chosen: string | null) {
     if (busyId) return;
@@ -127,23 +91,20 @@ export function LiveQueue({
 
     if (!outcome.ok) {
       setError(outcome.error);
+      clearRemoved(patientId);
       setBusyId(null);
       return;
     }
 
     const row = outcome.row;
+    markRemoved(patientId);
     if (row.already_seen || row.error_code === "already_seen") {
       setError(
         row.doctor_name
           ? `Already seen by ${row.doctor_name}`
           : "Already seen",
       );
-      setQueueState({
-        propsSource: current.propsSource,
-        rows: current.rows.filter((r) => r.id !== patientId),
-        total: Math.max(0, current.total - 1),
-      });
-      void refreshQueue();
+      refresh();
       setBusyId(null);
       return;
     }
@@ -157,22 +118,25 @@ export function LiveQueue({
     }
 
     setToastMsg("Patient assignment complete");
-    setQueueState({
-      propsSource: current.propsSource,
-      rows: current.rows.filter((r) => r.id !== patientId),
-      total: Math.max(0, current.total - 1),
-    });
     setPickId(null);
     setDoctorId("");
-    // Soft catch-up of queue+seats; do not full-page refresh (keeps doctor list).
-    void refreshQueue();
+    refresh();
     setBusyId(null);
   }
+
+  const statusHint =
+    freshness === "stale-error"
+      ? " · stale"
+      : freshness === "refreshing"
+        ? " · refreshing"
+        : freshness === "fresh"
+          ? " · live"
+          : "";
 
   return (
     <div>
       <ErrorBox message={error} />
-      <ReconnectingIndicator show={reconnecting} />
+      <DeskFreshnessIndicator freshness={freshness} onRetry={manualRefresh} />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
       ) : null}
@@ -181,11 +145,7 @@ export function LiveQueue({
           {total > rows.length
             ? "Showing first " + rows.length + " of " + total
             : total + " waiting"}
-          {reconnecting
-            ? " · reconnecting"
-            : liveStatus === "live"
-              ? " · live"
-              : ""}
+          {statusHint}
         </span>
         <button
           type="button"

@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
-import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
-import { fetchDeskLive } from "@/lib/desk-live";
+import { useCampDeskLive } from "@/lib/use-camp-desk-live";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
-import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
+import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
 import {
   Badge,
   Card,
@@ -23,16 +22,10 @@ function pollHint(pollMs: number): string {
   return `Updates every ${Math.round(pollMs / 60_000)} min`;
 }
 
-type DaysView = {
-  /** null after client fetch supersedes RSC props. */
-  propsSource: CampDayStats[] | null;
-  days: CampDayStats[];
-};
-
 /**
- * Seat board. Staff (`live`) uses Realtime + reconnect poll only (#26).
- * Staff catch-up uses /api/desk/live (same rule as LiveQueue, #53).
- * Patient screens keep page poll / manual refresh (`live=false`).
+ * Seat board.
+ * Staff (`live`): shared ~20s camp desk poll (#56).
+ * Patient / non-live: page poll or manual refresh.
  */
 export function SeatBoard({
   days: initialDays,
@@ -53,56 +46,56 @@ export function SeatBoard({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [daysState, setDaysState] = useState<DaysView | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const daysView: DaysView =
-    daysState && daysState.propsSource === initialDays
-      ? daysState
-      : daysState && daysState.propsSource === null
-        ? daysState
-        : { propsSource: initialDays, days: initialDays };
-  const days = daysView.days;
+  const desk = useCampDeskLive(live ? campId : null, {
+    days: initialDays,
+  });
 
-  const refresh = useCallback(async () => {
-    if (!campId) return;
-    if (live) {
-      // Minimal JSON — queue + seats only; no doctor list / KPI re-fetch (#53).
-      setRefreshing(true);
-      try {
-        const data = await fetchDeskLive(campId);
-        setDaysState({ propsSource: null, days: data.days });
-      } catch {
-        // Failed refresh must not disable future polls.
-      } finally {
-        setRefreshing(false);
-      }
-      return;
-    }
-    // Patient / non-live: full page refresh (public data; no desk API session).
+  const patientRefresh = useCallback(() => {
     startTransition(() => {
       router.refresh();
     });
-  }, [campId, live, router]);
+  }, [router]);
 
-  const liveStatus = useCampDeskRealtime(
-    campId,
-    refresh,
-    live && Boolean(campId),
+  // Patient / non-live: fixed page poll when pollMs > 0.
+  useFixedPoll(
+    patientRefresh,
+    pollMs,
+    Boolean(campId) && !live && pollMs > 0,
   );
-  const reconnecting = liveStatus === "reconnecting";
-  // Live desks: poll only while reconnecting. Patient path: fixed poll when pollMs > 0.
-  const pollEnabled =
-    Boolean(campId) && (live ? reconnecting : pollMs > 0);
-  useFixedPoll(refresh, live || reconnecting ? POLL_MS : pollMs, pollEnabled);
 
-  const busy = live ? refreshing : isPending;
+  const days = live && campId ? desk.days : initialDays;
+  const busy = live ? desk.refreshing : isPending;
+  const freshness = live ? desk.freshness : "off";
+
+  const hint = !campId
+    ? "All days listed"
+    : live
+      ? freshness === "stale-error"
+        ? "Stale"
+        : freshness === "refreshing"
+          ? "Refreshing"
+          : "Live"
+      : pollHint(pollMs);
+
+  function onRefresh() {
+    if (live) {
+      desk.refresh();
+      return;
+    }
+    patientRefresh();
+  }
 
   if (!days.length) {
     return (
       <Card>
         <SectionTitle>{title}</SectionTitle>
-        <ReconnectingIndicator show={reconnecting} />
+        {live ? (
+          <DeskFreshnessIndicator
+            freshness={freshness}
+            onRetry={() => desk.refresh()}
+          />
+        ) : null}
         <EmptyState>
           No camp days configured yet. Admin can add days and seat limits.
         </EmptyState>
@@ -112,25 +105,18 @@ export function SeatBoard({
 
   return (
     <Card padding={compact ? "sm" : "md"}>
-      <ReconnectingIndicator show={reconnecting} />
+      {live ? (
+        <DeskFreshnessIndicator
+          freshness={freshness}
+          onRetry={() => desk.refresh()}
+        />
+      ) : null}
       <div className="mb-1 flex items-start justify-between gap-2">
-        <SectionTitle
-          hint={
-            campId
-              ? reconnecting
-                ? "Reconnecting"
-                : liveStatus === "live"
-                  ? "Live"
-                  : pollHint(pollMs)
-              : "All days listed"
-          }
-        >
-          {title}
-        </SectionTitle>
+        <SectionTitle hint={hint}>{title}</SectionTitle>
         {campId ? (
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={onRefresh}
             disabled={busy}
             className="pressable inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
           >

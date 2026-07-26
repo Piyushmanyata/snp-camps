@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 
 /**
- * Fixed auto-refresh interval for queue/seats when polling is active.
- * Staff desks use Realtime primarily (#25/#26); this interval is the
- * reconnect safety net and any non-live poll path (#53: ~20s).
+ * Fixed auto-refresh interval for desk freshness (#53/#56: ~20s).
+ * Staff desks poll the minimal desk snapshot while the page is visible;
+ * patient SeatBoard may use the same interval or manual-only.
  */
 export const POLL_MS = 20_000;
 

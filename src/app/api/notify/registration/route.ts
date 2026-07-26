@@ -10,8 +10,8 @@ import { isPatientUuid } from "@/lib/qr";
 
 /**
  * Fire-and-forget registration SMS after a successful desk register.
- * Staff only. Failures are recorded for admin; response is never needed
- * by the desk UI (client does not block on this).
+ * Staff only. status_token is read via SECURITY DEFINER RPC (#56) —
+ * ordinary authenticated SELECT on status_token is revoked.
  */
 export async function POST(req: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -25,14 +25,12 @@ export async function POST(req: Request) {
   }
 
   const supabase = await createClient();
-  const { data: row, error } = await supabase
-    .from("patients")
-    .select(
-      "id, reg_no, phone, status_token, camp_day_id, camps(venue), camp_days(day_date)",
-    )
-    .eq("id", body.patientId)
-    .maybeSingle();
+  const { data: rows, error } = await supabase.rpc(
+    "patient_registration_notify_fields",
+    { p_patient_id: body.patientId },
+  );
 
+  const row = Array.isArray(rows) ? rows[0] : rows;
   if (error || !row) {
     return NextResponse.json(
       { ok: false, status: "failed", detail: "Patient not found" },
@@ -40,17 +38,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const camps = row.camps as { venue?: string | null } | { venue?: string | null }[] | null;
-  const campDays = row.camp_days as
-    | { day_date?: string | null }
-    | { day_date?: string | null }[]
-    | null;
-  const venue = Array.isArray(camps) ? camps[0]?.venue : camps?.venue;
-  const dayDate = Array.isArray(campDays)
-    ? campDays[0]?.day_date
-    : campDays?.day_date;
-
-  if (!dayDate || row.reg_no == null || !row.status_token) {
+  const dayDate = row.day_date;
+  const statusToken = row.status_token;
+  if (!dayDate || row.reg_no == null || !statusToken) {
     return NextResponse.json(
       { ok: false, status: "failed", detail: "Patient missing day or token" },
       { status: 400 },
@@ -61,8 +51,8 @@ export async function POST(req: Request) {
     phone: row.phone,
     regNo: Number(row.reg_no),
     dayDate: String(dayDate),
-    venue: venue ?? null,
-    statusUrl: statusUrlForToken(String(row.status_token)),
+    venue: row.venue ?? null,
+    statusUrl: statusUrlForToken(String(statusToken)),
   });
 
   return NextResponse.json({ ok: result.status === "sent", ...result });

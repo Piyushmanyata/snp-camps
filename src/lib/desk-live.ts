@@ -48,14 +48,17 @@ export function measureDeskLivePayloadBytes(
 }
 
 /** Synthetic 100-waiting payload for size assertions (no network). */
-export function sampleDeskLivePayload100(): DeskLivePayload {
+export function sampleDeskLivePayload100(
+  options: { includePhone?: boolean } = {},
+): DeskLivePayload {
+  const includePhone = options.includePhone !== false;
   const waiting: DeskLiveWaitingRow[] = [];
   for (let i = 0; i < DESK_LIVE_WAITING_LIMIT; i++) {
     waiting.push({
       id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
       reg_no: 1000 + i,
       full_name: "Patient Name Example",
-      phone: "+919876543210",
+      phone: includePhone ? "+919876543210" : null,
     });
   }
   return {
