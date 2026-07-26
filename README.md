@@ -78,13 +78,30 @@ Do **not** re-run the baseline against a database that already has this schema
 
 Queue and seat boards use **manual Refresh** or a **fixed 2-minute** poll — no live websockets.
 
-`GET /api/health` is a cheap, open liveness probe. `GET /api/health?ready=1`
-also checks service-role configuration, table-shape probes (`camps`,
-`profiles`, `patients`), and Supabase Phone Auth/SMS provider settings; it
-returns 503 until those pass. The JSON includes `migrationVersion` from the
-migration ledger (`latest_applied_migration()`), not a hand-maintained contract
-string. The readiness path is per-IP rate-limited (12/min) so it cannot be used
-as an amplification vector.
+`GET /api/health` is a cheap, open **liveness** probe (no database).  
+`GET /api/health?ready=1` is **fail-closed readiness** (#68): database
+reachability, migration-head discovery, applied-head agreement with the
+versioned runtime contract (`src/lib/readiness-contract.ts`), schema/RPC/grant
+catalog facts, absence of `patients` from Realtime, and durable SMS ledger.
+Any discovery failure, timeout, or mismatch returns **HTTP 503**. Output names
+the failed check and expected migration id; it never includes secrets, SQL
+text, PHI, or connection strings. The readiness path is per-IP rate-limited
+(12/min). Liveness stays independent of readiness.
+
+Operator guide: [`docs/ops-readiness.md`](docs/ops-readiness.md).
+
+**Clean replay** (empty local DB → all migrations → full DB suite):
+
+```bash
+npm run test:db:replay
+# equivalent: npx supabase db reset --yes && npm run test:db
+```
+
+**Read-only head comparison** (never applies or repairs):
+
+```bash
+npm run compare:migrations
+```
 
 ### 2. Auth settings
 

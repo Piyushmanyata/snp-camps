@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  evaluateReadiness,
+  readinessResponseBody,
+} from "@/lib/readiness";
 
 const cacheHeaders = {
   "Cache-Control": "no-store",
 };
 
+/**
+ * Liveness: GET /api/health  → always cheap { ok: true } (no DB).
+ * Readiness: GET /api/health?ready=1 → fail-closed catalog/migration checks (#68).
+ * Liveness stays independent of readiness so process probes never trip on drift.
+ */
 /** Expensive readiness probes only — liveness stays unlimited. */
 const READY_RATE = {
   scope: "health-ready",
@@ -29,40 +38,10 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServiceRoleClient();
-  if (!supabase) {
-    return NextResponse.json(
-      { ok: false },
-      { status: 503, headers },
-    );
-  }
+  const result = await evaluateReadiness(supabase);
 
-  const [camps, profileShape, patientShape, migrationHead] = await Promise.all([
-    supabase.from("camps").select("id").limit(1),
-    supabase.from("profiles").select("id, disabled_at").limit(1),
-    supabase
-      .from("patients")
-      .select("id, phone_normalized, full_name_normalized, status_token")
-      .limit(1),
-    supabase.rpc("latest_applied_migration"),
-  ]);
-
-  const migrationVersion =
-    !migrationHead.error && typeof migrationHead.data === "string"
-      ? migrationHead.data
-      : null;
-  const database =
-    !camps.error && !profileShape.error && !patientShape.error;
-  const ok = database;
-
-  return NextResponse.json(
-    {
-      ok,
-      checks: { database },
-      migrationVersion,
-    },
-    {
-      status: ok ? 200 : 503,
-      headers,
-    },
-  );
+  return NextResponse.json(readinessResponseBody(result), {
+    status: result.ok ? 200 : 503,
+    headers,
+  });
 }
