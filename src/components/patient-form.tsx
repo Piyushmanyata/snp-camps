@@ -19,6 +19,7 @@ import {
   validatePatientForm,
   type PatientFormField,
 } from "@/lib/patient-form-validate";
+import { checkInPatientWithRetries } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
@@ -369,72 +370,64 @@ export function PatientForm({
 
   async function checkInLikelyDuplicate() {
     if (likelyDuplicateRegNo == null || loading) return;
+    const regTarget = likelyDuplicateRegNo;
     setLoading(true);
     setError(null);
     setFlash(null);
-    try {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.rpc("check_in_patient", {
-        p_patient_id: null,
-        p_reg_no: likelyDuplicateRegNo,
-      });
-      if (err) {
-        setError(
-          err.message || "Check-in fail. Internet check karo, try again.",
-        );
-        setLoading(false);
-        return;
-      }
-      const row = (Array.isArray(data) ? data[0] : data) as {
-        reg_no?: number;
-        queue_status?: string;
-        already_waiting?: boolean;
-        doctor_name?: string | null;
-        error_code?: string | null;
-      } | null;
-      if (!row) {
-        setError("Check-in fail — no row returned.");
-        setLoading(false);
-        return;
-      }
-      if (row.error_code === "already_seen" || row.queue_status === "seen") {
-        setError(
-          row.doctor_name
-            ? `Already seen by ${row.doctor_name}`
-            : "Already seen",
-        );
-        setLoading(false);
-        return;
-      }
-      const reg = row.reg_no ?? likelyDuplicateRegNo;
-      setFlash(
-        row.already_waiting
-          ? `Reg #${reg} pehle se line mein hai. Naya register nahi banaya.`
-          : `Reg #${reg} check-in ho gaya. Naya register nahi banaya.`,
-      );
-      setLikelyDuplicateRegNo(null);
-      setAadhaarDuplicateRegNo(null);
-      aadhaarOverrideOnceRef.current = false;
-      likelyOverrideOnceRef.current = false;
-      registrationAttempt.current.rotate();
-      setFullName("");
-      setGender("");
-      setAge("");
-      setAddress("");
-      setPhone(defaultPhone);
-      setEmail("");
-      setAadhaar("");
-      setLookupState("idle");
-      setLookupMsg(null);
-      setFieldErrors({});
-      setCampDayId(firstOpen);
-      lastLookedUp.current = "";
-      lookupRequest.current += 1;
-      lookupAbort.current?.abort();
-      focusName();
-    } catch {
-      setError("Check-in fail. Internet check karo, try again.");
+    const supabase = createClient();
+    const outcome = await checkInPatientWithRetries({
+      patientId: null,
+      regNo: regTarget,
+      rpc: async (fn, args) => {
+        const result = await supabase.rpc(fn, args);
+        return {
+          data: result.data,
+          error: result.error
+            ? {
+                message: result.error.message,
+                code: result.error.code,
+                details: result.error.details,
+                hint: result.error.hint,
+              }
+            : null,
+        };
+      },
+      errorContext: "patient-form.check-in-likely-dup",
+      errorFallback: "Could not check in this patient. Try again.",
+    });
+    if (!outcome.ok) {
+      // Preserve likely-duplicate selection + form state for Try Again (#61).
+      setError(outcome.error);
+      setLoading(false);
+      return;
     }
+    const row = outcome.row;
+    const reg = row.reg_no ?? regTarget;
+    setFlash(
+      row.already_waiting
+        ? `Reg #${reg} pehle se line mein hai. Naya register nahi banaya.`
+        : `Reg #${reg} check-in ho gaya. Naya register nahi banaya.`,
+    );
+    setLikelyDuplicateRegNo(null);
+    setAadhaarDuplicateRegNo(null);
+    aadhaarOverrideOnceRef.current = false;
+    likelyOverrideOnceRef.current = false;
+    registrationAttempt.current.rotate();
+    setFullName("");
+    setGender("");
+    setAge("");
+    setAddress("");
+    setPhone(defaultPhone);
+    setEmail("");
+    setAadhaar("");
+    setLookupState("idle");
+    setLookupMsg(null);
+    setFieldErrors({});
+    setCampDayId(firstOpen);
+    lastLookedUp.current = "";
+    lookupRequest.current += 1;
+    lookupAbort.current?.abort();
+    focusName();
     setLoading(false);
   }
 

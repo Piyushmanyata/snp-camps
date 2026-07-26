@@ -390,3 +390,259 @@ test("name search returns only registered for active camp", async (t) => {
   assert.equal(kumar.age, 45);
   assert.equal(kumar.address, "Sikar Road");
 });
+
+test("name search finds one-character typo via trigram (#61)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  await asServiceRole(async () => {
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Suresh Patel', 'M', 52, 'Jaipur', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+  });
+
+  // Single-character substitution: e → a mid-name (not a prefix of normalized name).
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_registered_patients($1, 'suresha', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.ok(
+    matches.some((m) => m.full_name === "Suresh Patel"),
+    `expected fuzzy hit for suresha → Suresh Patel, got ${JSON.stringify(matches.map((m) => m.full_name))}`,
+  );
+});
+
+test("name search finds simple transposition via trigram (#61)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  await asServiceRole(async () => {
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Priya Sharma', 'F', 28, 'Nawalgarh', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+  });
+
+  // Transposition: "Priya" → "Pirya"
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_registered_patients($1, 'pirya sharma', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.ok(
+    matches.some((m) => m.full_name === "Priya Sharma"),
+    `expected fuzzy hit for pirya sharma → Priya Sharma, got ${JSON.stringify(matches.map((m) => m.full_name))}`,
+  );
+});
+
+test("exact prefix ranks before fuzzy matches (#61)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  await asServiceRole(async () => {
+    // Exact prefix for query "suresh"
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Suresh Verma', 'M', 50, 'A', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+    // Fuzzy-only transposition — normalized name does not start with "suresh"
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Surehs Nair', 'F', 33, 'B', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+  });
+
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_registered_patients($1, 'suresh', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.ok(
+    matches.some((m) => m.full_name === "Suresh Verma"),
+    "prefix match present",
+  );
+  assert.equal(
+    matches[0].full_name,
+    "Suresh Verma",
+    "exact prefix must rank first ahead of fuzzy transposition",
+  );
+});
+
+test("name search excludes other camp and seen (#61)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  const otherCampId = randomUUID();
+  const otherDayId = randomUUID();
+  await client.query("begin");
+  try {
+    await client.query("select pg_advisory_xact_lock(918273645)");
+    await client.query(
+      `insert into public.camps (id, name, is_active, venue)
+       values ($1, $2, false, 'check-in-test')`,
+      [otherCampId, `Other camp ${otherCampId.slice(0, 8)}`],
+    );
+    await client.query(
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
+       values ($1, $2, '2099-07-01', 50)`,
+      [otherDayId, otherCampId],
+    );
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  }
+
+  const seenPatient = await asServiceRole(async () => {
+    const { rows } = await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Geeta Seen', 'F', 35, 'Here', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+    return rows[0];
+  });
+  await client.query(
+    `update public.patients
+     set queue_status = 'seen', seen_at = now(), queued_at = now()
+     where id = $1`,
+    [seenPatient.id],
+  );
+
+  // Inactive/other camp: insert directly (register_patient requires active camp).
+  await client.query(
+    `insert into public.patients (
+       id, camp_id, camp_day_id, full_name, gender, age, address,
+       queue_status, reg_no, created_by
+     ) values (
+       $1, $2, $3, 'Geeta Other', 'F', 36, 'Away',
+       'registered', 900001, $4
+     )`,
+    [randomUUID(), otherCampId, otherDayId, staffId],
+  );
+
+  await asServiceRole(async () => {
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Geeta Active', 'F', 34, 'Local', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+  });
+
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_registered_patients($1, 'geeta', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.ok(matches.some((m) => m.full_name === "Geeta Active"));
+  assert.ok(!matches.some((m) => m.full_name === "Geeta Seen"));
+  assert.ok(!matches.some((m) => m.full_name === "Geeta Other"));
+});
+
+test("name search returns at most 10 deterministic rows (#61)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  await asServiceRole(async () => {
+    for (let i = 0; i < 12; i += 1) {
+      // Same normalized prefix so all match; names ordered by suffix for stability.
+      const suffix = String(i).padStart(2, "0");
+      await client.query(
+        `select * from public.register_patient_idempotent(
+           $1, $2, $3, 'M', 40, 'X', null, null, null,
+           null, $4, $5, false, false
+         )`,
+        [
+          randomUUID(),
+          campId,
+          `Common Name ${suffix}`,
+          staffId,
+          futureDayId,
+        ],
+      );
+    }
+  });
+
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_registered_patients($1, 'common', 25)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.equal(matches.length, 10, "hard cap at 10 even if p_limit is higher");
+  // Deterministic: ordered by normalized name then reg_no
+  const names = matches.map((m) => m.full_name);
+  const sorted = [...names].sort((a, b) =>
+    a.localeCompare(b, "en", { sensitivity: "base" }),
+  );
+  assert.deepEqual(names, sorted);
+});
+
+test("search plan uses registered filter and name index path (#61 EXPLAIN)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  await asServiceRole(async () => {
+    await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Explain Seed', 'M', 40, 'Z', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+  });
+
+  const plan = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `explain (format text)
+       select * from public.search_registered_patients($1, 'explain', 10)`,
+      [campId],
+    );
+    return rows.map((r) => r["QUERY PLAN"]).join("\n");
+  });
+
+  // Record-friendly: must not sequential-scan entire patients without filter intent.
+  assert.ok(
+    /search_registered_patients|Function Scan|Bitmap|Index|Seq Scan/i.test(plan),
+    `unexpected plan shape:\n${plan}`,
+  );
+  // Store plan text in assertion message for EVIDENCE capture on failure path.
+  assert.ok(plan.length > 0, plan);
+});

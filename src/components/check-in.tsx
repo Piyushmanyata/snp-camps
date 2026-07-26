@@ -5,29 +5,40 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr, parseRegistrationNumber } from "@/lib/qr";
 import { Button, ErrorBox, Input, SuccessBox } from "@/components/ui";
-import { mapDbError } from "@/lib/public-error";
+import {
+  checkInPatientWithRetries,
+  searchRegisteredPatientsWithRetries,
+  type RegisteredSearchRow,
+} from "@/lib/desk-ops";
 
-type CheckInRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  queue_status: string;
-  already_waiting: boolean;
-  doctor_name: string | null;
-  error_code: string | null;
-};
+type SearchUiState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "results"; rows: RegisteredSearchRow[] }
+  | { status: "empty" }
+  | { status: "error"; message: string };
 
-type SearchRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  age: number | null;
-  address: string | null;
-};
+function supabaseRpc() {
+  const supabase = createClient();
+  return async (fn: string, args: Record<string, unknown>) => {
+    const result = await supabase.rpc(fn, args);
+    return {
+      data: result.data,
+      error: result.error
+        ? {
+            message: result.error.message,
+            code: result.error.code,
+            details: result.error.details,
+            hint: result.error.hint,
+          }
+        : null,
+    };
+  };
+}
 
 /**
  * Desk check-in: reg number, name search, or paste QR.
- * All paths call check_in_patient (#46).
+ * All paths call check_in_patient via the shared #61 seam.
  */
 export function CheckIn({
   campId,
@@ -40,12 +51,42 @@ export function CheckIn({
   const uid = useId().replace(/:/g, "");
   const [regInput, setRegInput] = useState("");
   const [nameQuery, setNameQuery] = useState("");
-  const [matches, setMatches] = useState<SearchRow[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [searchState, setSearchState] = useState<SearchUiState>({
+    status: "idle",
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  /** Last patient id chosen from name list — preserved across check-in failure. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchGen = useRef(0);
+  const lastSearchQuery = useRef("");
+
+  const runSearch = useCallback(
+    async (q: string, gen: number) => {
+      if (!campId) return;
+      setSearchState({ status: "loading" });
+      const outcome = await searchRegisteredPatientsWithRetries({
+        campId,
+        query: q,
+        limit: 10,
+        rpc: supabaseRpc(),
+        errorContext: "check-in.search",
+        errorFallback: "Could not search names. Try again.",
+      });
+      if (gen !== searchGen.current) return;
+      if (!outcome.ok) {
+        setSearchState({ status: "error", message: outcome.error });
+        return;
+      }
+      if (outcome.rows.length === 0) {
+        setSearchState({ status: "empty" });
+        return;
+      }
+      setSearchState({ status: "results", rows: outcome.rows });
+    },
+    [campId],
+  );
 
   const runCheckIn = useCallback(
     async (opts: { id?: string; regNo?: number }) => {
@@ -53,48 +94,34 @@ export function CheckIn({
       setBusy(true);
       setError(null);
       setSuccess(null);
-      try {
-        const supabase = createClient();
-        const { data, error: err } = await supabase.rpc("check_in_patient", {
-          p_patient_id: opts.id ?? null,
-          p_reg_no: opts.regNo ?? null,
-        });
-        if (err) {
-          setError(
-            mapDbError(err, {
-              context: "check-in",
-              fallback: "Could not check in this patient. Try again.",
-            }),
-          );
-          return;
-        }
-        const row = (Array.isArray(data) ? data[0] : data) as CheckInRow | null;
-        if (!row) {
-          setError("Check-in failed — no row returned.");
-          return;
-        }
-        if (row.error_code === "already_seen" || row.queue_status === "seen") {
-          setError(
-            row.doctor_name
-              ? `Already seen by ${row.doctor_name}`
-              : "Already seen",
-          );
-          return;
-        }
-        setSuccess(
-          row.already_waiting
-            ? `#${row.reg_no} ${row.full_name} is already in the queue.`
-            : `#${row.reg_no} ${row.full_name} checked in — ab line mein hain.`,
-        );
-        setRegInput("");
-        setNameQuery("");
-        setMatches([]);
-        router.refresh();
-      } catch {
-        setError("Could not check in. Check the connection and try again.");
-      } finally {
+      if (opts.id) setSelectedId(opts.id);
+
+      const outcome = await checkInPatientWithRetries({
+        patientId: opts.id ?? null,
+        regNo: opts.regNo ?? null,
+        rpc: supabaseRpc(),
+        errorContext: "check-in",
+        errorFallback: "Could not check in this patient. Try again.",
+      });
+
+      if (!outcome.ok) {
+        setError(outcome.error);
         setBusy(false);
+        return;
       }
+
+      const row = outcome.row;
+      setSuccess(
+        row.already_waiting
+          ? `#${row.reg_no} ${row.full_name} is already in the queue.`
+          : `#${row.reg_no} ${row.full_name} checked in — ab line mein hain.`,
+      );
+      setRegInput("");
+      setNameQuery("");
+      setSearchState({ status: "idle" });
+      setSelectedId(null);
+      setBusy(false);
+      router.refresh();
     },
     [busy, campId, router],
   );
@@ -102,38 +129,50 @@ export function CheckIn({
   useEffect(() => {
     if (!campId) return;
     const q = nameQuery.trim();
-    if (q.length < 1) return;
+    if (q.length < 1) {
+      // Invalidate in-flight search; UI derives idle from empty query (no setState).
+      searchGen.current += 1;
+      lastSearchQuery.current = "";
+      return;
+    }
     const gen = ++searchGen.current;
-    const timer = window.setTimeout(async () => {
-      setSearching(true);
-      try {
-        const supabase = createClient();
-        const { data, error: err } = await supabase.rpc(
-          "search_registered_patients",
-          {
-            p_camp_id: campId,
-            p_query: q,
-            p_limit: 10,
-          },
-        );
-        if (gen !== searchGen.current) return;
-        setMatches(err ? [] : ((data || []) as SearchRow[]));
-      } catch {
-        if (gen === searchGen.current) setMatches([]);
-      } finally {
-        if (gen === searchGen.current) setSearching(false);
-      }
+    lastSearchQuery.current = q;
+    const timer = window.setTimeout(() => {
+      void runSearch(q, gen);
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [campId, nameQuery]);
+  }, [campId, nameQuery, runSearch]);
 
-  const visibleMatches = nameQuery.trim().length > 0 ? matches : [];
+  function retrySearch() {
+    const q = nameQuery.trim() || lastSearchQuery.current;
+    if (!q || !campId) return;
+    const gen = ++searchGen.current;
+    lastSearchQuery.current = q;
+    void runSearch(q, gen);
+  }
+
+  function retryCheckIn() {
+    if (selectedId) {
+      void runCheckIn({ id: selectedId });
+      return;
+    }
+    const raw = regInput.trim();
+    if (!raw) return;
+    if (!/^\d+$/.test(raw)) {
+      const asId = parsePatientIdFromQr(raw);
+      if (asId) void runCheckIn({ id: asId });
+      return;
+    }
+    const reg = parseRegistrationNumber(raw);
+    if (reg !== null) void runCheckIn({ regNo: reg });
+  }
 
   async function onRegSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
     setError(null);
     setSuccess(null);
+    setSelectedId(null);
     const raw = regInput.trim();
     if (!raw) {
       setError("Enter a registration number or paste a patient QR link.");
@@ -166,6 +205,13 @@ export function CheckIn({
       </div>
     );
   }
+
+  const hasQuery = nameQuery.trim().length > 0;
+  const visibleResults =
+    hasQuery && searchState.status === "results" ? searchState.rows : [];
+  const showEmpty = hasQuery && searchState.status === "empty";
+  const showSearchError = hasQuery && searchState.status === "error";
+  const showSearching = hasQuery && searchState.status === "loading";
 
   return (
     <div className="space-y-3">
@@ -209,23 +255,23 @@ export function CheckIn({
           onChange={(e) => setNameQuery(e.target.value)}
           disabled={busy}
         />
-        {searching ? (
+        {showSearching ? (
           <p className="text-xs text-muted" role="status">
             Searching…
           </p>
         ) : null}
-        {visibleMatches.length > 0 ? (
+        {visibleResults.length > 0 ? (
           <ul
             className="divide-y divide-border overflow-hidden rounded-xl border border-border"
             role="listbox"
             aria-label="Matching registered patients"
           >
-            {visibleMatches.map((m) => (
+            {visibleResults.map((m) => (
               <li key={m.id}>
                 <button
                   type="button"
                   role="option"
-                  aria-selected={false}
+                  aria-selected={selectedId === m.id}
                   disabled={busy}
                   onClick={() => void runCheckIn({ id: m.id })}
                   className="pressable flex min-h-12 w-full flex-col items-start justify-center gap-0.5 px-3 py-3 text-left hover:bg-brand-soft disabled:opacity-50"
@@ -243,14 +289,41 @@ export function CheckIn({
               </li>
             ))}
           </ul>
-        ) : nameQuery.trim().length > 0 && !searching ? (
+        ) : null}
+        {showEmpty ? (
           <p className="text-xs text-muted" role="status">
             No registered patients match. Already checked-in names are hidden.
           </p>
         ) : null}
+        {showSearchError ? (
+          <div className="space-y-2" role="alert">
+            <p className="text-sm text-danger">{searchState.message}</p>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={retrySearch}
+              className="sm:w-auto"
+            >
+              Try Again
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <ErrorBox message={error} />
+      {error && (selectedId || regInput.trim()) ? (
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={busy}
+          loading={busy}
+          onClick={retryCheckIn}
+          className="sm:w-auto"
+        >
+          Try Again
+        </Button>
+      ) : null}
       {success ? <SuccessBox message={success} /> : null}
     </div>
   );

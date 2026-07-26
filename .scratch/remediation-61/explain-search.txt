@@ -1,0 +1,10 @@
+=== PREFIX sure ===
+Function Scan on search_registered_patients  (cost=0.25..10.25 rows=1000 width=88) (actual time=1.774..1.775 rows=10 loops=1)
+  Buffers: shared hit=835
+Planning Time: 0.014 ms
+Execution Time: 1.783 ms
+=== FUZZY pirya sharma ===
+Function Scan on search_registered_patients  (cost=0.25..10.25 rows=1000 width=88) (actual time=0.411..0.412 rows=1 loops=1)
+  Buffers: shared hit=5
+Planning Time: 0.010 ms
+Execution Time: 0.419 ms

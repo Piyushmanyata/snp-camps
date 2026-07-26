@@ -23,6 +23,36 @@ function fakeStream(id = "t1") {
   };
 }
 
+test("freeze after terminal exhaustion blocks same-code re-arm until unfreeze (#61)", async () => {
+  const session = new QrCameraSession();
+  const token = session.begin();
+  /** @type {string[]} */
+  const decoded = [];
+  const orch = new QrDecodeOrchestrator({
+    isLive: () => session.isCurrent(token),
+    onDecoded: (raw) => decoded.push(raw),
+  });
+
+  orch.freeze();
+  assert.equal(orch.isFrozen, true);
+  assert.equal(orch.shouldRunFrame(), false);
+
+  const firedNative = await orch.runNativeDetect(
+    /** @type {never} */ ({}),
+    async () => [{ rawValue: "snp:same-qr-again" }],
+  );
+  assert.equal(firedNative, false);
+  assert.equal(orch.runSyncDecode("snp:same-qr-again"), false);
+  assert.deepEqual(decoded, []);
+
+  // Explicit operator recovery only.
+  orch.unfreeze();
+  assert.equal(orch.isFrozen, false);
+  assert.equal(orch.shouldRunFrame(), true);
+  assert.equal(orch.runSyncDecode("snp:same-qr-again"), true);
+  assert.deepEqual(decoded, ["snp:same-qr-again"]);
+});
+
 test("stop during pending detect produces no callback", async () => {
   const session = new QrCameraSession();
   const token = session.begin();

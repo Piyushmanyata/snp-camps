@@ -1,0 +1,44 @@
+
+> snp-camps@0.1.0 test:e2e
+> node e2e/run-local.mjs
+
+
+Running 14 tests using 1 worker
+
+
+
+(node:7912) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/14] [chromium] ΓÇ║ e2e\csp.spec.ts:7:5 ΓÇ║ served Content-Security-Policy has nonce, no script unsafe-inline, hydrates cleanly
+[2/14] [chromium] ΓÇ║ e2e\print-passcode.spec.ts:56:5 ΓÇ║ desk slip has no passcode; A4 multi-up and thermal58 render
+
+[WebServer] Route /login is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[WebServer] Route /volunteer is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[WebServer] Route /print/[id] is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[3/14] [chromium] ΓÇ║ e2e\roles.spec.ts:54:5 ΓÇ║ public entry points and protected-route redirects
+
+[WebServer] Route / is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[WebServer] Route /admin is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[WebServer] Route /doctor is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[WebServer] Route /_not-found is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[4/14] [chromium] ΓÇ║ e2e\roles.spec.ts:88:5 ΓÇ║ credential forms never put secrets in the URL before hydration
+[5/14] [chromium] ΓÇ║ e2e\roles.spec.ts:106:5 ΓÇ║ admin can sign in, inspect the patient desk, and sign out
+[WebServer] Route /admin/patients is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+
+[6/14] [chromium] ΓÇ║ e2e\roles.spec.ts:128:5 ΓÇ║ volunteer can sign in and safely review a patient
+[7/14] [chromium] ΓÇ║ e2e\roles.spec.ts:148:5 ΓÇ║ volunteer doctor picker is populated (not silently empty)
+[8/14] [chromium] ΓÇ║ e2e\roles.spec.ts:183:5 ΓÇ║ admin doctor create invalidates volunteer picker without hard reload
+[9/14] [chromium] ΓÇ║ e2e\roles.spec.ts:256:5 ΓÇ║ doctor can sign in and review without mutating patient status
+[10/14] [chromium] ΓÇ║ e2e\roles.spec.ts:278:5 ΓÇ║ staff-scan QR never logs a public visitor in
+
+[WebServer] Route /p/[id] is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[11/14] [chromium] ΓÇ║ e2e\roles.spec.ts:288:5 ΓÇ║ invalid QR path shows clear help
+[12/14] [chromium] ΓÇ║ e2e\roles.spec.ts:294:5 ΓÇ║ staff deep-link scan opens lookup-first desk
+[13/14] [chromium] ΓÇ║ e2e\roles.spec.ts:315:5 ΓÇ║ garbage reg/QR text fails closed without crashing desk
+[14/14] [chromium] ΓÇ║ e2e\roles.spec.ts:337:5 ΓÇ║ doctor mark seen returns to scanner with no dismiss screen
+  14 passed (49.6s)

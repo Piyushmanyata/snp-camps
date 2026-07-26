@@ -1,5 +1,5 @@
 /**
- * Desk ops with shared quiet retry (#32, #60).
+ * Desk ops with shared quiet retry (#32, #60, #61).
  *
  * Idempotency guarantees (safe to auto-retry):
  * - lookup_patient_scan — read-only; COMMENT ON FUNCTION: "No side effects."
@@ -8,6 +8,9 @@
  *   re-assign or change seen_by). Success-after-timeout surfaces as already_seen.
  * - change_camp_day — patient + target day FOR UPDATE; same-day early return;
  *   seat count checked under the day lock before UPDATE.
+ * - check_in_patient — registered → waiting; waiting is idempotent (same queued_at);
+ *   seen is a terminal business result (error_code already_seen).
+ * - search_registered_patients — read-only; empty rows ≠ error.
  *
  * Retry uses classifyOperationError allow-list only (transient transport / DB).
  * Terminal business, permission, validation, and capacity results are not retried.
@@ -56,6 +59,25 @@ export type ChangeDayRow = {
   full_name: string;
   camp_day_id: string;
   day_date: string;
+};
+
+export type CheckInRow = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+  queue_status: string;
+  already_waiting: boolean;
+  doctor_name: string | null;
+  error_code: string | null;
+};
+
+/** Lost-slip search row — name/age/locality only (no phone/token/status). */
+export type RegisteredSearchRow = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+  age: number | null;
+  address: string | null;
 };
 
 type Step<T> =
@@ -354,6 +376,161 @@ export async function changeCampDayWithRetries(options: {
       }
     },
     { ok: false, error: RETRY_EXHAUSTED_COPY.changeDay },
+    options.sleep,
+  );
+}
+
+/**
+ * Check-in (registered → waiting). Shared by reg number, QR paste, name row,
+ * scanner auto-check-in, and likely-duplicate "check in instead" (#61).
+ * Transient failures retry; already_seen / permission / unknown are terminal.
+ */
+export async function checkInPatientWithRetries(options: {
+  patientId?: string | null;
+  regNo?: number | null;
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<
+  | { ok: true; row: CheckInRow }
+  | {
+      ok: false;
+      error: string;
+      alreadySeen?: boolean;
+      doctorName?: string | null;
+    }
+> {
+  type Out =
+    | { ok: true; row: CheckInRow }
+    | {
+        ok: false;
+        error: string;
+        alreadySeen?: boolean;
+        doctorName?: string | null;
+      };
+
+  const context = options.errorContext ?? "desk-ops.check-in";
+  const fallback =
+    options.errorFallback ?? "Could not check in this patient. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc("check_in_patient", {
+          p_patient_id: options.patientId ?? null,
+          p_reg_no: options.regNo ?? null,
+        });
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const row = firstRow<CheckInRow>(data);
+        if (!row) {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Could not check in this patient. Refresh and try again.",
+            },
+          };
+        }
+        if (row.error_code === "already_seen" || row.queue_status === "seen") {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: row.doctor_name
+                ? `Already seen by ${row.doctor_name}`
+                : "Already seen",
+              alreadySeen: true,
+              doctorName: row.doctor_name ?? null,
+            },
+          };
+        }
+        return { done: true, value: { ok: true, row } };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.checkIn },
+    options.sleep,
+  );
+}
+
+/**
+ * Lost-slip name search — read-only. Failures never collapse to empty success (#61).
+ * Empty rows mean no match; RPC/transport errors return { ok: false }.
+ */
+export async function searchRegisteredPatientsWithRetries(options: {
+  campId: string;
+  query: string;
+  limit?: number;
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<
+  { ok: true; rows: RegisteredSearchRow[] } | { ok: false; error: string }
+> {
+  type Out =
+    | { ok: true; rows: RegisteredSearchRow[] }
+    | { ok: false; error: string };
+
+  const context = options.errorContext ?? "desk-ops.search";
+  const fallback =
+    options.errorFallback ?? "Could not search names. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc(
+          "search_registered_patients",
+          {
+            p_camp_id: options.campId,
+            p_query: options.query,
+            p_limit: options.limit ?? 10,
+          },
+        );
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const rows = (Array.isArray(data) ? data : data ? [data] : []) as RegisteredSearchRow[];
+        return { done: true, value: { ok: true, rows } };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.search },
     options.sleep,
   );
 }

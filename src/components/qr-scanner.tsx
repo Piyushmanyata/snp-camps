@@ -18,13 +18,13 @@ import { QrCameraSession } from "@/lib/qr-camera-session";
 import { QrDecodeOrchestrator } from "@/lib/qr-decode-orchestrator";
 import {
   assignPatientDoctorWithRetries,
+  checkInPatientWithRetries,
   lookupPatientScanWithRetries,
   type AssignRow,
   type LookupRow,
 } from "@/lib/desk-ops";
 import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import { Toast } from "@/components/toast";
-import { mapDbError } from "@/lib/public-error";
 import type { DoctorOption } from "@/lib/types";
 
 type LookupOrigin = "camera" | "manual";
@@ -352,49 +352,50 @@ export function QrScanner({
         /* ignore */
       }
 
-      // Desk: scanning a pre-registered patient checks them into the queue (#46).
+      // Desk: scanning a pre-registered patient checks them into the queue (#46/#61).
       if (row.queue_status === "registered" && mode !== "doctor") {
-        const { data: checkData, error: checkErr } = await supabase.rpc(
-          "check_in_patient",
-          {
-            p_patient_id: row.id,
-            p_reg_no: null,
+        const checkOutcome = await checkInPatientWithRetries({
+          patientId: row.id,
+          regNo: null,
+          rpc: async (fn, args) => {
+            const result = await supabase.rpc(fn, args);
+            return {
+              data: result.data,
+              error: result.error
+                ? {
+                    message: result.error.message,
+                    code: result.error.code,
+                    details: result.error.details,
+                    hint: result.error.hint,
+                  }
+                : null,
+            };
           },
-        );
-        if (checkErr) {
-          handledRef.current = false;
-          setError(
-            mapDbError(checkErr, {
-              context: "qr-scanner.check-in",
-              fallback: "Could not check in this patient. Try again.",
-            }),
-          );
-          setLookup(row);
+          errorContext: "qr-scanner.check-in",
+          errorFallback: "Could not check in this patient. Try again.",
+        });
+        if (!checkOutcome.ok) {
+          // Terminal check-in (exhausted or business): freeze same QR re-arm (#61).
+          if (origin === "camera") {
+            decodeOrchRef.current?.freeze();
+            handledRef.current = true;
+          } else {
+            handledRef.current = false;
+          }
+          setError(checkOutcome.error);
+          if (checkOutcome.alreadySeen) {
+            setLookup({
+              ...row,
+              queue_status: "seen",
+              doctor_name: checkOutcome.doctorName ?? row.doctor_name,
+            });
+          } else {
+            setLookup(row);
+          }
           return row;
         }
-        const checked = (
-          Array.isArray(checkData) ? checkData[0] : checkData
-        ) as {
-          queue_status?: string;
-          already_waiting?: boolean;
-          error_code?: string | null;
-          doctor_name?: string | null;
-        } | null;
-        if (checked?.error_code === "already_seen") {
-          setError(
-            checked.doctor_name
-              ? `Already seen by ${checked.doctor_name}`
-              : "Already seen",
-          );
-          setLookup({
-            ...row,
-            queue_status: "seen",
-            doctor_name: checked.doctor_name ?? row.doctor_name,
-          });
-          handledRef.current = true;
-          return row;
-        }
-        if (checked?.queue_status === "waiting") {
+        const checked = checkOutcome.row;
+        if (checked.queue_status === "waiting") {
           row = { ...row, queue_status: "waiting" };
           setToastMsg(
             checked.already_waiting
