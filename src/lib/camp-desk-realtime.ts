@@ -5,7 +5,7 @@
 
 /** Visible when the websocket is down and fixed poll is the safety net. */
 export const RECONNECTING_INDICATOR =
-  "Reconnecting — refreshing every 2 minutes";
+  "Reconnecting — refreshing every 20 seconds";
 
 export type CampDeskRealtimeStatus = "live" | "reconnecting";
 

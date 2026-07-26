@@ -2,8 +2,12 @@
 
 import { useEffect } from "react";
 
-/** Fixed auto-refresh for queue/seats — not live realtime. */
-export const POLL_MS = 120_000;
+/**
+ * Fixed auto-refresh interval for queue/seats when polling is active.
+ * Staff desks use Realtime primarily (#25/#26); this interval is the
+ * reconnect safety net and any non-live poll path (#53: ~20s).
+ */
+export const POLL_MS = 20_000;
 
 /** Tick after each completed request while visible. `ms <= 0` disables. */
 export function useFixedPoll(

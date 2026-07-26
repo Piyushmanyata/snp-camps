@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
 import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
+import { fetchDeskLive } from "@/lib/desk-live";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { ReconnectingIndicator } from "@/components/reconnecting-indicator";
 import {
@@ -14,9 +15,24 @@ import {
   Spinner,
 } from "@/components/ui";
 
+function pollHint(pollMs: number): string {
+  if (pollMs <= 0) return "Tap Refresh for latest seats";
+  if (pollMs < 60_000) {
+    return `Updates every ${Math.round(pollMs / 1000)}s`;
+  }
+  return `Updates every ${Math.round(pollMs / 60_000)} min`;
+}
+
+type DaysView = {
+  /** null after client fetch supersedes RSC props. */
+  propsSource: CampDayStats[] | null;
+  days: CampDayStats[];
+};
+
 /**
- * Seat board. Staff (`live`) uses Realtime + reconnect poll only.
- * Patient screens keep fixed poll (`live=false`, default pollMs 2 min).
+ * Seat board. Staff (`live`) uses Realtime + reconnect poll only (#26).
+ * Staff catch-up uses /api/desk/live (same rule as LiveQueue, #53).
+ * Patient screens keep page poll / manual refresh (`live=false`).
  */
 export function SeatBoard({
   days: initialDays,
@@ -37,14 +53,37 @@ export function SeatBoard({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const refresh = useCallback(() => {
+  const [daysState, setDaysState] = useState<DaysView | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const daysView: DaysView =
+    daysState && daysState.propsSource === initialDays
+      ? daysState
+      : daysState && daysState.propsSource === null
+        ? daysState
+        : { propsSource: initialDays, days: initialDays };
+  const days = daysView.days;
+
+  const refresh = useCallback(async () => {
     if (!campId) return;
+    if (live) {
+      // Minimal JSON — queue + seats only; no doctor list / KPI re-fetch (#53).
+      setRefreshing(true);
+      try {
+        const data = await fetchDeskLive(campId);
+        setDaysState({ propsSource: null, days: data.days });
+      } catch {
+        // Failed refresh must not disable future polls.
+      } finally {
+        setRefreshing(false);
+      }
+      return;
+    }
+    // Patient / non-live: full page refresh (public data; no desk API session).
     startTransition(() => {
       router.refresh();
     });
-  }, [campId, router]);
-
-  const days = initialDays;
+  }, [campId, live, router]);
 
   const liveStatus = useCampDeskRealtime(
     campId,
@@ -52,10 +91,12 @@ export function SeatBoard({
     live && Boolean(campId),
   );
   const reconnecting = liveStatus === "reconnecting";
-  // Live desks: poll only while reconnecting. Patient path: unchanged fixed poll.
+  // Live desks: poll only while reconnecting. Patient path: fixed poll when pollMs > 0.
   const pollEnabled =
     Boolean(campId) && (live ? reconnecting : pollMs > 0);
   useFixedPoll(refresh, live || reconnecting ? POLL_MS : pollMs, pollEnabled);
+
+  const busy = live ? refreshing : isPending;
 
   if (!days.length) {
     return (
@@ -80,9 +121,7 @@ export function SeatBoard({
                 ? "Reconnecting"
                 : liveStatus === "live"
                   ? "Live"
-                  : pollMs > 0
-                    ? `Updates every ${Math.round(pollMs / 60_000)} min`
-                    : "Tap Refresh for latest seats"
+                  : pollHint(pollMs)
               : "All days listed"
           }
         >
@@ -92,10 +131,10 @@ export function SeatBoard({
           <button
             type="button"
             onClick={() => void refresh()}
-            disabled={isPending}
+            disabled={busy}
             className="pressable inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
           >
-            {isPending ? <Spinner className="h-3 w-3" /> : null}
+            {busy ? <Spinner className="h-3 w-3" /> : null}
             Refresh
           </button>
         ) : null}
@@ -116,10 +155,10 @@ export function SeatBoard({
             <li
               key={d.id}
               className={`rounded-xl border p-3 transition-colors ${
- d.is_full
- ? "border-amber-200/80 bg-amber-50/40"
- : "border-border bg-background/50"
- }`}
+                d.is_full
+                  ? "border-amber-200/80 bg-amber-50/40"
+                  : "border-border bg-background/50"
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -151,8 +190,8 @@ export function SeatBoard({
               >
                 <div
                   className={`h-full rounded-full transition-[width] duration-300 ${
- d.is_full ? "bg-amber-500" : "bg-brand"
- }`}
+                    d.is_full ? "bg-amber-500" : "bg-brand"
+                  }`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

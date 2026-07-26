@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { POLL_MS, useFixedPoll } from "@/lib/poll";
 import { useCampDeskRealtime } from "@/lib/use-camp-desk-realtime";
+import { fetchDeskLive } from "@/lib/desk-live";
 import {
   Badge,
   Button,
@@ -26,6 +26,13 @@ export type LiveQueuePatient = {
   phone: string | null;
 };
 
+type QueueView = {
+  /** Identity of the last props snapshot applied (null after client fetch). */
+  propsSource: LiveQueuePatient[] | null;
+  rows: LiveQueuePatient[];
+  total: number;
+};
+
 /** Waiting queue. Assign doctor marks seen and removes from list. */
 export function LiveQueue({
   initial,
@@ -40,62 +47,54 @@ export function LiveQueue({
   doctors?: DoctorOption[];
   mode?: "volunteer" | "doctor" | "admin";
 }) {
-  const router = useRouter();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [refreshSource, setRefreshSource] = useState<LiveQueuePatient[] | null>(
-    null,
-  );
-  const [queueState, setQueueState] = useState<{
-    source: LiveQueuePatient[];
-    rows: LiveQueuePatient[];
-    total: number;
-  } | null>(null);
+  const [queueState, setQueueState] = useState<QueueView | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pickId, setPickId] = useState<string | null>(null);
   const [doctorId, setDoctorId] = useState("");
-  const currentQueue =
-    queueState?.source === initial
+
+  // Derive from RSC props until a client poll/fetch supersedes them (no effect).
+  const current: QueueView =
+    queueState && queueState.propsSource === initial
       ? queueState
-      : { source: initial, rows: initial, total: initialTotal ?? initial.length };
-  const rows = currentQueue.rows;
-  const total = currentQueue.total;
-  const refreshMessage = refreshSource
-    ? refreshSource === initial
-      ? "Refreshing queue…"
-      : "Queue updated"
-    : null;
+      : queueState && queueState.propsSource === null
+        ? queueState
+        : {
+            propsSource: initial,
+            rows: initial,
+            total: initialTotal ?? initial.length,
+          };
+  const rows = current.rows;
+  const total = current.total;
 
-  function updateQueue(
-    update: (current: typeof currentQueue) => typeof currentQueue,
-  ) {
-    setQueueState((previous) =>
-      update(
-        previous?.source === initial
-          ? previous
-          : {
-              source: initial,
-              rows: initial,
-              total: initialTotal ?? initial.length,
-            },
-      ),
-    );
-  }
-
-  const [isPending, startTransition] = useTransition();
-  const refreshQueue = useCallback(() => {
-    startTransition(() => {
-      router.refresh();
-    });
-  }, [router]);
+  /** Minimal JSON poll — never re-runs doctor list / full RSC tree (#53). */
+  const refreshQueue = useCallback(async () => {
+    if (!campId) return;
+    setRefreshing(true);
+    try {
+      const data = await fetchDeskLive(campId);
+      setQueueState({
+        propsSource: null,
+        rows: data.waiting,
+        total: data.waitingTotal,
+      });
+    } catch {
+      // Failed refresh must not disable future polls (useFixedPoll also guards).
+    } finally {
+      setRefreshing(false);
+    }
+  }, [campId]);
 
   function manualRefresh() {
     setToastMsg(null);
-    setRefreshSource(initial);
-    refreshQueue();
+    setError(null);
+    void refreshQueue();
   }
 
   // Staff-only: Realtime when camp is set; fixed poll only while reconnecting (#26).
+  // Poll / Realtime catch-up hits /api/desk/live — not a full page reload (#53).
   const liveStatus = useCampDeskRealtime(campId, refreshQueue, Boolean(campId));
   const reconnecting = liveStatus === "reconnecting";
   useFixedPoll(refreshQueue, POLL_MS, Boolean(campId) && reconnecting);
@@ -139,14 +138,12 @@ export function LiveQueue({
           ? `Already seen by ${row.doctor_name}`
           : "Already seen",
       );
-      updateQueue((current) => ({
-        ...current,
+      setQueueState({
+        propsSource: current.propsSource,
         rows: current.rows.filter((r) => r.id !== patientId),
         total: Math.max(0, current.total - 1),
-      }));
-      startTransition(() => {
-        router.refresh();
       });
+      void refreshQueue();
       setBusyId(null);
       return;
     }
@@ -159,18 +156,16 @@ export function LiveQueue({
       /* ignore */
     }
 
-    setRefreshSource(null);
     setToastMsg("Patient assignment complete");
-    updateQueue((current) => ({
-      ...current,
+    setQueueState({
+      propsSource: current.propsSource,
       rows: current.rows.filter((r) => r.id !== patientId),
       total: Math.max(0, current.total - 1),
-    }));
+    });
     setPickId(null);
     setDoctorId("");
-    startTransition(() => {
-      router.refresh();
-    });
+    // Soft catch-up of queue+seats; do not full-page refresh (keeps doctor list).
+    void refreshQueue();
     setBusyId(null);
   }
 
@@ -180,12 +175,6 @@ export function LiveQueue({
       <ReconnectingIndicator show={reconnecting} />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      ) : null}
-      {refreshMessage ? (
-        <Toast
-          message={refreshMessage}
-          onClose={() => setRefreshSource(null)}
-        />
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
         <span aria-live="polite">
@@ -201,11 +190,11 @@ export function LiveQueue({
         <button
           type="button"
           onClick={manualRefresh}
-          disabled={isPending || !campId}
+          disabled={refreshing || !campId}
           className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >
-          {isPending ? <Spinner className="h-3 w-3" /> : null}
-          {isPending ? "Refreshing…" : "Refresh"}
+          {refreshing ? <Spinner className="h-3 w-3" /> : null}
+          {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
       <ul
@@ -289,10 +278,10 @@ export function LiveQueue({
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
                         className={`pressable min-h-10 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
- doctorId === d.id
- ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
- : "border-border bg-white hover:bg-brand-soft/50"
- }`}
+                          doctorId === d.id
+                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+                            : "border-border bg-white hover:bg-brand-soft/50"
+                        }`}
                       >
                         {d.full_name || "Doctor"}
                       </button>

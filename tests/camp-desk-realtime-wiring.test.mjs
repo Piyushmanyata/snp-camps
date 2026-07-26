@@ -65,11 +65,23 @@ test("SeatBoard live defaults false so patient poll path is unchanged", () => {
 
 test("poll module still exists for patient + reconnect fallback", () => {
   const poll = read("src/lib/poll.ts");
-  assert.match(poll, /export const POLL_MS = 120_000/);
+  // #53: ~20s reconnect / non-live poll (Realtime remains primary on staff desks).
+  assert.match(poll, /export const POLL_MS = 20_000/);
   assert.match(poll, /export function useFixedPoll/);
   assert.match(read("src/components/seat-board.tsx"), /useFixedPoll/);
   assert.match(read("src/components/live-queue.tsx"), /useFixedPoll/);
   assert.match(read("src/components/camp-desk-live-bridge.tsx"), /useFixedPoll/);
+});
+
+test("#53 staff queue/seat catch-up uses minimal desk-live endpoint", () => {
+  const liveQueue = read("src/components/live-queue.tsx");
+  const seatBoard = read("src/components/seat-board.tsx");
+  assert.match(liveQueue, /fetchDeskLive/);
+  assert.match(seatBoard, /fetchDeskLive/);
+  // LiveQueue is staff-only and must not import next/navigation for full RSC refresh.
+  assert.doesNotMatch(liveQueue, /next\/navigation/);
+  assert.doesNotMatch(liveQueue, /useRouter/);
+  assert.match(read("src/lib/camp-desk-realtime.ts"), /20 seconds/);
 });
 
 test("#26 staff continuous poll retired — poll only while reconnecting", () => {

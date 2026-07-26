@@ -81,7 +81,7 @@ function createFakeFactory() {
 test("RECONNECTING_INDICATOR is the specified desk copy", () => {
   assert.equal(
     RECONNECTING_INDICATOR,
-    "Reconnecting — refreshing every 2 minutes",
+    "Reconnecting — refreshing every 20 seconds",
   );
 });
 
