@@ -19,14 +19,16 @@ export type DeskRegisterSubmitResult = {
   data: unknown;
   error: string | null;
   aadhaarDuplicateRegNo?: number | null;
+  likelyDuplicateRegNo?: number | null;
 };
 
-/** Transient network/service failures are retried; Aadhaar conflicts are not. */
+/** Transient network/service failures are retried; duplicate warnings are not. */
 export function isRetryableRegistrationError(
   result: DeskRegisterSubmitResult,
 ): boolean {
   if (!result.error) return false;
   if (result.aadhaarDuplicateRegNo != null) return false;
+  if (result.likelyDuplicateRegNo != null) return false;
   return true;
 }
 
@@ -94,6 +96,7 @@ export async function runDeskRegisterAndPrint(options: {
       ok: false;
       error: string;
       aadhaarDuplicateRegNo?: number | null;
+      likelyDuplicateRegNo?: number | null;
     }
 > {
   const result = await withRegistrationRetries(
@@ -112,6 +115,7 @@ export async function runDeskRegisterAndPrint(options: {
       ok: false,
       error: result.error,
       aadhaarDuplicateRegNo: result.aadhaarDuplicateRegNo ?? null,
+      likelyDuplicateRegNo: result.likelyDuplicateRegNo ?? null,
     };
   }
 

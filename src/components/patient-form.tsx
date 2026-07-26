@@ -67,7 +67,11 @@ export function PatientForm({
   const [aadhaarDuplicateRegNo, setAadhaarDuplicateRegNo] = useState<
     number | null
   >(null);
+  const [likelyDuplicateRegNo, setLikelyDuplicateRegNo] = useState<
+    number | null
+  >(null);
   const aadhaarOverrideOnceRef = useRef(false);
+  const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
@@ -229,8 +233,13 @@ export function PatientForm({
     setFieldErrors({});
     const aadhaarDuplicateOverride = aadhaarOverrideOnceRef.current;
     aadhaarOverrideOnceRef.current = false;
+    const likelyDuplicateOverride = likelyOverrideOnceRef.current;
+    likelyOverrideOnceRef.current = false;
     if (!aadhaarDuplicateOverride) {
       setAadhaarDuplicateRegNo(null);
+    }
+    if (!likelyDuplicateOverride) {
+      setLikelyDuplicateRegNo(null);
     }
 
     const validated = validatePatientForm(
@@ -253,6 +262,28 @@ export function PatientForm({
     }
 
     const supabase = createClient();
+    const resetFormFields = () => {
+      setFullName("");
+      setGender("");
+      setAge("");
+      setAddress("");
+      setPhone(defaultPhone);
+      setEmail("");
+      setAadhaar("");
+      setLookupState("idle");
+      setLookupMsg(null);
+      setFieldErrors({});
+      setAadhaarDuplicateRegNo(null);
+      setLikelyDuplicateRegNo(null);
+      aadhaarOverrideOnceRef.current = false;
+      likelyOverrideOnceRef.current = false;
+      setCampDayId(firstOpen);
+      lastLookedUp.current = "";
+      lookupRequest.current += 1;
+      lookupAbort.current?.abort();
+      focusName();
+    };
+
     const outcome = await runDeskRegisterAndPrint({
       attempt: registrationAttempt.current,
       staffFields: {
@@ -268,6 +299,7 @@ export function PatientForm({
         createdBy,
         campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,
+        likelyDuplicateOverride,
       },
       rpc: async (fn, args) => {
         const result = await supabase.rpc(fn, args);
@@ -283,38 +315,30 @@ export function PatientForm({
           "noopener,noreferrer",
         );
       },
-      resetForm: () => {
-        setFullName("");
-        setGender("");
-        setAge("");
-        setAddress("");
-        setPhone(defaultPhone);
-        setEmail("");
-        setAadhaar("");
-        setLookupState("idle");
-        setLookupMsg(null);
-        setFieldErrors({});
-        setAadhaarDuplicateRegNo(null);
-        aadhaarOverrideOnceRef.current = false;
-        setCampDayId(firstOpen);
-        lastLookedUp.current = "";
-        lookupRequest.current += 1;
-        lookupAbort.current?.abort();
-        focusName();
-      },
+      resetForm: resetFormFields,
       rotateAttempt: () => {
         registrationAttempt.current.rotate();
       },
     });
 
     if (!outcome.ok) {
+      // Soft match first — volunteer can check in existing patient (#48).
+      if (outcome.likelyDuplicateRegNo) {
+        setLikelyDuplicateRegNo(outcome.likelyDuplicateRegNo);
+        setAadhaarDuplicateRegNo(null);
+        setError(null);
+        setLoading(false);
+        return;
+      }
       if (outcome.aadhaarDuplicateRegNo) {
         setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
+        setLikelyDuplicateRegNo(null);
         setError(
           `Naam + Aadhaar last-4 pehle se reg #${outcome.aadhaarDuplicateRegNo} pe hai. Pehle woh patient dekho. Override sirf alag person ho to.`,
         );
       } else {
         setAadhaarDuplicateRegNo(null);
+        setLikelyDuplicateRegNo(null);
         setError(outcome.error);
       }
       setLoading(false);
@@ -322,11 +346,83 @@ export function PatientForm({
     }
 
     setAadhaarDuplicateRegNo(null);
+    setLikelyDuplicateRegNo(null);
     setFlash(
       outcome.row.queue_status === "waiting"
         ? `Reg #${outcome.row.reg_no} — line mein. Print window khuli.`
         : `Reg #${outcome.row.reg_no} — pehle se register. Print window khuli.`,
     );
+    setLoading(false);
+  }
+
+  async function checkInLikelyDuplicate() {
+    if (likelyDuplicateRegNo == null || loading) return;
+    setLoading(true);
+    setError(null);
+    setFlash(null);
+    try {
+      const supabase = createClient();
+      const { data, error: err } = await supabase.rpc("check_in_patient", {
+        p_patient_id: null,
+        p_reg_no: likelyDuplicateRegNo,
+      });
+      if (err) {
+        setError(
+          err.message || "Check-in fail. Internet check karo, try again.",
+        );
+        setLoading(false);
+        return;
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        reg_no?: number;
+        queue_status?: string;
+        already_waiting?: boolean;
+        doctor_name?: string | null;
+        error_code?: string | null;
+      } | null;
+      if (!row) {
+        setError("Check-in fail — no row returned.");
+        setLoading(false);
+        return;
+      }
+      if (row.error_code === "already_seen" || row.queue_status === "seen") {
+        setError(
+          row.doctor_name
+            ? `Already seen by ${row.doctor_name}`
+            : "Already seen",
+        );
+        setLoading(false);
+        return;
+      }
+      const reg = row.reg_no ?? likelyDuplicateRegNo;
+      setFlash(
+        row.already_waiting
+          ? `Reg #${reg} pehle se line mein hai. Naya register nahi banaya.`
+          : `Reg #${reg} check-in ho gaya. Naya register nahi banaya.`,
+      );
+      setLikelyDuplicateRegNo(null);
+      setAadhaarDuplicateRegNo(null);
+      aadhaarOverrideOnceRef.current = false;
+      likelyOverrideOnceRef.current = false;
+      registrationAttempt.current.rotate();
+      setFullName("");
+      setGender("");
+      setAge("");
+      setAddress("");
+      setPhone(defaultPhone);
+      setEmail("");
+      setAadhaar("");
+      setLookupState("idle");
+      setLookupMsg(null);
+      setFieldErrors({});
+      setCampDayId(firstOpen);
+      lastLookedUp.current = "";
+      lookupRequest.current += 1;
+      lookupAbort.current?.abort();
+      focusName();
+    } catch {
+      setError("Check-in fail. Internet check karo, try again.");
+    }
     setLoading(false);
   }
 
@@ -600,6 +696,40 @@ export function PatientForm({
       />
 
       <ErrorBox message={error} />
+      {likelyDuplicateRegNo != null ? (
+        <div
+          role="alert"
+          className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+        >
+          <p className="text-sm font-medium text-amber-950">
+            Ye reg #{likelyDuplicateRegNo} jaisa lagta hai — pehle se registered
+            hai.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              disabled={loading}
+              loading={loading}
+              onClick={() => {
+                void checkInLikelyDuplicate();
+              }}
+            >
+              Check them in instead
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => {
+                likelyOverrideOnceRef.current = true;
+                formRef.current?.requestSubmit();
+              }}
+            >
+              Register anyway
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {aadhaarDuplicateRegNo != null ? (
         <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm text-amber-950">
@@ -625,10 +755,17 @@ export function PatientForm({
       <div className="sticky-submit">
         <Button
           type="submit"
-          disabled={loading || lookupState === "loading" || !campDayId}
-          loading={loading}
+          disabled={
+            loading ||
+            lookupState === "loading" ||
+            !campDayId ||
+            likelyDuplicateRegNo != null
+          }
+          loading={loading && likelyDuplicateRegNo == null}
         >
-          {loading ? "Saving…" : "Register karein aur print"}
+          {loading && likelyDuplicateRegNo == null
+            ? "Saving…"
+            : "Register karein aur print"}
         </Button>
       </div>
     </form>

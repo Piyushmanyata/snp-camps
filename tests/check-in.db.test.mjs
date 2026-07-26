@@ -198,7 +198,7 @@ test("pre-reg stays registered and is excluded from waiting queue", async (t) =>
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Pre Reg Patient', 'M', 40, 'Ward 1', null, null, null,
-         null, null, $3, false
+         null, null, $3, false, false
        )`,
       [requestId, campId, futureDayId],
     );
@@ -229,7 +229,7 @@ test("check_in is idempotent for waiting and blocks seen", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Idempotent Patient', 'F', 30, 'Locality A', null, null, null,
-         null, $3, $4, false
+         null, $3, $4, false, false
        )`,
       [requestId, campId, staffId, futureDayId],
     );
@@ -306,7 +306,7 @@ test("queue order is by check-in time not registration time", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Early PreReg', 'M', 50, 'A', null, null, null,
-         null, $3, $4, false
+         null, $3, $4, false, false
        )`,
       [randomUUID(), campId, staffId, futureDayId],
     );
@@ -318,7 +318,7 @@ test("queue order is by check-in time not registration time", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Walk In First', 'F', 25, 'B', null, null, null,
-         null, $3, $4, false
+         null, $3, $4, false, false
        )`,
       [randomUUID(), campId, staffId, todayDayId],
     );
@@ -354,14 +354,14 @@ test("name search returns only registered for active camp", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Ramesh Kumar', 'M', 45, 'Sikar Road', null, null, null,
-         null, $3, $4, false
+         null, $3, $4, false, false
        )`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Ramesh Waiting', 'M', 40, 'Other', null, null, null,
-         null, $3, $4, false
+         null, $3, $4, false, false
        )`,
       [randomUUID(), campId, staffId, todayDayId],
     );

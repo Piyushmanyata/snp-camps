@@ -39,6 +39,8 @@ export type StaffRegistrationFields = {
   campDayId: string;
   /** Explicit one-shot Aadhaar last-4 + name duplicate override (staff only). */
   aadhaarDuplicateOverride?: boolean;
+  /** Explicit one-shot soft-duplicate (name+age / phone) override (staff only). */
+  likelyDuplicateOverride?: boolean;
 };
 
 /** Parse `AADHAAR_DUPLICATE:reg=N` from RPC / API error text. */
@@ -47,6 +49,18 @@ export function parseAadhaarDuplicateError(
 ): { regNo: number } | null {
   if (!message) return null;
   const m = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
+  if (!m) return null;
+  const regNo = Number(m[1]);
+  if (!Number.isInteger(regNo) || regNo <= 0) return null;
+  return { regNo };
+}
+
+/** Parse `LIKELY_DUPLICATE:reg=N` from soft-match warn (#48). */
+export function parseLikelyDuplicateError(
+  message: string | null | undefined,
+): { regNo: number } | null {
+  if (!message) return null;
+  const m = message.match(/LIKELY_DUPLICATE:reg=(\d+)/i);
   if (!m) return null;
   const regNo = Number(m[1]);
   if (!Number.isInteger(regNo) || regNo <= 0) return null;
@@ -72,6 +86,7 @@ export function staffRegistrationRpcArgs(
     p_created_by: fields.createdBy,
     p_camp_day_id: fields.campDayId,
     p_aadhaar_duplicate_override: Boolean(fields.aadhaarDuplicateOverride),
+    p_likely_duplicate_override: Boolean(fields.likelyDuplicateOverride),
   };
 }
 
@@ -93,6 +108,7 @@ export async function submitRegistrationOutbound(options: {
   data: unknown;
   error: string | null;
   aadhaarDuplicateRegNo?: number | null;
+  likelyDuplicateRegNo?: number | null;
 }> {
   const { isStaff, attempt, staffFields, rpc } = options;
 
@@ -101,6 +117,7 @@ export async function submitRegistrationOutbound(options: {
       data: null,
       error: "Registration is at the camp desk only.",
       aadhaarDuplicateRegNo: null,
+      likelyDuplicateRegNo: null,
     };
   }
 
@@ -114,16 +131,18 @@ export async function submitRegistrationOutbound(options: {
     );
     const errMsg = result.error?.message || null;
     const dup = parseAadhaarDuplicateError(errMsg);
-    // Keep AADHAAR_DUPLICATE raw so the form can offer staff override;
+    const soft = parseLikelyDuplicateError(errMsg);
+    // Keep AADHAAR_DUPLICATE / LIKELY_DUPLICATE raw so the form can offer actions;
     // every other DB error is mapped to camp-worker copy (#31).
     return {
       data: result.data,
       error: errMsg
-        ? dup
+        ? dup || soft
           ? errMsg
           : publicRegistrationError(result.error, "staff-register.rpc")
         : null,
       aadhaarDuplicateRegNo: dup?.regNo ?? null,
+      likelyDuplicateRegNo: soft?.regNo ?? null,
     };
   } catch {
     return {
@@ -131,6 +150,7 @@ export async function submitRegistrationOutbound(options: {
       error:
         "Registration service is unavailable. Check your connection and try again.",
       aadhaarDuplicateRegNo: null,
+      likelyDuplicateRegNo: null,
     };
   }
 }

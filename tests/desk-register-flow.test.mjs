@@ -24,12 +24,20 @@ const staffFields = {
   campDayId: "22222222-2222-4222-8222-222222222222",
 };
 
-test("aadhaar duplicate is not retryable; network errors are", () => {
+test("aadhaar and likely duplicates are not retryable; network errors are", () => {
   assert.equal(
     isRetryableRegistrationError({
       data: null,
       error: "AADHAAR_DUPLICATE:reg=9",
       aadhaarDuplicateRegNo: 9,
+    }),
+    false,
+  );
+  assert.equal(
+    isRetryableRegistrationError({
+      data: null,
+      error: "LIKELY_DUPLICATE:reg=12",
+      likelyDuplicateRegNo: 12,
     }),
     false,
   );
@@ -97,6 +105,42 @@ test("aadhaar conflict is not retried", async () => {
   );
   assert.equal(calls, 1);
   assert.equal(result.aadhaarDuplicateRegNo, 12);
+});
+
+test("likely-duplicate warning is not retried", async () => {
+  let calls = 0;
+  const result = await withRegistrationRetries(
+    async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: "LIKELY_DUPLICATE:reg=214",
+        likelyDuplicateRegNo: 214,
+      };
+    },
+    { sleep: async () => {} },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.likelyDuplicateRegNo, 214);
+});
+
+test("runDeskRegisterAndPrint surfaces likelyDuplicateRegNo", async () => {
+  const attempt = createRegistrationAttempt(() => "cccccccc-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const outcome = await runDeskRegisterAndPrint({
+    attempt,
+    staffFields,
+    rpc: async () => ({
+      data: null,
+      error: { message: "LIKELY_DUPLICATE:reg=88" },
+    }),
+    openPrint: () => {},
+    resetForm: () => {},
+    rotateAttempt: () => {},
+    sleep: async () => {},
+  });
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.equal(outcome.likelyDuplicateRegNo, 88);
 });
 
 test("register-then-print: same request id on retries; print then reset order", async () => {

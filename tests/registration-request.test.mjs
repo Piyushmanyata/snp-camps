@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   createRegistrationAttempt,
   parseAadhaarDuplicateError,
+  parseLikelyDuplicateError,
   staffRegistrationRpcArgs,
   submitRegistrationOutbound,
 } from "../src/lib/registration-request.ts";
@@ -130,6 +131,7 @@ test("staff payload builder includes the attempt id (not optional)", () => {
 
   assert.equal(staffArgs.p_request_id, attempt.id);
   assert.equal(staffArgs.p_aadhaar_duplicate_override, false);
+  assert.equal(staffArgs.p_likely_duplicate_override, false);
   assert.equal(
     Object.prototype.hasOwnProperty.call(staffArgs, "p_request_id"),
     true,
@@ -178,4 +180,48 @@ test("staff outbound surfaces aadhaarDuplicateRegNo from RPC error", async () =>
   });
   assert.equal(result.aadhaarDuplicateRegNo, 2048);
   assert.match(String(result.error), /AADHAAR_DUPLICATE:reg=2048/);
+});
+
+test("parseLikelyDuplicateError extracts reg no", () => {
+  assert.deepEqual(parseLikelyDuplicateError("LIKELY_DUPLICATE:reg=214"), {
+    regNo: 214,
+  });
+  assert.equal(parseLikelyDuplicateError("AADHAAR_DUPLICATE:reg=1"), null);
+  assert.equal(parseLikelyDuplicateError(null), null);
+});
+
+test("staff RPC passes one-shot likely-duplicate override flag", async () => {
+  const attempt = newAttempt();
+  /** @type {unknown} */
+  let capturedArgs = null;
+
+  await submitRegistrationOutbound({
+    isStaff: true,
+    attempt,
+    staffFields: { ...staffFields, likelyDuplicateOverride: true },
+    rpc: async (_fn, args) => {
+      capturedArgs = args;
+      return { data: null, error: { message: "LIKELY_DUPLICATE:reg=7" } };
+    },
+  });
+
+  const args = /** @type {{ p_likely_duplicate_override?: boolean }} */ (
+    capturedArgs
+  );
+  assert.equal(args.p_likely_duplicate_override, true);
+});
+
+test("staff outbound surfaces likelyDuplicateRegNo from RPC error", async () => {
+  const attempt = newAttempt();
+  const result = await submitRegistrationOutbound({
+    isStaff: true,
+    attempt,
+    staffFields,
+    rpc: async () => ({
+      data: null,
+      error: { message: "LIKELY_DUPLICATE:reg=314" },
+    }),
+  });
+  assert.equal(result.likelyDuplicateRegNo, 314);
+  assert.match(String(result.error), /LIKELY_DUPLICATE:reg=314/);
 });

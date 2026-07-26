@@ -26,7 +26,7 @@ async function connect() {
     await c.connect();
     const { rows } = await c.query(
       `select to_regprocedure(
-         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean)'
+         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean)'
        ) is not null as ok`,
     );
     if (!rows[0]?.ok) {
@@ -153,7 +153,7 @@ test("replay with null camp_day returns the original registration", async (t) =>
          from public.register_patient_idempotent(
            $1::uuid, $2::uuid, 'Null Day Patient',
            null, null, null, '9000000001', null, null,
-           null, null, null
+           null, null, null, false, false
          )`,
         [requestId, campId],
       ),
@@ -202,7 +202,7 @@ test("N concurrent registrations against M seats yield exactly M successes", asy
               `select id, reg_no from public.register_patient_idempotent(
                  $1::uuid, $2::uuid, $3::text,
                  'M', 30, null, null, null, null,
-                 null, null, $4::uuid
+                 null, null, $4::uuid, false, false
                )`,
               [requestId, campId, `Concurrent ${i}`, dayId],
             );

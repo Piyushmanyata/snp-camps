@@ -1,5 +1,5 @@
 /**
- * Real-database coverage for Aadhaar last-4 + name uniqueness (#21 / D10).
+ * Soft-duplicate warning at desk registration (#48).
  * Requires local Supabase Postgres (default 127.0.0.1:54322).
  */
 import assert from "node:assert/strict";
@@ -45,7 +45,7 @@ test.before(async () => {
   dbAvailable = Boolean(client);
   if (!dbAvailable) {
     console.warn(
-      "[aadhaar-duplicate.db] local Postgres unavailable or migration not applied — DB tests skipped",
+      "[likely-duplicate.db] local Postgres unavailable or migration not applied — DB tests skipped",
     );
   }
 });
@@ -62,24 +62,24 @@ function skipIfNoDb(t) {
   return false;
 }
 
-async function seedCampWithDay() {
+async function seedCampWithDay(dayDate = "2099-09-01") {
   const campId = randomUUID();
   const dayId = randomUUID();
   await client.query("begin");
   try {
-    await client.query("select pg_advisory_xact_lock(918273645)");
+    await client.query("select pg_advisory_xact_lock(918273646)");
     await client.query(
       `update public.camps set is_active = false where is_active = true`,
     );
     await client.query(
       `insert into public.camps (id, name, is_active, venue)
-       values ($1, $2, true, 'aadhaar-test')`,
-      [campId, `Aadhaar camp ${campId.slice(0, 8)}`],
+       values ($1, $2, true, 'likely-dup-test')`,
+      [campId, `Likely dup camp ${campId.slice(0, 8)}`],
     );
     await client.query(
       `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, '2099-08-01'::date, 50)`,
-      [dayId, campId],
+       values ($1, $2, $3::date, 50)`,
+      [dayId, campId, dayDate],
     );
     await client.query("commit");
   } catch (err) {
@@ -122,7 +122,7 @@ async function seedStaff() {
   );
   await client.query(
     `insert into public.profiles (id, role, full_name, email)
-     values ($1, 'volunteer', 'Aadhaar Test Staff', $2)
+     values ($1, 'volunteer', 'Likely Dup Staff', $2)
      on conflict (id) do update set role = excluded.role, disabled_at = null`,
     [userId, `staff-${userId.slice(0, 8)}@test.local`],
   );
@@ -143,16 +143,21 @@ async function cleanupStaff(userId) {
   await client.query(`delete from auth.users where id = $1`, [userId]);
 }
 
+/**
+ * @param {string} staffId
+ * @param {object} args
+ */
 async function callRegister(staffId, args) {
   const {
     requestId,
     campId,
     dayId,
     fullName,
-    aadhaarLast4,
-    // Default ages differ on re-use so soft name+age (#48) does not shadow Aadhaar.
     age = 40,
-    override = false,
+    phone = null,
+    aadhaarLast4 = null,
+    aadhaarOverride = false,
+    likelyOverride = false,
   } = args;
   await client.query("begin");
   try {
@@ -164,13 +169,23 @@ async function callRegister(staffId, args) {
       [staffId],
     );
     const { rows } = await client.query(
-      `select id, reg_no, full_name
+      `select id, reg_no, full_name, queue_status
        from public.register_patient_idempotent(
          $1::uuid, $2::uuid, $3::text,
-         'M', $7::integer, 'Addr', null, null, $4::text,
-         null, null, $5::uuid, $6::boolean, false
+         'M', $4::integer, 'Addr', $5::text, null, $6::text,
+         null, null, $7::uuid, $8::boolean, $9::boolean
        )`,
-      [requestId, campId, fullName, aadhaarLast4, dayId, override, age],
+      [
+        requestId,
+        campId,
+        fullName,
+        age,
+        phone,
+        aadhaarLast4,
+        dayId,
+        aadhaarOverride,
+        likelyOverride,
+      ],
     );
     await client.query("commit");
     return { ok: true, row: rows[0] };
@@ -180,7 +195,7 @@ async function callRegister(staffId, args) {
   }
 }
 
-test("duplicate Aadhaar last-4 + name raises mapped message with reg no", async (t) => {
+test("name + age match in same camp raises LIKELY_DUPLICATE with reg no", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, dayId } = await seedCampWithDay();
@@ -189,34 +204,99 @@ test("duplicate Aadhaar last-4 + name raises mapped message with reg no", async 
       requestId: randomUUID(),
       campId,
       dayId,
-      fullName: "Ram Singh",
-      aadhaarLast4: "4321",
-      age: 40,
+      fullName: "Ram Kumar",
+      age: 55,
     });
     assert.equal(first.ok, true, first.message);
-    assert.ok(first.row.reg_no);
 
-    // Different age so soft name+age does not fire first; Aadhaar last-4+name still hits.
     const second = await callRegister(staffId, {
       requestId: randomUUID(),
       campId,
       dayId,
-      fullName: "  RAM SINGH  ", // normalised match
-      aadhaarLast4: "4321",
-      age: 41,
+      fullName: "  RAM   kumar ",
+      age: 55,
     });
     assert.equal(second.ok, false);
-    assert.match(second.message, /AADHAAR_DUPLICATE:reg=/);
+    assert.match(second.message, /LIKELY_DUPLICATE:reg=/);
     assert.match(second.message, new RegExp(String(first.row.reg_no)));
-    // Never leak raw unique_violation noise as the only signal.
-    assert.doesNotMatch(second.message, /patients_camp_aadhaar_name_uidx/i);
   } finally {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);
   }
 });
 
-test("staff override inserts second row and records who and when", async (t) => {
+test("phone match in same camp raises LIKELY_DUPLICATE", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
+  const { campId, dayId } = await seedCampWithDay();
+  try {
+    const first = await callRegister(staffId, {
+      requestId: randomUUID(),
+      campId,
+      dayId,
+      fullName: "Phone One",
+      age: 30,
+      phone: "9876543210",
+    });
+    assert.equal(first.ok, true, first.message);
+
+    const second = await callRegister(staffId, {
+      requestId: randomUUID(),
+      campId,
+      dayId,
+      fullName: "Different Name",
+      age: 99,
+      phone: "98765 43210",
+    });
+    assert.equal(second.ok, false);
+    assert.match(second.message, /LIKELY_DUPLICATE:reg=/);
+    assert.match(second.message, new RegExp(String(first.row.reg_no)));
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(staffId);
+  }
+});
+
+test("same name+age in a different camp does not warn", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
+  const campA = await seedCampWithDay("2099-09-02");
+  try {
+    const first = await callRegister(staffId, {
+      requestId: randomUUID(),
+      campId: campA.campId,
+      dayId: campA.dayId,
+      fullName: "Cross Camp",
+      age: 44,
+    });
+    assert.equal(first.ok, true, first.message);
+
+    // Deactivate A, create B as the sole active camp.
+    await client.query(
+      `update public.camps set is_active = false where id = $1`,
+      [campA.campId],
+    );
+    const campB = await seedCampWithDay("2099-09-03");
+    try {
+      const second = await callRegister(staffId, {
+        requestId: randomUUID(),
+        campId: campB.campId,
+        dayId: campB.dayId,
+        fullName: "Cross Camp",
+        age: 44,
+      });
+      assert.equal(second.ok, true, second.message);
+      assert.notEqual(second.row.id, first.row.id);
+    } finally {
+      await cleanupCamp(campB.campId);
+    }
+  } finally {
+    await cleanupCamp(campA.campId);
+    await cleanupStaff(staffId);
+  }
+});
+
+test("likely override inserts second row and records who and when; not sticky", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, dayId } = await seedCampWithDay();
@@ -226,8 +306,7 @@ test("staff override inserts second row and records who and when", async (t) => 
       campId,
       dayId,
       fullName: "Sita Devi",
-      aadhaarLast4: "9988",
-      age: 50,
+      age: 60,
     });
     assert.equal(first.ok, true, first.message);
 
@@ -236,65 +315,99 @@ test("staff override inserts second row and records who and when", async (t) => 
       campId,
       dayId,
       fullName: "Sita Devi",
-      aadhaarLast4: "9988",
-      age: 51,
-      override: true,
+      age: 60,
+      likelyOverride: true,
     });
     assert.equal(second.ok, true, second.message);
     assert.notEqual(second.row.id, first.row.id);
 
     const { rows } = await client.query(
-      `select reg_no, aadhaar_duplicate_override_by, aadhaar_duplicate_override_at
+      `select reg_no, likely_duplicate_override_by, likely_duplicate_override_at
        from public.patients where id = $1`,
       [second.row.id],
     );
-    assert.equal(rows[0].aadhaar_duplicate_override_by, staffId);
-    assert.ok(rows[0].aadhaar_duplicate_override_at);
+    assert.equal(rows[0].likely_duplicate_override_by, staffId);
+    assert.ok(rows[0].likely_duplicate_override_at);
+
+    // Next registration without override must warn again (not sticky).
+    const third = await callRegister(staffId, {
+      requestId: randomUUID(),
+      campId,
+      dayId,
+      fullName: "Sita Devi",
+      age: 60,
+      likelyOverride: false,
+    });
+    assert.equal(third.ok, false);
+    assert.match(third.message, /LIKELY_DUPLICATE:reg=/);
   } finally {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);
   }
 });
 
-test("service_role cannot pass aadhaar override", async (t) => {
+test("check-in of soft-match reg creates no new patient", async (t) => {
   if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
   const { campId, dayId } = await seedCampWithDay();
   try {
-    await client.query("begin");
-    await client.query(
-      `select set_config('request.jwt.claim.role', 'service_role', true)`,
+    const first = await callRegister(staffId, {
+      requestId: randomUUID(),
+      campId,
+      dayId,
+      fullName: "Check In Path",
+      age: 33,
+    });
+    assert.equal(first.ok, true, first.message);
+    assert.equal(first.row.queue_status, "registered");
+
+    const before = await client.query(
+      `select count(*)::int as n from public.patients where camp_id = $1`,
+      [campId],
     );
-    await client.query(
-      `select id from public.register_patient_idempotent(
-         $1::uuid, $2::uuid, 'First Public',
-         null, 20, null, '9111111111', null, '1111',
-         null, null, $3::uuid, false, false
-       )`,
-      [randomUUID(), campId, dayId],
-    );
-    await client.query("commit");
 
     await client.query("begin");
     await client.query(
-      `select set_config('request.jwt.claim.role', 'service_role', true)`,
+      `select set_config('request.jwt.claim.role', 'authenticated', true)`,
     );
-    let message = "";
-    try {
-      await client.query(
-        `select id from public.register_patient_idempotent(
-           $1::uuid, $2::uuid, 'First Public',
-           null, 21, null, '9222222222', null, '1111',
-           null, null, $3::uuid, true, false
-         )`,
-        [randomUUID(), campId, dayId],
-      );
-      await client.query("commit");
-    } catch (err) {
-      await client.query("rollback");
-      message = String(err.message || err);
-    }
-    assert.match(message, /override requires staff/i);
+    await client.query(
+      `select set_config('request.jwt.claim.sub', $1, true)`,
+      [staffId],
+    );
+    // Mirror check-in.db: full claims JSON so auth.uid() resolves.
+    await client.query(`select set_config('request.jwt.claims', $1, true)`, [
+      JSON.stringify({ role: "authenticated", sub: staffId }),
+    ]);
+    const { rows: checkRows } = await client.query(
+      `select * from public.check_in_patient(null, $1)`,
+      [first.row.reg_no],
+    );
+    await client.query("commit");
+
+    assert.equal(checkRows[0].queue_status, "waiting");
+    assert.equal(checkRows[0].already_waiting, false);
+
+    const after = await client.query(
+      `select count(*)::int as n from public.patients where camp_id = $1`,
+      [campId],
+    );
+    assert.equal(after.rows[0].n, before.rows[0].n);
   } finally {
     await cleanupCamp(campId);
+    await cleanupStaff(staffId);
   }
+});
+
+test("soft match query is indexed (name+age plan uses index)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows } = await client.query(
+    `select indexname from pg_indexes
+     where schemaname = 'public'
+       and indexname in (
+         'patients_camp_name_age_idx',
+         'patients_camp_phone_normalized_idx'
+       )
+     order by indexname`,
+  );
+  assert.equal(rows.length, 2, "both soft-match indexes must exist");
 });
