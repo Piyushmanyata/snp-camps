@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0.0",
   "ticket_id": "74",
-  "commit_sha": "6f63f249b126bffaf6cf61745ea083ef2a6a9e4a",
-  "dirty": true,
-  "timestamp": "2026-07-26T20:27:02.598Z",
+  "commit_sha": "838b7b81558849b14474154da10546a9e544c88c",
+  "dirty": false,
+  "timestamp": "2026-07-26T20:30:37.492Z",
   "platform": {
     "os_platform": "win32",
     "os_arch": "x64",
@@ -23,7 +23,7 @@
       "description": "ESLint static code analysis",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 7768,
+      "duration_ms": 7946,
       "log_file": "logs/lint.log",
       "sha256": "ce754c3210e4ae274098a39a719a27d57be6247605418770d795197446821c12",
       "counts": {
@@ -39,9 +39,9 @@
       "description": "Node test runner unit suites",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 23723,
+      "duration_ms": 23812,
       "log_file": "logs/unit.log",
-      "sha256": "bebd5c95661bb1f9c7723f75183f2b163c5efed683df5ac6e4ee1ff7ed2b6a9f",
+      "sha256": "c5dc5cbb412866abfdd2e3b29a6601f36c52959ab2dfe4e30fb1293d3e6242ba",
       "counts": {
         "total": 394,
         "passed": 394,
@@ -57,7 +57,7 @@
       "exit_code": 0,
       "duration_ms": 13794,
       "log_file": "logs/type_build.log",
-      "sha256": "b78483892cc3e932da4cf37b0f7af14f463454ea07a8741264a3455f4fd68ab2",
+      "sha256": "17659fd7cdc378d42fbfb562742527ed59b0e5efe52c40bbe0defce9d1952821",
       "counts": {
         "total": 0,
         "passed": 0,
@@ -71,7 +71,7 @@
       "description": "Client JS route bundle size budgets",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 639,
+      "duration_ms": 541,
       "log_file": "logs/budgets.log",
       "sha256": "78cf1642f360564af4752a20652c8e1d1cfba622712c6aef518bbb2b25c1a1f7",
       "counts": {
@@ -87,9 +87,9 @@
       "description": "Database isolation and migration contract tests",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 14477,
+      "duration_ms": 14380,
       "log_file": "logs/db.log",
-      "sha256": "1503e2d0c101765f6b318b29450ddc3d0a7e6c0875502ab3724d2262e79c2904",
+      "sha256": "08d340e3ac964eb7a2e6c5353459a01a7e165967f7e0cdd7c47f8725b199469b",
       "counts": {
         "total": 81,
         "passed": 81,
@@ -103,9 +103,9 @@
       "description": "Playwright end-to-end user journeys",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 96982,
+      "duration_ms": 99213,
       "log_file": "logs/e2e.log",
-      "sha256": "72685e3393b37ef9e750f44a2ab7e4f00506b4e9b40db951e6fd88c5c2dfcf1b",
+      "sha256": "e5e7f5faf9cc01e36eada6b80cc0994fca097a99340abe9304c5fed240cfdf0a",
       "counts": {
         "total": 35,
         "passed": 35,
@@ -119,9 +119,9 @@
       "description": "Computed contrast, touch, focus and scaling a11y checks",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 35236,
+      "duration_ms": 33582,
       "log_file": "logs/accessibility.log",
-      "sha256": "8b44df341a877309b2a85a47de2708f81901a94e67255f6037e4bf142564d8bb",
+      "sha256": "d2e9bf68e843b1c766798dc27b64c6e79c7603d315003b1c30661386c55c9d4c",
       "counts": {
         "total": 7,
         "passed": 7,
@@ -135,7 +135,7 @@
       "description": "Read-only migration head drift comparison",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 4316,
+      "duration_ms": 3974,
       "log_file": "logs/migration.log",
       "sha256": "317bd4aff841fef704339323bab7e44e394676c0b9a9a52f9b8a854e2ea37ece",
       "counts": {
@@ -151,7 +151,7 @@
       "description": "Documented environment variable reads check",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 468,
+      "duration_ms": 430,
       "log_file": "logs/env_security.log",
       "sha256": "dc09c146e97f21f491c394124516de783c0eb8090f9d01e6b5ad48e563bf9f62",
       "counts": {
@@ -165,6 +165,6 @@
   },
   "overall_status": "PASS",
   "artifacts": {
-    "manifest_sha256": "2f7339a378ab088779e47780181d0b937ac838150a089b12d029bb2cc6bb8fbb"
+    "manifest_sha256": "49aeaf6d39e5d15844cd55ef69a92a3d6e5ede39b606122360d0726e1d599142"
   }
 }

@@ -9,15 +9,15 @@
   · optimizePackageImports
 
   Creating an optimized production build ...
-✓ Compiled successfully in 3.2s
+✓ Compiled successfully in 3.0s
   Running TypeScript ...
-  Finished TypeScript in 4.7s ...
+  Finished TypeScript in 4.6s ...
   Collecting page data using 21 workers ...
   Generating static pages using 21 workers (0/26) ...
   Generating static pages using 21 workers (6/26) 
   Generating static pages using 21 workers (12/26) 
   Generating static pages using 21 workers (19/26) 
-✓ Generating static pages using 21 workers (26/26) in 747ms
+✓ Generating static pages using 21 workers (26/26) in 543ms
   Finalizing page optimization ...
 
 Route (app)                    Revalidate  Expire
@@ -84,7 +84,7 @@ Running 7 tests using 1 worker
 [5/7] [chromium] › e2e\a11y-computed.spec.ts:658:5 › print slip chrome: actions meet touch floor (screen)
 [6/7] [chromium] › e2e\a11y-computed.spec.ts:687:5 › lost-slip recovery: keyboard path and touch targets
 [7/7] [chromium] › e2e\a11y-computed.spec.ts:715:5 › disabled controls remain distinguishable with readable contrast
-  7 passed (22.2s)
+  7 passed (21.3s)
 
-(node:36192) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(node:37576) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
 (Use `node --trace-deprecation ...` to show where the warning was created)

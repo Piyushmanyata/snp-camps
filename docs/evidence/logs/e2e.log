@@ -13,7 +13,7 @@
   · optimizePackageImports
 
   Creating an optimized production build ...
-✓ Compiled successfully in 3.0s
+✓ Compiled successfully in 3.2s
   Running TypeScript ...
   Finished TypeScript in 4.7s ...
   Collecting page data using 21 workers ...
@@ -21,7 +21,7 @@
   Generating static pages using 21 workers (6/26) 
   Generating static pages using 21 workers (12/26) 
   Generating static pages using 21 workers (19/26) 
-✓ Generating static pages using 21 workers (26/26) in 557ms
+✓ Generating static pages using 21 workers (26/26) in 704ms
   Finalizing page optimization ...
 
 Route (app)                    Revalidate  Expire
@@ -118,5 +118,5 @@ Running 35 tests using 1 worker
 [35/35] [chromium] › e2e\roles.spec.ts:337:5 › doctor mark seen returns to scanner with no dismiss screen
   35 passed (1.4m)
 
-(node:24184) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(node:12984) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
 (Use `node --trace-deprecation ...` to show where the warning was created)
