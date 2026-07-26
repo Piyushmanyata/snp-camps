@@ -4,12 +4,11 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
-import { PrintSheet } from "@/components/print-sheet";
 
-const PrintActions = dynamic(
+const DeskSlipPrint = dynamic(
   () =>
-    import("@/components/print-actions").then((m) => ({
-      default: m.PrintActions,
+    import("@/components/desk-slip-print").then((m) => ({
+      default: m.DeskSlipPrint,
     })),
 );
 
@@ -47,7 +46,7 @@ export default async function PrintPage({
   const { data: patient, error: patientErr } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, gender, age, address, phone, email, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
+      "id, reg_no, full_name, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -84,17 +83,20 @@ export default async function PrintPage({
     ? dayRel[0]?.day_date ?? null
     : dayRel?.day_date ?? null;
 
-  const today = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-  }).format(new Date());
+  // Compact encoding required — no long-URL fallback on the slip.
+  const qrValue = patientScanUrl(patient.id, origin);
 
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
-      <PrintActions
-        className="no-print mb-4"
-        patientId={patient.id}
-        regNo={patient.reg_no}
-        name={patient.full_name}
+      <DeskSlipPrint
+        patient={{
+          id: patient.id,
+          reg_no: patient.reg_no,
+          full_name: patient.full_name,
+        }}
+        camp={camp}
+        campDayDate={campDayDate}
+        qrValue={qrValue}
         queueStatus={patient.queue_status}
         deskHref={profile.role === "admin" ? "/admin" : "/volunteer"}
         deskLabel={
@@ -102,39 +104,6 @@ export default async function PrintPage({
         }
         autoPrint={autoPrint}
       />
-
-      <PrintSheet
-        patient={{
-          id: patient.id,
-          reg_no: patient.reg_no,
-          full_name: patient.full_name,
-          gender: patient.gender,
-          age: patient.age,
-          address: patient.address,
-          phone: patient.phone,
-          email: patient.email,
-        }}
-        camp={camp}
-        campDayDate={campDayDate}
-        origin={origin}
-        today={today}
-        qrValue={patientScanUrl(patient.id, origin)}
-      />
-
-      <p className="no-print mt-3 text-center text-xs text-muted">
-        Fits one A4 page · Portrait · QR is for <strong>staff scan only</strong>
-        . Status for the patient is a separate SMS link when configured.{" "}
-        {patient.queue_status === "seen" ? (
-          <>The consultation is complete; reprinting does not change its status.</>
-        ) : patient.queue_status === "waiting" ? (
-          <>The patient is in queue and waiting for a doctor.</>
-        ) : (
-          <>
-            Use <strong>Check in &amp; print</strong> before the patient proceeds
-            to a doctor.
-          </>
-        )}
-      </p>
     </main>
   );
 }

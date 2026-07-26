@@ -456,9 +456,43 @@ h3 {
   border: 1px solid var(--border);
 }
 
+/* ---- Desk slip: A4 multi-up (screen preview) ---- */
+.desk-slip-a4-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  min-height: 260mm;
+  width: 100%;
+}
+
+.desk-slip-a4-cell {
+  border: 1px dashed #94a3b8;
+  min-height: 128mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.desk-slip-thermal {
+  width: 58mm;
+  max-width: 58mm;
+  min-height: 90mm;
+  border: 1px solid var(--border);
+}
+
+/* Named pages — deleting one format = delete its @page + component branch */
+@page desk-a4 {
+  size: A4 portrait;
+  margin: 4mm;
+}
+
+@page desk-thermal58 {
+  size: 58mm 110mm;
+  margin: 2mm;
+}
+
 @page {
   size: A4 portrait;
-  margin: 8mm;
+  margin: 4mm;
 }
 
 @media print {
@@ -497,6 +531,29 @@ h3 {
     overflow: hidden;
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  .desk-slip-a4 {
+    page: desk-a4;
+  }
+
+  .desk-slip-a4-grid {
+    min-height: 0;
+    height: 100%;
+    width: 100%;
+  }
+
+  .desk-slip-a4-cell {
+    min-height: 0;
+    border-color: #64748b;
+  }
+
+  .desk-slip-thermal {
+    page: desk-thermal58;
+    width: 54mm;
+    max-width: 54mm;
+    min-height: 0;
+    border: none !important;
   }
 
   .no-print {

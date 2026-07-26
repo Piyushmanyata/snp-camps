@@ -1,239 +1,212 @@
 import { QrCode } from "@/components/qr-code";
 import { formatCampDay } from "@/lib/format-camp-day";
+import type { DeskSlipFormat } from "@/lib/desk-slip-format";
 
-const GENDER_LABELS: Record<string, string> = {
-  M: "Male",
-  F: "Female",
-  O: "Other",
+export type DeskSlipPatient = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+};
+
+export type DeskSlipCamp = {
+  name: string;
+  venue: string | null;
+  camp_date: string | null;
+};
+
+type SlipFields = {
+  regNo: number;
+  name: string;
+  campDay: string;
+  venue: string;
+  /** Required compact staff-scan payload (e.g. snp:<uuid>). No long-URL fallback. */
+  qrValue: string;
 };
 
 type Props = {
-  patient: {
-    id: string;
-    reg_no: number;
-    full_name: string;
-    gender: string | null;
-    age: number | null;
-    address: string | null;
-    phone: string | null;
-    email: string | null;
-  };
-  camp: {
-    name: string;
-    venue: string | null;
-    camp_date: string | null;
-  } | null;
+  format: DeskSlipFormat;
+  patient: DeskSlipPatient;
+  camp: DeskSlipCamp | null;
   campDayDate: string | null;
-  origin: string;
-  today: string;
-  /** Staff-scan QR on paper (enter URL preferred). */
-  qrValue?: string;
+  /** Compact Patient QR value — required; omitting is a type error. */
+  qrValue: string;
 };
 
-/** Dense one-page A4 prescription matching SNP eye-clinic form. */
+function slipFields(
+  patient: DeskSlipPatient,
+  camp: DeskSlipCamp | null,
+  campDayDate: string | null,
+  qrValue: string,
+): SlipFields {
+  const selectedDay = campDayDate || camp?.camp_date;
+  return {
+    regNo: patient.reg_no,
+    name: patient.full_name,
+    campDay: selectedDay ? formatCampDay(selectedDay) : "Not set",
+    venue: camp?.venue || camp?.name || "—",
+    qrValue,
+  };
+}
+
+/**
+ * Desk slip for camp printers.
+ * A4 and thermal are separate layouts so one path can be deleted later.
+ */
 export function PrintSheet({
+  format,
   patient,
   camp,
   campDayDate,
-  origin,
-  today,
   qrValue,
 }: Props) {
-  const qr =
-    qrValue || `${origin.replace(/\/$/, "")}/p/${patient.id}`;
-  const venue = camp?.venue || camp?.name || "SIKAR BHAWAN";
-  const genderLabel =
-    GENDER_LABELS[patient.gender?.trim().toUpperCase() || ""] || "Not specified";
-  const selectedDay = campDayDate || camp?.camp_date;
-  const campDay = selectedDay ? formatCampDay(selectedDay) : "Not set";
+  const fields = slipFields(patient, camp, campDayDate, qrValue);
+  if (format === "thermal58") {
+    return <DeskSlipThermal fields={fields} />;
+  }
+  return <DeskSlipA4 fields={fields} />;
+}
 
+/** A4: 2×2 identical slips with cut lines (spares + easy cutting). */
+function DeskSlipA4({ fields }: { fields: SlipFields }) {
   return (
-    <article className="print-sheet print-preview mx-auto w-full max-w-[210mm] border border-[#1a3a8a] bg-white text-[#1a3a8a]">
-      <header className="border-b border-[#1a3a8a] px-3 pb-1.5 pt-2 text-center">
-        <p className="text-[13px] font-extrabold leading-tight tracking-wide sm:text-[15px]">
-          SIKAR NAGARIK PARISHAD (KOLKATA)
-        </p>
-        <p className="text-[10px] font-semibold leading-tight sm:text-[11px]">
-          SIKAR ZILLA WELFARE TRUST
-        </p>
-        <p className="mt-0.5 text-[8px] leading-snug sm:text-[9px]">
-          &apos;SIKAR BHAWAN&apos; 1A, ASHUTOSH DEY LANE, KOLKATA-6 · Ph: 033 4006
-          4713 · WhatsApp: 86971 90268
-        </p>
-        <p className="mt-1 text-[8.5px] font-bold uppercase leading-tight tracking-wide sm:text-[9.5px]">
-          Free eye screening · spectacles · medicines · cataract (IOL)
-        </p>
-      </header>
-
-      <div className="px-3 py-2">
-        <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0 text-[10px] sm:text-[11px]">
-          <div className="min-w-0 space-y-1">
-            <Line label="Venue" value={venue} />
-            <Line label="Name" value={patient.full_name} strong />
-            <Line label="Address" value={patient.address || ""} />
-            <Line label="E-mail" value={patient.email || ""} />
-            <Line label="Contact No." value={patient.phone || ""} />
-          </div>
-
-          <div className="flex w-[7.8rem] flex-col items-end gap-1 sm:w-36">
-            <div className="w-full rounded border border-[#1a3a8a] px-1.5 py-1 text-right">
-              <p className="text-[8px] font-semibold uppercase leading-none">
-                Reg. No.
-              </p>
-              <p className="text-lg font-extrabold leading-tight tabular-nums sm:text-xl">
-                {patient.reg_no}
-              </p>
-            </div>
-            <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Printed</span> {today}
-            </p>
-            <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Camp day</span> {campDay}
-            </p>
-            <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Age</span> {patient.age ?? "——"}
-            </p>
-            <p className="w-full text-right text-[9px]">
-              <span className="font-semibold">Gender</span> {genderLabel}
-            </p>
-            <div className="mt-0.5 flex flex-col items-end gap-0.5">
-              <div className="rounded border border-[#1a3a8a] bg-white p-1">
-                <QrCode
-                  value={qr}
-                  size={112}
-                  level="H"
-                  includeMargin
-                  fgColor="#1a3a8a"
-                />
-              </div>
-              <p className="w-full text-right text-[7px] font-semibold uppercase leading-none tracking-wide opacity-80">
-                Staff scan
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-2 border-t border-dotted border-[#1a3a8a] pt-1.5">
-          <p className="mb-1 text-[10px] font-bold">Diagnosis:</p>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] sm:text-[10px]">
-            <Check label="RE – CATARACT" />
-            <Check label="LE – CATARACT" />
-            <Check label="REFRACTION" />
-            <Check label="MEDICINE" />
-          </div>
-        </div>
-
-        <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[9.5px] sm:text-[10px]">
-          <div className="space-y-1">
-            <Line label="Blood Sugar (R)" value="" />
-            <Line label="BP" value="" />
-            <Line label="Remarks" value="" />
-          </div>
-          <div className="space-y-1">
-            <Line label="Medicines" value="" />
-            <div className="min-h-[1.6rem] border-b border-dotted border-[#1a3a8a]" />
-            <div className="min-h-[1.6rem] border-b border-dotted border-[#1a3a8a]" />
-          </div>
-        </div>
-
-        <div className="mt-1.5 text-[9.5px] sm:text-[10px]">
-          <Line label="Operation will be done at" value="" />
-        </div>
-
-        <div className="mt-2">
-          <p className="mb-0.5 text-center text-[9px] font-extrabold uppercase tracking-wider">
-            — Prescription for glasses —
-          </p>
-          <table className="w-full border-collapse border border-[#1a3a8a] text-center text-[8px] sm:text-[9px]">
-            <thead>
-              <tr>
-                <th className="w-[14%] border border-[#1a3a8a] p-0.5" rowSpan={2} />
-                <th className="border border-[#1a3a8a] p-0.5 font-bold" colSpan={4}>
-                  RE
-                </th>
-                <th className="border border-[#1a3a8a] p-0.5 font-bold" colSpan={4}>
-                  LE
-                </th>
-              </tr>
-              <tr>
-                {["Dsph", "Dcyl", "Axis", "Vision", "Dsph", "Dcyl", "Axis", "Vision"].map(
-                  (h, i) => (
-                    <th
-                      key={`${h}-${i}`}
-                      className="border border-[#1a3a8a] px-0.5 py-0.5 font-semibold"
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {["Distance", "Near"].map((row) => (
-                <tr key={row}>
-                  <td className="border border-[#1a3a8a] px-1 py-2 text-left font-semibold">
-                    {row}
-                  </td>
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <td key={`col-${i}`} className="border border-[#1a3a8a] py-2">
-                      &nbsp;
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-1 text-[9px]">
-            Inter Pupillary distance ……………… mm
-          </p>
-        </div>
-
-        <footer className="mt-2 flex items-end justify-between gap-3 border-t border-[#1a3a8a] pt-1.5 text-[9px]">
-          <div>
-            <p className="font-extrabold">Sponsorer:</p>
-            <p className="font-semibold leading-tight">RUPA FOUNDATION, KOLKATA</p>
-            <p className="mt-0.5 max-w-[12rem] text-[7.5px] leading-snug opacity-80">
-              SNP &amp; Sikar Zilla Welfare Trust — free eye screening &amp; IOL
-              arrangement
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="leading-tight">Signature of</p>
-            <p className="leading-tight">Optometrist / Eye Surgeon</p>
-            <p className="mt-3 tracking-widest">________________</p>
-          </div>
-        </footer>
+    <div
+      className="desk-slip-a4 print-sheet print-preview mx-auto w-full max-w-[210mm] bg-white text-[#0f172a]"
+      data-print-format="a4"
+      data-testid="desk-slip-a4"
+    >
+      <div className="desk-slip-a4-grid">
+        {Array.from({ length: 4 }, (_, i) => (
+          <article
+            key={i}
+            className="desk-slip-a4-cell"
+            aria-label={`Desk slip copy ${i + 1}`}
+          >
+            <SlipBody fields={fields} variant="a4" />
+          </article>
+        ))}
       </div>
+    </div>
+  );
+}
+
+/** 58mm thermal roll — narrow stack, not a scaled A4. */
+function DeskSlipThermal({ fields }: { fields: SlipFields }) {
+  return (
+    <article
+      className="desk-slip-thermal print-sheet print-preview mx-auto bg-white text-[#0f172a]"
+      data-print-format="thermal58"
+      data-testid="desk-slip-thermal"
+      aria-label="Desk slip thermal"
+    >
+      <SlipBody fields={fields} variant="thermal" />
     </article>
   );
 }
 
-function Line({
-  label,
-  value,
-  strong,
+function SlipBody({
+  fields,
+  variant,
 }: {
-  label: string;
-  value: string;
-  strong?: boolean;
+  fields: SlipFields;
+  variant: "a4" | "thermal";
 }) {
-  return (
-    <p className="flex min-h-[1.15rem] items-end gap-1 border-b border-dotted border-[#1a3a8a] pb-px">
-      <span className="shrink-0 font-semibold">{label}:</span>
-      <span
-        className={`min-w-0 flex-1 text-black ${strong ? "font-bold" : ""}`}
-      >
-        {value || "\u00a0"}
-      </span>
-    </p>
-  );
-}
+  const isThermal = variant === "thermal";
+  const qrSize = isThermal ? 96 : 88;
 
-function Check({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="inline-block h-2.5 w-2.5 shrink-0 border border-[#1a3a8a]" />
-      {label}
-    </span>
+    <div
+      className={
+        isThermal
+          ? "flex flex-col items-stretch gap-1.5 px-1.5 py-2"
+          : "flex h-full flex-col justify-between gap-1 p-2"
+      }
+    >
+      <p
+        className={
+          isThermal
+            ? "text-center text-[9px] font-bold uppercase tracking-wide text-[#1a3a8a]"
+            : "text-center text-[8px] font-bold uppercase tracking-wide text-[#1a3a8a]"
+        }
+      >
+        SNP · Free eye camp
+      </p>
+
+      {/* Reg no — largest element; readable across a desk */}
+      <div className="text-center">
+        <p
+          className={
+            isThermal
+              ? "text-[10px] font-semibold uppercase tracking-wide opacity-80"
+              : "text-[9px] font-semibold uppercase tracking-wide opacity-80"
+          }
+        >
+          Reg. No.
+        </p>
+        <p
+          className={
+            isThermal
+              ? "text-[42px] font-extrabold leading-none tabular-nums tracking-tight"
+              : "text-[36px] font-extrabold leading-none tabular-nums tracking-tight sm:text-[40px]"
+          }
+          data-testid="desk-slip-reg-no"
+        >
+          {fields.regNo}
+        </p>
+      </div>
+
+      <div className={isThermal ? "space-y-0.5 text-center" : "space-y-0.5"}>
+        <p
+          className={
+            isThermal
+              ? "text-[15px] font-bold leading-tight"
+              : "text-[13px] font-bold leading-tight sm:text-[14px]"
+          }
+          data-testid="desk-slip-name"
+        >
+          {fields.name}
+        </p>
+        <p
+          className={
+            isThermal
+              ? "text-[11px] leading-snug"
+              : "text-[10px] leading-snug sm:text-[11px]"
+          }
+          data-testid="desk-slip-camp-day"
+        >
+          <span className="font-semibold">Camp day</span> {fields.campDay}
+        </p>
+        <p
+          className={
+            isThermal
+              ? "text-[11px] leading-snug"
+              : "text-[10px] leading-snug sm:text-[11px]"
+          }
+          data-testid="desk-slip-venue"
+        >
+          <span className="font-semibold">Venue</span> {fields.venue}
+        </p>
+      </div>
+
+      <div className="flex flex-col items-center gap-0.5">
+        <div className="rounded border border-[#0f172a] bg-white p-0.5">
+          <QrCode
+            value={fields.qrValue}
+            size={qrSize}
+            level="M"
+            includeMargin={false}
+            fgColor="#0f172a"
+          />
+        </div>
+        <p
+          className={
+            isThermal
+              ? "text-[8px] font-semibold uppercase tracking-wide opacity-70"
+              : "text-[7px] font-semibold uppercase tracking-wide opacity-70"
+          }
+        >
+          Staff scan
+        </p>
+      </div>
+    </div>
   );
 }
