@@ -10,7 +10,12 @@ import {
   isValidAadhaarNumber,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
-import { runDeskRegisterAndPrint } from "@/lib/desk-register-flow";
+import {
+  acquireDeskPrintTarget,
+  patientPrintPath,
+  runDeskRegisterAndPrint,
+  type DeskSubmitPhase,
+} from "@/lib/desk-register-flow";
 import {
   createRegistrationAttempt,
 } from "@/lib/registration-request";
@@ -28,6 +33,15 @@ import {
   SegmentedControl,
   WarningBox,
 } from "@/components/ui";
+
+/** Recoverable print action after a successful registration (#62). */
+type PrintRecovery = {
+  patientId: string;
+  regNo: number;
+  queueStatus?: "registered" | "waiting" | "seen";
+  /** True only when the pre-opened target was navigated successfully. */
+  printNavigated: boolean;
+};
 
 type Props = {
   campId: string;
@@ -74,6 +88,11 @@ export function PatientForm({
   const formRef = useRef<HTMLFormElement | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
+  /** idle | saving | failed-retryable | registered-print-ready (#62). */
+  const [phase, setPhase] = useState<DeskSubmitPhase>("idle");
+  const [printRecovery, setPrintRecovery] = useState<PrintRecovery | null>(
+    null,
+  );
 
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMsg, setLookupMsg] = useState<string | null>(null);
@@ -227,9 +246,12 @@ export function PatientForm({
     if (!isStaff) return;
 
     setLoading(true);
+    setPhase("saving");
     setError(null);
     setFlash(null);
     setFieldErrors({});
+    // Keep prior print recovery until a new success replaces it —
+    // never clear the only route to the slip mid-submit.
     const aadhaarDuplicateOverride = aadhaarOverrideOnceRef.current;
     aadhaarOverrideOnceRef.current = false;
     const likelyDuplicateOverride = likelyOverrideOnceRef.current;
@@ -256,9 +278,16 @@ export function PatientForm({
     );
 
     if (!validated.ok) {
+      setPhase("idle");
       failValidation(validated.field, validated.elementId, validated.message);
       return;
     }
+
+    // Acquire print target during the submit gesture BEFORE any await (#62).
+    // Do not pass noopener — retain handle, sever opener, navigate after save.
+    const printTarget = acquireDeskPrintTarget((url, target, features) =>
+      window.open(url, target, features),
+    );
 
     const supabase = createClient();
     const resetFormFields = () => {
@@ -313,16 +342,29 @@ export function PatientForm({
             : null,
         };
       },
-      openPrint: (patientId) => {
-        window.open(
-          `/print/${patientId}?auto=1`,
-          "_blank",
-          "noopener,noreferrer",
-        );
-      },
+      printTarget,
       resetForm: resetFormFields,
       rotateAttempt: () => {
         registrationAttempt.current.rotate();
+      },
+      // Retain print recovery BEFORE form reset (#62).
+      onSuccess: ({ row, print }) => {
+        setPrintRecovery({
+          patientId: row.id,
+          regNo: row.reg_no,
+          queueStatus: row.queue_status,
+          printNavigated: print === "navigated",
+        });
+        setPhase("registered-print-ready");
+        const queueBit =
+          row.queue_status === "waiting" ? "line mein" : "register ho gaya";
+        setFlash(
+          print === "navigated"
+            ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
+            : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`,
+        );
+        setAadhaarDuplicateRegNo(null);
+        setLikelyDuplicateRegNo(null);
       },
       // Registration SMS — never await; desk must not wait or error on SMS (#51).
       afterRegister: (row) => {
@@ -340,6 +382,7 @@ export function PatientForm({
         setLikelyDuplicateRegNo(outcome.likelyDuplicateRegNo);
         setAadhaarDuplicateRegNo(null);
         setError(null);
+        setPhase("idle");
         setLoading(false);
         return;
       }
@@ -349,23 +392,32 @@ export function PatientForm({
         setError(
           `Naam + Aadhaar last-4 pehle se reg #${outcome.aadhaarDuplicateRegNo} pe hai. Pehle woh patient dekho. Override sirf alag person ho to.`,
         );
+        setPhase("idle");
       } else {
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
         setError(outcome.error);
+        // Explicit Try Again only for exhausted transient (#47 / #62).
+        setPhase(outcome.showTryAgain ? "failed-retryable" : "idle");
       }
       setLoading(false);
       return;
     }
 
-    setAadhaarDuplicateRegNo(null);
-    setLikelyDuplicateRegNo(null);
-    setFlash(
-      outcome.row.queue_status === "waiting"
-        ? `Reg #${outcome.row.reg_no} — line mein. Print window khuli.`
-        : `Reg #${outcome.row.reg_no} — pehle se register. Print window khuli.`,
-    );
+    // onSuccess already retained recovery + flash before reset.
     setLoading(false);
+  }
+
+  function openPrintRecovery() {
+    if (!printRecovery) return;
+    // User-gesture open — recovery never re-registers.
+    window.open(patientPrintPath(printRecovery.patientId), "_blank");
+  }
+
+  function retryFailedRegistration() {
+    if (loading || phase !== "failed-retryable") return;
+    // Same form fields, camp day, overrides, and request ID (#62).
+    formRef.current?.requestSubmit();
   }
 
   async function checkInLikelyDuplicate() {
@@ -496,10 +548,41 @@ export function PatientForm({
       {flash ? (
         <p
           role="status"
+          data-testid="desk-register-flash"
           className="rounded-xl border border-brand/20 bg-brand-soft px-3 py-2 text-sm font-medium text-brand"
         >
           {flash}
         </p>
+      ) : null}
+
+      {printRecovery ? (
+        <div
+          role="status"
+          data-testid="desk-print-recovery"
+          data-print-navigated={printRecovery.printNavigated ? "true" : "false"}
+          data-patient-id={printRecovery.patientId}
+          className="flex flex-col gap-2 rounded-xl border border-brand/20 bg-brand-soft/60 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-brand">
+              Registered · #{printRecovery.regNo}
+            </p>
+            <p className="text-xs text-muted">
+              {printRecovery.printNavigated
+                ? "Print window opened. Reprint anytime without re-registering."
+                : "Print was blocked or closed. Use Print — patient is already saved."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="sm:w-auto"
+            data-testid="desk-print-recovery-button"
+            onClick={openPrintRecovery}
+          >
+            Print desk slip
+          </Button>
+        </div>
       ) : null}
 
       <div>
@@ -701,6 +784,19 @@ export function PatientForm({
       />
 
       <ErrorBox message={error} />
+      {phase === "failed-retryable" && error ? (
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={loading}
+          loading={loading}
+          onClick={retryFailedRegistration}
+          className="sm:w-auto"
+          data-testid="desk-register-try-again"
+        >
+          Try Again
+        </Button>
+      ) : null}
       {likelyDuplicateRegNo != null ? (
         <div
           role="alert"
@@ -767,6 +863,8 @@ export function PatientForm({
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}
+          data-testid="desk-register-submit"
+          data-phase={phase}
         >
           {loading && likelyDuplicateRegNo == null
             ? "Saving…"

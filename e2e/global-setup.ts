@@ -89,6 +89,33 @@ export default async function globalSetup() {
       const { error } = await admin.from("patients").delete().eq("id", doctorPatientId);
       if (error) errors.push(`doctor patient: ${error.message}`);
     }
+    // Desk register-print E2E may create extra patients on the fixture day/camp (#62).
+    // Remove them (and any leftover prefix rows) before deleting day/camp FKs.
+    try {
+      const { error } = await admin
+        .from("patients")
+        .delete()
+        .like("full_name", `${PATIENT_PREFIX}%`);
+      if (error) errors.push(`prefix patients: ${error.message}`);
+    } catch {
+      // offline
+    }
+    if (createdDayId) {
+      const { error: dayPatientsErr } = await admin
+        .from("patients")
+        .delete()
+        .eq("camp_day_id", createdDayId);
+      if (dayPatientsErr) errors.push(`day patients: ${dayPatientsErr.message}`);
+    }
+    if (createdCampId) {
+      const { error: campPatientsErr } = await admin
+        .from("patients")
+        .delete()
+        .eq("camp_id", createdCampId);
+      if (campPatientsErr) {
+        errors.push(`camp patients: ${campPatientsErr.message}`);
+      }
+    }
     for (const userId of userIds.reverse()) {
       const { error } = await admin.auth.admin.deleteUser(userId);
       if (error && !/not found/i.test(error.message)) {

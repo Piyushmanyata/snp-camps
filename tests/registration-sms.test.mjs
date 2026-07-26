@@ -198,8 +198,13 @@ test("provider failure does not fail desk registration", async () => {
       ],
       error: null,
     }),
-    openPrint: () => {
-      printed = true;
+    printTarget: {
+      acquired: true,
+      navigate: () => {
+        printed = true;
+        return true;
+      },
+      abandon: () => {},
     },
     resetForm: () => {},
     rotateAttempt: () => {},
@@ -208,6 +213,7 @@ test("provider failure does not fail desk registration", async () => {
     },
   });
   assert.equal(outcome.ok, true);
+  if (!outcome.ok) return;
   assert.equal(outcome.row.reg_no, 42);
   assert.equal(printed, true);
 });
