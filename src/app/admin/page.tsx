@@ -79,6 +79,20 @@ const ChangePasswordCard = dynamic(
   },
 );
 
+const AdminTestSms = dynamic(
+  () =>
+    import("@/components/admin-test-sms").then((m) => ({
+      default: m.AdminTestSms,
+    })),
+  {
+    loading: () => (
+      <p role="status" className="py-4 text-xs text-muted">
+        Loading SMS tools…
+      </p>
+    ),
+  },
+);
+
 const getCampQueueCounts = cache(async (campId: string) => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("camp_queue_counts", {
@@ -370,6 +384,14 @@ export default async function AdminPage() {
             <AdminOperationsSection campId={active.id} />
           </Suspense>
         ) : null}
+
+        <CollapsibleSection
+          title="Registration SMS (MSG91)"
+          hint="Test send · recent failures"
+          defaultOpen={false}
+        >
+          <AdminTestSms />
+        </CollapsibleSection>
 
         <CollapsibleSection title="Account security" hint="Change password" defaultOpen={false}>
           <ChangePasswordCard />

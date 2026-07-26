@@ -89,7 +89,7 @@ as an amplification vector.
 ### 2. Auth settings
 
 - **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.
-- Patient app login and phone OTP self-registration are **not** used. Optional `SMS_WEBHOOK_URL` can still send registration / status-link notifications (not Supabase Auth OTPs).
+- Patient app login and phone OTP self-registration are **not** used. Optional MSG91 registration SMS can send reg number + status link (not Supabase Auth OTPs).
 
 ### 3. Env
 
@@ -110,9 +110,9 @@ Optional later:
 ```
 # Optional Aadhaar lookup provider
 # AADHAAR_LOOKUP_URL=
-# SMS_WEBHOOK_URL=
-# WHATSAPP_WEBHOOK_URL=
-# NOTIFY_WEBHOOK_SECRET=
+# MSG91_AUTH_KEY=
+# MSG91_SENDER_ID=
+# MSG91_TEMPLATE_REGISTRATION=
 ```
 
 ### 4. Local
@@ -184,16 +184,38 @@ auto-fill; only Aadhaar last four digits are stored.
 
 Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `address`, `phone`, `email`.
 
-### SMS / WhatsApp (optional)
+### Registration SMS via MSG91 (optional)
 
-Set `SMS_WEBHOOK_URL` and/or `WHATSAPP_WEBHOOK_URL`. App POSTs JSON:
+Transactional Hinglish SMS on desk registration (when the patient has a phone).
+**Not** Supabase Auth OTP. SMS never blocks registration.
 
-```json
-{ "phone": "+91…", "message": "…", "template": "registration", "channel": "sms|whatsapp" }
+Set all three:
+
+```
+MSG91_AUTH_KEY=…
+MSG91_SENDER_ID=SNPCP          # DLT-registered sender / header
+MSG91_TEMPLATE_REGISTRATION=…  # MSG91 Flow / template id for the body below
 ```
 
-Until configured, notify status reports “not configured yet”; desk registration
-and print still work without SMS. When a status token/URL is available, the
-message can include the passwordless status link.
+**DLT template to register** (Roman script only — exact text, four `{#var#}` slots
+in order: **reg**, **date**, **venue**, **link**):
 
-These notification webhooks are not patient login OTPs.
+```
+SNP Camp: Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein. {#var#}
+```
+
+Example filled at maximum tested length (**158** GSM-7 characters, must stay ≤160):
+
+```
+SNP Camp: Reg #999999. 30 Sep 2026 pe aana, AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA. Slip rakhein. https://snp-camps.vercel.app/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+In the MSG91 flow, name the variables `reg`, `date`, `venue`, `link` (same order).
+Date values are compact (`30 Sep 2026`). Venue is truncated to 35 characters.
+Status link is `NEXT_PUBLIC_SITE_URL` + `/s/<status_token>`.
+
+The old generic `SMS_WEBHOOK_URL` path was **removed** — one SMS provider only
+(`src/lib/msg91.ts`). Admin → **Registration SMS (MSG91)** can send a real test
+message and shows recent send failures (also logged as `[sms-failure]`).
+
+Day-before reminder SMS is a separate ticket (#52).

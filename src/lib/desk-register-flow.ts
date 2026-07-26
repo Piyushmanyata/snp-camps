@@ -74,6 +74,11 @@ export async function runDeskRegisterAndPrint(options: {
   resetForm: () => void;
   rotateAttempt: () => void;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Fire-and-forget after a successful register (e.g. registration SMS).
+   * Must never block or fail the desk — errors are swallowed.
+   */
+  afterRegister?: (row: DeskRegisterRow) => void | Promise<void>;
 }): Promise<
   | { ok: true; row: DeskRegisterRow }
   | {
@@ -114,6 +119,13 @@ export async function runDeskRegisterAndPrint(options: {
   // Order is deliberate: patient is already registered/queued, then print opens.
   // A cancelled print leaves them registered/queued — correct for the desk.
   options.openPrint(row.id);
+  if (options.afterRegister) {
+    try {
+      void Promise.resolve(options.afterRegister(row)).catch(() => {});
+    } catch {
+      // SMS / hooks must never fail registration.
+    }
+  }
   options.rotateAttempt();
   options.resetForm();
 

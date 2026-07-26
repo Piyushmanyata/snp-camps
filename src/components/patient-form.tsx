@@ -319,6 +319,14 @@ export function PatientForm({
       rotateAttempt: () => {
         registrationAttempt.current.rotate();
       },
+      // Registration SMS — never await; desk must not wait or error on SMS (#51).
+      afterRegister: (row) => {
+        void fetch("/api/notify/registration", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ patientId: row.id }),
+        }).catch(() => {});
+      },
     });
 
     if (!outcome.ok) {

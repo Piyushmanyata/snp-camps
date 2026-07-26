@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatCampDay } from "../src/lib/format-camp-day.ts";
+import { formatCampDay, formatCampDaySms } from "../src/lib/format-camp-day.ts";
 
 /** The deleted noon-local convention (machine local, no timeZone). */
 function oldNoonLocalConvention(isoDate) {
@@ -63,6 +63,12 @@ test("formatCampDay is stable for a mid-year date", () => {
 test("malformed input is returned unchanged", () => {
   assert.equal(formatCampDay("not-a-date"), "not-a-date");
   assert.equal(formatCampDay("2026/01/01"), "2026/01/01");
+});
+
+test("formatCampDaySms is compact GSM-7 (no weekday)", () => {
+  assert.equal(formatCampDaySms("2026-09-30"), "30 Sep 2026");
+  assert.equal(formatCampDaySms("2026-01-01"), "1 Jan 2026");
+  assert.equal(formatCampDaySms("not-a-date"), "not-a-date");
 });
 
 test("types re-exports the same formatter", async () => {
