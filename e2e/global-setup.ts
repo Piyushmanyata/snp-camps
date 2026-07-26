@@ -255,43 +255,9 @@ export default async function globalSetup() {
       }
     }
 
-    const patientPassword = password();
-    const patientEmail = `reg${regNo}@patients.snp.local`;
-    try {
-      const createdPatient = await admin.auth.admin.createUser({
-        email: patientEmail,
-        password: patientPassword,
-        email_confirm: true,
-        user_metadata: {
-          full_name: patientName,
-          phone: `+91${phone}`,
-          e2e_suite: "snp-camps",
-        },
-      });
-      if (createdPatient.data?.user) {
-        userIds.push(createdPatient.data.user.id);
-        await admin
-          .from("profiles")
-          .upsert({
-            id: createdPatient.data.user.id,
-            role: "patient",
-            full_name: patientName,
-            email: patientEmail,
-            phone: `+91${phone}`,
-          });
-        if (patientId) {
-          await admin
-            .from("patients")
-            .update({ user_id: createdPatient.data.user.id, email: patientEmail })
-            .eq("id", patientId);
-        }
-      }
-    } catch {
-      // Safe fallback
-    }
+    // #59 — patients do not authenticate; no patient Auth/profile/user_id link.
 
     process.env.E2E_PATIENT_REG_NO = String(regNo);
-    process.env.E2E_PATIENT_PASSWORD = patientPassword;
     process.env.E2E_PATIENT_NAME = patientName;
     if (patientId) process.env.E2E_PATIENT_ID = patientId;
     process.env.E2E_DOCTOR_PATIENT_REG_NO = String(doctorRegNo);

@@ -63,10 +63,10 @@ export default function StaffLoginPage() {
       else if (profile.role === "volunteer") router.replace("/volunteer");
       else if (profile.role === "doctor") router.replace("/doctor");
       else {
-        // Patient (or other) accounts cannot use staff login.
+        // Residual/non-staff profiles cannot use staff login (#59).
         await supabase.auth.signOut();
         setError(
-          "Patient accounts do not sign in here. Use staff login for camp crew, or open the passwordless status link from SMS.",
+          "This account is not staff login. Use camp crew credentials, or open the passwordless status link from SMS.",
         );
       }
     } catch {

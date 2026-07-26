@@ -1,4 +1,5 @@
-export type UserRole = "admin" | "volunteer" | "doctor" | "patient";
+/** Login roles only. Legacy DB enum may still list `patient`; app treats it as non-login. */
+export type UserRole = "admin" | "volunteer" | "doctor";
 export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {

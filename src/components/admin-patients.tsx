@@ -18,7 +18,6 @@ import { mapDbError } from "@/lib/public-error";
 
 export type AdminPatientRow = {
   id: string;
-  user_id: string | null;
   reg_no: number;
   full_name: string;
   phone: string | null;
@@ -109,7 +108,6 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       : doctor?.full_name ?? null;
     return {
       id: patient.id as string,
-      user_id: (patient.user_id as string | null) ?? null,
       reg_no: patient.reg_no as number,
       full_name: patient.full_name as string,
       phone: (patient.phone as string | null) ?? null,
@@ -135,7 +133,7 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
 }
 
 const SELECT =
-  "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,

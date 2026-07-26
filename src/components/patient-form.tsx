@@ -32,7 +32,6 @@ type Props = {
   campId: string;
   days: CampDayStats[];
   defaultPhone?: string;
-  userId?: string | null;
   createdBy?: string | null;
   /** Volunteer/admin desk registration — print only, no on-screen QR */
   isStaff?: boolean;
@@ -46,7 +45,6 @@ export function PatientForm({
   campId,
   days,
   defaultPhone = "",
-  userId = null,
   createdBy = null,
   isStaff = false,
 }: Props) {
@@ -295,7 +293,6 @@ export function PatientForm({
         phone: validated.values.phone,
         email: validated.values.email,
         aadhaarLast4: validated.values.aadhaarLast4,
-        userId,
         createdBy,
         campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,

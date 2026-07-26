@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "graphify-out/**",
     ".playwright-cli/**",
+    ".scratch/**",
     "next-env.d.ts",
   ]),
 ]);

@@ -34,7 +34,6 @@ export type StaffRegistrationFields = {
   phone: string | null;
   email: string | null;
   aadhaarLast4: string | null;
-  userId: string | null;
   createdBy: string | null;
   campDayId: string;
   /** Explicit one-shot Aadhaar last-4 + name duplicate override (staff only). */
@@ -82,7 +81,8 @@ export function staffRegistrationRpcArgs(
     p_phone: fields.phone,
     p_email: fields.email,
     p_aadhaar_last4: fields.aadhaarLast4,
-    p_user_id: fields.userId,
+    // p_user_id kept null: patient Auth ownership retired (#59).
+    p_user_id: null,
     p_created_by: fields.createdBy,
     p_camp_day_id: fields.campDayId,
     p_aadhaar_duplicate_override: Boolean(fields.aadhaarDuplicateOverride),

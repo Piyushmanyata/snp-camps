@@ -34,7 +34,7 @@ async function PatientDeskContent() {
     supabase
       .from("patients")
       .select(
-        "id, user_id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)",
+        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -86,7 +86,6 @@ async function PatientDeskContent() {
     const seenBy = (p.seen_by as string | null) ?? null;
     return {
       id: p.id as string,
-      user_id: (p.user_id as string | null) ?? null,
       reg_no: p.reg_no as number,
       full_name: p.full_name as string,
       phone: (p.phone as string | null) ?? null,

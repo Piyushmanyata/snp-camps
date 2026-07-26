@@ -31,7 +31,6 @@ const staffFields = {
   phone: "9876543210",
   email: null,
   aadhaarLast4: "1234",
-  userId: "33333333-3333-4333-8333-333333333333",
   createdBy: "44444444-4444-4444-8444-444444444444",
   campDayId: "22222222-2222-4222-8222-222222222222",
 };
@@ -72,6 +71,11 @@ test("staff registration submit sends a non-empty UUID p_request_id to the RPC",
   assert.ok(args.p_request_id.length > 0, "p_request_id must be non-empty");
   assert.match(args.p_request_id, UUID_V4);
   assert.equal(args.p_request_id, attempt.id);
+  assert.equal(
+    /** @type {{ p_user_id?: unknown }} */ (args).p_user_id,
+    null,
+    "patient ownership p_user_id retired (#59)",
+  );
 });
 
 test("requestId is stable across retries of the same submission", async () => {

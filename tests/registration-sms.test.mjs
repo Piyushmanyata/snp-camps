@@ -178,7 +178,6 @@ test("provider failure does not fail desk registration", async () => {
     phone: "9876543210",
     email: null,
     aadhaarLast4: null,
-    userId: null,
     createdBy: "44444444-4444-4444-8444-444444444444",
     campDayId: "22222222-2222-4222-8222-222222222222",
   };

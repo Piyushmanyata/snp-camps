@@ -133,15 +133,16 @@ test("Staff excludes doctor; Camp crew includes all three desk roles", () => {
   assert.equal(isAdmin("admin"), true);
   assert.equal(isAdmin("volunteer"), false);
 
-  assert.equal(isStaff("patient"), false);
-  assert.equal(isCampCrew("patient"), false);
+  // Residual/legacy role string must never grant staff homes (#59).
+  assert.equal(isStaff(/** @type {any} */ ("patient")), false);
+  assert.equal(isCampCrew(/** @type {any} */ ("patient")), false);
   assert.equal(isStaff(null), false);
   assert.equal(isCampCrew(undefined), false);
 
   assert.equal(roleHome("doctor"), "/doctor");
   assert.equal(roleHome("volunteer"), "/volunteer");
   assert.equal(roleHome("admin"), "/admin");
-  assert.equal(roleHome("patient"), null);
+  assert.equal(roleHome(/** @type {any} */ ("patient")), null);
 });
 
 test("production CSP script-src uses nonce without unsafe-inline", () => {

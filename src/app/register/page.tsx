@@ -115,7 +115,6 @@ export default async function RegisterPage() {
             <PatientForm
               campId={camp.id}
               days={days}
-              userId={null}
               createdBy={userId}
               isStaff
               userRole={role}
