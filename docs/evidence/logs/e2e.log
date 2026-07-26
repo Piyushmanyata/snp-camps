@@ -13,15 +13,15 @@
   · optimizePackageImports
 
   Creating an optimized production build ...
-✓ Compiled successfully in 4.5s
+✓ Compiled successfully in 3.0s
   Running TypeScript ...
-  Finished TypeScript in 6.5s ...
+  Finished TypeScript in 4.7s ...
   Collecting page data using 21 workers ...
   Generating static pages using 21 workers (0/26) ...
   Generating static pages using 21 workers (6/26) 
   Generating static pages using 21 workers (12/26) 
   Generating static pages using 21 workers (19/26) 
-✓ Generating static pages using 21 workers (26/26) in 772ms
+✓ Generating static pages using 21 workers (26/26) in 557ms
   Finalizing page optimization ...
 
 Route (app)                    Revalidate  Expire
@@ -63,20 +63,20 @@ Route (app)                    Revalidate  Expire
 ƒ  (Dynamic)            server-rendered on demand
 
 route	initial_raw	initial_gzip	deferred_raw	deferred_gzip
-/	676535	202190	0	0
+/	676587	202218	0	0
 /_global-error	631831	186999	0	0
-/_not-found	649480	193126	0	0
-/admin	1389453	406101	155102	55010
-/admin/patients	1355179	396407	0	0
-/doctor	1363834	399254	158129	54776
-/login	922428	267094	0	0
-/p/[id]	649480	193126	0	0
-/print/[id]	698537	209597	0	0
-/print/batch	699822	210266	0	0
-/register	1383633	405800	0	0
-/s/[token]	649480	193126	0	0
-/self-register	662821	198193	0	0
-/volunteer	1391889	405659	151335	53209
+/_not-found	649506	193140	0	0
+/admin	1389505	406129	155102	55010
+/admin/patients	1355231	396434	0	0
+/doctor	1363886	399283	158129	54776
+/login	922480	267121	0	0
+/p/[id]	649506	193140	0	0
+/print/[id]	698589	209622	0	0
+/print/batch	699874	210291	0	0
+/register	1383685	405824	0	0
+/s/[token]	649506	193140	0	0
+/self-register	662868	198219	0	0
+/volunteer	1391941	405686	151335	53209
 # artifact C:\Users\piyus\Downloads\SNP website\snp-camps\.scratch\remediation-71\route-chunk-map.json
 
 Running 35 tests using 1 worker
@@ -89,10 +89,10 @@ Running 35 tests using 1 worker
 [6/35] [chromium] › e2e\a11y-computed.spec.ts:687:5 › lost-slip recovery: keyboard path and touch targets
 [7/35] [chromium] › e2e\a11y-computed.spec.ts:715:5 › disabled controls remain distinguishable with readable contrast
 [8/35] [chromium] › e2e\a4-batch.spec.ts:80:5 › four sequential A4 registrations → one sheet with four distinct slips
-[9/35] [chromium] › e2e\a4-batch.spec.ts:188:5 › partial A4 batch Print now opens sheet with empty cells, no duplicates
-[10/35] [chromium] › e2e\a4-batch.spec.ts:227:5 › thermal registration opens one-up print path immediately
-[11/35] [chromium] › e2e\a4-batch.spec.ts:296:5 › max-length name and venue wrap without clipping QR (print media + PDF)
-[12/35] [chromium] › e2e\a4-batch.spec.ts:376:5 › Start next sheet clears station batch storage
+[9/35] [chromium] › e2e\a4-batch.spec.ts:191:5 › partial A4 batch Print now opens sheet with empty cells, no duplicates
+[10/35] [chromium] › e2e\a4-batch.spec.ts:230:5 › thermal registration opens one-up print path immediately
+[11/35] [chromium] › e2e\a4-batch.spec.ts:299:5 › max-length name and venue wrap without clipping QR (print media + PDF)
+[12/35] [chromium] › e2e\a4-batch.spec.ts:379:5 › Start next sheet clears station batch storage
 [13/35] [chromium] › e2e\csp.spec.ts:7:5 › served CSP protects scripts and the production page hydrates cleanly
 [14/35] [chromium] › e2e\island-split.spec.ts:93:5 › production: jsqr deferred until camera open; scanner is a real split
 [15/35] [chromium] › e2e\island-split.spec.ts:190:5 › production: print route may load qrcode; volunteer initial must not
@@ -116,7 +116,7 @@ Running 35 tests using 1 worker
 [33/35] [chromium] › e2e\roles.spec.ts:294:5 › staff deep-link scan opens lookup-first desk
 [34/35] [chromium] › e2e\roles.spec.ts:315:5 › garbage reg/QR text fails closed without crashing desk
 [35/35] [chromium] › e2e\roles.spec.ts:337:5 › doctor mark seen returns to scanner with no dismiss screen
-  35 passed (1.6m)
+  35 passed (1.4m)
 
-(node:21892) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(node:24184) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
 (Use `node --trace-deprecation ...` to show where the warning was created)

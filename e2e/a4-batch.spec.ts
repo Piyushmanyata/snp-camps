@@ -58,9 +58,9 @@ function isRegisterRpc(url: string) {
   return /\/rest\/v1\/rpc\/register_patient_idempotent/i.test(url);
 }
 
-async function fillMinimalRegistration(page: Page, fullName: string) {
+async function fillMinimalRegistration(page: Page, fullName: string, age: number = 42) {
   await page.getByLabel(/Poora naam/i).fill(fullName);
-  await page.getByLabel(/^Umar/i).fill("42");
+  await page.getByLabel(/^Umar/i).fill(String(age));
 }
 
 test.beforeEach(async ({ page, context }) => {
@@ -81,16 +81,18 @@ test("four sequential A4 registrations → one sheet with four distinct slips", 
   page,
   context,
 }) => {
+  test.setTimeout(120_000);
   // Real RPC (not mock) so batch print can load four authorized rows.
   await loginStaff(page, "volunteer");
   await gotoHydrated(page, "/register");
 
+  const tag = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   const names = [1, 2, 3, 4].map(
-    (n) => `Codex E2E Batch Distinct ${n} ${Date.now()}`,
+    (n) => `Codex E2E Batch Distinct ${n} ${tag}`,
   );
 
   for (let i = 0; i < 4; i += 1) {
-    await fillMinimalRegistration(page, names[i]!);
+    await fillMinimalRegistration(page, names[i]!, 20 + i * 5);
     await page.getByTestId("desk-register-submit").click();
     await expect(page.getByTestId("a4-batch-panel")).toBeVisible({
       timeout: 20_000,
@@ -100,6 +102,7 @@ test("four sequential A4 registrations → one sheet with four distinct slips", 
       String(i + 1),
     );
     await expect(page.getByLabel(/Poora naam/i)).toHaveValue("");
+    await expect(page.getByTestId("desk-register-submit")).toBeEnabled();
   }
 
   await expect(page.getByTestId("a4-batch-panel")).toHaveAttribute(

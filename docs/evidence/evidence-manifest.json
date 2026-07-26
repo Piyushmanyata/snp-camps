@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0.0",
   "ticket_id": "74",
-  "commit_sha": "88e52d341c8a482148688e8375a0e01109e89a2d",
+  "commit_sha": "6f63f249b126bffaf6cf61745ea083ef2a6a9e4a",
   "dirty": true,
-  "timestamp": "2026-07-26T19:21:51.158Z",
+  "timestamp": "2026-07-26T20:27:02.598Z",
   "platform": {
     "os_platform": "win32",
     "os_arch": "x64",
@@ -23,7 +23,7 @@
       "description": "ESLint static code analysis",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 11193,
+      "duration_ms": 7768,
       "log_file": "logs/lint.log",
       "sha256": "ce754c3210e4ae274098a39a719a27d57be6247605418770d795197446821c12",
       "counts": {
@@ -39,12 +39,12 @@
       "description": "Node test runner unit suites",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 25734,
+      "duration_ms": 23723,
       "log_file": "logs/unit.log",
-      "sha256": "11cbab357c89733b7fe31f68c69e429799a6fbd7f8cfbce03cc3f70208cb49fc",
+      "sha256": "bebd5c95661bb1f9c7723f75183f2b163c5efed683df5ac6e4ee1ff7ed2b6a9f",
       "counts": {
-        "total": 393,
-        "passed": 393,
+        "total": 394,
+        "passed": 394,
         "failed": 0,
         "skipped": 0,
         "todo": 0
@@ -55,9 +55,9 @@
       "description": "TypeScript compilation and Next.js build",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 18590,
+      "duration_ms": 13794,
       "log_file": "logs/type_build.log",
-      "sha256": "528335c9a11a79f9ebce16f8f81218375cbca23de202a40703747bf3065942f0",
+      "sha256": "b78483892cc3e932da4cf37b0f7af14f463454ea07a8741264a3455f4fd68ab2",
       "counts": {
         "total": 0,
         "passed": 0,
@@ -71,9 +71,9 @@
       "description": "Client JS route bundle size budgets",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 739,
+      "duration_ms": 639,
       "log_file": "logs/budgets.log",
-      "sha256": "f99492e4ef9ba78f578d425210920fc70d31e1d35623ae958e268562f0cd89af",
+      "sha256": "78cf1642f360564af4752a20652c8e1d1cfba622712c6aef518bbb2b25c1a1f7",
       "counts": {
         "total": 0,
         "passed": 0,
@@ -87,9 +87,9 @@
       "description": "Database isolation and migration contract tests",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 15935,
+      "duration_ms": 14477,
       "log_file": "logs/db.log",
-      "sha256": "184a43418d88f62fc8956ef5c1d623e5a6a67f4cc97fdce16b8cd7e11bea855f",
+      "sha256": "1503e2d0c101765f6b318b29450ddc3d0a7e6c0875502ab3724d2262e79c2904",
       "counts": {
         "total": 81,
         "passed": 81,
@@ -103,9 +103,9 @@
       "description": "Playwright end-to-end user journeys",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 111946,
+      "duration_ms": 96982,
       "log_file": "logs/e2e.log",
-      "sha256": "4226f538c9e9569f82a31e4fefa300a01d78327057a22be922e217917b0cec3e",
+      "sha256": "72685e3393b37ef9e750f44a2ab7e4f00506b4e9b40db951e6fd88c5c2dfcf1b",
       "counts": {
         "total": 35,
         "passed": 35,
@@ -119,9 +119,9 @@
       "description": "Computed contrast, touch, focus and scaling a11y checks",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 39759,
+      "duration_ms": 35236,
       "log_file": "logs/accessibility.log",
-      "sha256": "8d9b3cfb3353d0c80f54cd64b1fba7db2871c41d817ce67642f3ff0c590fae17",
+      "sha256": "8b44df341a877309b2a85a47de2708f81901a94e67255f6037e4bf142564d8bb",
       "counts": {
         "total": 7,
         "passed": 7,
@@ -135,7 +135,7 @@
       "description": "Read-only migration head drift comparison",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 4439,
+      "duration_ms": 4316,
       "log_file": "logs/migration.log",
       "sha256": "317bd4aff841fef704339323bab7e44e394676c0b9a9a52f9b8a854e2ea37ece",
       "counts": {
@@ -151,7 +151,7 @@
       "description": "Documented environment variable reads check",
       "status": "PASS",
       "exit_code": 0,
-      "duration_ms": 491,
+      "duration_ms": 468,
       "log_file": "logs/env_security.log",
       "sha256": "dc09c146e97f21f491c394124516de783c0eb8090f9d01e6b5ad48e563bf9f62",
       "counts": {
@@ -165,6 +165,6 @@
   },
   "overall_status": "PASS",
   "artifacts": {
-    "manifest_sha256": "7de280ababaad2afa0e7a2216540b2cf55f993e25b44330c84e599d4769bfc1c"
+    "manifest_sha256": "2f7339a378ab088779e47780181d0b937ac838150a089b12d029bb2cc6bb8fbb"
   }
 }
