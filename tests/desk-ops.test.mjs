@@ -1,5 +1,6 @@
 /**
- * Desk scan / assign / change-day retry + idempotency behaviour (#32).
+ * Desk scan / assign / change-day retry + idempotency behaviour (#32, #60).
+ * Transient failures use structured SQLSTATE / transport shapes — not English regex alone.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -11,18 +12,28 @@ import {
 import { RETRY_EXHAUSTED_COPY } from "../src/lib/with-retries.ts";
 
 const sleep = async () => {};
-const mapRpcError = (m) => m || "mapped";
 
-test("lookup retries twice then surfaces exhausted copy", async () => {
+/** Representative connection-class error (retryable). */
+const TRANSIENT_CONN = {
+  code: "08006",
+  message: "connection_failure",
+};
+
+/** Statement timeout (retryable). */
+const TRANSIENT_TIMEOUT = {
+  code: "57014",
+  message: "canceling statement due to statement timeout",
+};
+
+test("lookup retries twice on 08006 then surfaces exhausted copy", async () => {
   let calls = 0;
   const sleeps = [];
   const result = await lookupPatientScanWithRetries({
     patientId: "p1",
     rpc: async () => {
       calls += 1;
-      return { data: null, error: { message: "network" } };
+      return { data: null, error: { ...TRANSIENT_CONN } };
     },
-    mapRpcError,
     sleep: async (ms) => {
       sleeps.push(ms);
     },
@@ -34,13 +45,18 @@ test("lookup retries twice then surfaces exhausted copy", async () => {
   assert.equal(result.error, RETRY_EXHAUSTED_COPY.lookup);
 });
 
-test("lookup success on second attempt", async () => {
+test("lookup success on second attempt after serialization_failure", async () => {
   let calls = 0;
   const result = await lookupPatientScanWithRetries({
     regNo: 12,
     rpc: async () => {
       calls += 1;
-      if (calls === 1) return { data: null, error: { message: "blip" } };
+      if (calls === 1) {
+        return {
+          data: null,
+          error: { code: "40001", message: "could not serialize access" },
+        };
+      }
       return {
         data: [
           {
@@ -56,7 +72,6 @@ test("lookup success on second attempt", async () => {
         error: null,
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 2);
@@ -73,7 +88,6 @@ test("lookup patient-not-found is not retried", async () => {
       calls += 1;
       return { data: [], error: null };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 1);
@@ -82,16 +96,38 @@ test("lookup patient-not-found is not retried", async () => {
   assert.equal(result.notFound, true);
 });
 
-test("assign retries twice then surfaces exhausted copy", async () => {
+test("lookup permission denial 42501 is not retried", async () => {
+  let calls = 0;
+  const result = await lookupPatientScanWithRetries({
+    patientId: "p1",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: {
+          code: "42501",
+          message: "permission denied for table patients",
+        },
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /permission/i);
+  assert.doesNotMatch(result.error, /patients|42501|internet/i);
+});
+
+test("assign retries twice on timeout then surfaces exhausted copy", async () => {
   let calls = 0;
   const result = await assignPatientDoctorWithRetries({
     patientId: "p1",
     doctorId: "doc-a",
     rpc: async () => {
       calls += 1;
-      return { data: null, error: { message: "timeout" } };
+      return { data: null, error: { ...TRANSIENT_TIMEOUT } };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 3);
@@ -110,9 +146,8 @@ test("assign keeps the same doctor id on every retry (no double-assign params)",
     rpc: async (_fn, args) => {
       calls += 1;
       doctorArgs.push(args.p_doctor_id);
-      return { data: null, error: { message: "network" } };
+      return { data: null, error: { ...TRANSIENT_CONN } };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 3);
@@ -129,7 +164,7 @@ test("assign already_seen after flaky first call is terminal success (no re-assi
     rpc: async (_fn, args) => {
       calls += 1;
       doctors.push(/** @type {string} */ (args.p_doctor_id));
-      if (calls === 1) return { data: null, error: { message: "timeout" } };
+      if (calls === 1) return { data: null, error: { ...TRANSIENT_TIMEOUT } };
       // Server: first call actually landed; second returns already_seen with original doctor.
       return {
         data: [
@@ -147,7 +182,6 @@ test("assign already_seen after flaky first call is terminal success (no re-assi
         error: null,
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 2);
@@ -181,7 +215,6 @@ test("assign doctor_required is not retried", async () => {
         error: null,
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 1);
@@ -213,7 +246,6 @@ test("assign check_in_required is not retried and uses worker copy", async () =>
         error: null,
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 1);
@@ -224,7 +256,7 @@ test("assign check_in_required is not retried and uses worker copy", async () =>
   assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
 });
 
-test("change-day retries twice then surfaces exhausted copy", async () => {
+test("change-day retries twice on thrown transport then surfaces exhausted copy", async () => {
   let calls = 0;
   const result = await changeCampDayWithRetries({
     patientId: "p1",
@@ -233,7 +265,6 @@ test("change-day retries twice then surfaces exhausted copy", async () => {
       calls += 1;
       throw new Error("Failed to fetch");
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 3);
@@ -242,7 +273,7 @@ test("change-day retries twice then surfaces exhausted copy", async () => {
   assert.equal(result.error, RETRY_EXHAUSTED_COPY.changeDay);
 });
 
-test("change-day business error (full) is not retried", async () => {
+test("change-day business error (day full P0001) is not retried", async () => {
   let calls = 0;
   const result = await changeCampDayWithRetries({
     patientId: "p1",
@@ -251,16 +282,42 @@ test("change-day business error (full) is not retried", async () => {
       calls += 1;
       return {
         data: null,
-        error: { message: "That day is full (40 seats taken)" },
+        error: {
+          code: "P0001",
+          message: "That day is full (40 seats taken)",
+        },
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 1);
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.match(result.error, /full/i);
+  assert.doesNotMatch(result.error, /internet|Failed to fetch|P0001/i);
+});
+
+test("change-day RLS denial is not retried", async () => {
+  let calls = 0;
+  const result = await changeCampDayWithRetries({
+    patientId: "p1",
+    newDayId: "d2",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: {
+          code: "42501",
+          message: "permission denied for function change_camp_day",
+        },
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /permission/i);
 });
 
 test("change-day success on second attempt preserves day id arg", async () => {
@@ -273,7 +330,7 @@ test("change-day success on second attempt preserves day id arg", async () => {
     rpc: async (_fn, args) => {
       calls += 1;
       dayIds.push(/** @type {string} */ (args.p_new_day_id));
-      if (calls === 1) return { data: null, error: { message: "network" } };
+      if (calls === 1) return { data: null, error: { ...TRANSIENT_CONN } };
       return {
         data: [
           {
@@ -287,10 +344,29 @@ test("change-day success on second attempt preserves day id arg", async () => {
         error: null,
       };
     },
-    mapRpcError,
     sleep,
   });
   assert.equal(calls, 2);
   assert.deepEqual(dayIds, ["day-target", "day-target"]);
   assert.equal(result.ok, true);
+});
+
+test("change-day unknown XX000 is terminal (not three internet retries)", async () => {
+  let calls = 0;
+  const result = await changeCampDayWithRetries({
+    patientId: "p1",
+    newDayId: "d2",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: { code: "XX000", message: "weird internal" },
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.doesNotMatch(result.error, /internet|weird internal/i);
 });

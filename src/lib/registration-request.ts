@@ -1,4 +1,7 @@
-import { publicRegistrationError } from "@/lib/public-error";
+import {
+  classifyOperationError,
+  type DbErrorLike,
+} from "@/lib/public-error";
 
 /**
  * Stable idempotency key for one registration attempt.
@@ -90,6 +93,25 @@ export function staffRegistrationRpcArgs(
   };
 }
 
+export type RegistrationRpcError = NonNullable<DbErrorLike> & {
+  message: string;
+};
+
+export type RegistrationSubmitResult = {
+  data: unknown;
+  error: string | null;
+  aadhaarDuplicateRegNo?: number | null;
+  likelyDuplicateRegNo?: number | null;
+  /**
+   * Explicit retry allow-list result from classifyOperationError (#60).
+   * Undefined only for success / misconfiguration (not retryable).
+   */
+  retryable?: boolean;
+  /** Structured code for logs (no PII). */
+  logCode?: string;
+  publicCategory?: string;
+};
+
 /**
  * Outbound registration call used by PatientForm.
  * Staff path only → RPC `register_patient_idempotent`.
@@ -103,13 +125,8 @@ export async function submitRegistrationOutbound(options: {
   rpc?: (
     fn: "register_patient_idempotent",
     args: ReturnType<typeof staffRegistrationRpcArgs>,
-  ) => Promise<{ data: unknown; error: { message: string } | null }>;
-}): Promise<{
-  data: unknown;
-  error: string | null;
-  aadhaarDuplicateRegNo?: number | null;
-  likelyDuplicateRegNo?: number | null;
-}> {
+  ) => Promise<{ data: unknown; error: RegistrationRpcError | null }>;
+}): Promise<RegistrationSubmitResult> {
   const { isStaff, attempt, staffFields, rpc } = options;
 
   if (!isStaff) {
@@ -118,39 +135,78 @@ export async function submitRegistrationOutbound(options: {
       error: "Registration is at the camp desk only.",
       aadhaarDuplicateRegNo: null,
       likelyDuplicateRegNo: null,
+      retryable: false,
     };
   }
 
   if (!staffFields || !rpc) {
-    return { data: null, error: "Staff registration is misconfigured." };
+    return {
+      data: null,
+      error: "Staff registration is misconfigured.",
+      retryable: false,
+    };
   }
   try {
     const result = await rpc(
       "register_patient_idempotent",
       staffRegistrationRpcArgs(attempt, staffFields),
     );
-    const errMsg = result.error?.message || null;
+    const err = result.error;
+    const errMsg = err?.message || null;
     const dup = parseAadhaarDuplicateError(errMsg);
     const soft = parseLikelyDuplicateError(errMsg);
-    // Keep AADHAAR_DUPLICATE / LIKELY_DUPLICATE raw so the form can offer actions;
-    // every other DB error is mapped to camp-worker copy (#31).
+
+    if (!errMsg) {
+      return {
+        data: result.data,
+        error: null,
+        aadhaarDuplicateRegNo: null,
+        likelyDuplicateRegNo: null,
+        retryable: false,
+      };
+    }
+
+    // Keep AADHAAR_DUPLICATE / LIKELY_DUPLICATE raw so the form can offer actions.
+    if (dup || soft) {
+      return {
+        data: result.data,
+        error: errMsg,
+        aadhaarDuplicateRegNo: dup?.regNo ?? null,
+        likelyDuplicateRegNo: soft?.regNo ?? null,
+        retryable: false,
+        logCode: err?.code || (dup ? "AADHAAR_DUPLICATE" : "LIKELY_DUPLICATE"),
+        publicCategory: "duplicate",
+      };
+    }
+
+    const classified = classifyOperationError(err, {
+      context: "staff-register.rpc",
+      fallback: "Registration failed. Try again or ask the desk.",
+    });
     return {
       data: result.data,
-      error: errMsg
-        ? dup || soft
-          ? errMsg
-          : publicRegistrationError(result.error, "staff-register.rpc")
-        : null,
-      aadhaarDuplicateRegNo: dup?.regNo ?? null,
-      likelyDuplicateRegNo: soft?.regNo ?? null,
-    };
-  } catch {
-    return {
-      data: null,
-      error:
-        "Registration service is unavailable. Check your connection and try again.",
+      error: classified.publicMessage,
       aadhaarDuplicateRegNo: null,
       likelyDuplicateRegNo: null,
+      retryable: classified.retryable,
+      logCode: classified.logCode,
+      publicCategory: classified.publicCategory,
+    };
+  } catch (thrown) {
+    const classified = classifyOperationError(thrown, {
+      context: "staff-register.transport",
+      transportFailure: true,
+      fallback:
+        "Registration service is unavailable. Check your connection and try again.",
+    });
+    return {
+      data: null,
+      error: classified.publicMessage,
+      aadhaarDuplicateRegNo: null,
+      likelyDuplicateRegNo: null,
+      retryable: true,
+      logCode: classified.logCode,
+      publicCategory: "transient",
     };
   }
 }

@@ -302,7 +302,14 @@ export function PatientForm({
         const result = await supabase.rpc(fn, args);
         return {
           data: result.data,
-          error: result.error ? { message: result.error.message } : null,
+          error: result.error
+            ? {
+                message: result.error.message,
+                code: result.error.code,
+                details: result.error.details,
+                hint: result.error.hint,
+              }
+            : null,
         };
       },
       openPrint: (patientId) => {

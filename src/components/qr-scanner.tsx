@@ -195,17 +195,18 @@ export function QrScanner({
           const result = await supabase.rpc(fn, args);
           return {
             data: result.data,
-            error: result.error ? { message: result.error.message } : null,
+            error: result.error
+              ? {
+                  message: result.error.message,
+                  code: result.error.code,
+                  details: result.error.details,
+                  hint: result.error.hint,
+                }
+              : null,
           };
         },
-        mapRpcError: (message) =>
-          mapDbError(
-            { message },
-            {
-              context: "qr-scanner.assign",
-              fallback: "Could not assign doctor. Try again.",
-            },
-          ),
+        errorContext: "qr-scanner.assign",
+        errorFallback: "Could not assign doctor. Try again.",
       });
 
       if (!outcome.ok) {
@@ -311,17 +312,18 @@ export function QrScanner({
           const result = await supabase.rpc(fn, args);
           return {
             data: result.data,
-            error: result.error ? { message: result.error.message } : null,
+            error: result.error
+              ? {
+                  message: result.error.message,
+                  code: result.error.code,
+                  details: result.error.details,
+                  hint: result.error.hint,
+                }
+              : null,
           };
         },
-        mapRpcError: (message) =>
-          mapDbError(
-            { message },
-            {
-              context: "qr-scanner.lookup",
-              fallback: "Could not look up this patient. Try again.",
-            },
-          ),
+        errorContext: "qr-scanner.lookup",
+        errorFallback: "Could not look up this patient. Try again.",
       });
 
       if (!outcome.ok) {

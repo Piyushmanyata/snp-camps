@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { changeCampDayWithRetries } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Select, SuccessBox } from "@/components/ui";
-import { mapDbError } from "@/lib/public-error";
 
 export function ChangeDay({
   patientId,
@@ -83,17 +82,18 @@ export function ChangeDay({
         const result = await supabase.rpc(fn, args);
         return {
           data: result.data,
-          error: result.error ? { message: result.error.message } : null,
+          error: result.error
+            ? {
+                message: result.error.message,
+                code: result.error.code,
+                details: result.error.details,
+                hint: result.error.hint,
+              }
+            : null,
         };
       },
-      mapRpcError: (message) =>
-        mapDbError(
-          { message },
-          {
-            context: "change-day.rpc",
-            fallback: "Could not change the day. Try again.",
-          },
-        ),
+      errorContext: "change-day.rpc",
+      errorFallback: "Could not change the day. Try again.",
     });
     if (!outcome.ok) {
       setError(outcome.error);

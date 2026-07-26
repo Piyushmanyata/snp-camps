@@ -1,5 +1,6 @@
 /**
- * Desk register → print → reset flow and retry semantics (#47).
+ * Desk register → print → reset flow and retry semantics (#47, #60).
+ * Only explicit transient classifications are auto-retried.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -23,12 +24,13 @@ const staffFields = {
   campDayId: "22222222-2222-4222-8222-222222222222",
 };
 
-test("aadhaar and likely duplicates are not retryable; network errors are", () => {
+test("aadhaar/likely duplicates and terminal errors are not retryable; transport is", () => {
   assert.equal(
     isRetryableRegistrationError({
       data: null,
       error: "AADHAAR_DUPLICATE:reg=9",
       aadhaarDuplicateRegNo: 9,
+      retryable: false,
     }),
     false,
   );
@@ -37,15 +39,35 @@ test("aadhaar and likely duplicates are not retryable; network errors are", () =
       data: null,
       error: "LIKELY_DUPLICATE:reg=12",
       likelyDuplicateRegNo: 12,
+      retryable: false,
     }),
     false,
   );
   assert.equal(
     isRetryableRegistrationError({
       data: null,
-      error: "network blip",
+      error: "That camp day is full. Choose another day.",
+      retryable: false,
+      publicCategory: "capacity",
+    }),
+    false,
+  );
+  assert.equal(
+    isRetryableRegistrationError({
+      data: null,
+      error: "Registration service is unavailable. Check your connection and try again.",
+      retryable: true,
+      publicCategory: "transient",
     }),
     true,
+  );
+  // Legacy string-only results without retryable flag must NOT retry (#60 allow-list).
+  assert.equal(
+    isRetryableRegistrationError({
+      data: null,
+      error: "network blip",
+    }),
+    false,
   );
   assert.equal(
     isRetryableRegistrationError({ data: {}, error: null }),
@@ -53,13 +75,18 @@ test("aadhaar and likely duplicates are not retryable; network errors are", () =
   );
 });
 
-test("retries twice then surfaces the plain failure sentence", async () => {
+test("retries twice on retryable=true then surfaces the plain failure sentence", async () => {
   let calls = 0;
   const sleeps = [];
   const result = await withRegistrationRetries(
     async () => {
       calls += 1;
-      return { data: null, error: "temporary" };
+      return {
+        data: null,
+        error: "temp",
+        retryable: true,
+        publicCategory: "transient",
+      };
     },
     {
       sleep: async (ms) => {
@@ -80,8 +107,14 @@ test("success on second attempt stops retries", async () => {
   const result = await withRegistrationRetries(
     async () => {
       calls += 1;
-      if (calls === 1) return { data: null, error: "blip" };
-      return { data: [{ id: "p1" }], error: null };
+      if (calls === 1) {
+        return {
+          data: null,
+          error: "blip",
+          retryable: true,
+        };
+      }
+      return { data: [{ id: "p1" }], error: null, retryable: false };
     },
     { sleep: async () => {} },
   );
@@ -98,6 +131,7 @@ test("aadhaar conflict is not retried", async () => {
         data: null,
         error: "AADHAAR_DUPLICATE:reg=12",
         aadhaarDuplicateRegNo: 12,
+        retryable: false,
       };
     },
     { sleep: async () => {} },
@@ -115,12 +149,101 @@ test("likely-duplicate warning is not retried", async () => {
         data: null,
         error: "LIKELY_DUPLICATE:reg=214",
         likelyDuplicateRegNo: 214,
+        retryable: false,
       };
     },
     { sleep: async () => {} },
   );
   assert.equal(calls, 1);
   assert.equal(result.likelyDuplicateRegNo, 214);
+});
+
+test("day-full structured error is not retried and keeps capacity copy", async () => {
+  let calls = 0;
+  const attempt = createRegistrationAttempt(
+    () => "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  );
+  const outcome = await runDeskRegisterAndPrint({
+    attempt,
+    staffFields,
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: {
+          code: "P0001",
+          message: "This day is full (40 seats). Choose another day.",
+        },
+      };
+    },
+    openPrint: () => {},
+    resetForm: () => {},
+    rotateAttempt: () => {},
+    sleep: async () => {},
+  });
+  assert.equal(calls, 1);
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.match(outcome.error, /full|another day/i);
+  assert.doesNotMatch(outcome.error, /internet|Could not save/i);
+});
+
+test("permission denial is not retried", async () => {
+  let calls = 0;
+  const attempt = createRegistrationAttempt(
+    () => "eeeeeeee-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  );
+  const outcome = await runDeskRegisterAndPrint({
+    attempt,
+    staffFields,
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: {
+          code: "42501",
+          message: "permission denied for function register_patient_idempotent",
+        },
+      };
+    },
+    openPrint: () => {},
+    resetForm: () => {},
+    rotateAttempt: () => {},
+    sleep: async () => {},
+  });
+  assert.equal(calls, 1);
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.match(outcome.error, /permission/i);
+});
+
+test("connection-class error is retried then exhausted", async () => {
+  let calls = 0;
+  const attempt = createRegistrationAttempt(
+    () => "ffffffff-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  );
+  const outcome = await runDeskRegisterAndPrint({
+    attempt,
+    staffFields,
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: { code: "08006", message: "connection_failure" },
+      };
+    },
+    openPrint: () => {},
+    resetForm: () => {},
+    rotateAttempt: () => {},
+    sleep: async () => {},
+  });
+  assert.equal(calls, 3);
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.equal(
+    outcome.error,
+    "Could not save. Check the internet and press Try Again.",
+  );
 });
 
 test("runDeskRegisterAndPrint surfaces likelyDuplicateRegNo", async () => {
@@ -156,7 +279,10 @@ test("register-then-print: same request id on retries; print then reset order", 
       rpcCalls += 1;
       requestIds.push(args.p_request_id);
       if (rpcCalls < 2) {
-        return { data: null, error: { message: "network" } };
+        return {
+          data: null,
+          error: { code: "08006", message: "connection_failure" },
+        };
       }
       return {
         data: [
@@ -201,7 +327,10 @@ test("failed register never opens print or resets", async () => {
   const outcome = await runDeskRegisterAndPrint({
     attempt,
     staffFields,
-    rpc: async () => ({ data: null, error: { message: "down" } }),
+    rpc: async () => ({
+      data: null,
+      error: { code: "08006", message: "connection_failure" },
+    }),
     openPrint: () => events.push("print"),
     resetForm: () => events.push("reset"),
     rotateAttempt: () => events.push("rotate"),

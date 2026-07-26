@@ -1,6 +1,9 @@
 import type { RegistrationAttempt } from "@/lib/registration-request";
-import { submitRegistrationOutbound } from "@/lib/registration-request";
-import type { StaffRegistrationFields } from "@/lib/registration-request";
+import {
+  submitRegistrationOutbound,
+  type RegistrationSubmitResult,
+  type StaffRegistrationFields,
+} from "@/lib/registration-request";
 import {
   RETRY_EXHAUSTED_COPY,
   withRetries,
@@ -20,23 +23,22 @@ export type DeskRegisterRow = {
   queue_status?: "registered" | "waiting" | "seen";
 };
 
-export type DeskRegisterSubmitResult = {
-  data: unknown;
-  error: string | null;
-  aadhaarDuplicateRegNo?: number | null;
-  likelyDuplicateRegNo?: number | null;
-};
+export type DeskRegisterSubmitResult = RegistrationSubmitResult;
 
 export type { RetryDelays };
 
-/** Transient network/service failures are retried; duplicate warnings are not. */
+/**
+ * Transient network/DB failures only (#60).
+ * Duplicates and all terminal business/permission/validation errors are not retried.
+ */
 export function isRetryableRegistrationError(
   result: DeskRegisterSubmitResult,
 ): boolean {
   if (!result.error) return false;
   if (result.aadhaarDuplicateRegNo != null) return false;
   if (result.likelyDuplicateRegNo != null) return false;
-  return true;
+  // Explicit allow-list from classifyOperationError — never infer from English copy.
+  return result.retryable === true;
 }
 
 /**
@@ -57,6 +59,7 @@ export async function withRegistrationRetries(
     mapExhausted: (last) => ({
       ...last,
       error: RETRY_EXHAUSTED_COPY.register,
+      retryable: false,
     }),
   });
 }

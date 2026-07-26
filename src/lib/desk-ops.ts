@@ -1,5 +1,5 @@
 /**
- * Desk ops with shared quiet retry (#32).
+ * Desk ops with shared quiet retry (#32, #60).
  *
  * Idempotency guarantees (safe to auto-retry):
  * - lookup_patient_scan — read-only; COMMENT ON FUNCTION: "No side effects."
@@ -8,15 +8,26 @@
  *   re-assign or change seen_by). Success-after-timeout surfaces as already_seen.
  * - change_camp_day — patient + target day FOR UPDATE; same-day early return;
  *   seat count checked under the day lock before UPDATE.
+ *
+ * Retry uses classifyOperationError allow-list only (transient transport / DB).
+ * Terminal business, permission, validation, and capacity results are not retried.
  */
 
+import {
+  classifyOperationError,
+  type DbErrorLike,
+} from "@/lib/public-error";
 import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 import { RETRY_EXHAUSTED_COPY, withRetries } from "@/lib/with-retries";
+
+export type DeskRpcError = NonNullable<DbErrorLike> & {
+  message: string;
+};
 
 export type DeskRpc = (
   fn: string,
   args: Record<string, unknown>,
-) => Promise<{ data: unknown; error: { message: string } | null }>;
+) => Promise<{ data: unknown; error: DeskRpcError | null }>;
 
 export type LookupRow = {
   id: string;
@@ -56,13 +67,6 @@ function firstRow<T>(data: unknown): T | null {
   return (Array.isArray(data) ? data[0] : data) as T;
 }
 
-/** Business outcomes that must not burn auto-retries. */
-function isNonTransientRpcMessage(message: string): boolean {
-  return /full|Cannot change|no longer active|Not allowed|does not belong|Day not found|Patient not found|Invalid or disabled|inactive camp|Unsupported|active staff|Provide patient/i.test(
-    message,
-  );
-}
-
 async function withTransientSteps<T>(
   step: () => Promise<Step<T>>,
   exhausted: T,
@@ -76,12 +80,31 @@ async function withTransientSteps<T>(
   return last.done ? last.value : exhausted;
 }
 
+/** Map a structured RPC error; terminal vs retry decided by classifier (#60). */
+function classifyRpcFailure(
+  error: DeskRpcError,
+  context: string,
+  fallback: string,
+): { retryable: boolean; publicMessage: string } {
+  const classified = classifyOperationError(error, {
+    context,
+    fallback,
+  });
+  return {
+    retryable: classified.retryable,
+    publicMessage: classified.publicMessage,
+  };
+}
+
 /** QR / reg scan lookup — read-only RPC. */
 export async function lookupPatientScanWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
   rpc: DeskRpc;
-  mapRpcError: (message: string) => string;
+  /** @deprecated Prefer errorContext/errorFallback. */
+  mapRpcError?: (message: string) => string;
+  errorContext?: string;
+  errorFallback?: string;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
   | { ok: true; row: LookupRow }
@@ -91,6 +114,10 @@ export async function lookupPatientScanWithRetries(options: {
     | { ok: true; row: LookupRow }
     | { ok: false; error: string; notFound?: boolean };
 
+  const context = options.errorContext ?? "desk-ops.lookup";
+  const fallback =
+    options.errorFallback ?? "Could not look up this patient. Try again.";
+
   return withTransientSteps<Out>(
     async () => {
       try {
@@ -99,13 +126,12 @@ export async function lookupPatientScanWithRetries(options: {
           p_reg_no: options.regNo ?? null,
         });
         if (error) {
-          if (isNonTransientRpcMessage(error.message)) {
-            return {
-              done: true,
-              value: { ok: false, error: options.mapRpcError(error.message) },
-            };
-          }
-          return { done: false };
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
         }
         const row = firstRow<LookupRow>(data);
         if (!row) {
@@ -119,8 +145,18 @@ export async function lookupPatientScanWithRetries(options: {
           };
         }
         return { done: true, value: { ok: true, row } };
-      } catch {
-        return { done: false };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
       }
     },
     { ok: false, error: RETRY_EXHAUSTED_COPY.lookup },
@@ -143,7 +179,9 @@ export async function assignPatientDoctorWithRetries(options: {
   /** Fixed for all retries — never rotate doctor mid-retry. */
   doctorId: string | null;
   rpc: DeskRpc;
-  mapRpcError: (message: string) => string;
+  mapRpcError?: (message: string) => string;
+  errorContext?: string;
+  errorFallback?: string;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
   | { ok: true; row: AssignRow }
@@ -164,6 +202,9 @@ export async function assignPatientDoctorWithRetries(options: {
       };
 
   const doctorId = options.doctorId;
+  const context = options.errorContext ?? "desk-ops.assign";
+  const fallback =
+    options.errorFallback ?? "Could not assign this patient. Try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -174,17 +215,27 @@ export async function assignPatientDoctorWithRetries(options: {
           p_doctor_id: doctorId,
         });
         if (error) {
-          if (isNonTransientRpcMessage(error.message)) {
-            return {
-              done: true,
-              value: { ok: false, error: options.mapRpcError(error.message) },
-            };
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) {
+            return { done: false };
           }
-          return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
         }
         const row = firstRow<AssignRow>(data);
         if (!row) {
-          return { done: false };
+          // Empty success body is ambiguous — treat as transient only if no row
+          // at all after a completed RPC is rare; do not burn retries on null
+          // business outcomes. Prefer terminal safe copy.
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Could not assign this patient. Refresh and try again.",
+            },
+          };
         }
         if (row.error_code === "doctor_required") {
           return {
@@ -222,8 +273,18 @@ export async function assignPatientDoctorWithRetries(options: {
               : "Doctor assignment did not complete. No success was recorded.",
           },
         };
-      } catch {
-        return { done: false };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
       }
     },
     { ok: false, error: RETRY_EXHAUSTED_COPY.assign },
@@ -236,12 +297,18 @@ export async function changeCampDayWithRetries(options: {
   patientId: string;
   newDayId: string;
   rpc: DeskRpc;
-  mapRpcError: (message: string) => string;
+  mapRpcError?: (message: string) => string;
+  errorContext?: string;
+  errorFallback?: string;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
   { ok: true; row: ChangeDayRow } | { ok: false; error: string }
 > {
   type Out = { ok: true; row: ChangeDayRow } | { ok: false; error: string };
+
+  const context = options.errorContext ?? "desk-ops.change-day";
+  const fallback =
+    options.errorFallback ?? "Could not change the day. Try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -251,21 +318,39 @@ export async function changeCampDayWithRetries(options: {
           p_new_day_id: options.newDayId,
         });
         if (error) {
-          if (isNonTransientRpcMessage(error.message)) {
-            return {
-              done: true,
-              value: { ok: false, error: options.mapRpcError(error.message) },
-            };
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) {
+            return { done: false };
           }
-          return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
         }
         const row = firstRow<ChangeDayRow>(data);
         if (!row?.camp_day_id) {
-          return { done: false };
+          // Missing row after successful RPC is not a transport failure.
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Could not change the day. Refresh and try again.",
+            },
+          };
         }
         return { done: true, value: { ok: true, row } };
-      } catch {
-        return { done: false };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
       }
     },
     { ok: false, error: RETRY_EXHAUSTED_COPY.changeDay },

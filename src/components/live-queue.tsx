@@ -15,7 +15,6 @@ import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
 import { Toast } from "@/components/toast";
 import type { DoctorOption } from "@/lib/types";
 import { assignPatientDoctorWithRetries } from "@/lib/desk-ops";
-import { mapDbError } from "@/lib/public-error";
 
 export type LiveQueuePatient = {
   id: string;
@@ -76,17 +75,18 @@ export function LiveQueue({
         const result = await supabase.rpc(fn, args);
         return {
           data: result.data,
-          error: result.error ? { message: result.error.message } : null,
+          error: result.error
+            ? {
+                message: result.error.message,
+                code: result.error.code,
+                details: result.error.details,
+                hint: result.error.hint,
+              }
+            : null,
         };
       },
-      mapRpcError: (message) =>
-        mapDbError(
-          { message },
-          {
-            context: "live-queue.assign",
-            fallback: "Could not assign this patient. Try again.",
-          },
-        ),
+      errorContext: "live-queue.assign",
+      errorFallback: "Could not assign this patient. Try again.",
     });
 
     if (!outcome.ok) {
