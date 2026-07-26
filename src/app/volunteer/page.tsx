@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -28,36 +27,9 @@ import {
 import { mapDbError } from "@/lib/public-error";
 import { VolunteerKpisSection } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
-
-const SeatBoard = dynamic(
-  () =>
-    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
-  },
-);
-
-const CheckIn = dynamic(
-  () =>
-    import("@/components/check-in").then((m) => ({ default: m.CheckIn })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">Loading check-in…</p>
-    ),
-  },
-);
-
-const AdminStaff = dynamic(
-  () =>
-    import("@/components/admin-staff").then((m) => ({
-      default: m.AdminStaff,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">Loading volunteers…</p>
-    ),
-  },
-);
+import { SeatBoard } from "@/components/seat-board";
+import { CheckIn } from "@/components/check-in";
+import { AdminStaff } from "@/components/admin-staff";
 
 export default async function VolunteerPage() {
   const { userId, profile } = await getSessionProfile();

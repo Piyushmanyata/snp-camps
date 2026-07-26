@@ -1,0 +1,8 @@
+=== Migration head comparison (read-only) ===
+repo_file_count: 22
+repo_head:       20260726220000
+contract_head:   20260726220000
+OK: contract head matches repository head
+local_applied:   20260726220000
+OK: local applied head matches repository head
+=== end (no mutations performed) ===

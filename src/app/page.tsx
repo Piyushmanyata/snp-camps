@@ -1,12 +1,8 @@
 import { redirect } from "next/navigation";
-import dynamic from "next/dynamic";
 import { getSessionProfile } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { ActionCard, Card, StepList } from "@/components/ui";
-
-const SeatBoard = dynamic(() =>
-  import("@/components/seat-board").then((mod) => mod.SeatBoard),
-);
+import { SeatBoard } from "@/components/seat-board";
 
 export default async function HomePage() {
   const [session, snapshot] = await Promise.all([

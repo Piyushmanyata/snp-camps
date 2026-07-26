@@ -1,0 +1,20 @@
+RED migration-discovery-fail: {
+  "status": 200,
+  "body": {
+    "ok": true,
+    "checks": {
+      "database": true
+    },
+    "migrationVersion": null
+  }
+}
+RED head-mismatch-still-200: {
+  "status": 200,
+  "body": {
+    "ok": true,
+    "checks": {
+      "database": true
+    },
+    "migrationVersion": "old-head-999"
+  }
+}

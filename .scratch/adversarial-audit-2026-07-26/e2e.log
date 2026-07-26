@@ -1,0 +1,31 @@
+
+> snp-camps@0.1.0 test:e2e
+> node e2e/run-local.mjs
+
+
+Running 14 tests using 1 worker
+
+[1/14] [chromium] › e2e\csp.spec.ts:7:5 › served Content-Security-Policy has nonce, no script unsafe-inline, hydrates cleanly
+[2/14] [chromium] › e2e\print-passcode.spec.ts:56:5 › desk slip has no passcode; A4 multi-up and thermal58 render
+
+
+
+[3/14] [chromium] › e2e\roles.spec.ts:54:5 › public entry points and protected-route redirects
+
+
+
+
+[4/14] [chromium] › e2e\roles.spec.ts:88:5 › credential forms never put secrets in the URL before hydration
+[5/14] [chromium] › e2e\roles.spec.ts:106:5 › admin can sign in, inspect the patient desk, and sign out
+
+[6/14] [chromium] › e2e\roles.spec.ts:128:5 › volunteer can sign in and safely review a patient
+[7/14] [chromium] › e2e\roles.spec.ts:148:5 › volunteer doctor picker is populated (not silently empty)
+[8/14] [chromium] › e2e\roles.spec.ts:183:5 › admin doctor create invalidates volunteer picker without hard reload
+[9/14] [chromium] › e2e\roles.spec.ts:256:5 › doctor can sign in and review without mutating patient status
+[10/14] [chromium] › e2e\roles.spec.ts:278:5 › staff-scan QR never logs a public visitor in
+
+[11/14] [chromium] › e2e\roles.spec.ts:288:5 › invalid QR path shows clear help
+[12/14] [chromium] › e2e\roles.spec.ts:294:5 › staff deep-link scan opens lookup-first desk
+[13/14] [chromium] › e2e\roles.spec.ts:315:5 › garbage reg/QR text fails closed without crashing desk
+[14/14] [chromium] › e2e\roles.spec.ts:337:5 › doctor mark seen returns to scanner with no dismiss screen
+  14 passed (1.0m)

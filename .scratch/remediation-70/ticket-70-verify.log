@@ -1,0 +1,494 @@
+
+> snp-camps@0.1.0 verify
+> npm run lint && npm test && npm run build && npm run check:js-budget
+
+
+> snp-camps@0.1.0 lint
+> eslint
+
+
+> snp-camps@0.1.0 test
+> node --no-warnings --import ./tests/route-loader.mjs --test --test-concurrency=1 tests/*.test.mjs
+
+Γ£ö touch-min is 48px (3rem) (0.7575ms)
+Γ£ö focus-visible ring and prefers-reduced-motion stay on (0.1891ms)
+Γ£ö skip link + field Input errors use alert role (0.1792ms)
+Γ£ö shared Button/Input targets are ΓëÑ48px (min-h-12 or 3.25rem) (0.1091ms)
+Γ£ö palette pairs meet AA normal text (ΓëÑ4.5:1) for body/labels (0.4818ms)
+Γ£ö duplicate Aadhaar last-4 + name raises mapped message with reg no (71.9478ms)
+Γ£ö staff override inserts second row and records who and when (112.3017ms)
+Γ£ö service_role cannot pass aadhaar override (27.8721ms)
+Γ£ö rejects unknown role with 400 before database access (4.0414ms)
+Γ£ö doctor: create provisions profile and invalidates doctors-list (2.6119ms)
+Γ£ö doctor: reset password returns temporary password and invalidates cache (1.2567ms)
+Γ£ö doctor: deactivate sets disabled_at, bans sign-in, invalidates cache (0.9353ms)
+Γ£ö doctor: reactivate clears disabled_at and invalidates cache (0.8449ms)
+Γ£ö volunteer: create provisions profile and invalidates doctors-list (0.6394ms)
+Γ£ö volunteer: reset password returns temporary password and invalidates cache (0.403ms)
+Γ£ö volunteer: deactivate sets disabled_at, bans sign-in, invalidates cache (0.9979ms)
+Γ£ö volunteer: reactivate clears disabled_at and invalidates cache (0.4272ms)
+Γ£ö admin cannot deactivate their own account (0.4777ms)
+Γ£ö GET list returns staff rows for the path role (0.5043ms)
+Γ£ö GET test-sms requires admin and reports configuration (3.9632ms)
+Γ£ö POST test-sms rejects unconfigured provider (1.6693ms)
+Γ£ö doctor assign of registered returns check_in_required and leaves row unchanged (127.4776ms)
+Γ£ö volunteer assign of registered returns check_in_required (39.75ms)
+Γ£ö waiting patient transitions to seen once and preserves check-in fields (45.0655ms)
+Γ£ö repeat assign on seen is terminal and never reassigns doctor (81.6586ms)
+Γ£ö concurrent assign cannot produce different doctors or skip waiting rule (104.4733ms)
+Γ£ö Realtime patient subscription modules are gone (1.0669ms)
+Γ£ö src has no postgres_changes or supabase channel subscribe for desks (9.8534ms)
+Γ£ö public/register SeatBoard call sites never pass live (0.4608ms)
+Γ£ö staff desks enable live seat board or live bridge (0.3693ms)
+Γ£ö #50 doctor station marks seen without confirm dialog copy (0.3859ms)
+Γ£ö #57 doctor registered review has no Mark seen; check-in instruction present (0.3369ms)
+Γ£ö #58 scanner uses camera session + decode orchestrator generation guards (0.267ms)
+Γ£ö SeatBoard live defaults false; staff path uses shared desk owner (0.3475ms)
+Γ£ö staff queue/seat use shared camp desk live owner (0.3934ms)
+Γ£ö #56 continuous ~20s poll is the staff freshness owner (0.2555ms)
+Γ£ö doctor bridge polls continuously without Realtime (0.2558ms)
+Γ£ö #56 no staff copy instructs manual-only refresh on live desks (0.3078ms)
+Γ£ö #26 no unstable_cache in src/ (7.5498ms)
+Γ£ö #26 doctor list uses use cache + doctors-list tag (0.2813ms)
+Γ£ö #26 active camp snapshot uses use cache + tag (0.2425ms)
+Γ£ö out-of-order: only latest generation applies (149.7578ms)
+Γ£ö two subscribers share one owner and one in-flight fetch (1.1034ms)
+Γ£ö pending removals are id-keyed and independent (29.3435ms)
+Γ£ö failed refresh preserves rows and marks stale-error (63.044ms)
+Γ£ö pre-reg stays registered and is excluded from waiting queue (82.5201ms)
+Γ£ö check_in is idempotent for waiting and blocks seen (257.862ms)
+Γ£ö queue order is by check-in time not registration time (92.7183ms)
+Γ£ö name search returns only registered for active camp (57.7899ms)
+Γ£ö Aadhaar helpers normalize without retaining extra digits (0.8154ms)
+Γ£ö Aadhaar checksum rejects malformed and repeated values (0.2076ms)
+Γ£ö gender normalization accepts common provider values (0.1195ms)
+Γ£ö QR parser accepts staff-scan identifiers only (0.6176ms)
+Γ£ö QR parser handles noisy camera reads and length bounds (0.2294ms)
+Γ£ö isPatientUuid and resolveOrigin validate inputs (0.1384ms)
+Γ£ö Staff excludes doctor; Camp crew includes all three desk roles (0.2008ms)
+Γ£ö production CSP script-src uses nonce without unsafe-inline (0.4223ms)
+Γ£ö registration number parser rejects overflow and malformed values (0.1805ms)
+Γ£ö password policy matches Supabase Auth minimum length (0.1936ms)
+Γ£ö patient URLs are staff-scan canonical and staff passwords avoid ambiguous characters (0.4502ms)
+Γ£ö sensitive provider URLs require a secure transport (0.1974ms)
+Γ£ö admin bootstrap sends its service key only to the exact Supabase project (0.4253ms)
+Γ£ö rate limits enforce both client IP and supplied subject (15.9308ms)
+Γ£ö rate limits block IP burst and subject rotation independently (0.9595ms)
+Γ£ö notification phone normalization accepts common Indian formats (0.1959ms)
+Γ£ö only a completed, error-free doctor assignment is successful (0.1311ms)
+Γ£ö queue labels and tones map known statuses (0.0922ms)
+[reminder-sms] job done {
+  tomorrow: '2026-07-27',
+  considered: 0,
+  sent: 0,
+  skipped: 0,
+  failed: 0,
+  ambiguous: 0,
+  ok: true
+}
+[reminder-sms] list failed relation missing
+[sms-failure] {
+  template: 'reminder',
+  detail: 'relation missing',
+  phoneLast4: undefined
+}
+Γ£ö cron rejects unauthenticated calls (3.8607ms)
+Γ£ö cron with valid secret runs job (empty candidates) (2.795ms)
+Γ£ö cron list failure returns non-2xx and ok:false (1.2464ms)
+DESK_LIVE_PAYLOAD_100_BYTES 12314
+Γ£ö 100-waiting desk-live payload stays small (closing evidence) (1.3187ms)
+Γ£ö desk-live route source never loads doctors or staff KPIs (0.4293ms)
+Γ£ö GET /api/desk/live rejects unauthenticated and non-crew (3.0755ms)
+Γ£ö GET /api/desk/live requires campId UUID (0.7234ms)
+Γ£ö lookup retries twice then surfaces exhausted copy (1.7798ms)
+Γ£ö lookup success on second attempt (0.2739ms)
+Γ£ö lookup patient-not-found is not retried (0.1749ms)
+Γ£ö assign retries twice then surfaces exhausted copy (0.3299ms)
+Γ£ö assign keeps the same doctor id on every retry (no double-assign params) (0.2735ms)
+Γ£ö assign already_seen after flaky first call is terminal success (no re-assign) (0.2295ms)
+Γ£ö assign doctor_required is not retried (0.1862ms)
+Γ£ö assign check_in_required is not retried and uses worker copy (0.3948ms)
+Γ£ö change-day retries twice then surfaces exhausted copy (0.3545ms)
+Γ£ö change-day business error (full) is not retried (0.3257ms)
+Γ£ö change-day success on second attempt preserves day id arg (0.2119ms)
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'network',
+  details: undefined,
+  hint: undefined
+}
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'down',
+  details: undefined,
+  hint: undefined
+}
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'down',
+  details: undefined,
+  hint: undefined
+}
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'down',
+  details: undefined,
+  hint: undefined
+}
+Γ£ö aadhaar and likely duplicates are not retryable; network errors are (0.8294ms)
+Γ£ö retries twice then surfaces the plain failure sentence (0.8215ms)
+Γ£ö success on second attempt stops retries (0.1786ms)
+Γ£ö aadhaar conflict is not retried (0.1459ms)
+Γ£ö likely-duplicate warning is not retried (0.1601ms)
+Γ£ö runDeskRegisterAndPrint surfaces likelyDuplicateRegNo (0.5188ms)
+Γ£ö register-then-print: same request id on retries; print then reset order (2.2166ms)
+Γ£ö failed register never opens print or resets (0.7693ms)
+Γ£ö default format is a4 multi-up (0.6397ms)
+Γ£ö parse accepts a4 and thermal58 (case-insensitive) (0.1251ms)
+Γ£ö isDeskSlipFormat is strict (0.1384ms)
+Γ£ö labels and storage key stay stable for station setting (0.1485ms)
+Γ£ö getDoctorsList: service-role present and query succeeds (1.1791ms)
+Γ£ö getDoctorsList: service-role present and query errors throws (0.5944ms)
+Γ£ö getDoctorsList: service-role key absent throws (0.2768ms)
+Γ£ö getDoctorsList: empty result is success (not an error) (0.448ms)
+Γ£ö formatCampDay anchors YYYY-MM-DD at Asia/Kolkata midnight (1.1217ms)
+Γ£ö year-boundary date: IST convention disagrees with UTC-midnight-in-LA (0.5302ms)
+Γ£ö formatCampDay is stable for a mid-year date (0.1643ms)
+Γ£ö malformed input is returned unchanged (0.1552ms)
+Γ£ö formatCampDaySms is compact GSM-7 (no weekday) (0.2995ms)
+Γ£ö types re-exports the same formatter (3.1875ms)
+Γ£ö old noon-local helper is still the shape we deleted (sanity) (0.2958ms)
+Γ£ö thirteenth readiness probe in the window is 429 (6.7034ms)
+Γ£ö liveness is never rate-limited across thirty requests (3.5652ms)
+Γ£ö ready-ok reports migrationVersion from the ledger (0.5791ms)
+Γ£ö ready-db-fail when a table-shape probe errors (503) (1.2521ms)
+Γ£ö no code path references app_database_contract (7.0476ms)
+Γ£ö checkBudgets fails when a route exceeds its gzipped budget (0.912ms)
+Γ£ö checkBudgets fails when a measured route has no budget entry (0.6457ms)
+Γ£ö checkBudgets passes when every route is within budget (0.12ms)
+Γ£ö budgetFromMeasured rounds up slightly above the measurement (0.1744ms)
+Γ£ö loadBudgets accepts flat map or { routes } wrapper (2.6958ms)
+Γ£ö main exits non-zero when budgets are deliberately too low (76.3032ms)
+Γ£ö two connections same name+age: one insert, other LIKELY_DUPLICATE (579.4642ms)
+Γ£ö warned request can override once with attribution (434.9112ms)
+Γ£ö shared family phone different person remains overridable (362.8418ms)
+Γ£ö different duplicate keys proceed without soft-lock serialization (640.0397ms)
+Γ£ö two-key inputs stress: no deadlock across concurrent desks (947.3515ms)
+Γ£ö phone-only concurrent race serializes like name+age (316.7276ms)
+Γ£ö name + age match in same camp raises LIKELY_DUPLICATE with reg no (137.5274ms)
+Γ£ö phone match in same camp raises LIKELY_DUPLICATE (224.0092ms)
+Γ£ö same name+age in a different camp does not warn (268.0384ms)
+Γ£ö likely override inserts second row and records who and when; not sticky (168.7046ms)
+Γ£ö check-in of soft-match reg creates no new patient (39.3126ms)
+Γ£ö soft match query is indexed (name+age plan uses index) (3.0866ms)
+Γ£ö sendMsg91TemplateSms posts flow payload with authkey header (25.7318ms)
+Γ£ö sendMsg91TemplateSms maps HTTP errors without throwing (0.371ms)
+Γ£ö catalog: link_patient_phone absent; patients.user_id absent; no role default (31.4683ms)
+Γ£ö residual patient-role profile cannot read patients or change day (35.1325ms)
+Γ£ö staff can change camp day; disabled staff denied (71.6748ms)
+Γ£ö explicit staff profile insert works without handle_new_user side effect (12.9594ms)
+Γ£ö local config disables public signup (repo source) (0.6563ms)
+Γ£ö name + age only (no phone, no address) succeeds (0.8517ms)
+Γ£ö missing name fails (0.1227ms)
+Γ£ö missing age fails (0.1002ms)
+Γ£ö invalid phone fails; blank phone ok (0.2661ms)
+Γ£ö aadhaar last-4 accepted when filled (0.1496ms)
+Γ£ö full day rejected (0.1007ms)
+Γ£ö doctor cannot select unrelated patient PHI or status_token (72.6973ms)
+Γ£ö volunteer can select active-camp desk fields but not status_token (28.2658ms)
+Γ£ö admin can select active-camp patients but not status_token via table grant (39.8731ms)
+Γ£ö disabled volunteer cannot select patients (71.7564ms)
+Γ£ö volunteer cannot select patients on inactive camp (51.3889ms)
+Γ£ö staff registration notify RPC returns status_token; doctor cannot (32.7284ms)
+Γ£ö patients table is absent from supabase_realtime publication (2.9616ms)
+[db-error] test {
+  code: undefined,
+  message: 'day is full ΓÇö select a camp day with seats',
+  details: undefined,
+  hint: undefined
+}
+Γ£ö known Postgres unique violation maps to camp-worker copy (0.8953ms)
+Γ£ö RLS / permission denial maps to permission copy (0.2837ms)
+Γ£ö foreign key violation maps without leaking table names (0.1533ms)
+Γ£ö AADHAAR_DUPLICATE keeps structured desk copy (1.14ms)
+Γ£ö registration day-full phrase maps (0.9844ms)
+Γ£ö unknown code maps to safe generic and never returns raw text (0.4113ms)
+Γ£ö unknown error logs raw text when log is enabled (0.3954ms)
+Γ£ö custom fallback is used when nothing matches (0.1117ms)
+Γ£ö publicRegistrationError uses registration fallback (0.1656ms)
+Γ£ö canUseNativeQrDetector is false without BarcodeDetector (0.6391ms)
+Γ£ö canUseNativeQrDetector requires getSupportedFormats to list qr_code (0.1828ms)
+Γ£ö decodeQrFromImageData returns null when decoder finds nothing (0.137ms)
+Γ£ö stop during pending detect produces no callback (1.5172ms)
+Γ£ö unmount-style invalidate after acquire stops tracks and rejects stale stream (0.911ms)
+Γ£ö rapid begin A then B does not keep A's stream (0.1533ms)
+Γ£ö pause then delayed detect does not callback; resume allows next (0.2364ms)
+Γ£ö freeze blocks auto re-decode until unfreeze (0.1779ms)
+Γ£ö debounce ignores same raw QR after mark-seen (0.2238ms)
+Γ£ö single in-flight: second detect waits for first to finish (0.1763ms)
+Γ£ö replay with null camp_day returns the original registration (49.4591ms)
+Γ£ö N concurrent registrations against M seats yield exactly M successes (98.6065ms)
+Γ£ö concurrent change_camp_day cannot overbook a full day (73.188ms)
+Γ£ö register_patient wrapper is gone from the catalog (2.9254ms)
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'temporary',
+  details: undefined,
+  hint: undefined
+}
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'temporary',
+  details: undefined,
+  hint: undefined
+}
+[db-error] staff-register.rpc {
+  code: undefined,
+  message: 'temporary',
+  details: undefined,
+  hint: undefined
+}
+Γ£ö non-staff registration is rejected (desk only) (3.0442ms)
+Γ£ö staff registration submit sends a non-empty UUID p_request_id to the RPC (0.374ms)
+Γ£ö requestId is stable across retries of the same submission (1.5047ms)
+Γ£ö requestId rotates after success (next walk-in) and after resetForm (0.2196ms)
+Γ£ö staff payload builder includes the attempt id (not optional) (0.1107ms)
+Γ£ö parseAadhaarDuplicateError extracts reg no and ignores noise (0.4987ms)
+Γ£ö staff RPC passes one-shot aadhaar override flag (0.4721ms)
+Γ£ö staff outbound surfaces aadhaarDuplicateRegNo from RPC error (0.1417ms)
+Γ£ö parseLikelyDuplicateError extracts reg no (0.1005ms)
+Γ£ö staff RPC passes one-shot likely-duplicate override flag (0.1889ms)
+Γ£ö staff outbound surfaces likelyDuplicateRegNo from RPC error (0.1398ms)
+[sms-failure] { template: 'registration', detail: 'MSG91 down', phoneLast4: '3210' }
+[sms-failure] { template: 'registration', detail: 'fail-0', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-1', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-2', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-3', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-4', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-5', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-6', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-7', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-8', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-9', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-10', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-11', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-12', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-13', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-14', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-15', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-16', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-17', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-18', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-19', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-20', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-21', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-22', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-23', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-24', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-25', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-26', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-27', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-28', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-29', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-30', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-31', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-32', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-33', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-34', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-35', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-36', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-37', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-38', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-39', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-40', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-41', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-42', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-43', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-44', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-45', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-46', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-47', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-48', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-49', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-50', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-51', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-52', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-53', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-54', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-55', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-56', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-57', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-58', phoneLast4: undefined }
+[sms-failure] { template: 'registration', detail: 'fail-59', phoneLast4: undefined }
+Γ£ö DLT template is a fixed constant with {#var#} slots in order (0.8567ms)
+Γ£ö max-length rendered registration SMS is <=160 GSM-7 chars (0.4958ms)
+Γ£ö non-GSM-7 characters cannot enter the message (0.4663ms)
+Γ£ö no phone skips send, records no failure (0.2706ms)
+Γ£ö unconfigured provider skips without failing (0.3005ms)
+Γ£ö provider throw is recorded and does not throw to caller (0.9529ms)
+Γ£ö provider failure does not fail desk registration (0.4897ms)
+Γ£ö venue is truncated to keep one segment (0.1583ms)
+Γ£ö recordSmsFailure keeps a bounded admin-visible log (1.7158ms)
+REMINDER_MAX_SMS 104 SNP Camp: Kal aana. Reg #999999. 30 Sep 2026 pe aana, AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA. Slip rakhein.
+[sms-failure] { template: 'reminder', detail: 'MSG91 down', phoneLast4: '3210' }
+[sms-failure] { template: 'reminder', detail: 'provider outage', phoneLast4: '3210' }
+[reminder-sms] job done {
+  tomorrow: '2026-07-27',
+  considered: 1,
+  sent: 0,
+  skipped: 0,
+  failed: 0,
+  ambiguous: 1,
+  ok: true
+}
+[reminder-sms] job done {
+  tomorrow: '2026-07-27',
+  considered: 2,
+  sent: 1,
+  skipped: 1,
+  failed: 0,
+  ambiguous: 0,
+  ok: true
+}
+[reminder-sms] job done {
+  tomorrow: '2026-07-27',
+  considered: 2,
+  sent: 0,
+  skipped: 2,
+  failed: 0,
+  ambiguous: 0,
+  ok: true
+}
+[reminder-sms] list failed schema missing
+[sms-failure] {
+  template: 'reminder',
+  detail: 'schema missing',
+  phoneLast4: undefined
+}
+Γ£ö DLT reminder template is fixed with {#var#} slots in order (1.4096ms)
+Γ£ö max-length rendered reminder SMS is <=160 GSM-7 chars (0.8674ms)
+Γ£ö kolkataDateIso anchors tomorrow in Asia/Kolkata (0.8364ms)
+Γ£ö eligibility: only registered + phone + tomorrow + not yet sent (0.2427ms)
+Γ£ö no phone skips send and is not an error (0.2726ms)
+Γ£ö provider failure does not throw from send or job (1.5425ms)
+Γ£ö running the job twice sends exactly once per patient (0.776ms)
+Γ£ö listCandidates failure marks job ok:false (0.484ms)
+Γ£ö isMsg91ReminderConfigured requires reminder template id (0.2433ms)
+Γ£ö createRequestId returns a UUID v4-shaped string (2.9558ms)
+Γ£ö createRequestId returns unique values across calls (0.2164ms)
+Γ£ö createRequestId works when crypto.randomUUID is unavailable (0.5942ms)
+Γ£ö service-role key never appears in client components or browser client (6.5469ms)
+Γ£ö service-role admin client is server-only (0.2709ms)
+Γ£ö every public table in the baseline migration has RLS enabled (1.0132ms)
+Γ£ö SQL is_staff and is_camp_crew role sets stay aligned (2.4478ms)
+Γ£ö registration with phone enqueues pending delivery in same txn (70.1023ms)
+Γ£ö registration without phone creates no delivery (37.2695ms)
+Γ£ö two connections claim same delivery: exactly one wins (47.0056ms)
+Γ£ö timeout path completes as ambiguous and is not reclaimable (97.5906ms)
+Γ£ö known failure is reclaimable; sent stores provider request id (45.1403ms)
+Γ£ö stale sending lease is reclaimable (13.8837ms)
+Γ£ö authenticated cannot select sms_deliveries table directly (17.4339ms)
+Γ£ö ledger stores no full phone or message body columns (4.4114ms)
+Γ£ö volunteer_my_counts is dropped from the catalog (17.0323ms)
+Γ£ö active camp yields camp-scoped volunteer counts (173.512ms)
+Γ£ö null p_camp_id yields zeros (no all-time totals) (593.6008ms)
+Γ£ö two waiting different timestamps ΓåÆ positions 1 and 2 (96.1137ms)
+Γ£ö identical queued_at ordered by reg_no then id; unique consecutive positions (55.6792ms)
+Γ£ö same queued_at and reg_no: id ASC is final tie-break (47.9849ms)
+Γ£ö different camps never affect each other (73.4966ms)
+Γ£ö seen/registered do not count ahead of waiting (24.6669ms)
+Γ£ö waiting ΓåÆ seen loses position (NULL) (21.2999ms)
+Γ£ö invalid/expired/random tokens return empty (same not-found shape) (46.6117ms)
+Γ£ö authenticated cannot execute patient_status_by_token (44.1865ms)
+Γ£ö null token input returns empty (not a fabricated number) (4.2041ms)
+Γ£ö concurrent waiting peers get distinct ranks in one snapshot (82.3921ms)
+Γ£ö least-privilege projection has no phone/token/queued_at columns (3.7396ms)
+Γ£ö status page is a Server Component (no use client) (0.8124ms)
+Γ£ö status page uses patient_status_by_token RPC only (0.3182ms)
+Γ£ö status page treats RPC error as safe retry UI, zero rows as notFound (0.2379ms)
+Γ£ö mapStatusRpcRow maps waiting position and nulls non-waiting (1.1377ms)
+Γ£ö generateStatusToken is 128-bit hex and unique across samples (1.2392ms)
+Γ£ö isStatusTokenFormat rejects UUID, reg numbers, and short tokens (0.1391ms)
+Γ£ö retries twice with 250 then 750 ms backoff by default (1.4328ms)
+Γ£ö stops on first non-retryable result (0.1704ms)
+Γ£ö success on second attempt does not take third (0.173ms)
+Γä╣ tests 241
+Γä╣ suites 0
+Γä╣ pass 241
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 20805.7896
+
+> snp-camps@0.1.0 build
+> next build
+
+Γû▓ Next.js 16.2.11 (Turbopack)
+- Environments: .env.local, .env
+- Cache Components enabled
+- Experiments (use with caution):
+  ┬╖ optimizePackageImports
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 3.5s
+  Running TypeScript ...
+  Finished TypeScript in 4.1s ...
+  Collecting page data using 21 workers ...
+  Generating static pages using 21 workers (0/20) ...
+  Generating static pages using 21 workers (5/20) 
+  Generating static pages using 21 workers (10/20) 
+  Generating static pages using 21 workers (15/20) 
+Γ£ô Generating static pages using 21 workers (20/20) in 2.1s
+  Finalizing page optimization ...
+
+Route (app)                   Revalidate  Expire
+Γöî ΓùÉ /                                 5s      1y
+Γö£ Γùï /_not-found
+Γö£ ΓùÉ /admin
+Γö£ ΓùÉ /admin/patients
+Γö£ ╞Æ /api/aadhaar-lookup
+Γö£ ╞Æ /api/admin/staff-detail
+Γö£ ╞Æ /api/admin/staff/[role]
+Γö£ ╞Æ /api/admin/test-sms
+Γö£ ╞Æ /api/cron/reminder-sms
+Γö£ ╞Æ /api/desk/live
+Γö£ ╞Æ /api/health
+Γö£ ╞Æ /api/notify/registration
+Γö£ ╞Æ /api/patients/[id]/print
+Γö£ ΓùÉ /doctor
+Γö£ Γùï /login
+Γö£ ΓùÉ /p/[id]
+Γöé Γöö /p/[id]
+Γö£ ΓùÉ /print/[id]
+Γöé Γöö /print/[id]
+Γö£ ΓùÉ /register                         5s      1y
+Γö£ ΓùÉ /s/[token]
+Γöé Γöö /s/[token]
+Γöö ΓùÉ /volunteer
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)             prerendered as static content
+ΓùÉ  (Partial Prerender)  prerendered as static HTML with dynamic server-streamed content
+╞Æ  (Dynamic)            server-rendered on demand
+
+
+> snp-camps@0.1.0 check:js-budget
+> node scripts/check-js-budget.mjs
+
+JS route budgets (gzipped bytes):
+  ok        /                            actual=  201766 budget=  274000 raw=673818
+  ok        /_global-error               actual=  187009 budget=  193000 raw=631831
+  ok        /_not-found                  actual=  192890 budget=  199000 raw=648218
+  ok        /admin                       actual=  451859 budget=  462000 raw=1520982
+  ok        /admin/patients              actual=  393780 budget=  406000 raw=1344934
+  ok        /doctor                      actual=  448354 budget=  461000 raw=1506401
+  ok        /login                       actual=  264252 budget=  273000 raw=913774
+  ok        /p/[id]                      actual=  192890 budget=  199000 raw=648218
+  ok        /print/[id]                  actual=  207353 budget=  212000 raw=690667
+  ok        /register                    actual=  398971 budget=  410000 raw=1361876
+  ok        /s/[token]                   actual=  192890 budget=  199000 raw=648218
+  ok        /volunteer                   actual=  452546 budget=  464000 raw=1523151
+All route JS budgets within limits.

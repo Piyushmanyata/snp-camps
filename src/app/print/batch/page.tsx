@@ -1,4 +1,3 @@
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -6,13 +5,7 @@ import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
 import { parseA4BatchIdsParam } from "@/lib/a4-batch-queue";
 import { loadPrintSlips } from "@/lib/print-slip-load";
 import { BatchClientBootstrap } from "@/components/batch-client-bootstrap";
-
-const DeskSlipPrint = dynamic(
-  () =>
-    import("@/components/desk-slip-print").then((m) => ({
-      default: m.DeskSlipPrint,
-    })),
-);
+import { DeskSlipPrint } from "@/components/desk-slip-print";
 
 /**
  * A4 multi-up batch sheet (#64).

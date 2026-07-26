@@ -1,41 +1,17 @@
 "use client";
 
 import { Suspense, useCallback, useState } from "react";
-import dynamic from "next/dynamic";
 import { SectionLoadError } from "@/components/section-load-error";
 import { SectionTitle } from "@/components/ui";
 import { Card } from "@/components/ui";
 import { fetchDeskSection } from "@/lib/section-client";
 import type { DoctorOption } from "@/lib/types";
-import type { LiveQueuePatient } from "@/components/live-queue";
+import { LiveQueue, type LiveQueuePatient } from "@/components/live-queue";
+import { QrScannerLazy } from "@/components/qr-scanner-lazy";
 
 /** Keep in sync with DOCTOR_LIST_UNAVAILABLE in metadata (client-safe copy). */
 const DOCTOR_LIST_UNAVAILABLE =
   "Doctor list unavailable. Tell an admin.";
-
-const LiveQueue = dynamic(
-  () =>
-    import("@/components/live-queue").then((m) => ({ default: m.LiveQueue })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">
-        Loading queue…
-      </p>
-    ),
-  },
-);
-
-const QrScanner = dynamic(
-  () =>
-    import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
-  {
-    loading: () => (
-      <p role="status" className="py-6 text-center text-sm text-muted">
-        Loading scanner…
-      </p>
-    ),
-  },
-);
 
 type DoctorsInitial =
   | { ok: true; data: DoctorOption[] }
@@ -115,7 +91,7 @@ export function DeskScanQueue({
             </p>
           }
         >
-          <QrScanner
+          <QrScannerLazy
             mode={mode}
             doctors={doctors}
             disabledReason={scannerDisabled}

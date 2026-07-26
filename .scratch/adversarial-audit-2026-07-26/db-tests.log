@@ -1,0 +1,32 @@
+
+> snp-camps@0.1.0 test:db
+> node --no-warnings --test --test-concurrency=1 tests/register-patient-idempotent.db.test.mjs tests/staff-person-kpis.db.test.mjs tests/aadhaar-duplicate.db.test.mjs tests/check-in.db.test.mjs tests/likely-duplicate.db.test.mjs
+
+✔ duplicate Aadhaar last-4 + name raises mapped message with reg no (134.4345ms)
+✔ staff override inserts second row and records who and when (104.3367ms)
+✔ service_role cannot pass aadhaar override (56.5152ms)
+✔ pre-reg stays registered and is excluded from waiting queue (67.6528ms)
+✔ check_in is idempotent for waiting and blocks seen (111.2325ms)
+✔ queue order is by check-in time not registration time (95.1706ms)
+✔ name search returns only registered for active camp (31.2326ms)
+✔ name + age match in same camp raises LIKELY_DUPLICATE with reg no (78.9385ms)
+✔ phone match in same camp raises LIKELY_DUPLICATE (38.2035ms)
+✔ same name+age in a different camp does not warn (67.4946ms)
+✔ likely override inserts second row and records who and when; not sticky (64.078ms)
+✔ check-in of soft-match reg creates no new patient (35.15ms)
+✔ soft match query is indexed (name+age plan uses index) (2.6533ms)
+✔ replay with null camp_day returns the original registration (41.5176ms)
+✔ N concurrent registrations against M seats yield exactly M successes (60.9246ms)
+✔ concurrent change_camp_day cannot overbook a full day (55.7733ms)
+✔ register_patient wrapper is gone from the catalog (1.1827ms)
+✔ volunteer_my_counts is dropped from the catalog (23.4886ms)
+✔ active camp yields camp-scoped volunteer counts (69.083ms)
+✔ null p_camp_id yields zeros (no all-time totals) (101.4755ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2026.2318

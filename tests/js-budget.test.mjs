@@ -6,6 +6,8 @@ import path from "node:path";
 import {
   budgetFromMeasured,
   checkBudgets,
+  checkEagerMarkers,
+  classifyChunkRefs,
   formatReport,
   loadBudgets,
   main,
@@ -71,6 +73,88 @@ test("loadBudgets accepts flat map or { routes } wrapper", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("classifyChunkRefs treats Turbopack Promise.all loads as async", () => {
+  const text = `
+    some code
+    19994,e=>{e.v(t=>Promise.all(["static/chunks/jsqr-async.js"].map(t=>e.l(t))).then(()=>e.i(19994)))}
+    and a sync edge static/chunks/other-sync.js in a comment-free bare string "static/chunks/eager.js"
+  `;
+  // Only Promise.all path is async; bare string is sync.
+  const { asyncRefs, syncRefs } = classifyChunkRefs(
+    `Promise.all(["static/chunks/jsqr-async.js"].map(t=>e.l(t))); "static/chunks/eager.js"`,
+  );
+  assert.ok(asyncRefs.has("static/chunks/jsqr-async.js"));
+  assert.ok(syncRefs.has("static/chunks/eager.js"));
+  assert.ok(!syncRefs.has("static/chunks/jsqr-async.js"));
+  void text;
+});
+
+test("checkEagerMarkers fails when jsqr library is in an initial chunk", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "js-budget-marker-"));
+  const chunkRel = "static/chunks/fake-eager.js";
+  const abs = path.join(dir, chunkRel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  // Distinctive jsqr library tokens (not mere property name jsQR).
+  fs.writeFileSync(
+    abs,
+    `module.exports = { coefficientsLength: 12, table: { "0x9C52": 1, "0x9C53": 2 } };`,
+  );
+
+  const result = checkEagerMarkers(
+    [
+      {
+        route: "/volunteer",
+        initialChunks: [chunkRel],
+      },
+    ],
+    dir,
+    { "/volunteer": ["jsqr_lib"] },
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0].message, /jsqr decoder library/);
+  assert.match(result.failures[0].message, /\/volunteer/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("checkEagerMarkers detects minified jsqr (BitMatrix+VERSIONS / decimal hex)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "js-budget-marker-min-"));
+  const chunkRel = "static/chunks/jsqr-min.js";
+  const abs = path.join(dir, chunkRel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  // Turbopack-minified shape: identifiers retained, hex → decimal.
+  fs.writeFileSync(
+    abs,
+    `function BitMatrix(){}var VERSIONS=[{}];var G=40018,H=40019;`,
+  );
+
+  const result = checkEagerMarkers(
+    [{ route: "/doctor", initialChunks: [chunkRel] }],
+    dir,
+    { "/doctor": ["jsqr_lib"] },
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0].message, /jsqr decoder library/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("checkEagerMarkers passes when only property name jsQR appears", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "js-budget-marker-ok-"));
+  const chunkRel = "static/chunks/scanner-shell.js";
+  const abs = path.join(dir, chunkRel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `if (opts.jsQR) opts.jsQR(data, w, h);`);
+
+  const result = checkEagerMarkers(
+    [{ route: "/doctor", initialChunks: [chunkRel] }],
+    dir,
+    { "/doctor": ["jsqr_lib"] },
+  );
+  assert.equal(result.ok, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("main exits non-zero when budgets are deliberately too low", () => {
   const nextDir = path.join(process.cwd(), ".next");
   if (!fs.existsSync(path.join(nextDir, "build-manifest.json"))) {
@@ -85,7 +169,7 @@ test("main exits non-zero when budgets are deliberately too low", () => {
 
   const lines = [];
   const code = main(
-    ["--budgets", budgetsPath, "--next-dir", nextDir],
+    ["--budgets", budgetsPath, "--next-dir", nextDir, "--artifact", path.join(dir, "map.json")],
     {
       cwd: process.cwd(),
       log: (s) => lines.push(String(s)),

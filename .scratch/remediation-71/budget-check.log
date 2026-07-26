@@ -1,0 +1,19 @@
+JS route budgets (eager/initial gzipped bytes; deferred excluded):
+  ok        /                            initial=  202190 budget=  209000 deferred=       0 app=23479 fw=178711
+  ok        /_global-error               initial=  186999 budget=  193000 deferred=       0 app=8288 fw=178711
+  ok        /_not-found                  initial=  193126 budget=  199000 deferred=       0 app=14415 fw=178711
+  ok        /admin                       initial=  405989 budget=  419000 deferred=   55010 app=227278 fw=178711
+           deferred chunks: 1p4lahote9vxf.js, 2y9y7ad8q7kzm.js, 39fgiytt47ohq.js, 3f3rdpgsqj0m_.js
+  ok        /admin/patients              initial=  396243 budget=  406000 deferred=       0 app=217532 fw=178711
+  ok        /doctor                      initial=  399142 budget=  412000 deferred=   54776 app=220431 fw=178711
+           deferred chunks: 39fgiytt47ohq.js, 3g11bji2yk_fo.js
+  ok        /login                       initial=  266976 budget=  273000 deferred=       0 app=88265 fw=178711
+  ok        /p/[id]                      initial=  193126 budget=  199000 deferred=       0 app=14415 fw=178711
+  ok        /print/[id]                  initial=  209597 budget=  212000 deferred=       0 app=30886 fw=178711
+  ok        /print/batch                 initial=  210266 budget=  217000 deferred=       0 app=31555 fw=178711
+  ok        /register                    initial=  405612 budget=  410000 deferred=       0 app=226901 fw=178711
+  ok        /s/[token]                   initial=  193126 budget=  199000 deferred=       0 app=14415 fw=178711
+  ok        /volunteer                   initial=  405547 budget=  418000 deferred=   53209 app=226836 fw=178711
+           deferred chunks: 2y9y7ad8q7kzm.js, 39fgiytt47ohq.js
+Chunk map artifact: C:\Users\piyus\Downloads\SNP website\snp-camps\.scratch\remediation-71\route-chunk-map.json
+All route JS budgets within limits; optional markers not eager.

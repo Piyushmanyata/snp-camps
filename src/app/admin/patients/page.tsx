@@ -1,27 +1,15 @@
 import { Suspense } from "react";
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { Card, EmptyState, NavLink, Shell, Stat } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import type { AdminPatientRow } from "@/components/admin-patients";
+import {
+  AdminPatients,
+  type AdminPatientRow,
+} from "@/components/admin-patients";
 import { mapDbError } from "@/lib/public-error";
 import { CampsLoadFailed } from "@/components/section-data";
-
-const AdminPatients = dynamic(
-  () =>
-    import("@/components/admin-patients").then((m) => ({
-      default: m.AdminPatients,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-6 text-center text-sm text-muted">
-        Loading patient desk…
-      </p>
-    ),
-  },
-);
 
 async function PatientDeskContent() {
   const supabase = await createClient();

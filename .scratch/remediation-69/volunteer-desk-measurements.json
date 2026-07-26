@@ -1,0 +1,48 @@
+{
+  "openCamera": {
+    "width": 302,
+    "height": 52
+  },
+  "lookUp": {
+    "width": 302,
+    "height": 52
+  },
+  "seatRefresh": {
+    "width": 71.890625,
+    "height": 48
+  },
+  "scannerHelpContrast": {
+    "ratio": 7.577663953533317,
+    "fg": "rgb(71, 85, 105)",
+    "bg": "rgb(255, 255, 255)",
+    "fontSize": "15px",
+    "fontWeight": "400",
+    "isLarge": false,
+    "opacity": 1
+  },
+  "regHintContrast": {
+    "ratio": 7.577663953533317,
+    "fg": "rgb(71, 85, 105)",
+    "bg": "rgb(255, 255, 255)",
+    "fontSize": "12px",
+    "fontWeight": "400",
+    "isLarge": false,
+    "opacity": 1
+  },
+  "doctorChip": {
+    "width": 294,
+    "height": 48
+  },
+  "assign": {
+    "width": 294,
+    "height": 52
+  },
+  "cancel": {
+    "width": 294,
+    "height": 48
+  },
+  "scan": {
+    "ok": 12,
+    "failures": 0
+  }
+}

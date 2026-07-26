@@ -1,18 +1,19 @@
 {
-  "_comment": "Per-route gzipped client JS budgets (bytes). Baseline after #43 visual strip 2026-07-26. Later tickets lower these.",
+  "_comment": "Per-route gzipped EAGER/initial client JS budgets (bytes). #71: budgets measure only sync-reachable production chunks; async islands (jsqr, scanner shell, optional admin) excluded. Ratcheted 2026-07-26 from measured post-fix baseline (budgetFromMeasured ≈ ceil(gzip*1.03/1000)*1000). Never raise to hide a regression.",
+  "measureMode": "eager-initial-vs-async-deferred",
   "routes": {
-    "/": 274000,
+    "/": 209000,
     "/_global-error": 193000,
     "/_not-found": 199000,
-    "/admin": 462000,
+    "/admin": 419000,
     "/admin/patients": 406000,
-    "/doctor": 461000,
+    "/doctor": 412000,
     "/login": 273000,
     "/p/[id]": 199000,
     "/print/[id]": 212000,
     "/print/batch": 217000,
     "/register": 410000,
     "/s/[token]": 199000,
-    "/volunteer": 464000
+    "/volunteer": 418000
   }
 }

@@ -1,9 +1,13 @@
 /**
  * Per-route client JS budget gate for Next.js App Router (Turbopack) builds.
  *
- * Reads .next build manifests, maps each page route to the static JS chunks it
- * loads (entry + transitive dynamic imports + shared root/polyfill), sums raw
- * and gzipped bytes, and fails if any route exceeds its gzipped budget.
+ * Measures **eager/initial** production chunks (page entry + shared + sync
+ * deps) separately from **async/deferred** chunks (Turbopack e.v / Promise.all
+ * load factories and next/dynamic client splits).
+ *
+ * Prior gates summed transitive async edges and treated that total as "first
+ * load", which hid that optional islands (jsqr, admin tools) were already
+ * deferred — or that server-side dynamic() had not deferred anything at all.
  *
  * No extra dependencies — Node stdlib only.
  */
@@ -14,6 +18,53 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_BUDGETS = "js-route-budgets.json";
 const DEFAULT_NEXT_DIR = ".next";
+const DEFAULT_ARTIFACT = ".scratch/remediation-71/route-chunk-map.json";
+
+/**
+ * Content markers that must not appear in eager (initial) chunks for routes
+ * that are not supposed to ship optional heavy islands up front.
+ * Checked against raw chunk source after a production build.
+ */
+export const OPTIONAL_MARKERS = {
+  /**
+   * jsqr library body (not mere property name `jsQR` on decode options).
+   * Turbopack minifies `coefficientsLength` / `0x9C52` hex — use stable tokens:
+   * - BitMatrix + VERSIONS (jsqr source identifiers retained in minified output)
+   * - decimal forms of 0x9C52/0x9C53 (40018/40019) when hex is rewritten
+   * - unminified source forms for local/dev bundles
+   */
+  jsqr_lib: {
+    id: "jsqr_lib",
+    test: (text) =>
+      (text.includes("BitMatrix") && text.includes("VERSIONS")) ||
+      (text.includes("40018") && text.includes("40019")) ||
+      text.includes("coefficientsLength") ||
+      (text.includes("0x9C52") && text.includes("0x9C53")),
+    description: "jsqr decoder library",
+  },
+  /** qrcode.react SVG encoder used only on print slips. */
+  qrcode_react: {
+    id: "qrcode_react",
+    test: (text) => text.includes("QRCodeSVG") || text.includes("qrcode.react"),
+    description: "qrcode.react print helper",
+  },
+};
+
+/** Routes where optional markers must stay out of the eager graph. */
+export const ROUTE_FORBIDDEN_EAGER_MARKERS = {
+  "/": ["jsqr_lib", "qrcode_react"],
+  "/login": ["jsqr_lib", "qrcode_react"],
+  "/register": ["jsqr_lib", "qrcode_react"],
+  "/volunteer": ["jsqr_lib", "qrcode_react"],
+  "/admin": ["jsqr_lib", "qrcode_react"],
+  "/doctor": ["jsqr_lib", "qrcode_react"],
+  "/admin/patients": ["jsqr_lib", "qrcode_react"],
+  "/p/[id]": ["jsqr_lib", "qrcode_react"],
+  "/s/[token]": ["jsqr_lib", "qrcode_react"],
+  // Print routes may include qrcode_react eagerly (that is the page purpose).
+  "/print/[id]": ["jsqr_lib"],
+  "/print/batch": ["jsqr_lib"],
+};
 
 /**
  * @param {Array<{ route: string, raw: number, gzip: number }>} measurements
@@ -56,20 +107,126 @@ export function checkBudgets(measurements, budgets) {
 }
 
 /**
- * @param {{ failures: Array<{ message: string }>, missingBudgets: string[] }} result
+ * Fail when optional heavy deps appear in eager route chunks.
+ * @param {Array<{ route: string, initialChunks: string[], chunks?: string[] }>} measurements
+ * @param {string} nextDir
+ * @param {Record<string, string[]>} [forbiddenByRoute]
+ */
+export function checkEagerMarkers(
+  measurements,
+  nextDir,
+  forbiddenByRoute = ROUTE_FORBIDDEN_EAGER_MARKERS,
+) {
+  /** @type {Array<{ route: string, marker: string, chunk: string, message: string }>} */
+  const failures = [];
+  const textCache = new Map();
+
+  function textOf(rel) {
+    if (textCache.has(rel)) return textCache.get(rel);
+    const abs = path.join(nextDir, rel);
+    if (!fs.existsSync(abs)) {
+      textCache.set(rel, "");
+      return "";
+    }
+    const t = fs.readFileSync(abs, "utf8");
+    textCache.set(rel, t);
+    return t;
+  }
+
+  for (const m of measurements) {
+    const forbidden = forbiddenByRoute[m.route];
+    if (!forbidden?.length) continue;
+    const eager = m.initialChunks || m.chunks || [];
+    for (const chunk of eager) {
+      const text = textOf(chunk);
+      if (!text) continue;
+      for (const markerId of forbidden) {
+        const marker = OPTIONAL_MARKERS[markerId];
+        if (!marker) continue;
+        if (marker.test(text)) {
+          failures.push({
+            route: m.route,
+            marker: markerId,
+            chunk,
+            message: `Eager optional dependency: ${m.route} initial chunk ${chunk} contains ${marker.description} (${markerId})`,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    failures,
+  };
+}
+
+/**
+ * @param {{ failures: Array<{ message: string }>, missingBudgets?: string[] }} result
  */
 export function formatReport(result) {
   const lines = [];
-  for (const f of result.failures) lines.push(f.message);
-  for (const r of result.missingBudgets) {
+  for (const f of result.failures || []) lines.push(f.message);
+  for (const r of result.missingBudgets || []) {
     lines.push(`JS budget missing: ${r} has no entry in the budgets file`);
   }
   return lines.join("\n");
 }
 
 /**
+ * Classify static/chunks references in a chunk as async (Turbopack deferred
+ * load) vs sync (eager graph edge).
+ * @param {string} text
+ * @returns {{ asyncRefs: Set<string>, syncRefs: Set<string>, allRefs: Set<string> }}
+ */
+export function classifyChunkRefs(text) {
+  const allRefs = new Set();
+  for (const m of text.matchAll(/static\/chunks\/[A-Za-z0-9._-]+\.js/g)) {
+    allRefs.add(m[0]);
+  }
+
+  const asyncRefs = new Set();
+  // Turbopack async module factory: e.v(r => Promise.all(["static/chunks/..."].map(r => e.l(r)))
+  for (const m of text.matchAll(
+    /Promise\.all\(\[([^\]]*)\]\.map\(\s*[a-zA-Z_$][\w$]*\s*=>\s*[a-zA-Z_$][\w$]*\.l\s*\(/g,
+  )) {
+    for (const r of m[1].matchAll(/static\/chunks\/[A-Za-z0-9._-]+\.js/g)) {
+      asyncRefs.add(r[0]);
+    }
+  }
+  // Broader: any Promise.all([... "static/chunks/..." ...])
+  for (const m of text.matchAll(
+    /Promise\.all\(\[([^\]]*"static\/chunks\/[^"]+\.js"[^\]]*)\]/g,
+  )) {
+    for (const r of m[1].matchAll(/static\/chunks\/[A-Za-z0-9._-]+\.js/g)) {
+      asyncRefs.add(r[0]);
+    }
+  }
+
+  const syncRefs = new Set(
+    [...allRefs].filter((r) => !asyncRefs.has(r)),
+  );
+  return { asyncRefs, syncRefs, allRefs };
+}
+
+/**
  * @param {string} nextDir
- * @returns {Array<{ route: string, raw: number, gzip: number, chunks: string[] }>}
+ * @returns {Array<{
+ *   route: string,
+ *   raw: number,
+ *   gzip: number,
+ *   chunks: string[],
+ *   initialChunks: string[],
+ *   deferredChunks: string[],
+ *   initialRaw: number,
+ *   initialGzip: number,
+ *   deferredRaw: number,
+ *   deferredGzip: number,
+ *   frameworkRaw: number,
+ *   frameworkGzip: number,
+ *   appRaw: number,
+ *   appGzip: number,
+ * }>}
  */
 export function measureRoutes(nextDir) {
   const buildManifestPath = path.join(nextDir, "build-manifest.json");
@@ -84,9 +241,13 @@ export function measureRoutes(nextDir) {
     ...(bm.rootMainFiles || []),
     ...(bm.polyfillFiles || []),
   ];
+  const frameworkSet = new Set(shared);
 
   const chunkFiles = listStaticChunks(nextDir);
-  const graph = buildChunkGraph(nextDir, chunkFiles);
+  const { syncGraph, asyncGraph, fullGraph } = buildChunkGraphs(
+    nextDir,
+    chunkFiles,
+  );
   const sizeCache = new Map();
 
   function sizeOf(rel) {
@@ -108,21 +269,73 @@ export function measureRoutes(nextDir) {
   )) {
     const entries = extractEntryChunks(manifest);
     for (const s of shared) entries.add(s);
-    const all = transitiveClosure([...entries], graph, nextDir);
-    let raw = 0;
-    let gzip = 0;
-    const chunks = [...all].sort();
-    for (const c of chunks) {
+
+    const initial = transitiveClosure([...entries], syncGraph, nextDir);
+    const full = transitiveClosure([...entries], fullGraph, nextDir);
+    const deferred = new Set(
+      [...full].filter((c) => !initial.has(c)),
+    );
+
+    // Also collect async edges reachable from initial (direct optional loads).
+    for (const c of initial) {
+      for (const d of asyncGraph.get(c) || []) {
+        if (!initial.has(d)) deferred.add(d);
+        // Include further async children of deferred for reporting.
+        const more = transitiveClosure([d], fullGraph, nextDir);
+        for (const x of more) {
+          if (!initial.has(x)) deferred.add(x);
+        }
+      }
+    }
+
+    let initialRaw = 0;
+    let initialGzip = 0;
+    let deferredRaw = 0;
+    let deferredGzip = 0;
+    let frameworkRaw = 0;
+    let frameworkGzip = 0;
+    let appRaw = 0;
+    let appGzip = 0;
+
+    const initialChunks = [...initial].sort();
+    const deferredChunks = [...deferred].sort();
+    // Budget uses eager/initial only (#71).
+    for (const c of initialChunks) {
       const s = sizeOf(c);
       if (!s) continue;
-      raw += s.raw;
-      gzip += s.gzip;
+      initialRaw += s.raw;
+      initialGzip += s.gzip;
+      if (frameworkSet.has(c)) {
+        frameworkRaw += s.raw;
+        frameworkGzip += s.gzip;
+      } else {
+        appRaw += s.raw;
+        appGzip += s.gzip;
+      }
     }
+    for (const c of deferredChunks) {
+      const s = sizeOf(c);
+      if (!s) continue;
+      deferredRaw += s.raw;
+      deferredGzip += s.gzip;
+    }
+
     results.push({
       route: routeFromManifestPath(manifest),
-      raw,
-      gzip,
-      chunks,
+      // Primary budget fields = eager/initial first-load JS.
+      raw: initialRaw,
+      gzip: initialGzip,
+      chunks: initialChunks,
+      initialChunks,
+      deferredChunks,
+      initialRaw,
+      initialGzip,
+      deferredRaw,
+      deferredGzip,
+      frameworkRaw,
+      frameworkGzip,
+      appRaw,
+      appGzip,
     });
   }
 
@@ -144,18 +357,22 @@ function listStaticChunks(nextDir) {
  * @param {string} nextDir
  * @param {string[]} chunkFiles
  */
-function buildChunkGraph(nextDir, chunkFiles) {
+function buildChunkGraphs(nextDir, chunkFiles) {
   /** @type {Map<string, Set<string>>} */
-  const graph = new Map();
+  const syncGraph = new Map();
+  /** @type {Map<string, Set<string>>} */
+  const asyncGraph = new Map();
+  /** @type {Map<string, Set<string>>} */
+  const fullGraph = new Map();
+
   for (const rel of chunkFiles) {
     const text = fs.readFileSync(path.join(nextDir, rel), "utf8");
-    const deps = new Set();
-    for (const m of text.matchAll(/static\/chunks\/[A-Za-z0-9._-]+\.js/g)) {
-      deps.add(m[0]);
-    }
-    graph.set(rel, deps);
+    const { asyncRefs, syncRefs, allRefs } = classifyChunkRefs(text);
+    syncGraph.set(rel, syncRefs);
+    asyncGraph.set(rel, asyncRefs);
+    fullGraph.set(rel, allRefs);
   }
-  return graph;
+  return { syncGraph, asyncGraph, fullGraph };
 }
 
 /**
@@ -232,6 +449,68 @@ export function loadBudgets(budgetsPath) {
 }
 
 /**
+ * Write machine-readable route/chunk map for browser tests and evidence.
+ * @param {ReturnType<typeof measureRoutes>} measurements
+ * @param {string} outPath
+ * @param {string} nextDir
+ */
+export function writeRouteChunkArtifact(measurements, outPath, nextDir) {
+  const dir = path.dirname(outPath);
+  fs.mkdirSync(dir, { recursive: true });
+
+  // Identify which deferred chunks carry optional markers.
+  const markerByChunk = {};
+  for (const m of measurements) {
+    for (const rel of [...m.initialChunks, ...m.deferredChunks]) {
+      if (markerByChunk[rel]) continue;
+      const abs = path.join(nextDir, rel);
+      if (!fs.existsSync(abs)) continue;
+      const text = fs.readFileSync(abs, "utf8");
+      const hits = [];
+      for (const [id, marker] of Object.entries(OPTIONAL_MARKERS)) {
+        if (marker.test(text)) hits.push(id);
+      }
+      // Light scan UI without library body still useful for network asserts.
+      if (
+        text.includes("Open camera") ||
+        text.includes("Opening camera")
+      ) {
+        hits.push("scanner_ui");
+      }
+      markerByChunk[rel] = hits;
+    }
+  }
+
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    measureMode: "eager-initial-vs-async-deferred",
+    routes: Object.fromEntries(
+      measurements.map((m) => [
+        m.route,
+        {
+          initialGzip: m.initialGzip,
+          initialRaw: m.initialRaw,
+          deferredGzip: m.deferredGzip,
+          deferredRaw: m.deferredRaw,
+          frameworkGzip: m.frameworkGzip,
+          appGzip: m.appGzip,
+          initialChunks: m.initialChunks,
+          deferredChunks: m.deferredChunks,
+          deferredMarkers: Object.fromEntries(
+            m.deferredChunks.map((c) => [c, markerByChunk[c] || []]),
+          ),
+          initialMarkers: Object.fromEntries(
+            m.initialChunks.map((c) => [c, markerByChunk[c] || []]),
+          ),
+        },
+      ]),
+    ),
+  };
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
+  return payload;
+}
+
+/**
  * CLI entry. Exported for tests.
  * @param {string[]} argv
  * @param {{ cwd?: string, log?: (s: string) => void, error?: (s: string) => void }} [opts]
@@ -245,15 +524,17 @@ export function main(argv, opts = {}) {
   let budgetsRel = DEFAULT_BUDGETS;
   let nextRel = DEFAULT_NEXT_DIR;
   let printOnly = false;
+  let artifactRel = DEFAULT_ARTIFACT;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--budgets") budgetsRel = argv[++i];
     else if (a === "--next-dir") nextRel = argv[++i];
     else if (a === "--print") printOnly = true;
+    else if (a === "--artifact") artifactRel = argv[++i];
     else if (a === "--help" || a === "-h") {
       log(
-        "Usage: node scripts/check-js-budget.mjs [--budgets FILE] [--next-dir DIR] [--print]",
+        "Usage: node scripts/check-js-budget.mjs [--budgets FILE] [--next-dir DIR] [--print] [--artifact FILE]",
       );
       return 0;
     }
@@ -270,11 +551,24 @@ export function main(argv, opts = {}) {
     return 2;
   }
 
+  const artifactPath = path.resolve(cwd, artifactRel);
+  try {
+    writeRouteChunkArtifact(measurements, artifactPath, nextDir);
+  } catch (e) {
+    error(
+      `Failed to write chunk artifact: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return 2;
+  }
+
   if (printOnly) {
-    log("route\traw\tgzip");
+    log("route\tinitial_raw\tinitial_gzip\tdeferred_raw\tdeferred_gzip");
     for (const m of measurements) {
-      log(`${m.route}\t${m.raw}\t${m.gzip}`);
+      log(
+        `${m.route}\t${m.initialRaw}\t${m.initialGzip}\t${m.deferredRaw}\t${m.deferredGzip}`,
+      );
     }
+    log(`# artifact ${artifactPath}`);
     return 0;
   }
 
@@ -285,8 +579,9 @@ export function main(argv, opts = {}) {
 
   const budgets = loadBudgets(budgetsPath);
   const result = checkBudgets(measurements, budgets);
+  const markerResult = checkEagerMarkers(measurements, nextDir);
 
-  log("JS route budgets (gzipped bytes):");
+  log("JS route budgets (eager/initial gzipped bytes; deferred excluded):");
   for (const m of measurements) {
     const budget = budgets[m.route];
     const status =
@@ -297,9 +592,15 @@ export function main(argv, opts = {}) {
           : "ok";
     const budgetCol = budget === undefined ? "-" : String(budget);
     log(
-      `  ${status.padEnd(9)} ${m.route.padEnd(28)} actual=${String(m.gzip).padStart(8)} budget=${budgetCol.padStart(8)} raw=${m.raw}`,
+      `  ${status.padEnd(9)} ${m.route.padEnd(28)} initial=${String(m.initialGzip).padStart(8)} budget=${budgetCol.padStart(8)} deferred=${String(m.deferredGzip).padStart(8)} app=${m.appGzip} fw=${m.frameworkGzip}`,
     );
+    if (m.deferredChunks.length) {
+      log(
+        `           deferred chunks: ${m.deferredChunks.map((c) => c.replace("static/chunks/", "")).join(", ")}`,
+      );
+    }
   }
+  log(`Chunk map artifact: ${artifactPath}`);
 
   if (result.unusedBudgets.length) {
     log(
@@ -307,12 +608,19 @@ export function main(argv, opts = {}) {
     );
   }
 
+  if (!markerResult.ok) {
+    error(formatReport(markerResult));
+  }
+
   if (!result.ok) {
     error(formatReport(result));
+  }
+
+  if (!result.ok || !markerResult.ok) {
     return 1;
   }
 
-  log("All route JS budgets within limits.");
+  log("All route JS budgets within limits; optional markers not eager.");
   return 0;
 }
 

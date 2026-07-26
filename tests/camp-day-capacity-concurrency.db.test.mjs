@@ -14,7 +14,7 @@
  *  E) Smoke: wrong-camp/day, permission, not-found.
  */
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { describe } from "node:test";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -259,10 +259,12 @@ async function seedPatients(campId, dayId, n) {
   }
 }
 
+describe("camp-day capacity concurrency", { concurrency: 1 }, () => {
 // ---------------------------------------------------------------------------
 // A) Registration holds day lock; admin lowers limit
 // ---------------------------------------------------------------------------
-test("reg holds day lock while admin lowers limit → edit rejects; limit ≥ count", async (t) => {
+test("reg holds day lock while admin lowers limit → edit rejects; limit ≥ count", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test A', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const adminId = await seedStaff("admin");
@@ -352,12 +354,14 @@ test("reg holds day lock while admin lowers limit → edit rejects; limit ≥ co
     await cleanupStaff(adminId);
     await cleanupStaff(staffId);
   }
+  console.log('[TEST LOG] END test A', new Date().toISOString());
 });
 
 // ---------------------------------------------------------------------------
 // B) Edit locks first; registration follows
 // ---------------------------------------------------------------------------
-test("edit locks first then reg follows → capacity preserved (reg full)", async (t) => {
+test("edit locks first then reg follows → capacity preserved (reg full)", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test B', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const adminId = await seedStaff("admin");
@@ -439,12 +443,14 @@ test("edit locks first then reg follows → capacity preserved (reg full)", asyn
     await cleanupStaff(adminId);
     await cleanupStaff(staffId);
   }
+  console.log('[TEST LOG] END test B', new Date().toISOString());
 });
 
 // ---------------------------------------------------------------------------
 // C) Two concurrent registrations at the final seat
 // ---------------------------------------------------------------------------
-test("two concurrent regs at final seat → at most one success", async (t) => {
+test("two concurrent regs at final seat → at most one success", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test C', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const staffId = await seedStaff("volunteer");
@@ -511,12 +517,14 @@ test("two concurrent regs at final seat → at most one success", async (t) => {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);
   }
+  console.log('[TEST LOG] END test C', new Date().toISOString());
 });
 
 // ---------------------------------------------------------------------------
 // D) Edit above/equal succeeds; below returns stable code
 // ---------------------------------------------------------------------------
-test("edit equal/above count succeeds; below returns SEAT_LIMIT_BELOW_ASSIGNED", async (t) => {
+test("edit equal/above count succeeds; below returns SEAT_LIMIT_BELOW_ASSIGNED", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test D', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const adminId = await seedStaff("admin");
@@ -576,12 +584,14 @@ test("edit equal/above count succeeds; below returns SEAT_LIMIT_BELOW_ASSIGNED",
     await cleanupCamp(campId);
     await cleanupStaff(adminId);
   }
+  console.log('[TEST LOG] END test D', new Date().toISOString());
 });
 
 // ---------------------------------------------------------------------------
 // E) Smoke: wrong camp/day, permission, not-found
 // ---------------------------------------------------------------------------
-test("smoke: not-found, wrong camp, non-admin permission", async (t) => {
+test("smoke: not-found, wrong camp, non-admin permission", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test E', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const adminId = await seedStaff("admin");
@@ -665,12 +675,14 @@ test("smoke: not-found, wrong camp, non-admin permission", async (t) => {
     await cleanupStaff(adminId);
     await cleanupStaff(volunteerId);
   }
+  console.log('[TEST LOG] END test E', new Date().toISOString());
 });
 
 // ---------------------------------------------------------------------------
 // Optional stress: repeated reverse interleavings — no deadlock
 // ---------------------------------------------------------------------------
-test("stress: repeated edit/reg interleavings complete without deadlock", async (t) => {
+test("stress: repeated edit/reg interleavings complete without deadlock", { concurrency: false }, async (t) => {
+  console.log('[TEST LOG] START test stress', new Date().toISOString());
   if (skipIfNoDb(t)) return;
 
   const adminId = await seedStaff("admin");
@@ -686,6 +698,14 @@ test("stress: repeated edit/reg interleavings complete without deadlock", async 
        where camp_day_id = $1
          and full_name like 'Stress Reg%'`,
       [dayId],
+    );
+    await admin.query(
+      `update public.camps set is_active = false where is_active = true and id != $1`,
+      [campId],
+    );
+    await admin.query(
+      `update public.camps set is_active = true where id = $1`,
+      [campId],
     );
     await admin.query(
       `update public.camp_days set seat_limit = 3 where id = $1`,
@@ -790,4 +810,5 @@ test("stress: repeated edit/reg interleavings complete without deadlock", async 
   await cleanupCamp(campId);
   await cleanupStaff(adminId);
   await cleanupStaff(staffId);
+});
 });

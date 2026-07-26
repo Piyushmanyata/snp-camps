@@ -135,7 +135,47 @@ const finalServiceKey =
     ? envLocal.SUPABASE_SERVICE_ROLE_KEY
     : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IjEyNy4wLjAuMSIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE2NDA5OTUyMDAsImV4cCI6MTk1NjU3MTIwMH0.v0vP9yX8kL1mN2oP3qR4sT5uV6wX7yZ8aB9c0d1e2f3");
 
-const reuseExistingServer = await canReuseExistingServer();
+// Prefer a clean production server for #71 island network asserts. Reuse only
+// when the operator explicitly opts in — a leftover `next dev` or a build that
+// baked remote NEXT_PUBLIC_* from .env.local will break local E2E auth.
+const useProduction = process.env.E2E_PRODUCTION !== "0";
+const reuseExistingServer =
+  process.env.E2E_REUSE_SERVER === "1" ? await canReuseExistingServer() : false;
+
+const e2ePublicEnv = {
+  NEXT_PUBLIC_SUPABASE_URL: finalSupabaseURL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: finalAnonKey,
+  SUPABASE_SERVICE_ROLE_KEY: finalServiceKey,
+  NEXT_PUBLIC_SITE_URL: baseURL,
+};
+
+// Production client bundles inline NEXT_PUBLIC_* at build time. Always rebuild
+// with the E2E Supabase project (local Docker / keys) so sign-in hits the same
+// host global-setup provisioned — not a remote URL from .env.local.
+if (useProduction && !reuseExistingServer) {
+  const build = spawnSync(
+    process.platform === "win32" ? "npm.cmd" : "npm",
+    ["run", "build"],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, ...e2ePublicEnv },
+      stdio: "inherit",
+      shell: true,
+    },
+  );
+  if (build.status !== 0) {
+    process.exitCode = build.status ?? 1;
+    throw new Error("Production build for E2E failed (NEXT_PUBLIC_* must match E2E Supabase)");
+  }
+  // Refresh route-chunk-map for island-split asserts against this build.
+  if (existsSync(join(process.cwd(), "scripts", "check-js-budget.mjs"))) {
+    spawnSync(process.execPath, ["scripts/check-js-budget.mjs", "--print"], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: "inherit",
+    });
+  }
+}
 
 const env = {
   ...process.env,
@@ -144,10 +184,9 @@ const env = {
   E2E_SUPABASE_URL: finalSupabaseURL,
   E2E_SUPABASE_ANON_KEY: finalAnonKey,
   E2E_SUPABASE_SERVICE_ROLE_KEY: finalServiceKey,
-  NEXT_PUBLIC_SUPABASE_URL: finalSupabaseURL,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: finalAnonKey,
-  SUPABASE_SERVICE_ROLE_KEY: finalServiceKey,
+  ...e2ePublicEnv,
   E2E_REUSE_SERVER: reuseExistingServer ? "1" : "0",
+  E2E_PRODUCTION: useProduction ? "1" : "0",
   PLAYWRIGHT_HTML_OPEN: "never",
 };
 

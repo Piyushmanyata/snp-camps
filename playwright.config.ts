@@ -12,6 +12,12 @@ if (process.env.E2E_LOCAL_READY !== "1") {
   throw new Error("Run the local-only suite with `npm run test:e2e`.");
 }
 
+const host = appUrl.hostname.replaceAll("[", "").replaceAll("]", "");
+const port = appUrl.port || "3100";
+// #71: optional-island network asserts need production chunks, not the
+// development bundler. Default to `next start` after verify/build.
+const useProductionServer = process.env.E2E_PRODUCTION !== "0";
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
@@ -38,7 +44,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --hostname ${appUrl.hostname.replaceAll("[", "").replaceAll("]", "")} --port ${appUrl.port || "3100"}`,
+    command: useProductionServer
+      ? `npx next start --hostname ${host} --port ${port}`
+      : `npm run dev -- --hostname ${host} --port ${port}`,
     url: baseURL,
     reuseExistingServer: process.env.E2E_REUSE_SERVER === "1",
     timeout: 120_000,

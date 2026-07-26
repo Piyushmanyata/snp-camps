@@ -1,0 +1,15 @@
+Γ£ö doctor cannot select unrelated patient PHI or status_token (83.4012ms)
+Γ£ö volunteer can select active-camp desk fields but not status_token (50.0601ms)
+Γ£ö admin can select active-camp patients but not status_token via table grant (25.5781ms)
+Γ£ö disabled volunteer cannot select patients (30.9522ms)
+Γ£ö volunteer cannot select patients on inactive camp (24.2858ms)
+Γ£ö staff registration notify RPC returns status_token; doctor cannot (51.4156ms)
+Γ£ö patients table is absent from supabase_realtime publication (2.0705ms)
+Γä╣ tests 7
+Γä╣ suites 0
+Γä╣ pass 7
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 431.2823

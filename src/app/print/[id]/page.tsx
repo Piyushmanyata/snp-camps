@@ -1,17 +1,10 @@
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 import { loadPrintSlips } from "@/lib/print-slip-load";
-
-const DeskSlipPrint = dynamic(
-  () =>
-    import("@/components/desk-slip-print").then((m) => ({
-      default: m.DeskSlipPrint,
-    })),
-);
+import { DeskSlipPrint } from "@/components/desk-slip-print";
 
 export default async function PrintPage({
   params,

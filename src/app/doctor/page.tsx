@@ -1,4 +1,3 @@
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin, roleHome } from "@/lib/auth";
@@ -20,28 +19,8 @@ import {
   loadDoctorStatsSection,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-
-const QrScanner = dynamic(
-  () =>
-    import("@/components/qr-scanner").then((m) => ({ default: m.QrScanner })),
-  {
-    loading: () => (
-      <p role="status" className="py-6 text-center text-sm text-muted">Loading scanner…</p>
-    ),
-  },
-);
-
-const AdminStaff = dynamic(
-  () =>
-    import("@/components/admin-staff").then((m) => ({
-      default: m.AdminStaff,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">Loading doctors…</p>
-    ),
-  },
-);
+import { QrScannerLazy } from "@/components/qr-scanner-lazy";
+import { AdminStaff } from "@/components/admin-staff";
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -174,7 +153,7 @@ export default async function DoctorPage() {
           <SectionTitle hint="QR or reg number · one button">
             Patient
           </SectionTitle>
-          <QrScanner
+          <QrScannerLazy
             mode="doctor"
             doctors={[]}
             disabledReason={

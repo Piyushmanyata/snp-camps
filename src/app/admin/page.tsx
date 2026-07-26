@@ -1,4 +1,3 @@
-import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { getSessionProfile, roleHome } from "@/lib/auth";
 import type { CampDayStats, Camp, DoctorOption } from "@/lib/types";
@@ -19,82 +18,19 @@ import {
   loadSeatsSection,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { AdminHeaderStatsPanel } from "@/components/section-data";
+import {
+  AdminHeaderStatsPanel,
+  CampsLoadFailed,
+} from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
-const SeatBoard = dynamic(
-  () =>
-    import("@/components/seat-board").then((m) => ({ default: m.SeatBoard })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading seat board…</p>,
-  },
-);
-
-const CheckIn = dynamic(
-  () =>
-    import("@/components/check-in").then((m) => ({ default: m.CheckIn })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">Loading check-in…</p>
-    ),
-  },
-);
-
-const AdminCamps = dynamic(
-  () => import("@/components/admin-camps").then((m) => ({ default: m.AdminCamps })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading camps…</p>,
-  },
-);
-
-const AdminCampDays = dynamic(
-  () =>
-    import("@/components/admin-camp-days").then((m) => ({
-      default: m.AdminCampDays,
-    })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading camp days…</p>,
-  },
-);
-
-const ChangePasswordCard = dynamic(
-  () =>
-    import("@/components/change-password-card").then((m) => ({
-      default: m.ChangePasswordCard,
-    })),
-  {
-    loading: () => <p role="status" className="py-4 text-xs text-muted">Loading password settings…</p>,
-  },
-);
-
-const AdminTestSms = dynamic(
-  () =>
-    import("@/components/admin-test-sms").then((m) => ({
-      default: m.AdminTestSms,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">
-        Loading SMS tools…
-      </p>
-    ),
-  },
-);
-
-const CampsLoadFailed = dynamic(
-  () =>
-    import("@/components/section-data").then((m) => ({
-      default: m.CampsLoadFailed,
-    })),
-  {
-    loading: () => (
-      <Card>
-        <p role="status" className="py-4 text-xs text-muted">
-          Loading camps…
-        </p>
-      </Card>
-    ),
-  },
-);
+import { SeatBoard } from "@/components/seat-board";
+import { CheckIn } from "@/components/check-in";
+import { AdminCamps } from "@/components/admin-camps";
+import { AdminCampDays } from "@/components/admin-camp-days";
+import {
+  AdminTestSmsLazySection,
+  ChangePasswordLazySection,
+} from "@/components/admin-optional-lazy";
 
 export default async function AdminPage() {
   const { profile } = await getSessionProfile();
@@ -297,17 +233,8 @@ export default async function AdminPage() {
           </div>
         ) : null}
 
-        <CollapsibleSection
-          title="Registration SMS (MSG91)"
-          hint="Test send · recent failures"
-          defaultOpen={false}
-        >
-          <AdminTestSms />
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Account security" hint="Change password" defaultOpen={false}>
-          <ChangePasswordCard />
-        </CollapsibleSection>
+        <AdminTestSmsLazySection />
+        <ChangePasswordLazySection />
       </div>
     </Shell>
   );
