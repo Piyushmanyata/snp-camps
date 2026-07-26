@@ -1,11 +1,10 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { PrintActions } from "@/components/print-actions";
+import { PrintActions, type PrintActionPatient } from "@/components/print-actions";
 import {
   PrintSheet,
-  type DeskSlipCamp,
-  type DeskSlipPatient,
+  type DeskSlipSlot,
 } from "@/components/print-sheet";
 import {
   DESK_SLIP_FORMAT_DEFAULT,
@@ -16,30 +15,26 @@ import {
   writeDeskSlipFormatToStorage,
   type DeskSlipFormat,
 } from "@/lib/desk-slip-format";
-import type { QueueStatus } from "@/lib/types";
 
 /**
  * Client shell: station format setting (localStorage) + slip + print actions.
  * Format is chosen once per print station — not auto-detected from the printer.
+ *
+ * A4 shows distinct multi-up slips (never duplicates). Thermal is one-up.
  */
 export function DeskSlipPrint({
-  patient,
-  camp,
-  campDayDate,
-  qrValue,
-  queueStatus,
+  slips,
   deskHref,
   deskLabel,
   autoPrint = false,
+  isBatch = false,
 }: {
-  patient: DeskSlipPatient;
-  camp: DeskSlipCamp | null;
-  campDayDate: string | null;
-  qrValue: string;
-  queueStatus: QueueStatus;
+  slips: DeskSlipSlot[];
   deskHref: "/admin" | "/volunteer";
   deskLabel: "Admin dashboard" | "Volunteer desk";
   autoPrint?: boolean;
+  /** Multi-patient A4 sheet from the station batch queue. */
+  isBatch?: boolean;
 }) {
   const format = useSyncExternalStore(
     subscribeDeskSlipFormat,
@@ -50,6 +45,20 @@ export function DeskSlipPrint({
   function chooseFormat(next: DeskSlipFormat) {
     writeDeskSlipFormatToStorage(next);
   }
+
+  const patients: PrintActionPatient[] = slips.map((s) => ({
+    id: s.patient.id,
+    regNo: s.patient.reg_no,
+    name: s.patient.full_name,
+    queueStatus: s.queueStatus ?? "waiting",
+  }));
+
+  // Thermal always one-up; force thermal path even if batch IDs present.
+  const sheetSlips =
+    format === "thermal58" ? (slips[0] ? [slips[0]] : []) : slips;
+  const actionPatients =
+    format === "thermal58" ? (patients[0] ? [patients[0]] : []) : patients;
+  const batchMode = isBatch && format === "a4";
 
   return (
     <>
@@ -84,45 +93,29 @@ export function DeskSlipPrint({
 
       <PrintActions
         className="no-print mb-4"
-        patientId={patient.id}
-        regNo={patient.reg_no}
-        name={patient.full_name}
-        queueStatus={queueStatus}
+        patients={actionPatients}
         deskHref={deskHref}
         deskLabel={deskLabel}
         autoPrint={autoPrint}
+        isBatch={batchMode}
       />
 
-      <PrintSheet
-        format={format}
-        patient={patient}
-        camp={camp}
-        campDayDate={campDayDate}
-        qrValue={qrValue}
-      />
+      <PrintSheet format={format} slips={sheetSlips} />
 
       <p className="no-print mt-3 text-center text-xs text-muted">
         {format === "a4" ? (
           <>
-            A4 · 4 slips per sheet with cut lines · Portrait · QR is for{" "}
+            A4 · up to 4 <strong>distinct</strong> slips per sheet with cut
+            lines · empty cells stay empty · Portrait · QR is for{" "}
             <strong>staff scan only</strong>.
           </>
         ) : (
           <>
-            58mm thermal roll · QR is for <strong>staff scan only</strong>.
+            58mm thermal roll · one patient per print · QR is for{" "}
+            <strong>staff scan only</strong>.
           </>
         )}{" "}
-        Status for the patient is a separate SMS link when configured.{" "}
-        {queueStatus === "seen" ? (
-          <>The consultation is complete; reprinting does not change its status.</>
-        ) : queueStatus === "waiting" ? (
-          <>The patient is in queue and waiting for a doctor.</>
-        ) : (
-          <>
-            Use <strong>Check in &amp; print</strong> before the patient proceeds
-            to a doctor.
-          </>
-        )}
+        Status for the patient is a separate SMS link when configured.
       </p>
     </>
   );

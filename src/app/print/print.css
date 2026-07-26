@@ -1,0 +1,157 @@
+/**
+ * Route-scoped desk-slip print styles (#64).
+ * Imported only under /print/* so interactive desk routes do not pay the cost.
+ */
+
+/* Screen preview chrome */
+.print-preview {
+  border: 1px solid var(--border, #e2e8f0);
+}
+
+/* ---- Desk slip: A4 multi-up (screen preview) ---- */
+.desk-slip-a4-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  min-height: 260mm;
+  width: 100%;
+}
+
+.desk-slip-a4-cell {
+  border: 1px dashed #94a3b8;
+  min-height: 128mm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  overflow: visible;
+}
+
+.desk-slip-a4-cell--empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    #fff,
+    #fff 6px,
+    #f8fafc 6px,
+    #f8fafc 12px
+  );
+}
+
+.desk-slip-thermal {
+  width: 58mm;
+  max-width: 58mm;
+  /* Content-safe: no hard clip; roll grows with content */
+  min-height: 90mm;
+  height: auto;
+  border: 1px solid var(--border, #e2e8f0);
+  overflow: visible;
+}
+
+/* Long names / venues wrap — never clip silently */
+.desk-slip-name,
+.desk-slip-venue {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Named pages — deleting one format = delete its @page + component branch */
+@page desk-a4 {
+  size: A4 portrait;
+  margin: 4mm;
+}
+
+/* Thermal roll: fixed width, auto height (content-safe; not a hard 110 mm clip) */
+@page desk-thermal58 {
+  size: 58mm auto;
+  margin: 2mm;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 4mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 100%;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  .print-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: var(--print-ink, #0f172a) !important;
+    /* Content-safe: do not clip long names / QR */
+    overflow: visible !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .desk-slip-a4 {
+    page: desk-a4;
+    width: 100%;
+    height: auto;
+  }
+
+  .desk-slip-a4-grid {
+    min-height: 0;
+    height: 289mm; /* A4 printable height ≈ 297 - 8mm margins */
+    width: 100%;
+  }
+
+  .desk-slip-a4-cell {
+    min-height: 0;
+    border-color: #64748b;
+    overflow: visible;
+  }
+
+  .desk-slip-a4-cell--empty {
+    background: none;
+  }
+
+  .desk-slip-thermal {
+    page: desk-thermal58;
+    width: 54mm;
+    max-width: 54mm;
+    min-height: 0;
+    height: auto !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .skip-link {
+    display: none !important;
+  }
+}

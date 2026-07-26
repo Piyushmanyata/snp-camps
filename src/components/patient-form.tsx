@@ -14,6 +14,7 @@ import {
   acquireDeskPrintTarget,
   patientPrintPath,
   runDeskRegisterAndPrint,
+  type DeskPrintTarget,
   type DeskSubmitPhase,
 } from "@/lib/desk-register-flow";
 import {
@@ -27,6 +28,18 @@ import {
 import { checkInPatientWithRetries } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
+  a4BatchIds,
+  a4BatchIsFull,
+  a4BatchPrintPath,
+  enqueueA4BatchPatient,
+  readA4BatchFromStorage,
+} from "@/lib/a4-batch-queue";
+import {
+  readDeskSlipFormatFromStorage,
+  type DeskSlipFormat,
+} from "@/lib/desk-slip-format";
+import { A4BatchPanel } from "@/components/a4-batch-panel";
+import {
   Button,
   ErrorBox,
   Input,
@@ -34,13 +47,17 @@ import {
   WarningBox,
 } from "@/components/ui";
 
-/** Recoverable print action after a successful registration (#62). */
+/** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
   patientId: string;
   regNo: number;
   queueStatus?: "registered" | "waiting" | "seen";
   /** True only when the pre-opened target was navigated successfully. */
   printNavigated: boolean;
+  /** Station format at success time. */
+  format: DeskSlipFormat;
+  /** A4 batch path when format is a4; otherwise one-up print. */
+  printHref: string;
 };
 
 type Props = {
@@ -283,11 +300,26 @@ export function PatientForm({
       return;
     }
 
-    // Acquire print target during the submit gesture BEFORE any await (#62).
+    // Station format decides thermal immediate vs A4 batch (#64).
+    const format = readDeskSlipFormatFromStorage();
+    const isThermal = format === "thermal58";
+
+    // Thermal: acquire print target during the submit gesture BEFORE any await (#62).
+    // A4 (1–3): no popup — enqueue only. A4 (full): open batch sheet after enqueue.
     // Do not pass noopener — retain handle, sever opener, navigate after save.
-    const printTarget = acquireDeskPrintTarget((url, target, features) =>
-      window.open(url, target, features),
-    );
+    let printTarget: DeskPrintTarget;
+    if (isThermal) {
+      printTarget = acquireDeskPrintTarget((url, target, features) =>
+        window.open(url, target, features),
+      );
+    } else {
+      // No-op target for A4 path; batch open handled in onSuccess.
+      printTarget = {
+        acquired: false,
+        navigate: () => false,
+        abandon: () => {},
+      };
+    }
 
     const supabase = createClient();
     const resetFormFields = () => {
@@ -347,22 +379,63 @@ export function PatientForm({
       rotateAttempt: () => {
         registrationAttempt.current.rotate();
       },
-      // Retain print recovery BEFORE form reset (#62).
+      // Retain print recovery BEFORE form reset (#62 / #64).
       onSuccess: ({ row, print }) => {
-        setPrintRecovery({
-          patientId: row.id,
-          regNo: row.reg_no,
-          queueStatus: row.queue_status,
-          printNavigated: print === "navigated",
-        });
-        setPhase("registered-print-ready");
-        const queueBit =
-          row.queue_status === "waiting" ? "line mein" : "register ho gaya";
-        setFlash(
-          print === "navigated"
-            ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
-            : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`,
-        );
+        if (isThermal) {
+          setPrintRecovery({
+            patientId: row.id,
+            regNo: row.reg_no,
+            queueStatus: row.queue_status,
+            printNavigated: print === "navigated",
+            format: "thermal58",
+            printHref: patientPrintPath(row.id),
+          });
+          setPhase("registered-print-ready");
+          const queueBit =
+            row.queue_status === "waiting" ? "line mein" : "register ho gaya";
+          setFlash(
+            print === "navigated"
+              ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
+              : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`,
+          );
+        } else {
+          // A4: enqueue distinct id. Do not window.open after await (gesture
+          // expired). At 4, Print becomes primary via recovery + batch panel.
+          const enqueued = enqueueA4BatchPatient(row.id);
+          const queue = enqueued.added
+            ? enqueued.queue
+            : readA4BatchFromStorage();
+          const ids = a4BatchIds(queue);
+          const full = a4BatchIsFull(queue);
+          const href = a4BatchPrintPath(
+            ids.length ? ids : [row.id],
+          );
+          setPrintRecovery({
+            patientId: row.id,
+            regNo: row.reg_no,
+            queueStatus: row.queue_status,
+            // A4 never claims a popup navigated from post-await path.
+            printNavigated: false,
+            format: "a4",
+            printHref: href,
+          });
+          setPhase("registered-print-ready");
+          const queueBit =
+            row.queue_status === "waiting" ? "line mein" : "register ho gaya";
+          if (!enqueued.added && enqueued.reason === "full") {
+            setFlash(
+              `Reg #${row.reg_no} — ${queueBit}. A4 sheet already full — Print sheet first, then Start next sheet.`,
+            );
+          } else if (full) {
+            setFlash(
+              `Reg #${row.reg_no} — ${queueBit}. A4 sheet full (4 distinct) — Print sheet now.`,
+            );
+          } else {
+            setFlash(
+              `Reg #${row.reg_no} — ${queueBit}. Added to A4 sheet (${ids.length}/4). Print now anytime.`,
+            );
+          }
+        }
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
       },
@@ -410,8 +483,14 @@ export function PatientForm({
 
   function openPrintRecovery() {
     if (!printRecovery) return;
-    // User-gesture open — recovery never re-registers.
-    window.open(patientPrintPath(printRecovery.patientId), "_blank");
+    // User-gesture open — recovery never re-registers (#62 / #64).
+    // A4 opens the current batch sheet; thermal opens one-up.
+    const href =
+      printRecovery.printHref ||
+      (printRecovery.format === "a4"
+        ? a4BatchPrintPath(a4BatchIds(readA4BatchFromStorage()))
+        : patientPrintPath(printRecovery.patientId));
+    window.open(href, "_blank");
   }
 
   function retryFailedRegistration() {
@@ -555,12 +634,17 @@ export function PatientForm({
         </p>
       ) : null}
 
+      {isStaff ? (
+        <A4BatchPanel lastRegNo={printRecovery?.regNo ?? null} />
+      ) : null}
+
       {printRecovery ? (
         <div
           role="status"
           data-testid="desk-print-recovery"
           data-print-navigated={printRecovery.printNavigated ? "true" : "false"}
           data-patient-id={printRecovery.patientId}
+          data-print-format={printRecovery.format}
           className="flex flex-col gap-2 rounded-xl border border-brand/20 bg-brand-soft/60 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="min-w-0">
@@ -568,9 +652,13 @@ export function PatientForm({
               Registered · #{printRecovery.regNo}
             </p>
             <p className="text-xs text-muted">
-              {printRecovery.printNavigated
-                ? "Print window opened. Reprint anytime without re-registering."
-                : "Print was blocked or closed. Use Print — patient is already saved."}
+              {printRecovery.format === "a4"
+                ? printRecovery.printNavigated
+                  ? "A4 sheet opened. Batch stays until Start next sheet."
+                  : "Patient saved on the A4 batch. Use Print sheet — never re-registers."
+                : printRecovery.printNavigated
+                  ? "Print window opened. Reprint anytime without re-registering."
+                  : "Print was blocked or closed. Use Print — patient is already saved."}
             </p>
           </div>
           <Button
@@ -580,7 +668,7 @@ export function PatientForm({
             data-testid="desk-print-recovery-button"
             onClick={openPrintRecovery}
           >
-            Print desk slip
+            {printRecovery.format === "a4" ? "Print A4 sheet" : "Print desk slip"}
           </Button>
         </div>
       ) : null}

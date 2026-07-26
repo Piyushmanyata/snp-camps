@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
-import { isPatientUuid, patientScanUrl } from "@/lib/qr";
+import { isPatientUuid } from "@/lib/qr";
+import { loadPrintSlips } from "@/lib/print-slip-load";
 
 const DeskSlipPrint = dynamic(
   () =>
@@ -42,67 +43,46 @@ export default async function PrintPage({
   }
 
   const supabase = await createClient();
+  const h = await headers();
+  const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
+  const proto = h.get("x-forwarded-proto") || "http";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
 
-  const { data: patient, error: patientErr } = await supabase
-    .from("patients")
-    .select(
-      "id, reg_no, full_name, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const loaded = await loadPrintSlips(supabase, [id], origin);
+  const slip = loaded[0];
 
-  if (patientErr || !patient) {
+  if (!slip) {
     return (
       <main id="main" className="mx-auto max-w-lg px-4 py-10">
         <div className="rounded-2xl border border-border bg-card p-6 text-center">
           <p className="text-lg font-semibold">Patient not found</p>
           <p className="mt-1 text-sm text-muted">
-            {patientErr
-              ? "The patient record could not be loaded. Try again or ask an admin."
-              : "Check the QR or registration number and try again."}
+            Check the QR or registration number and try again.
           </p>
         </div>
       </main>
     );
   }
 
-  const h = await headers();
-  const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
-  const proto = h.get("x-forwarded-proto") || "http";
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
-  const campRel = patient.camps as
-    | { name: string; venue: string | null; camp_date: string | null }
-    | { name: string; venue: string | null; camp_date: string | null }[]
-    | null;
-  const camp = Array.isArray(campRel) ? campRel[0] ?? null : campRel;
-  const dayRel = patient.camp_days as
-    | { day_date: string }
-    | { day_date: string }[]
-    | null;
-  const campDayDate = Array.isArray(dayRel)
-    ? dayRel[0]?.day_date ?? null
-    : dayRel?.day_date ?? null;
-
-  // Compact encoding required — no long-URL fallback on the slip.
-  const qrValue = patientScanUrl(patient.id, origin);
-
+  // Single-patient route: one distinct slip (A4 leaves 3 empty cells; never 4× copy).
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
       <DeskSlipPrint
-        patient={{
-          id: patient.id,
-          reg_no: patient.reg_no,
-          full_name: patient.full_name,
-        }}
-        camp={camp}
-        campDayDate={campDayDate}
-        qrValue={qrValue}
-        queueStatus={patient.queue_status}
+        slips={[
+          {
+            patient: slip.patient,
+            camp: slip.camp,
+            campDayDate: slip.campDayDate,
+            qrValue: slip.qrValue,
+            queueStatus: slip.queueStatus,
+          },
+        ]}
         deskHref={profile.role === "admin" ? "/admin" : "/volunteer"}
         deskLabel={
           profile.role === "admin" ? "Admin dashboard" : "Volunteer desk"
         }
         autoPrint={autoPrint}
+        isBatch={false}
       />
     </main>
   );

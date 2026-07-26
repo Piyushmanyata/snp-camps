@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
+import fs from "node:fs";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const samplesDir = path.join(process.cwd(), "docs", "desk-slip-samples");
+const scratchDir = path.join(process.cwd(), ".scratch", "remediation-64");
 
 function env(name: string) {
   const value = process.env[name];
@@ -53,7 +55,7 @@ test.beforeEach(async ({ page, context }) => {
   await blockRemoteRequests(page);
 });
 
-test("desk slip has no passcode; A4 multi-up and thermal58 render", async ({
+test("desk slip has no passcode; A4 is one distinct slip + empty cells; thermal one-up", async ({
   page,
 }) => {
   const patientId = env("E2E_PATIENT_ID");
@@ -72,15 +74,20 @@ test("desk slip has no passcode; A4 multi-up and thermal58 render", async ({
   );
   await expect(page.getByText(/passcode/i)).toHaveCount(0);
 
-  // Default: A4 multi-up with reg no + name + camp day + venue
+  // Default: A4 multi-up — ONE distinct patient, three empty cells (#64).
   await expect(page.getByTestId("desk-slip-a4")).toBeVisible();
-  await expect(page.getByTestId("desk-slip-reg-no").first()).toBeVisible();
+  await expect(page.getByTestId("desk-slip-a4")).toHaveAttribute(
+    "data-slip-count",
+    "1",
+  );
+  await expect(page.getByTestId("desk-slip-a4-cell")).toHaveCount(1);
+  await expect(page.getByTestId("desk-slip-a4-cell-empty")).toHaveCount(3);
+  await expect(page.getByTestId("desk-slip-reg-no")).toHaveCount(1);
   await expect(page.getByTestId("desk-slip-name").first()).toBeVisible();
   await expect(page.getByTestId("desk-slip-camp-day").first()).toBeVisible();
   await expect(page.getByTestId("desk-slip-venue").first()).toBeVisible();
-  // 2×2 multi-up = 4 copies
-  await expect(page.getByTestId("desk-slip-reg-no")).toHaveCount(4);
 
+  fs.mkdirSync(samplesDir, { recursive: true });
   await page
     .getByTestId("desk-slip-a4")
     .screenshot({ path: path.join(samplesDir, "a4-multi-up.png") });
@@ -109,4 +116,146 @@ test("desk slip has no passcode; A4 multi-up and thermal58 render", async ({
   expect(hydration, `unexpected console: ${consoleErrors.join(" | ")}`).toEqual(
     [],
   );
+});
+
+test("print media geometry: A4 page, QR inside bounds, no overflow clip", async ({
+  page,
+}) => {
+  const patientId = env("E2E_PATIENT_ID");
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, `/print/${patientId}`);
+
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByTestId("desk-slip-a4")).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const sheet = document.querySelector(
+      '[data-testid="desk-slip-a4"]',
+    ) as HTMLElement | null;
+    const qr = document.querySelector(
+      '[data-testid="desk-slip-qr"]',
+    ) as HTMLElement | null;
+    const name = document.querySelector(
+      '[data-testid="desk-slip-name"]',
+    ) as HTMLElement | null;
+    const reg = document.querySelector(
+      '[data-testid="desk-slip-reg-no"]',
+    ) as HTMLElement | null;
+    if (!sheet || !qr || !name || !reg) {
+      return { ok: false as const, reason: "missing nodes" };
+    }
+    const sheetBox = sheet.getBoundingClientRect();
+    const qrBox = qr.getBoundingClientRect();
+    const nameBox = name.getBoundingClientRect();
+    const style = getComputedStyle(sheet);
+    const overflow = style.overflow;
+    // QR fully inside sheet
+    const qrInside =
+      qrBox.left >= sheetBox.left - 1 &&
+      qrBox.top >= sheetBox.top - 1 &&
+      qrBox.right <= sheetBox.right + 1 &&
+      qrBox.bottom <= sheetBox.bottom + 1;
+    const nameInside =
+      nameBox.left >= sheetBox.left - 1 &&
+      nameBox.right <= sheetBox.right + 1;
+    // Reg number should be the largest text element
+    const regFont = parseFloat(getComputedStyle(reg).fontSize);
+    const nameFont = parseFloat(getComputedStyle(name).fontSize);
+    return {
+      ok: true as const,
+      qrInside,
+      nameInside,
+      overflow,
+      regFont,
+      nameFont,
+      sheetWidth: sheetBox.width,
+      sheetHeight: sheetBox.height,
+      emptyCount: document.querySelectorAll(
+        '[data-testid="desk-slip-a4-cell-empty"]',
+      ).length,
+      filledCount: document.querySelectorAll(
+        '[data-testid="desk-slip-a4-cell"]',
+      ).length,
+    };
+  });
+
+  expect(geometry.ok).toBe(true);
+  if (!geometry.ok) return;
+  expect(geometry.qrInside).toBe(true);
+  expect(geometry.nameInside).toBe(true);
+  expect(geometry.overflow === "hidden").toBe(false);
+  expect(geometry.regFont).toBeGreaterThan(geometry.nameFont);
+  expect(geometry.filledCount).toBe(1);
+  expect(geometry.emptyCount).toBe(3);
+  // A4 preview ~210mm wide at 96dpi ≈ 794px; allow layout variance
+  expect(geometry.sheetWidth).toBeGreaterThan(500);
+
+  fs.mkdirSync(scratchDir, { recursive: true });
+  const pdfPath = path.join(scratchDir, "a4-single-print-media.pdf");
+  const pdf = await page.pdf({
+    path: pdfPath,
+    format: "A4",
+    printBackground: true,
+    margin: { top: "4mm", right: "4mm", bottom: "4mm", left: "4mm" },
+  });
+  expect(pdf.byteLength).toBeGreaterThan(1000);
+});
+
+test("thermal print media: 58mm-class width, content not overflow-hidden", async ({
+  page,
+}) => {
+  const patientId = env("E2E_PATIENT_ID");
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, `/print/${patientId}`);
+  await page.getByRole("button", { name: "58mm thermal" }).click();
+  await expect(page.getByTestId("desk-slip-thermal")).toBeVisible();
+
+  await page.emulateMedia({ media: "print" });
+
+  const geometry = await page.evaluate(() => {
+    const sheet = document.querySelector(
+      '[data-testid="desk-slip-thermal"]',
+    ) as HTMLElement | null;
+    const qr = document.querySelector(
+      '[data-testid="desk-slip-qr"]',
+    ) as HTMLElement | null;
+    if (!sheet || !qr) return { ok: false as const };
+    const sheetBox = sheet.getBoundingClientRect();
+    const qrBox = qr.getBoundingClientRect();
+    const style = getComputedStyle(sheet);
+    // 58mm ≈ 219px at 96dpi; print CSS uses 54mm content width
+    const widthMm = sheetBox.width / 3.78; // rough CSS px→mm
+    return {
+      ok: true as const,
+      widthPx: sheetBox.width,
+      widthMm,
+      heightPx: sheetBox.height,
+      overflow: style.overflow,
+      qrInside:
+        qrBox.left >= sheetBox.left - 2 &&
+        qrBox.right <= sheetBox.right + 2 &&
+        qrBox.top >= sheetBox.top - 2 &&
+        qrBox.bottom <= sheetBox.bottom + 2,
+      regCount: document.querySelectorAll('[data-testid="desk-slip-reg-no"]')
+        .length,
+    };
+  });
+
+  expect(geometry.ok).toBe(true);
+  if (!geometry.ok) return;
+  expect(geometry.regCount).toBe(1);
+  expect(geometry.widthMm).toBeLessThan(70);
+  expect(geometry.widthMm).toBeGreaterThan(40);
+  expect(geometry.overflow === "hidden").toBe(false);
+  expect(geometry.qrInside).toBe(true);
+
+  fs.mkdirSync(scratchDir, { recursive: true });
+  await page.pdf({
+    path: path.join(scratchDir, "thermal-print-media.pdf"),
+    width: "58mm",
+    // Tall enough for max content — not a hard 110mm clip
+    height: "200mm",
+    printBackground: true,
+    margin: { top: "2mm", right: "2mm", bottom: "2mm", left: "2mm" },
+  });
 });

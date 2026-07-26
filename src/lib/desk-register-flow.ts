@@ -37,10 +37,17 @@ export type DeskSubmitPhase =
   | "failed-retryable"
   | "registered-print-ready";
 
-/** Same-origin print route for one patient (A4 batch is #64). */
+/** Same-origin print route for one patient (thermal / one-up reprint). */
 export function patientPrintPath(patientId: string): string {
   return `/print/${patientId}?auto=1`;
 }
+
+/**
+ * Desk print mode after successful registration (#64).
+ * - thermal: immediate one-up print target navigation
+ * - a4: enqueue station batch (max 4 distinct); open sheet when full or flush
+ */
+export type DeskPrintMode = "thermal" | "a4";
 
 /**
  * Controlled print target acquired during the submit gesture (#62).

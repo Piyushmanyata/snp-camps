@@ -10,6 +10,7 @@
     "/login": 273000,
     "/p/[id]": 199000,
     "/print/[id]": 212000,
+    "/print/batch": 217000,
     "/register": 410000,
     "/s/[token]": 199000,
     "/volunteer": 464000
