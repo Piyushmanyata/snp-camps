@@ -58,6 +58,23 @@ test("registration day-full phrase maps", () => {
   assert.equal(msg, "That camp day is full. Choose another day.");
 });
 
+test("SEAT_LIMIT_BELOW_ASSIGNED maps to capacity copy with count (#66)", () => {
+  const msg = mapDbError(
+    { message: "SEAT_LIMIT_BELOW_ASSIGNED:taken=5" },
+    { log: false },
+  );
+  assert.equal(msg, "Seat limit cannot be below 5 existing bookings");
+  assert.doesNotMatch(msg, /SEAT_LIMIT_BELOW_ASSIGNED|connection|internet/i);
+});
+
+test("legacy seats-below-taken phrase still maps (#66)", () => {
+  const msg = mapDbError(
+    { message: "Cannot set seats below taken (3)" },
+    { log: false },
+  );
+  assert.equal(msg, "Seat limit cannot be below 3 existing bookings");
+});
+
 test("unknown code maps to safe generic and never returns raw text", () => {
   const raw =
     "ERROR: relation \"secret_internal_table\" does not exist (SQLSTATE 42P01)";

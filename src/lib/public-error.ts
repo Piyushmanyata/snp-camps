@@ -133,6 +133,14 @@ export function mapDbError(
   if (/day is full|select a camp day/i.test(message)) {
     return "That camp day is full. Choose another day.";
   }
+  // #66 — admin seat cap below assigned count (stable business rejection)
+  const belowAssigned = message.match(
+    /SEAT_LIMIT_BELOW_ASSIGNED:taken=(\d+)|Cannot set seats below taken \((\d+)\)/i,
+  );
+  if (belowAssigned) {
+    const n = belowAssigned[1] || belowAssigned[2];
+    return `Seat limit cannot be below ${n} existing bookings`;
+  }
   if (/already registered/i.test(message)) {
     return "A matching registration already exists for this camp.";
   }
