@@ -238,7 +238,27 @@ test("ready-ok when fully aligned: 200 with all checks", async () => {
   ]) {
     assert.equal(body.checks[id].ok, true, `${id} should pass`);
   }
+  assert.equal(typeof body.smsConfigured, "boolean");
+  assert.equal(typeof body.aadhaarConfigured, "boolean");
+  assert.equal(typeof body.cronConfigured, "boolean");
   assertNoSecrets(body);
+});
+
+test("readiness returns 200 ready: true when optional integrations are unconfigured", async () => {
+  __setServiceRoleClient(mockServiceRole());
+  const prevSecret = process.env.CRON_SECRET;
+  delete process.env.CRON_SECRET;
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.99"),
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.cronConfigured, false);
+  } finally {
+    if (prevSecret !== undefined) process.env.CRON_SECRET = prevSecret;
+  }
 });
 
 test("migration-head discovery failure → 503 (never 200)", async () => {

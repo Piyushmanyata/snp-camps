@@ -449,5 +449,8 @@ export function readinessResponseBody(result: ReadinessResult) {
     appliedMigrationHead: result.appliedMigrationHead,
     checks: result.checks,
     failedCheck: result.failedCheck,
+    smsConfigured: result.integrations.sms,
+    aadhaarConfigured: result.integrations.aadhaarEkyc,
+    cronConfigured: result.integrations.cron,
   };
 }

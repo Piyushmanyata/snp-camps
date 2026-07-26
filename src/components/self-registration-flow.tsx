@@ -85,7 +85,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       <p className="text-sm text-muted">Aap registered hain, abhi queue mein nahi. Aane par camp desk par check-in karein.</p>
       <p className="rounded-2xl bg-brand-soft p-6 text-center"><span className="block text-xs font-bold uppercase text-brand">Registration number</span><strong className="text-5xl tracking-tight">#{result.registrationNumber}</strong></p>
       <p className="text-sm">Camp SMS Aadhaar-linked number par aayega. Number badal gaya ho to desk par batayein.</p>
-      <a className="block break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline" href={result.statusUrl}>{result.statusUrl}</a>
+      <a className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline" href={result.statusUrl}>{result.statusUrl}</a>
     </section>
   );
 

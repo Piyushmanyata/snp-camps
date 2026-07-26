@@ -54,13 +54,29 @@ export async function POST(request: Request) {
     const message = error
       ? String((error as { message?: unknown }).message ?? error)
       : "";
-    const duplicate = parseAadhaarDuplicateError(message) ?? parseLikelyDuplicateError(message);
-    if (duplicate) {
+    const aadhaarDup = parseAadhaarDuplicateError(message);
+    const likelyDup = parseLikelyDuplicateError(message);
+    if (aadhaarDup) {
       return NextResponse.json({
         ok: false,
         deskReferral: true,
-        registrationNumber: duplicate.regNo,
-        error: `Aapka registration #${duplicate.regNo} desk par check karwayen.`,
+        registrationNumber: aadhaarDup.regNo,
+        error: `Aapka Aadhaar pehle se reg #${aadhaarDup.regNo} par registered hai. Kripya camp desk par milen.`,
+      });
+    }
+    if (likelyDup) {
+      return NextResponse.json({
+        ok: false,
+        deskReferral: true,
+        registrationNumber: likelyDup.regNo,
+        error: `Aapki details se milta-julta reg #${likelyDup.regNo} mila hai. Kripya camp desk par check karwayen.`,
+      });
+    }
+    if (/aadhaar_duplicate|likely_duplicate/i.test(message)) {
+      return NextResponse.json({
+        ok: false,
+        deskReferral: true,
+        error: "Aapka registration pehle se ho chuka lagta hai. Kripya camp desk par volunteer se milen.",
       });
     }
     if (/full|seat/i.test(message)) return errorResponse("Yeh Camp Day full hai. Doosra din chunen.");
