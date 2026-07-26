@@ -4,9 +4,39 @@ import { formatCampDay } from "@/lib/format-camp-day";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
+type StatusRpcRow = {
+  full_name: string;
+  reg_no: number;
+  queue_status: string;
+  queue_position: number | null;
+  camp_name: string | null;
+  venue: string | null;
+  day_date: string | null;
+};
+
+/**
+ * Map a successful patient_status_by_token row to the status-page view model.
+ * Pure helper — unit-tested without rendering the RSC tree.
+ */
+export function mapStatusRpcRow(row: StatusRpcRow) {
+  return {
+    fullName: row.full_name,
+    regNo: row.reg_no,
+    queueStatus: row.queue_status,
+    queuePosition:
+      row.queue_status === "waiting" && row.queue_position != null
+        ? Number(row.queue_position)
+        : null,
+    campName: row.camp_name?.trim() ? row.camp_name : "—",
+    venue: row.venue?.trim() ? row.venue : "—",
+    dayDate: row.day_date ? String(row.day_date) : null,
+  };
+}
+
 /**
  * Passwordless patient status — zero client JS (Server Component only).
  * Unknown / malformed tokens → same plain not-found (no oracle).
+ * Queue position comes from atomic FCFS RPC (#70); never a secondary count.
  */
 export default async function PatientStatusPage({
   params,
@@ -21,43 +51,31 @@ export default async function PatientStatusPage({
   const admin = createServiceRoleClient();
   if (!admin) notFound();
 
-  const { data: patient, error } = await admin
-    .from("patients")
-    .select(
-      "full_name, reg_no, queue_status, queued_at, camp_id, camps(name, venue), camp_days(day_date)",
-    )
-    .eq("status_token", token)
-    .maybeSingle();
+  const { data, error } = await admin.rpc("patient_status_by_token", {
+    p_token: token,
+  });
 
-  if (error || !patient) notFound();
-
-  const camp = Array.isArray(patient.camps) ? patient.camps[0] : patient.camps;
-  const day = Array.isArray(patient.camp_days)
-    ? patient.camp_days[0]
-    : patient.camp_days;
-  const dayDate =
-    day && typeof day === "object" && "day_date" in day
-      ? String((day as { day_date: string }).day_date)
-      : null;
-  const campName =
-    camp && typeof camp === "object" && "name" in camp
-      ? String((camp as { name: string }).name)
-      : "—";
-  const venue =
-    camp && typeof camp === "object" && "venue" in camp
-      ? ((camp as { venue: string | null }).venue ?? "—")
-      : "—";
-
-  let queuePosition: number | null = null;
-  if (patient.queue_status === "waiting" && patient.queued_at) {
-    const { count } = await admin
-      .from("patients")
-      .select("id", { count: "exact", head: true })
-      .eq("camp_id", patient.camp_id)
-      .eq("queue_status", "waiting")
-      .lte("queued_at", patient.queued_at);
-    queuePosition = count ?? null;
+  // Calculation / RPC failure → safe retryable error (not notFound, not fabricated position).
+  if (error) {
+    return (
+      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+        <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
+        <div
+          role="alert"
+          className="mt-6 rounded-xl border border-red-200 bg-danger-soft px-3.5 py-3 text-[0.9375rem] text-danger"
+        >
+          <p className="font-medium">
+            Status could not be loaded. Please refresh and try again.
+          </p>
+        </div>
+      </main>
+    );
   }
+
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  if (rows.length === 0) notFound();
+
+  const view = mapStatusRpcRow(rows[0] as StatusRpcRow);
 
   return (
     <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
@@ -65,30 +83,30 @@ export default async function PatientStatusPage({
       <dl className="mt-6 space-y-4 text-[1.0625rem]">
         <div>
           <dt className="text-sm font-medium text-muted">Name</dt>
-          <dd className="font-semibold">{patient.full_name}</dd>
+          <dd className="font-semibold">{view.fullName}</dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-muted">Registration number</dt>
-          <dd className="font-semibold tabular">#{patient.reg_no}</dd>
+          <dd className="font-semibold tabular">#{view.regNo}</dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-muted">Camp</dt>
-          <dd className="font-semibold">{campName}</dd>
+          <dd className="font-semibold">{view.campName}</dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-muted">Date</dt>
           <dd className="font-semibold">
-            {dayDate ? formatCampDay(dayDate) : "—"}
+            {view.dayDate ? formatCampDay(view.dayDate) : "—"}
           </dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-muted">Venue</dt>
-          <dd className="font-semibold">{venue}</dd>
+          <dd className="font-semibold">{view.venue}</dd>
         </div>
-        {queuePosition != null ? (
+        {view.queuePosition != null ? (
           <div>
             <dt className="text-sm font-medium text-muted">Queue position</dt>
-            <dd className="font-semibold tabular">{queuePosition}</dd>
+            <dd className="font-semibold tabular">{view.queuePosition}</dd>
           </div>
         ) : null}
       </dl>

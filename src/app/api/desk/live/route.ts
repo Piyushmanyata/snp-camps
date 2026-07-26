@@ -78,7 +78,10 @@ export async function GET(request: Request) {
         .select(DESK_LIVE_WAITING_SELECT, { count: "exact" })
         .eq("camp_id", campId)
         .eq("queue_status", "waiting")
+        // FCFS: queued_at, then reg_no, then id (#70)
         .order("queued_at", { ascending: true, nullsFirst: false })
+        .order("reg_no", { ascending: true })
+        .order("id", { ascending: true })
         .limit(DESK_LIVE_WAITING_LIMIT),
       supabase.rpc("camp_day_stats", { p_camp_id: campId }),
     ]);
@@ -112,7 +115,10 @@ export async function GET(request: Request) {
         .select("id, reg_no, full_name, queued_at", { count: "exact" })
         .eq("camp_id", campId)
         .eq("queue_status", "waiting")
+        // FCFS: queued_at, then reg_no, then id (#70)
         .order("queued_at", { ascending: true, nullsFirst: false })
+        .order("reg_no", { ascending: true })
+        .order("id", { ascending: true })
         .limit(DESK_LIVE_WAITING_LIMIT),
       supabase.rpc("camp_day_stats", { p_camp_id: campId }),
     ]);
