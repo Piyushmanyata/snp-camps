@@ -191,7 +191,7 @@ export function LiveQueue({
           type="button"
           onClick={manualRefresh}
           disabled={refreshing || !campId}
-          className="pressable inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
+          className="pressable inline-flex min-h-12 items-center gap-1 rounded-lg px-3 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
         >
           {refreshing ? <Spinner className="h-3 w-3" /> : null}
           {refreshing ? "Refreshing…" : "Refresh"}
@@ -225,7 +225,7 @@ export function LiveQueue({
                 <Badge tone="wait">In queue</Badge>
                 <Link
                   href={`/print/${p.id}`}
-                  className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand-soft"
+                  className="pressable inline-flex min-h-12 items-center rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand-soft"
                 >
                   Reprint
                 </Link>
@@ -234,7 +234,7 @@ export function LiveQueue({
                     type="button"
                     disabled={busyId !== null}
                     onClick={() => void assign(p.id, null)}
-                    className="pressable rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
+                    className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
                   >
                     {busyId === p.id ? "…" : "See now"}
                   </button>
@@ -248,7 +248,7 @@ export function LiveQueue({
                       setDoctorId("");
                       setError(null);
                     }}
-                    className="pressable rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white"
+                    className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white"
                   >
                     Assign
                   </button>
@@ -277,7 +277,7 @@ export function LiveQueue({
                         type="button"
                         aria-pressed={doctorId === d.id}
                         onClick={() => setDoctorId(d.id)}
-                        className={`pressable min-h-10 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                        className={`pressable min-h-12 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           doctorId === d.id
                             ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
                             : "border-border bg-white hover:bg-brand-soft/50"

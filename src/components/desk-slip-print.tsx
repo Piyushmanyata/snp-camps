@@ -144,8 +144,8 @@ function FormatButton({
       aria-pressed={active}
       className={
         active
-          ? "rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white"
-          : "rounded-lg px-3 py-2 text-sm font-semibold text-foreground hover:bg-brand-soft"
+          ? "min-h-12 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white"
+          : "min-h-12 rounded-lg px-3 py-2 text-sm font-semibold text-foreground hover:bg-brand-soft"
       }
     >
       {label}

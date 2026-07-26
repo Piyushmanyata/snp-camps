@@ -3,8 +3,9 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
-  --brand: #059669;
-  --brand-dark: #047857;
+  /* Outdoor glare: brand/danger tuned for ≥4.5:1 body text on light surfaces */
+  --brand: #047857;
+  --brand-dark: #065f46;
   --brand-soft: #d1fae5;
   --brand-mid: #10b981;
   --accent: #0284c7;
@@ -13,15 +14,15 @@
   --muted: #475569;
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-soft: #fef2f2;
-  --success: #059669;
+  --success: #047857;
   --success-soft: #ecfdf5;
-  --warning: #d97706;
+  --warning: #b45309;
   --warning-soft: #fffbeb;
   --radius: 1rem;
   --print-ink: #0f172a;
-  --ring: #059669;
+  --ring: #047857;
   --ring-offset: 2px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -255,7 +256,7 @@ h3 {
 
 .jump-chip {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: var(--touch-min);
   align-items: center;
   justify-content: center;
   border-radius: 0.75rem;

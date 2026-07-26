@@ -839,7 +839,7 @@ export function QrScanner({
             {mode !== "doctor" ? (
               <Link
                 href={`/print/${assigned.id}`}
-                className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
+                className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
               >
                 Reprint form
               </Link>
@@ -885,7 +885,7 @@ export function QrScanner({
                   onClick={(event) => {
                     if (assigning) event.preventDefault();
                   }}
-                  className={`pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft ${
+                  className={`pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft ${
  assigning ? "pointer-events-none opacity-50" : ""
  }`}
                 >
@@ -926,7 +926,7 @@ export function QrScanner({
                 {mode !== "doctor" ? (
                   <Link
                     href={`/print/${lookup.id}`}
-                    className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+                    className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
                   >
                     Reprint form
                   </Link>

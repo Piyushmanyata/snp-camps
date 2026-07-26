@@ -228,7 +228,7 @@ export function CheckIn({
                   aria-selected={false}
                   disabled={busy}
                   onClick={() => void runCheckIn({ id: m.id })}
-                  className="pressable flex w-full flex-col items-start gap-0.5 px-3 py-3 text-left hover:bg-brand-soft disabled:opacity-50"
+                  className="pressable flex min-h-12 w-full flex-col items-start justify-center gap-0.5 px-3 py-3 text-left hover:bg-brand-soft disabled:opacity-50"
                 >
                   <span className="font-semibold text-foreground">
                     <span className="tabular text-brand">#{m.reg_no}</span>

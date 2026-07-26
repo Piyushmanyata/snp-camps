@@ -97,7 +97,7 @@ export function Shell({
           {backHref ? (
             <Link
               href={backHref}
-              className="pressable mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft sm:h-12 sm:w-12"
+              className="pressable mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft"
               aria-label="Go back"
             >
               <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -203,7 +203,7 @@ export function CollapsibleSection({
       open={defaultOpen || undefined}
       className="group rounded-2xl border border-border bg-card"
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="text-lg font-semibold tracking-tight text-foreground">
           {title}
         </span>
@@ -212,7 +212,7 @@ export function CollapsibleSection({
             <span className="text-[0.8125rem] text-muted">{hint}</span>
           ) : null}
           <span
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted transition-transform duration-150 group-open:rotate-180"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-muted transition-transform duration-150 group-open:rotate-180"
             aria-hidden="true"
           >
             <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -337,6 +337,7 @@ export function Input({
       {error ? (
         <span
           id={errorId}
+          role="alert"
           className="block text-[0.8125rem] font-medium text-danger"
         >
           {error}
@@ -425,7 +426,7 @@ export function WarningBox({ children }: { children: ReactNode }) {
   return (
     <div
       role="status"
-      className="rounded-xl border border-amber-200 bg-warning-soft px-3.5 py-3 text-[0.9375rem] text-warning"
+      className="rounded-xl border border-amber-200 bg-warning-soft px-3.5 py-3 text-[0.9375rem] font-medium text-amber-950"
     >
       {children}
     </div>
@@ -503,7 +504,7 @@ export function NavLink({
   return (
     <Link
       href={href}
-      className={`pressable inline-flex min-h-[3.25rem] w-full cursor-pointer items-center justify-center rounded-xl px-4 text-[1.0625rem] font-semibold transition-colors duration-150 ${styles}`}
+      className={`pressable inline-flex min-h-[3.25rem] w-full cursor-pointer items-center justify-center rounded-xl px-4 text-[1.0625rem] font-semibold transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-brand/40 ${styles}`}
     >
       {children}
     </Link>

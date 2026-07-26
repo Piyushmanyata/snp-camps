@@ -42,7 +42,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
     <button
       type="button"
       onClick={() => setShowPasswordModal(true)}
-      className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted/90 transition hover:text-foreground hover:underline decoration-muted/40 underline-offset-2"
+      className="inline-flex min-h-12 items-center gap-1 px-1 text-xs font-semibold text-muted transition hover:text-foreground hover:underline decoration-muted/40 underline-offset-2"
     >
       <svg
         className="h-3 w-3 opacity-70"
@@ -83,7 +83,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
           type="button"
           disabled={isLoading}
           onClick={() => void signOut()}
-          className="pressable inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-red-600 px-3.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="pressable inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-red-700 px-3.5 text-sm font-bold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Signing out…" : "Sign out"}
         </button>

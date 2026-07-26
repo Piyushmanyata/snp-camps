@@ -460,7 +460,7 @@ export function PatientForm({
         </p>
         <Link
           href="/"
-          className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
+          className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
         >
           Home
         </Link>

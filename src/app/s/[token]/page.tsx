@@ -60,34 +60,34 @@ export default async function PatientStatusPage({
   }
 
   return (
-    <main className="mx-auto max-w-md px-4 py-10 text-foreground">
+    <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
       <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
-      <dl className="mt-6 space-y-3 text-[0.9375rem]">
+      <dl className="mt-6 space-y-4 text-[1.0625rem]">
         <div>
-          <dt className="text-muted">Name</dt>
+          <dt className="text-sm font-medium text-muted">Name</dt>
           <dd className="font-semibold">{patient.full_name}</dd>
         </div>
         <div>
-          <dt className="text-muted">Registration number</dt>
+          <dt className="text-sm font-medium text-muted">Registration number</dt>
           <dd className="font-semibold tabular">#{patient.reg_no}</dd>
         </div>
         <div>
-          <dt className="text-muted">Camp</dt>
+          <dt className="text-sm font-medium text-muted">Camp</dt>
           <dd className="font-semibold">{campName}</dd>
         </div>
         <div>
-          <dt className="text-muted">Date</dt>
+          <dt className="text-sm font-medium text-muted">Date</dt>
           <dd className="font-semibold">
             {dayDate ? formatCampDay(dayDate) : "—"}
           </dd>
         </div>
         <div>
-          <dt className="text-muted">Venue</dt>
+          <dt className="text-sm font-medium text-muted">Venue</dt>
           <dd className="font-semibold">{venue}</dd>
         </div>
         {queuePosition != null ? (
           <div>
-            <dt className="text-muted">Queue position</dt>
+            <dt className="text-sm font-medium text-muted">Queue position</dt>
             <dd className="font-semibold tabular">{queuePosition}</dd>
           </div>
         ) : null}
