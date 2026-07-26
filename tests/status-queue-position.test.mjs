@@ -20,6 +20,32 @@ test("status page is a Server Component (no use client)", () => {
   assert.match(src, /export default async function PatientStatusPage/);
 });
 
+test("status page refreshes every 30 seconds without client JavaScript", () => {
+  const src = readPage();
+  assert.match(src, /<meta\s+httpEquiv=["']refresh["']\s+content=["']30["']\s*\/>/);
+  assert.doesNotMatch(src, /use client/);
+});
+
+test("status page rate-limits by IP before token lookup without an oracle", () => {
+  const src = readPage();
+  assert.match(src, /checkRateLimit/);
+  assert.match(src, /scope:\s*["']status-page["']/);
+  assert.match(src, /limit:\s*12/);
+  assert.match(src, /windowMs:\s*60_000/);
+
+  const rateLimitBlock = src.slice(
+    src.indexOf("const rate = checkRateLimit"),
+    src.indexOf("if (!isStatusTokenFormat"),
+  );
+  assert.match(rateLimitBlock, /if\s*\(!rate\.allowed\)\s*notFound\(\)/);
+  assert.doesNotMatch(rateLimitBlock, /identifier:/);
+  assert.ok(
+    src.indexOf("const rate = checkRateLimit") <
+      src.indexOf("if (!isStatusTokenFormat"),
+    "rate limit must run before token validation/lookup",
+  );
+});
+
 test("status page uses patient_status_by_token RPC only", () => {
   const src = readPage();
   assert.match(src, /patient_status_by_token/);

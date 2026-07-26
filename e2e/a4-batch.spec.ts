@@ -2,7 +2,7 @@
  * #64 — A4 batches four distinct patients; thermal remains one-up.
  * Geometry asserts print media / PDF, not only screen DOM screenshots.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 

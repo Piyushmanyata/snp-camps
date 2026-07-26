@@ -37,7 +37,28 @@ export type ReadinessResult = {
   checks: Record<ReadinessCheckId, CheckResult>;
   /** First failed check id, if any. */
   failedCheck: ReadinessCheckId | null;
+  integrations: {
+    sms: boolean;
+    aadhaarEkyc: boolean;
+    cron: boolean;
+  };
 };
+
+export function integrationConfig(env: Record<string, string | undefined> = process.env) {
+  return {
+    sms: Boolean(
+      env.MSG91_AUTH_KEY?.trim() &&
+        env.MSG91_SENDER_ID?.trim() &&
+        (env.MSG91_DLT_TE_ID_REGISTRATION?.trim() || env.MSG91_TEMPLATE_REGISTRATION?.trim()) &&
+        (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()),
+    ),
+    aadhaarEkyc: Boolean(
+      env.AADHAAR_KYC_PROVIDER?.trim() &&
+        (env.AADHAAR_HASH_PEPPER?.trim() || env.AADHAAR_KYC_PEPPER?.trim() || env.AADHAAR_PEPPER?.trim()),
+    ),
+    cron: Boolean(env.CRON_SECRET?.trim()),
+  };
+}
 
 /** Facts returned by public.readiness_catalog_probe() (service_role). */
 export type CatalogProbeFacts = {
@@ -241,6 +262,7 @@ export async function evaluateReadiness(
     contractVersion: READINESS_CONTRACT_VERSION,
     expectedMigrationHead: EXPECTED_MIGRATION_HEAD,
     appliedMigrationHead: null,
+    integrations: integrationConfig(),
   };
 
   if (!client) {

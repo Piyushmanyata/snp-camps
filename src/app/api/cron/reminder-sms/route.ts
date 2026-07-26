@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import {
   createReminderJobStore,
   runDayBeforeReminders,
@@ -19,11 +20,19 @@ export async function POST(request: Request) {
   return handleCron(request);
 }
 
-function authorizeCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
+export function authorizeCron(request: Request, env = process.env): boolean {
+  const secret = env.CRON_SECRET?.trim();
+  if (!secret) {
+    console.error("[reminder-sms] cron called while CRON_SECRET is unconfigured");
+    return false;
+  }
   const header = request.headers.get("authorization")?.trim() ?? "";
-  return header === `Bearer ${secret}`;
+  const prefix = "Bearer ";
+  if (!header.startsWith(prefix)) return false;
+  const supplied = header.slice(prefix.length);
+  const expected = Buffer.from(secret, "utf8");
+  const actual = Buffer.from(supplied, "utf8");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 async function handleCron(request: Request) {

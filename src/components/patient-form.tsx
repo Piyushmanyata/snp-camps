@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import {
   digitsOnly,
   formatAadhaarDisplay,
-  isAadhaarLookupEnabledClient,
   isValidAadhaarNumber,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
@@ -82,10 +81,12 @@ export function PatientForm({
 }: Props) {
   const openDays = days.filter((d) => !d.is_full);
   const firstOpen = openDays[0]?.id || "";
-  const lookupEnabled = isAadhaarLookupEnabledClient();
 
   const [campDayId, setCampDayId] = useState(firstOpen);
   const [aadhaar, setAadhaar] = useState("");
+  const [aadhaarHash, setAadhaarHash] = useState<string | null>(null);
+  const [aadhaarVerifiedAt, setAadhaarVerifiedAt] = useState<string | null>(null);
+  const [aadhaarKycRef, setAadhaarKycRef] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
@@ -113,13 +114,9 @@ export function PatientForm({
 
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMsg, setLookupMsg] = useState<string | null>(null);
-  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastLookedUp = useRef("");
-  const lookupRequest = useRef(0);
   const registrationAttempt = useRef(
     createRegistrationAttempt(createRequestId),
   );
-  const lookupAbort = useRef<AbortController | null>(null);
 
   const focusName = useCallback(() => {
     requestAnimationFrame(() => {
@@ -140,110 +137,49 @@ export function PatientForm({
     if (profile.email) setEmail(profile.email);
   }, []);
 
-  const runAadhaarLookup = useCallback(
-    async (raw: string) => {
-      const d = digitsOnly(raw);
-      if (!isValidAadhaarNumber(d)) {
-        setLookupState("idle");
-        setLookupMsg(null);
-        return;
-      }
-      if (lastLookedUp.current === d) return;
-      lastLookedUp.current = d;
-      const requestId = ++lookupRequest.current;
-      lookupAbort.current?.abort();
-      const controller = new AbortController();
-      lookupAbort.current = controller;
-
-      setLookupState("loading");
-      setLookupMsg("Aadhaar se details…");
-
-      try {
-        const res = await fetch("/api/aadhaar-lookup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ aadhaar: d }),
-          signal: controller.signal,
-        });
-        const json = (await res.json()) as {
-          available?: boolean;
-          error?: string;
-          profile?: AadhaarProfile;
-        };
-        if (requestId !== lookupRequest.current) return;
-
-        if (!res.ok) {
-          setLookupState(json.available === false ? "skipped" : "fail");
-          setLookupMsg(
-            json.error || "Aadhaar se nahi mila. Form khud bhariye.",
-          );
-          return;
-        }
-
-        if (json.profile) {
-          applyProfile(json.profile);
-          setLookupState("ok");
-          setLookupMsg("Details bhar gaye — check kar lo.");
-        } else {
-          setLookupState("fail");
-          setLookupMsg("Kuch nahi aaya. Form khud bhariye.");
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (requestId !== lookupRequest.current) return;
-        setLookupState("fail");
-        setLookupMsg("Aadhaar lookup fail. Naam aur umar khud bhariye.");
-      }
-    },
-    [applyProfile],
-  );
-
   function onAadhaarChange(value: string) {
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
-    lastLookedUp.current = "";
-    lookupRequest.current += 1;
-    lookupAbort.current?.abort();
-
     const d = digitsOnly(formatted);
-    if (lookupTimer.current) clearTimeout(lookupTimer.current);
-
-    if (!lookupEnabled || !isStaff) {
-      setLookupState("skipped");
-      setLookupMsg(
-        d.length >= 4 ? "Optional · sirf last 4 store hota hai." : null,
-      );
-      return;
-    }
-
-    if (d.length < 12) {
-      setLookupState("idle");
-      setLookupMsg(
-        d.length > 0 ? "Auto-fill ke liye 12 digit Aadhaar." : null,
-      );
-      return;
-    }
-
-    if (!isValidAadhaarNumber(d)) {
-      setLookupState("fail");
-      setLookupMsg("Aadhaar galat. Check karo ya khud bhariye.");
-      return;
-    }
-
-    setLookupState("loading");
-    setLookupMsg("Fetching…");
-    lookupTimer.current = setTimeout(() => {
-      void runAadhaarLookup(d);
-    }, 450);
+    setAadhaarHash(null);
+    setAadhaarVerifiedAt(null);
+    setAadhaarKycRef(null);
+    setLookupState(d.length >= 4 ? "skipped" : "idle");
+    setLookupMsg(d.length >= 4 ? "Optional · sirf last 4 store hota hai." : null);
   }
 
-  useEffect(() => {
-    return () => {
-      if (lookupTimer.current) clearTimeout(lookupTimer.current);
-      lookupRequest.current += 1;
-      lookupAbort.current?.abort();
-    };
-  }, []);
+  async function verifyAadhaarAtDesk() {
+    const d = digitsOnly(aadhaar);
+    if (!isValidAadhaarNumber(d)) {
+      setLookupState("fail");
+      setLookupMsg("Verify ke liye valid 12-digit Aadhaar chahiye.");
+      return;
+    }
+    setLookupState("loading");
+    setLookupMsg("OTP bhej rahe hain…");
+    const init = await fetch("/api/aadhaar-kyc/initiate", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ aadhaar: d }),
+    }).then((response) => response.json()).catch(() => null) as { ok?: boolean; handle?: string; error?: string } | null;
+    if (!init?.ok || !init.handle) {
+      setLookupState("skipped");
+      setLookupMsg(init?.error || "Verification unavailable — form manually bhariye.");
+      return;
+    }
+    const entered = window.prompt("Aadhaar-linked mobile par aaya 6-digit OTP daalein")?.replace(/\D/g, "") || "";
+    if (entered.length !== 6) { setLookupState("fail"); setLookupMsg("OTP verify nahi hua. Form manually bhar sakte hain."); return; }
+    const verified = await fetch("/api/aadhaar-kyc/verify", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle: init.handle, otp: entered }),
+    }).then((response) => response.json()).catch(() => null) as { ok?: boolean; profile?: AadhaarProfile; aadhaarHash?: string; aadhaarLast4?: string; providerRef?: string; phone?: string | null; error?: string } | null;
+    if (!verified?.ok || !verified.profile || !verified.aadhaarHash || !verified.providerRef) {
+      setLookupState("skipped"); setLookupMsg(verified?.error || "Verification fail — form manually bhariye."); return;
+    }
+    applyProfile(verified.profile);
+    setAadhaar(verified.aadhaarLast4 || d.slice(-4));
+    setAadhaarHash(verified.aadhaarHash);
+    setAadhaarVerifiedAt(new Date().toISOString());
+    setAadhaarKycRef(verified.providerRef);
+    setLookupState("ok"); setLookupMsg("Aadhaar verified — details editable hain, correction allowed.");
+  }
 
   function failValidation(
     field: PatientFormField,
@@ -330,6 +266,9 @@ export function PatientForm({
       setPhone(defaultPhone);
       setEmail("");
       setAadhaar("");
+      setAadhaarHash(null);
+      setAadhaarVerifiedAt(null);
+      setAadhaarKycRef(null);
       setLookupState("idle");
       setLookupMsg(null);
       setFieldErrors({});
@@ -338,9 +277,6 @@ export function PatientForm({
       aadhaarOverrideOnceRef.current = false;
       likelyOverrideOnceRef.current = false;
       setCampDayId(firstOpen);
-      lastLookedUp.current = "";
-      lookupRequest.current += 1;
-      lookupAbort.current?.abort();
       focusName();
     };
 
@@ -355,6 +291,9 @@ export function PatientForm({
         phone: validated.values.phone,
         email: validated.values.email,
         aadhaarLast4: validated.values.aadhaarLast4,
+        aadhaarHash,
+        aadhaarVerifiedAt,
+        aadhaarKycRef,
         createdBy,
         campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,
@@ -555,9 +494,9 @@ export function PatientForm({
     setLookupMsg(null);
     setFieldErrors({});
     setCampDayId(firstOpen);
-    lastLookedUp.current = "";
-    lookupRequest.current += 1;
-    lookupAbort.current?.abort();
+    setAadhaarHash(null);
+    setAadhaarVerifiedAt(null);
+    setAadhaarKycRef(null);
     focusName();
     setLoading(false);
   }
@@ -791,11 +730,7 @@ export function PatientForm({
 
       <Input
         id="patient-aadhaar"
-        label={
-          lookupEnabled
-            ? "Aadhaar (optional · last 4 ya poora)"
-            : "Aadhaar last 4 (optional)"
-        }
+        label="Aadhaar last 4 (optional)"
         error={fieldErrors.aadhaar}
         inputMode="numeric"
         autoComplete="off"
@@ -804,20 +739,18 @@ export function PatientForm({
         value={aadhaar}
         onChange={(e) => onAadhaarChange(e.target.value)}
       />
-      {lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
+      {isStaff && digitsOnly(aadhaar).length === 12 && !aadhaarVerifiedAt ? (
         <Button
           type="button"
           variant="secondary"
           size="sm"
           disabled={lookupState === "loading"}
-          onClick={() => {
-            lastLookedUp.current = "";
-            void runAadhaarLookup(aadhaar);
-          }}
+          onClick={() => void verifyAadhaarAtDesk()}
         >
-          {lookupState === "loading" ? "Fetching…" : "Details lao"}
+          {lookupState === "loading" ? "Verifying…" : "Verify Aadhaar (optional)"}
         </Button>
       ) : null}
+      {aadhaarVerifiedAt ? <p className="text-xs font-semibold text-brand">Aadhaar verified · staff can still edit details</p> : null}
       {lookupMsg ? (
         <p
           role="status"

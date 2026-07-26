@@ -41,6 +41,13 @@ Measured on **main** against the configured Supabase project. Date: **2026-07-23
 - **Deferrals**: live SMS OTP (readiness `phoneOtp: false`); physical camera QR timing.
 - **Schema**: no migrations proposed or applied.
 
+### #72 Test Selection Contract & #73 Governing Docs — DONE
+- Sole test selection contract strictly established in #72 (unit/behavior, DB integration, e2e, verify gate).
+- Reconciled governing docs (`CONTEXT.md`, `README.md`, `AGENTS.md`) with explicit document authority precedence, production safety assertions (production contains live camp data), and removed retired glow/glass visual rules (#73).
+
+### #74 Evidence Governance Contract — DONE
+- Closure evidence trail strictly governed by #74 evidence contract (`.scratch/remediation-*/EVIDENCE.md` and this matrix).
+
 ## Commands
 
 ```bash

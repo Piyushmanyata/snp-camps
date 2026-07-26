@@ -195,7 +195,9 @@ export async function sendRegistrationSms(
 
   const authKey = process.env.MSG91_AUTH_KEY!.trim();
   const senderId = process.env.MSG91_SENDER_ID!.trim();
-  const templateId = process.env.MSG91_TEMPLATE_REGISTRATION!.trim();
+  const templateId = (
+    process.env.MSG91_DLT_TE_ID_REGISTRATION || process.env.MSG91_TEMPLATE_REGISTRATION
+  )!.trim();
   const mobiles = phone.replace(/\D/g, "");
   const phoneLast4 = mobiles.slice(-4);
 

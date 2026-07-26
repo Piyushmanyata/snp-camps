@@ -145,18 +145,19 @@ test("Staff excludes doctor; Camp crew includes all three desk roles", () => {
   assert.equal(roleHome(/** @type {any} */ ("patient")), null);
 });
 
-test("production CSP script-src uses nonce without unsafe-inline", () => {
+test("CSP script-src keeps self and nonce without unsafe-inline or strict-dynamic", () => {
   const prod = buildContentSecurityPolicy("testnonce", { isDev: false });
   assert.equal(productionScriptSrcAllowsUnsafeInline(prod), false);
   assert.match(prod, /nonce-testnonce/);
-  assert.match(prod, /strict-dynamic/);
   const prodScript = prod
     .split(";")
     .map((d) => d.trim())
     .find((d) => d.startsWith("script-src"));
   assert.ok(prodScript);
+  assert.match(prodScript, /'self'/);
   assert.doesNotMatch(prodScript, /'unsafe-inline'/);
   assert.doesNotMatch(prodScript, /'unsafe-eval'/);
+  assert.doesNotMatch(prodScript, /'strict-dynamic'/);
 
   const dev = buildContentSecurityPolicy("devnonce", { isDev: true });
   const devScript = dev
@@ -164,8 +165,11 @@ test("production CSP script-src uses nonce without unsafe-inline", () => {
     .map((d) => d.trim())
     .find((d) => d.startsWith("script-src"));
   assert.ok(devScript);
+  assert.match(devScript, /'self'/);
+  assert.match(devScript, /nonce-devnonce/);
   assert.match(devScript, /'unsafe-eval'/);
   assert.doesNotMatch(devScript, /'unsafe-inline'/);
+  assert.doesNotMatch(devScript, /'strict-dynamic'/);
 });
 
 test("registration number parser rejects overflow and malformed values", () => {

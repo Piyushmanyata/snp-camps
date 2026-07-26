@@ -11,6 +11,12 @@ Liveness stays independent so orchestrators can restart or probe the process wit
 
 Readiness is rate-limited (12 requests / IP / minute).
 
+The response also reports non-blocking integration facts under `integrations`:
+`sms`, `aadhaarEkyc`, and `cron`.
+- **SMS**: Requires `MSG91_AUTH_KEY`, `MSG91_SENDER_ID`, `MSG91_DLT_TE_ID_REGISTRATION` (or `MSG91_TEMPLATE_REGISTRATION`), and `MSG91_DLT_TE_ID_REMINDER` (or `MSG91_TEMPLATE_REMINDER`).
+- **Aadhaar eKYC Self-Registration**: Requires `AADHAAR_KYC_PROVIDER` and `AADHAAR_HASH_PEPPER` (or `AADHAAR_KYC_PEPPER`). **Pepper Rule**: `AADHAAR_HASH_PEPPER` must **never** be rotated while a Camp is active; rotating the pepper changes HMAC SHA256 hashes and invalidates per-camp Aadhaar uniqueness deduplication for existing registrations.
+- **Cron**: Nightly reminder job requires `CRON_SECRET`.
+
 ## Independent checks
 
 Every response includes machine-readable `checks` and optional `failedCheck`:
@@ -101,3 +107,10 @@ Compares repository files, `EXPECTED_MIGRATION_HEAD`, optional local applied led
 - Browser/client proof that no Realtime subscription remains → **#56 / #72**
 - Production migration apply / Auth dashboard cleanup → **#34**
 - Auto-repair of linked ledgers
+
+## Governance, Authority & Evidence (#73, #74)
+
+- **Document Authority Precedence**: Resolved per `CONTEXT.md` § Document Authority Precedence. Remediation contracts (#56, #68, #72, #74) override historical specs.
+- **Production Safety**: Production contains active camp operational data; **production is NEVER assumed to be empty**. `db reset` against production is prohibited.
+- **Closure Evidence**: All readiness and migration verification output MUST satisfy the **[Issue #74](#74)** evidence contract.
+

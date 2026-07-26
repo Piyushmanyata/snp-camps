@@ -64,22 +64,30 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
-CREATE TYPE "public"."queue_status" AS ENUM (
-    'waiting',
-    'seen',
-    'registered'
-);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'queue_status') THEN
+        CREATE TYPE "public"."queue_status" AS ENUM (
+            'waiting',
+            'seen',
+            'registered'
+        );
+    END IF;
+END $$;
 
 
 ALTER TYPE "public"."queue_status" OWNER TO "postgres";
 
 
-CREATE TYPE "public"."user_role" AS ENUM (
-    'admin',
-    'volunteer',
-    'patient',
-    'doctor'
-);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE "public"."user_role" AS ENUM (
+            'admin',
+            'volunteer',
+            'patient',
+            'doctor'
+        );
+    END IF;
+END $$;
 
 
 ALTER TYPE "public"."user_role" OWNER TO "postgres";

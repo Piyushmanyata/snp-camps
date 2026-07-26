@@ -2,18 +2,18 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-## Camp flow (v6 — two-round)
+## Camp flow (v6 — two-round with Aadhaar eKYC self-registration)
 
-Desk-only registration, **pre-reg + check-in**, one shared queue, passwordless patient status:
+Desk registration & self-registration (Aadhaar eKYC), **pre-reg + check-in**, one shared queue, passwordless patient status:
 
-1. **Desk registration (Staff):** One screen — **full name + age required**; phone, Aadhaar last-4, gender, address, email optional. One button registers and opens print.
-   - **Camp day = today** → walk-in: lands in **`waiting`** (in line) in one step.
-   - **Future camp day** → pre-reg: stays **`registered`** (not in the line).
-2. **Check-in** (pre-reg only): QR scan, reg number, or name search → `registered` → **`waiting`**. Line order is by check-in time. Double check-in is a no-op.
+1. **Registration**:
+   - **Desk registration (Staff):** Full name + age required; phone, Aadhaar last-4, gender, address, email optional. Walk-in (today) lands in **`waiting`** (in line) in one step; future day pre-reg stays **`registered`**.
+   - **Self-registration (Patient):** Patient registers online via Aadhaar eKYC OTP (`/self-register`). Queue status is **always `registered`** (never `waiting`). Requires a configured eKYC provider (`AADHAAR_KYC_PROVIDER` and `AADHAAR_HASH_PEPPER` / `AADHAAR_KYC_PEPPER`); off with clear unavailable message when unconfigured.
+2. **Check-in** (pre-reg / self-reg): QR scan, reg number, or name search at Volunteer Desk → `registered` → **`waiting`**. Line order is by check-in time. Double check-in is a no-op.
 3. **Print desk slip** (optional reprint): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
 4. **Doctor Station** → scan or type reg number → read-only details → **Mark seen** (once only; returns immediately to the next patient).
 5. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
-6. **Patient status (passwordless):** `/s/<token>` with no sign-in. There is **no patient login** and **no public self-registration**.
+6. **Patient status (passwordless):** `/s/<token>` with no sign-in.
 
 - Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` or `snp:{uuid}` — never a login)
 - One active camp; FCFS Queue = **`waiting` only** (physically present)
@@ -23,7 +23,24 @@ Desk-only registration, **pre-reg + check-in**, one shared queue, passwordless p
 
 **Staff** (admin, volunteer, doctor) sign in with email + password at `/login`.
 
-**Patients** do not authenticate in the app. Registration is desk-only. Status is passwordless via `/s/<token>`. The former desk-slip passcode + phone-OTP patient login model is **superseded** (see [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md) and issues #41 / #45). Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
+**Patients** do not authenticate with username/password in the app. Self-registration is gated on Aadhaar eKYC OTP verification. Desk registration is staff-operated. Status tracking is passwordless via `/s/<token>`. The former desk-slip passcode + phone-OTP patient login model is **superseded** (see [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md) and issues #41 / #45 / #76). Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
+
+## Document Authority Precedence
+
+When governing documentation or instructions conflict, decisions resolve according to the following strict hierarchy:
+
+1. **Remediation & Specification Contracts**: Closed/accepted issue remediation specifications (#56 for auth/realtime/least-privilege boundaries, #68 for fail-closed readiness, #72 for test selection contract, #74 for evidence governance contract).
+2. **`CONTEXT.md`**: Ubiquitous language, domain context, lifecycle invariants, role boundaries, accepted design-system rules.
+3. **`README.md`**: Operations, deployment setup, build/verify gates, auth model reference, MSG91 configuration.
+4. **ADRs (`docs/adr/`)**: Architectural decision records (e.g. `0001-passcode-on-desk-slip.md` as superseded historical context).
+5. **Historical Spec Files (`docs/UI_UX_OVERHAUL_SPEC.md`, etc.)**: Retained for historical context only; superseded where conflicting with accepted remediation rules (#56, #69, #73).
+
+## Production Safety
+
+Production contains live operational camp and patient data. **Production is NEVER assumed to be empty.**
+- Running `db reset` or re-applying baseline SQL against production is strictly prohibited.
+- Schema changes must be applied via append-only incremental migrations under `supabase/migrations/` and validated through clean replay on disposable databases (#68).
+- Public patient Realtime channels are retired (#56); `patients` is strictly absent from `supabase_realtime`.
 
 ## Stack
 
@@ -105,8 +122,7 @@ npm run compare:migrations
 
 ### 2. Auth settings
 
-- **Email**: enable Email provider (staff: admin, volunteer, doctor). Prefer **disable email confirm** for camp day.
-- Patient app login and phone OTP self-registration are **not** used. Optional MSG91 registration SMS can send reg number + status link (not Supabase Auth OTPs).
+- **Email**: enable Email provider (staff: admin, volunteer, doctor). Patient app login and password auth are **not** used. Patient self-registration is gated on Aadhaar eKYC OTP verification (`/self-register`). Optional MSG91 registration SMS can send reg number + status link (not Supabase Auth OTPs).
 
 ### 3. Env
 
@@ -125,11 +141,14 @@ created by an active admin; there is no public staff self-registration route.
 Optional later:
 
 ```
-# Optional Aadhaar lookup provider
-# AADHAAR_LOOKUP_URL=
-# MSG91_AUTH_KEY=
-# MSG91_SENDER_ID=
-# MSG91_TEMPLATE_REGISTRATION=
+# Optional Aadhaar eKYC self-registration provider
+# AADHAAR_KYC_PROVIDER=mock
+# AADHAAR_HASH_PEPPER=…        # Pepper for Aadhaar HMAC hashing (no rotation during active camp)
+# AADHAAR_KYC_PEPPER=…         # Alias for AADHAAR_HASH_PEPPER
+# MSG91_AUTH_KEY=…
+# MSG91_SENDER_ID=SNPCP
+# MSG91_DLT_TE_ID_REGISTRATION=…  # (or MSG91_TEMPLATE_REGISTRATION)
+# MSG91_DLT_TE_ID_REMINDER=…      # (or MSG91_TEMPLATE_REMINDER)
 ```
 
 ### 4. Local
@@ -158,16 +177,18 @@ Add the same env vars in Vercel. Set `NEXT_PUBLIC_SITE_URL` to the production UR
 npm run verify
 ```
 
-### Closing a ticket
+### Closing a ticket (Governance: #72 & #74)
+
+Test strategy selection is strictly governed by **[Issue #72](#72)** as the sole test-level selection contract. Ticket closure and verification evidence are strictly governed by **[Issue #74](#74)** (Closure Evidence Governance).
 
 A ticket is closed only when its closing comment contains:
 
-1. The literal terminal output of `npm run verify` — lint, unit tests and production build, all three, from one run.
-2. The literal terminal output of `npm run test:e2e`, or a named specific environment blocker (missing credential, no Docker daemon). "Not run this session" is not a blocker.
+1. The literal terminal output of `npm run verify` — lint, `tsc --noEmit`, unit, DB, production build, JS budget and e2e, in that order, from one run. The DB summary must show its skip count; any skipped DB test is a named blocker, not a pass.
+2. The e2e summary from that same `npm run verify` output, or a named specific environment blocker (missing credential, no Docker daemon). "Not run this session" is not a blocker.
 3. An explicit statement of what test coverage the change **removed**, or "no coverage removed".
 4. For a bug fix: proof the new test can fail — remove the fix, record the red output, restore it, record the green output. Both go in the comment.
 
-`npm test` alone and `npx tsc --noEmit` alone are diagnostics, not gates.
+`npm test` alone or `npx tsc --noEmit` alone are diagnostics, not substitutes for the full gate.
 
 Run load tests only against a production-like staging deployment:
 
@@ -187,7 +208,7 @@ below 1.5 seconds before treating the result as a capacity signal.
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats, **scan only** (self-assign, no print required) |
-| Patient | No app login; desk registration; staff-scan QR; passwordless status at `/s/<token>` |
+| Patient | No app login; self-registration (Aadhaar eKYC); staff-scan QR; passwordless status at `/s/<token>` |
 
 ## Privacy
 
@@ -210,10 +231,11 @@ Set:
 
 ```
 MSG91_AUTH_KEY=…
-MSG91_SENDER_ID=SNPCP          # DLT-registered sender / header
-MSG91_TEMPLATE_REGISTRATION=…  # MSG91 Flow / template id for registration
-MSG91_TEMPLATE_REMINDER=…      # separate Flow / template id for day-before reminder
-CRON_SECRET=…                  # Bearer secret for Vercel Cron (/api/cron/reminder-sms)
+MSG91_SENDER_ID=SNPCP             # DLT-registered sender / header
+MSG91_DLT_TE_ID_REGISTRATION=…    # (or MSG91_TEMPLATE_REGISTRATION) MSG91 Flow / template id for registration
+MSG91_DLT_TE_ID_REMINDER=…        # (or MSG91_TEMPLATE_REMINDER) separate Flow / template id for day-before reminder
+AADHAAR_HASH_PEPPER=…             # (or AADHAAR_KYC_PEPPER) Pepper for HMAC SHA256 Aadhaar hash (do not rotate during active camp)
+CRON_SECRET=…                     # Bearer secret for Vercel Cron (/api/cron/reminder-sms)
 ```
 
 **Registration DLT template** (Roman script only — exact text, four `{#var#}` slots

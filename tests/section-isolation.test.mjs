@@ -299,7 +299,10 @@ test("doctor page uses isolated stats/seen islands (no Suspense throw loaders)",
 });
 
 test("login and change-password use mapAuthError", () => {
-  const login = read("src/app/login/page.tsx");
+  const login =
+    read("src/app/login/page.tsx") +
+    "\n" +
+    read("src/app/login/staff-login-form.tsx");
   const changePw = read("src/components/change-password-card.tsx");
   assert.match(login, /mapAuthError/);
   assert.doesNotMatch(login, /err\.message(?!\s*,)/);

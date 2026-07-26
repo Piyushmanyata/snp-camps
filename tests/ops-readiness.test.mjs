@@ -1,5 +1,6 @@
 /**
- * #68 — Real Postgres catalog probe + readiness contract agreement.
+ * #68 — Operations readiness & DB drift verification.
+ * Real Postgres catalog probe + readiness contract agreement.
  * Requires local Supabase Postgres (default 127.0.0.1:54322).
  */
 import assert from "node:assert/strict";
@@ -66,7 +67,7 @@ test.before(async () => {
   dbAvailable = Boolean(admin);
   if (!dbAvailable) {
     console.warn(
-      "[readiness.db] local Postgres or probe RPC unavailable — DB tests skipped",
+      "[ops-readiness] local Postgres or probe RPC unavailable — DB tests skipped",
     );
   }
 });

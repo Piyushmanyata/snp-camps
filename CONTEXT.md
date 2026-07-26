@@ -18,7 +18,12 @@
 * **FCFS Queue**: First-Come, First-Served line of patients who are **physically present and waiting** (`waiting` only). Seat-board counts and KPIs that count `waiting` automatically exclude pre-registered patients — do not paper over with filters; fix the state.
 * **Check-in**: One staff action that moves `registered` → `waiting` through the single RPC `check_in_patient`. Routes: desk-slip QR scan, typing registration number, or name-search row tap. Idempotent if already `waiting` (no queue reorder). Blocked if `seen`.
 * **Walk-in vs pre-reg**: Registering on an **active Camp Day (today, Asia/Kolkata)** registers **and** checks in in one step (`waiting`). Registering for a future day stays `registered`. **No desk mode toggle** — the system uses the camp day date.
-* **Volunteer Desk**: Station operated by staff (volunteers; admins may act as staff) for patient onboarding, Aadhaar auto-fill, check-in, desk slip printing, queue routing, and doctor assignment. **Only** place walk-ins are registered (no public self-registration).
+* **Volunteer Desk**: Station operated by staff (volunteers; admins may act as staff) for patient onboarding, Aadhaar auto-fill, check-in, desk slip printing, queue routing, and doctor assignment. The **only** place walk-ins are registered and patients are checked in (online self-registration is available for pre-registration, but walk-in registration and physical check-in require the Volunteer Desk).
+* **Self-registration**: Patient self-service registration online gated on Aadhaar eKYC OTP verification (`/self-register`). Patient queue status is **ALWAYS `registered`** (NEVER `waiting`), even if registering for today's camp day, preserving the invariant that `waiting` means physically present in the hall. Requires a configured eKYC provider (`AADHAAR_KYC_PROVIDER` and `AADHAAR_HASH_PEPPER` / `AADHAAR_KYC_PEPPER`); off with clear unavailable message when unconfigured.
+* **Aadhaar verified**: Patient identity confirmed via Aadhaar eKYC OTP. Absence of Aadhaar verification is normal for walk-ins registered at the Volunteer Desk and indicates self-declared identity.
+* **Contact phone rule (Self-registration)**: The phone number recorded during self-registration is strictly the OTP-delivered number from Aadhaar eKYC. It is uneditable by the patient to ensure SMS notifications reach a number the patient demonstrably controls. Patients with a stale phone number on Aadhaar will not receive SMS and must update their contact number at the Volunteer Desk (where staff can edit phone numbers).
+* **One-per-Aadhaar-per-Camp**: Enforced uniqueness of 1 self-registration per patient per Camp, keyed on HMAC-SHA256 hash (`aadhaar_hash` using `AADHAAR_HASH_PEPPER` / `AADHAAR_KYC_PEPPER`), **NOT on phone number** (because family members in a household frequently share a single mobile number). Re-registering with the same Aadhaar in the same Camp returns the patient's existing registration number and status link without creating a duplicate row.
+* **Duplicate override rule**: Patients using self-registration can **NEVER** override duplicate warnings (`LIKELY_DUPLICATE` or `AADHAAR_DUPLICATE`). On duplicate detection, self-registration directs the patient to the Volunteer Desk. Only staff retain the authority for manual duplicate overrides, which are recorded with explicit audit attribution (`overridden_by`, `overridden_at`).
 * **Doctor Station**: Doctor-only desk. Scan or type a registration number → read-only patient details → one full-width **Mark seen** button → immediately back to the scanner (toast only; no success screen to dismiss). No confirmation dialog. Labels stay English. Re-scan of `seen` is blocked (“Already seen by Dr X”). Undo is out of scope.
 * **Desk Slip**: Physical registration token printed at the volunteer desk. Carries large reg number, name, camp day, venue, and staff-scan Patient QR (no passcode). Format is a station setting: **A4 multi-up** (2×2 with cut lines) or **58mm thermal**. Printing a still-`registered` patient also checks them in (same state as dedicated check-in). Losing the slip is normal — staff check in by name or reg number.
 * **Seen**: Final state of patient consultation. Re-scanning a `seen` patient is permanently blocked.
@@ -31,7 +36,36 @@
 ## System-Wide Design & UX Goals
 
 * **Scope**: Full End-to-End System Overhaul (Volunteer Desk, Doctor Station, Admin Dashboard; passwordless patient status page).
-* **Theme & Palette**: Emerald & Slate Medical Tech Aesthetic (Primary Emerald `#059669` / `#047857`, Slate `#0f172a`, glassmorphic navigation, status badge glows).
+* **Theme & Palette**: Emerald & Slate Medical Tech Aesthetic (Primary Emerald `#059669` / `#047857`, Slate `#0f172a`, high-contrast field cards, clean solid status badges). Retired visual guidance (glow effects, glassmorphic navigation, status badge glows) is removed and superseded by high-contrast WCAG 2.2 AA compliant field elements (#69, #73).
 * **Typography**: Plus Jakarta Sans (`next/font/google`) with tabular numeric alignment for registration numbers, queue counts, and timestamps.
-* **Micro-Interactions**: Tactile press scaling (`scale(0.98)`), glassmorphic toast notifications, smooth focus rings (`ring-emerald-500/40`), glowing status badges, and `prefers-reduced-motion` compliance.
-* **Design Philosophy**: High polish, high contrast for field visibility, responsive layout, minimal diffs (Ponytail), and zero unnecessary friction.
+* **Micro-Interactions**: Tactile press scaling (`scale(0.98)`), solid high-contrast toast notifications, smooth focus rings (`ring-emerald-500/40`), clean status badges, and `prefers-reduced-motion` compliance.
+* **Design Philosophy**: High polish, high contrast for field visibility, responsive layout, minimal diffs (Ponytail), WCAG 2.2 AA accessibility, and zero unnecessary friction.
+
+## Document Authority Precedence
+
+When governing documentation or specifications conflict, instructions and requirements resolve according to the following strict hierarchy:
+
+1. **Remediation & Specification Contracts**: Closed/accepted issue remediation specifications (#56 for auth/realtime/least-privilege boundaries, #68 for fail-closed readiness, #72 for test selection, #74 for evidence governance).
+2. **`CONTEXT.md`**: Ubiquitous language, domain context, lifecycle invariants, role boundaries, and accepted design-system rules.
+3. **`README.md`**: Operations, deployment setup, build/verify gates, auth model reference, and MSG91 configuration.
+4. **ADRs (`docs/adr/`)**: Architectural decision records (e.g., `0001-passcode-on-desk-slip.md` is superseded by #41/#45 passwordless model).
+5. **Historical Spec Files (`docs/UI_UX_OVERHAUL_SPEC.md`, etc.)**: Retained for historical context only. Where historical specs conflict with accepted remediation rules (#56, #69, #73), accepted remediation rules and `CONTEXT.md` explicitly supersede them.
+
+## Production Safety & Realtime Boundaries (#56)
+
+* **Production Data Safety**: Production contains live medical camp operational data. **Production is NEVER assumed to be empty.** Running `db reset` or re-applying baseline SQL against production is strictly prohibited. Schema changes must use append-only incremental migrations validated via clean replay on disposable databases (#68).
+* **Realtime Boundary**: Public patient Realtime channels are retired (#56). The `patients` table is strictly absent from the `supabase_realtime` publication (`patients_realtime_absent` check).
+* **Polling**: Queue, seat board, and desk updates use manual Refresh or fixed polling — zero public WebSocket channels on patient rows.
+* **Least Privilege & Role Boundaries**: Desk operations operate under strict SQL role functions: `isStaff()` (admin, volunteer) for desk registration/management, `isCampCrew()` (admin, volunteer, doctor) for QR lookup and assignment. Patients do not sign in and hold no Supabase Auth sessions.
+* **Status Token Boundary**: Passwordless `/s/<token>` provides public status tracking via the `patient_status_by_token` RPC, returning only non-sensitive queue metrics (sensitive patient PII, phone, address, and Aadhaar details are stripped).
+
+## Testing & Evidence Governance (#72, #74)
+
+* **Test Selection Contract (#72)**: Testing standards are strictly governed by issue **#72** as the sole test-level selection contract. Brittle source-text regex assertions are prohibited. Tests must assert on empirical runtime behavior across defined seams:
+  1. `node:test` behavioral unit suite (`tests/*.test.mjs`, `tests/empirical-challenge*.test.mjs`).
+  2. Database integration suite (`tests/*.db.test.mjs`).
+  3. Playwright role e2e suite (`e2e/*.spec.ts`).
+  4. Full gate (`npm run verify`).
+  5. JS route budgets (`npm run check:js-budget`).
+* **Closure Evidence Governance (#74)**: Every ticket closure must strictly adhere to the issue **#74** evidence contract, including literal `npm run verify` output, DB test skip count declarations, e2e summary, coverage delta statements, and empirical red/green proof for bug fixes.
+

@@ -1,0 +1,14 @@
+
+> snp-camps@0.1.0 lint
+> eslint
+
+
+C:\Users\piyus\Downloads\SNP website\snp-camps\tests\evidence-tooling.test.mjs
+  12:3  warning  'runCapture' is defined but never used                  @typescript-eslint/no-unused-vars
+  18:3  warning  'detectUnredactedSecrets' is defined but never used     @typescript-eslint/no-unused-vars
+  19:3  warning  'detectEllipsesOrTruncation' is defined but never used  @typescript-eslint/no-unused-vars
+  22:7  warning  '__dirname' is assigned a value but never used          @typescript-eslint/no-unused-vars
+
+✖ 4 problems (0 errors, 4 warnings)
+
+

@@ -35,6 +35,10 @@ async function removeStaleFixtures(admin: SupabaseClient) {
       .from("patients")
       .delete()
       .like("full_name", `${PATIENT_PREFIX}%`);
+    await admin
+      .from("profiles")
+      .delete()
+      .like("email", `${USER_PREFIX}%`);
   } catch {
     // Ignore cleanup error if database is offline
   }

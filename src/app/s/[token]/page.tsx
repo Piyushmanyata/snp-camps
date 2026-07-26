@@ -1,8 +1,16 @@
 import { connection } from "next/server";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatCampDay } from "@/lib/format-camp-day";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+
+const STATUS_RATE_LIMIT = {
+  scope: "status-page",
+  limit: 12,
+  windowMs: 60_000,
+};
 
 type StatusRpcRow = {
   full_name: string;
@@ -33,6 +41,10 @@ export function mapStatusRpcRow(row: StatusRpcRow) {
   };
 }
 
+function StatusRefresh() {
+  return <meta httpEquiv="refresh" content="30" />;
+}
+
 /**
  * Passwordless patient status — zero client JS (Server Component only).
  * Unknown / malformed tokens → same plain not-found (no oracle).
@@ -46,6 +58,17 @@ export default async function PatientStatusPage({
   await connection();
   const { token: raw } = await params;
   const token = raw.trim().toLowerCase();
+
+  const requestHeaders = await headers();
+  const rate = checkRateLimit(
+    new Request("https://snp-camps.invalid/status", {
+      headers: new Headers(requestHeaders),
+    }),
+    STATUS_RATE_LIMIT,
+  );
+  // Keep rate-limited requests indistinguishable from unknown or expired tokens.
+  if (!rate.allowed) notFound();
+
   if (!isStatusTokenFormat(token)) notFound();
 
   const admin = createServiceRoleClient();
@@ -58,17 +81,22 @@ export default async function PatientStatusPage({
   // Calculation / RPC failure → safe retryable error (not notFound, not fabricated position).
   if (error) {
     return (
-      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
-        <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
-        <div
-          role="alert"
-          className="mt-6 rounded-xl border border-red-200 bg-danger-soft px-3.5 py-3 text-[0.9375rem] text-danger"
-        >
-          <p className="font-medium">
-            Status could not be loaded. Please refresh and try again.
-          </p>
-        </div>
-      </main>
+      <>
+        <head>
+          <StatusRefresh />
+        </head>
+        <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+          <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
+          <div
+            role="alert"
+            className="mt-6 rounded-xl border border-red-200 bg-danger-soft px-3.5 py-3 text-[0.9375rem] text-danger"
+          >
+            <p className="font-medium">
+              Status could not be loaded. Please refresh and try again.
+            </p>
+          </div>
+        </main>
+      </>
     );
   }
 
@@ -78,38 +106,43 @@ export default async function PatientStatusPage({
   const view = mapStatusRpcRow(rows[0] as StatusRpcRow);
 
   return (
-    <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
-      <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
-      <dl className="mt-6 space-y-4 text-[1.0625rem]">
-        <div>
-          <dt className="text-sm font-medium text-muted">Name</dt>
-          <dd className="font-semibold">{view.fullName}</dd>
-        </div>
-        <div>
-          <dt className="text-sm font-medium text-muted">Registration number</dt>
-          <dd className="font-semibold tabular">#{view.regNo}</dd>
-        </div>
-        <div>
-          <dt className="text-sm font-medium text-muted">Camp</dt>
-          <dd className="font-semibold">{view.campName}</dd>
-        </div>
-        <div>
-          <dt className="text-sm font-medium text-muted">Date</dt>
-          <dd className="font-semibold">
-            {view.dayDate ? formatCampDay(view.dayDate) : "—"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-sm font-medium text-muted">Venue</dt>
-          <dd className="font-semibold">{view.venue}</dd>
-        </div>
-        {view.queuePosition != null ? (
+    <>
+      <head>
+        <StatusRefresh />
+      </head>
+      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+        <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
+        <dl className="mt-6 space-y-4 text-[1.0625rem]">
           <div>
-            <dt className="text-sm font-medium text-muted">Queue position</dt>
-            <dd className="font-semibold tabular">{view.queuePosition}</dd>
+            <dt className="text-sm font-medium text-muted">Name</dt>
+            <dd className="font-semibold">{view.fullName}</dd>
           </div>
-        ) : null}
-      </dl>
-    </main>
+          <div>
+            <dt className="text-sm font-medium text-muted">Registration number</dt>
+            <dd className="font-semibold tabular">#{view.regNo}</dd>
+          </div>
+          <div>
+            <dt className="text-sm font-medium text-muted">Camp</dt>
+            <dd className="font-semibold">{view.campName}</dd>
+          </div>
+          <div>
+            <dt className="text-sm font-medium text-muted">Date</dt>
+            <dd className="font-semibold">
+              {view.dayDate ? formatCampDay(view.dayDate) : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm font-medium text-muted">Venue</dt>
+            <dd className="font-semibold">{view.venue}</dd>
+          </div>
+          {view.queuePosition != null ? (
+            <div>
+              <dt className="text-sm font-medium text-muted">Queue position</dt>
+              <dd className="font-semibold tabular">{view.queuePosition}</dd>
+            </div>
+          ) : null}
+        </dl>
+      </main>
+    </>
   );
 }

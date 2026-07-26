@@ -56,20 +56,6 @@ export function isValidAadhaarNumber(raw: string): boolean {
   return c === 0;
 }
 
-/** Client-visible flag — set NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true when provider is ready. */
-export function isAadhaarLookupEnabledClient(): boolean {
-  return (
-    process.env.NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED === "true" ||
-    process.env.NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED === "1"
-  );
-}
-
-/** Server: lookup works only when a provider URL is configured. */
-export function isAadhaarLookupEnabledServer(): boolean {
-  const url = process.env.AADHAAR_LOOKUP_URL?.trim();
-  return Boolean(url);
-}
-
 export type AadhaarProfile = {
   full_name?: string | null;
   gender?: "M" | "F" | "O" | null;

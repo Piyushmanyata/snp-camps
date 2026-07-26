@@ -1,7 +1,7 @@
 # Specification: SNP Camps UI/UX Deep Overhaul
 
-> **Superseded by [spec #41](https://github.com/Piyushmanyata/snp-camps/issues/41)** (Fast & Simple: performance and workflow overhaul).  
-> Retained as a historical record of the Emerald & Slate aspiration. Do not reconcile the product against this document — later tickets (e.g. #43) strip the effects it describes rather than completing them.
+> **Superseded by [spec #41](https://github.com/Piyushmanyata/snp-camps/issues/41) and accepted design-system rules in `CONTEXT.md` (#69, #73)**.  
+> Retained solely as a historical record of the original Emerald & Slate draft. Do not reconcile the product against this document — glow/glass typography, glassmorphic headers, and status badge glows are retired and superseded by high-contrast WCAG AA rules in `CONTEXT.md`. Per Document Authority Precedence, remediation contracts (#56, #68, #72, #74), `CONTEXT.md`, and `README.md` supersede historical spec files.
 
 ## Problem Statement
 
@@ -57,7 +57,7 @@ The overhaul elevates the visual aesthetic across all four primary role views (P
 ## Testing Decisions
 
 ### Seams
-- **Primary Testing Seam**: Full-stack Next.js application build & lint check via `npm run verify` (`eslint`, `node --test tests/*.test.mjs`, `next build`).
+- **Primary Testing Seam**: Full-stack Next.js production gate via `npm run verify` (lint, `tsc --noEmit`, unit, DB, build, JS budget and e2e, in that order).
 - **End-to-End Testing Seam**: Playwright browser test suite via `npm run test:e2e` exercising patient self-registration, volunteer desk operations, doctor QR scan workflow, and admin management screens.
 
 ### Test Criteria

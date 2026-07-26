@@ -220,8 +220,7 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# #59 — disable public email signup; admin createUser (service_role) still works.
-enable_signup = false
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -389,7 +388,7 @@ deno_version = 2
 # secret_key = "env(SECRET_VALUE)"
 
 [analytics]
-enabled = true
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

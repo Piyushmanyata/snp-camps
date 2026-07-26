@@ -1,0 +1,108 @@
+
+> snp-camps@0.1.0 test:db
+> node scripts/run-db-tests.mjs
+
+✔ duplicate Aadhaar last-4 + name raises mapped message with reg no (129.5882ms)
+✔ staff override inserts second row and records who and when (84.6056ms)
+✔ service_role cannot pass aadhaar override (43.0381ms)
+✔ doctor assign of registered returns check_in_required and leaves row unchanged (69.6262ms)
+✔ volunteer assign of registered returns check_in_required (47.8345ms)
+✔ waiting patient transitions to seen once and preserves check-in fields (64.5359ms)
+✔ repeat assign on seen is terminal and never reassigns doctor (88.3083ms)
+✔ concurrent assign cannot produce different doctors or skip waiting rule (105.0026ms)
+[TEST LOG] START test A 2026-07-26T19:22:52.672Z
+[TEST LOG] END test A 2026-07-26T19:22:53.000Z
+[TEST LOG] START test B 2026-07-26T19:22:53.001Z
+▶ camp-day capacity concurrency
+  ✔ reg holds day lock while admin lowers limit → edit rejects; limit ≥ count (328.5216ms)
+[TEST LOG] END test B 2026-07-26T19:22:53.295Z
+[TEST LOG] START test C 2026-07-26T19:22:53.296Z
+  ✔ edit locks first then reg follows → capacity preserved (reg full) (294.524ms)
+[TEST LOG] END test C 2026-07-26T19:22:53.368Z
+[TEST LOG] START test D 2026-07-26T19:22:53.368Z
+  ✔ two concurrent regs at final seat → at most one success (72.4052ms)
+[TEST LOG] END test D 2026-07-26T19:22:53.460Z
+[TEST LOG] START test E 2026-07-26T19:22:53.461Z
+  ✔ edit equal/above count succeeds; below returns SEAT_LIMIT_BELOW_ASSIGNED (92.8013ms)
+[TEST LOG] END test E 2026-07-26T19:22:53.540Z
+[TEST LOG] START test stress 2026-07-26T19:22:53.541Z
+  ✔ smoke: not-found, wrong camp, non-admin permission (79.5082ms)
+  ✔ stress: repeated edit/reg interleavings complete without deadlock (582.2314ms)
+✔ camp-day capacity concurrency (1469.3174ms)
+✔ pre-reg stays registered and is excluded from waiting queue (57.9072ms)
+✔ check_in is idempotent for waiting and blocks seen (116.4798ms)
+✔ queue order is by check-in time not registration time (65.9616ms)
+✔ name search returns only registered for active camp (31.4775ms)
+✔ name search finds one-character typo via trigram (#61) (33.4546ms)
+✔ name search finds simple transposition via trigram (#61) (33.8699ms)
+✔ exact prefix ranks before fuzzy matches (#61) (31.4704ms)
+✔ name search excludes other camp and seen (#61) (40.2352ms)
+✔ name search returns at most 10 deterministic rows (#61) (51.6874ms)
+✔ search plan uses registered filter and name index path (#61 EXPLAIN) (27.2419ms)
+✔ two connections same name+age: one insert, other LIKELY_DUPLICATE (287.3813ms)
+✔ warned request can override once with attribution (80.3806ms)
+✔ shared family phone different person remains overridable (74.6333ms)
+✔ different duplicate keys proceed without soft-lock serialization (286.0406ms)
+✔ two-key inputs stress: no deadlock across concurrent desks (283.7306ms)
+✔ phone-only concurrent race serializes like name+age (196.3486ms)
+✔ name + age match in same camp raises LIKELY_DUPLICATE with reg no (80.4828ms)
+✔ phone match in same camp raises LIKELY_DUPLICATE (38.7345ms)
+✔ same name+age in a different camp does not warn (50.7541ms)
+✔ likely override inserts second row and records who and when; not sticky (42.5219ms)
+✔ check-in of soft-match reg creates no new patient (40.1452ms)
+✔ soft match query is indexed (name+age plan uses index) (2.6775ms)
+✔ repo migration head matches EXPECTED_MIGRATION_HEAD constant (25.5858ms)
+✔ applied ledger head agrees with contract after clean migrations (2.3717ms)
+✔ readiness_catalog_probe returns full contract facts on clean DB (34.2606ms)
+✔ patients absent from supabase_realtime (catalog fact) (1.7889ms)
+✔ probe is not executable by anon or authenticated (1.5869ms)
+✔ evaluateCatalogFacts fails closed on missing critical column (0.6386ms)
+✔ probe output contains no PHI-looking fields (9.999ms)
+✔ catalog: link_patient_phone absent; patients.user_id absent; no role default (36.1172ms)
+✔ residual patient-role profile cannot read patients or change day (40.044ms)
+✔ staff can change camp day; disabled staff denied (41.7421ms)
+✔ explicit staff profile insert works without handle_new_user side effect (12.2337ms)
+✔ local config disables public signup (repo source) (1.227ms)
+✔ doctor cannot select unrelated patient PHI or status_token (57.5318ms)
+✔ volunteer can select active-camp desk fields but not status_token (33.4247ms)
+✔ admin can select active-camp patients but not status_token via table grant (31.2537ms)
+✔ disabled volunteer cannot select patients (24.5531ms)
+✔ volunteer cannot select patients on inactive camp (21.7294ms)
+✔ staff registration notify RPC returns status_token; doctor cannot (38.3215ms)
+✔ patients table is absent from supabase_realtime publication (2.0007ms)
+✔ replay with null camp_day returns the original registration (47.4582ms)
+✔ N concurrent registrations against M seats yield exactly M successes (70.5884ms)
+✔ concurrent change_camp_day cannot overbook a full day (61.2253ms)
+✔ register_patient wrapper is gone from the catalog (1.8664ms)
+✔ registration with phone enqueues pending delivery in same txn (105.9245ms)
+✔ registration without phone creates no delivery (37.4743ms)
+✔ two connections claim same delivery: exactly one wins (54.6899ms)
+✔ timeout path completes as ambiguous and is not reclaimable (38.4868ms)
+✔ known failure is reclaimable; sent stores provider request id (36.617ms)
+✔ stale sending lease is reclaimable (15.8801ms)
+✔ authenticated cannot select sms_deliveries table directly (18.5639ms)
+✔ ledger stores no full phone or message body columns (5.4467ms)
+✔ volunteer_my_counts is dropped from the catalog (24.3807ms)
+✔ active camp yields camp-scoped volunteer counts (59.5606ms)
+✔ null p_camp_id yields zeros (no all-time totals) (52.1499ms)
+✔ two waiting different timestamps → positions 1 and 2 (61.3418ms)
+✔ identical queued_at ordered by reg_no then id; unique consecutive positions (35.1807ms)
+✔ same queued_at and reg_no: id ASC is final tie-break (27.3899ms)
+✔ different camps never affect each other (34.0543ms)
+✔ seen/registered do not count ahead of waiting (22.4986ms)
+✔ waiting → seen loses position (NULL) (28.2917ms)
+✔ invalid/expired/random tokens return empty (same not-found shape) (26.3656ms)
+✔ authenticated cannot execute patient_status_by_token (49.6434ms)
+✔ null token input returns empty (not a fabricated number) (8.0628ms)
+✔ concurrent waiting peers get distinct ranks in one snapshot (42.5688ms)
+✔ least-privilege projection has no phone/token/queued_at columns (3.4716ms)
+ℹ tests 81
+ℹ suites 1
+ℹ pass 81
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15334.9882
+DB TEST SUMMARY: tests=81 pass=81 fail=0 skipped=0 todo=0
+

@@ -73,7 +73,7 @@ export function isMsg91ReminderConfigured(): boolean {
   return Boolean(
     process.env.MSG91_AUTH_KEY?.trim() &&
       process.env.MSG91_SENDER_ID?.trim() &&
-      process.env.MSG91_TEMPLATE_REMINDER?.trim(),
+      (process.env.MSG91_DLT_TE_ID_REMINDER?.trim() || process.env.MSG91_TEMPLATE_REMINDER?.trim()),
   );
 }
 
@@ -159,7 +159,9 @@ export async function sendReminderSms(
 
   const authKey = process.env.MSG91_AUTH_KEY!.trim();
   const senderId = process.env.MSG91_SENDER_ID!.trim();
-  const templateId = process.env.MSG91_TEMPLATE_REMINDER!.trim();
+  const templateId = (
+    process.env.MSG91_DLT_TE_ID_REMINDER || process.env.MSG91_TEMPLATE_REMINDER
+  )!.trim();
   const mobiles = phone.replace(/\D/g, "");
   const phoneLast4 = mobiles.slice(-4);
 

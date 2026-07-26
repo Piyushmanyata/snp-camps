@@ -24,6 +24,7 @@ export type AdminPatientRow = {
   queue_status: string;
   gender: string | null;
   age: number | null;
+  aadhaar_verified_at?: string | null;
   created_at: string;
   camp_id: string;
   camps: { name: string } | null;
@@ -114,6 +115,7 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       queue_status: patient.queue_status as string,
       gender: (patient.gender as string | null) ?? null,
       age: (patient.age as number | null) ?? null,
+      aadhaar_verified_at: (patient.aadhaar_verified_at as string | null) ?? null,
       created_at: patient.created_at as string,
       camp_id: patient.camp_id as string,
       camps: Array.isArray(camp) ? camp[0] ?? null : camp,
@@ -133,7 +135,7 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, aadhaar_verified_at, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
@@ -391,6 +393,7 @@ export function AdminPatients({
                   <p className="truncate font-semibold">
                     <span className="tabular text-brand">#{r.reg_no}</span>{" "}
                     {r.full_name}
+                    {r.aadhaar_verified_at ? <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-[0.6875rem] font-bold text-brand">Aadhaar verified</span> : null}
                   </p>
                   <p className="truncate text-xs text-muted">
                     {[

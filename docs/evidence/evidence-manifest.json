@@ -1,0 +1,170 @@
+{
+  "schema_version": "1.0.0",
+  "ticket_id": "74",
+  "commit_sha": "88e52d341c8a482148688e8375a0e01109e89a2d",
+  "dirty": true,
+  "timestamp": "2026-07-26T19:21:51.158Z",
+  "platform": {
+    "os_platform": "win32",
+    "os_arch": "x64",
+    "os_release": "10.0.26200",
+    "os_type": "Windows_NT"
+  },
+  "tool_versions": {
+    "node": "v24.18.0",
+    "npm": "11.16.0",
+    "typescript": "Version 5.9.3",
+    "next": "Next.js v16.2.11",
+    "playwright": "Version 1.61.1"
+  },
+  "stages": {
+    "lint": {
+      "command": "npm run lint",
+      "description": "ESLint static code analysis",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 11193,
+      "log_file": "logs/lint.log",
+      "sha256": "ce754c3210e4ae274098a39a719a27d57be6247605418770d795197446821c12",
+      "counts": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "unit": {
+      "command": "npm test",
+      "description": "Node test runner unit suites",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 25734,
+      "log_file": "logs/unit.log",
+      "sha256": "11cbab357c89733b7fe31f68c69e429799a6fbd7f8cfbce03cc3f70208cb49fc",
+      "counts": {
+        "total": 393,
+        "passed": 393,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "type_build": {
+      "command": "npx tsc --noEmit && npm run build",
+      "description": "TypeScript compilation and Next.js build",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 18590,
+      "log_file": "logs/type_build.log",
+      "sha256": "528335c9a11a79f9ebce16f8f81218375cbca23de202a40703747bf3065942f0",
+      "counts": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "budgets": {
+      "command": "npm run check:js-budget",
+      "description": "Client JS route bundle size budgets",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 739,
+      "log_file": "logs/budgets.log",
+      "sha256": "f99492e4ef9ba78f578d425210920fc70d31e1d35623ae958e268562f0cd89af",
+      "counts": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "db": {
+      "command": "npm run test:db",
+      "description": "Database isolation and migration contract tests",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 15935,
+      "log_file": "logs/db.log",
+      "sha256": "184a43418d88f62fc8956ef5c1d623e5a6a67f4cc97fdce16b8cd7e11bea855f",
+      "counts": {
+        "total": 81,
+        "passed": 81,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "e2e": {
+      "command": "npm run test:e2e",
+      "description": "Playwright end-to-end user journeys",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 111946,
+      "log_file": "logs/e2e.log",
+      "sha256": "4226f538c9e9569f82a31e4fefa300a01d78327057a22be922e217917b0cec3e",
+      "counts": {
+        "total": 35,
+        "passed": 35,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "accessibility": {
+      "command": "node e2e/run-local.mjs e2e/a11y-computed.spec.ts",
+      "description": "Computed contrast, touch, focus and scaling a11y checks",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 39759,
+      "log_file": "logs/accessibility.log",
+      "sha256": "8d9b3cfb3353d0c80f54cd64b1fba7db2871c41d817ce67642f3ff0c590fae17",
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "migration": {
+      "command": "npm run compare:migrations",
+      "description": "Read-only migration head drift comparison",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 4439,
+      "log_file": "logs/migration.log",
+      "sha256": "317bd4aff841fef704339323bab7e44e394676c0b9a9a52f9b8a854e2ea37ece",
+      "counts": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    "env_security": {
+      "command": "npm run check:env",
+      "description": "Documented environment variable reads check",
+      "status": "PASS",
+      "exit_code": 0,
+      "duration_ms": 491,
+      "log_file": "logs/env_security.log",
+      "sha256": "dc09c146e97f21f491c394124516de783c0eb8090f9d01e6b5ad48e563bf9f62",
+      "counts": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  },
+  "overall_status": "PASS",
+  "artifacts": {
+    "manifest_sha256": "7de280ababaad2afa0e7a2216540b2cf55f993e25b44330c84e599d4769bfc1c"
+  }
+}

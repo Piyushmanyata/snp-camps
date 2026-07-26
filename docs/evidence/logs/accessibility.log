@@ -1,0 +1,90 @@
+
+> snp-camps@0.1.0 build
+> next build
+
+▲ Next.js 16.2.11 (Turbopack)
+- Environments: .env.local, .env
+- Cache Components enabled
+- Experiments (use with caution):
+  · optimizePackageImports
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.5s
+  Running TypeScript ...
+  Finished TypeScript in 6.0s ...
+  Collecting page data using 21 workers ...
+  Generating static pages using 21 workers (0/26) ...
+  Generating static pages using 21 workers (6/26) 
+  Generating static pages using 21 workers (12/26) 
+  Generating static pages using 21 workers (19/26) 
+✓ Generating static pages using 21 workers (26/26) in 564ms
+  Finalizing page optimization ...
+
+Route (app)                    Revalidate  Expire
+┌ ◐ /                                  5s      1y
+├ ○ /_not-found
+├ ◐ /admin
+├ ◐ /admin/patients
+├ ƒ /api/aadhaar-kyc/initiate
+├ ƒ /api/aadhaar-kyc/verify
+├ ƒ /api/aadhaar-lookup
+├ ƒ /api/admin/staff-detail
+├ ƒ /api/admin/staff/[role]
+├ ƒ /api/admin/test-sms
+├ ƒ /api/cron/reminder-sms
+├ ƒ /api/desk/live
+├ ƒ /api/desk/section
+├ ƒ /api/health
+├ ƒ /api/notify/registration
+├ ƒ /api/patients/[id]/print
+├ ƒ /api/self-registration
+├ ◐ /doctor
+├ ◐ /login
+├ ◐ /p/[id]
+│ └ /p/[id]
+├ ◐ /print/[id]
+│ └ /print/[id]
+├ ◐ /print/batch
+├ ◐ /register                          5s      1y
+├ ◐ /s/[token]
+│ └ /s/[token]
+├ ○ /self-register                     5s      1y
+└ ◐ /volunteer
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)             prerendered as static content
+◐  (Partial Prerender)  prerendered as static HTML with dynamic server-streamed content
+ƒ  (Dynamic)            server-rendered on demand
+
+route	initial_raw	initial_gzip	deferred_raw	deferred_gzip
+/	676535	202190	0	0
+/_global-error	631831	186999	0	0
+/_not-found	649480	193126	0	0
+/admin	1389453	406101	155102	55010
+/admin/patients	1355179	396407	0	0
+/doctor	1363834	399254	158129	54776
+/login	922428	267094	0	0
+/p/[id]	649480	193126	0	0
+/print/[id]	698537	209597	0	0
+/print/batch	699822	210266	0	0
+/register	1383633	405800	0	0
+/s/[token]	649480	193126	0	0
+/self-register	662821	198193	0	0
+/volunteer	1391889	405659	151335	53209
+# artifact C:\Users\piyus\Downloads\SNP website\snp-camps\.scratch\remediation-71\route-chunk-map.json
+
+Running 7 tests using 1 worker
+
+[1/7] [chromium] › e2e\a11y-computed.spec.ts:418:5 › volunteer desk: touch targets, scanner contrast, keyboard focus
+[2/7] [chromium] › e2e\a11y-computed.spec.ts:520:5 › doctor desk: operational controls meet 48×48 and focus rings
+[3/7] [chromium] › e2e\a11y-computed.spec.ts:555:5 › admin desk: filters and staff actions meet touch + contrast
+[4/7] [chromium] › e2e\a11y-computed.spec.ts:603:5 › public register + login: touch, focus, 200% text zoom operable
+[5/7] [chromium] › e2e\a11y-computed.spec.ts:658:5 › print slip chrome: actions meet touch floor (screen)
+[6/7] [chromium] › e2e\a11y-computed.spec.ts:687:5 › lost-slip recovery: keyboard path and touch targets
+[7/7] [chromium] › e2e\a11y-computed.spec.ts:715:5 › disabled controls remain distinguishable with readable contrast
+  7 passed (25.4s)
+
+(node:6512) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)

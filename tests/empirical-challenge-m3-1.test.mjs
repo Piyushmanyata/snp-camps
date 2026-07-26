@@ -18,13 +18,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   EXPECTED_MIGRATION_HEAD,
-  GRANT_EXPECTATIONS,
-  PUBLICATION_EXPECTATIONS,
-  REQUIRED_COLUMNS,
-  REQUIRED_FUNCTIONS,
-  REQUIRED_TABLES,
-  SMS_DELIVERY_KINDS,
-  SMS_DELIVERY_STATES,
 } from "../src/lib/readiness-contract.ts";
 import { evaluateCatalogFacts } from "../src/lib/readiness.ts";
 
@@ -346,7 +339,7 @@ describe("EMPIRICAL CHALLENGE M3-1: Capacity, Duplicate & SMS Serialization Stre
         await c.query("begin");
         await setAuth(c, adminId);
         try {
-          const row = await upsertDay(c, {
+          await upsertDay(c, {
             campId,
             dayDate,
             seatLimit: 3 + i, // 3, 4, 5, 6, 7

@@ -12,25 +12,17 @@ import { randomUUID } from "node:crypto";
 
 import {
   classifyOperationError,
-  mapDbError,
-  isRetryableDbError,
-  publicRegistrationError,
 } from "../src/lib/public-error.ts";
 
 import {
   lookupPatientScanWithRetries,
-  assignPatientDoctorWithRetries,
   changeCampDayWithRetries,
-  checkInPatientWithRetries,
   searchRegisteredPatientsWithRetries,
 } from "../src/lib/desk-ops.ts";
 
 import {
   acquireDeskPrintTarget,
-  isRetryableRegistrationError,
-  withRegistrationRetries,
   runDeskRegisterAndPrint,
-  patientPrintPath,
 } from "../src/lib/desk-register-flow.ts";
 
 import { RETRY_EXHAUSTED_COPY } from "../src/lib/with-retries.ts";
@@ -427,7 +419,7 @@ async function seedCamp() {
   }
 }
 
-test("STRESS #61: Search truthful empty handling vs permission error", async (t) => {
+test("STRESS #61: Search truthful empty handling vs permission error", async () => {
   // Empty query with mock RPC returning no rows
   const mockEmptyRpc = async () => ({ data: [], error: null });
   const emptyRes = await searchRegisteredPatientsWithRetries({

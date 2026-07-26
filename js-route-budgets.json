@@ -13,6 +13,7 @@
     "/print/[id]": 212000,
     "/print/batch": 217000,
     "/register": 410000,
+    "/self-register": 205000,
     "/s/[token]": 199000,
     "/volunteer": 418000
   }

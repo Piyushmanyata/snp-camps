@@ -94,9 +94,9 @@ test("credential forms never put secrets in the URL before hydration", async ({
   const marker = "e2e-no-js-password";
 
   await page.goto(`${env("E2E_BASE_URL")}/login`);
-  await page.getByLabel("Email").fill("no-js@snp.local");
-  await page.getByLabel("Password").fill(marker);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByLabel("Email").first().fill("no-js@snp.local");
+  await page.getByLabel("Password").first().fill(marker);
+  await page.getByRole("button", { name: "Sign in" }).first().click();
   expect(page.url()).not.toContain(marker);
   expect(new URL(page.url()).search).toBe("");
 
