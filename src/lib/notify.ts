@@ -1,9 +1,9 @@
 /**
  * Outbound patient notifications.
  *
- * SMS: MSG91 registration template only (#51). The old generic
- * `SMS_WEBHOOK_URL` path was removed — two SMS mechanisms is one too many;
- * MSG91 is the single provider behind `src/lib/msg91.ts`.
+ * SMS: MSG91 only (#51 registration, #52 day-before reminder). The old
+ * generic `SMS_WEBHOOK_URL` path was removed — one provider behind
+ * `src/lib/msg91.ts`.
  *
  * WhatsApp remains an optional separate webhook (not used for registration SMS).
  */

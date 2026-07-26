@@ -189,15 +189,17 @@ Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `addr
 Transactional Hinglish SMS on desk registration (when the patient has a phone).
 **Not** Supabase Auth OTP. SMS never blocks registration.
 
-Set all three:
+Set:
 
 ```
 MSG91_AUTH_KEY=…
 MSG91_SENDER_ID=SNPCP          # DLT-registered sender / header
-MSG91_TEMPLATE_REGISTRATION=…  # MSG91 Flow / template id for the body below
+MSG91_TEMPLATE_REGISTRATION=…  # MSG91 Flow / template id for registration
+MSG91_TEMPLATE_REMINDER=…      # separate Flow / template id for day-before reminder
+CRON_SECRET=…                  # Bearer secret for Vercel Cron (/api/cron/reminder-sms)
 ```
 
-**DLT template to register** (Roman script only — exact text, four `{#var#}` slots
+**Registration DLT template** (Roman script only — exact text, four `{#var#}` slots
 in order: **reg**, **date**, **venue**, **link**):
 
 ```
@@ -214,8 +216,20 @@ In the MSG91 flow, name the variables `reg`, `date`, `venue`, `link` (same order
 Date values are compact (`30 Sep 2026`). Venue is truncated to 35 characters.
 Status link is `NEXT_PUBLIC_SITE_URL` + `/s/<status_token>`.
 
+**Day-before reminder DLT template** (separate template ID; three slots:
+**reg**, **date**, **venue** — no link):
+
+```
+SNP Camp: Kal aana. Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein.
+```
+
+A Vercel Cron job (`vercel.json`, `30 2 * * *` UTC ≈ **08:00 Asia/Kolkata**) calls
+`GET /api/cron/reminder-sms` with `Authorization: Bearer $CRON_SECRET`. It texts
+patients who are still `registered` (not checked in), have a phone, and whose
+camp day is **tomorrow** (Asia/Kolkata). Each patient is marked
+`reminder_sms_sent_at` so a double run cannot charge twice. Provider failures are
+logged (`[sms-failure]` / `[reminder-sms]`) and never affect desk flows.
+
 The old generic `SMS_WEBHOOK_URL` path was **removed** — one SMS provider only
 (`src/lib/msg91.ts`). Admin → **Registration SMS (MSG91)** can send a real test
 message and shows recent send failures (also logged as `[sms-failure]`).
-
-Day-before reminder SMS is a separate ticket (#52).

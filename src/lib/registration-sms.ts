@@ -112,7 +112,7 @@ export function isMsg91Configured(): boolean {
 
 export type SmsFailureRecord = {
   at: string;
-  template: "registration" | "test";
+  template: "registration" | "test" | "reminder";
   detail: string;
   /** Last 4 digits only — never store full phone in the admin log. */
   phoneLast4?: string;
