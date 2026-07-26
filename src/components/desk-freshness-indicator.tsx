@@ -40,8 +40,8 @@ export function DeskFreshnessIndicator({
           onClick={onRetry}
           className={
             isHardError
-              ? "pressable min-h-10 rounded-lg border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-950 hover:bg-red-100"
-              : "pressable min-h-10 rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-950 hover:bg-amber-100"
+              ? "pressable min-h-12 min-w-12 rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold text-red-950 hover:bg-red-100"
+              : "pressable min-h-12 min-w-12 rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold text-amber-950 hover:bg-amber-100"
           }
         >
           Try again

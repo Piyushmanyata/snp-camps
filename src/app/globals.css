@@ -71,11 +71,15 @@ html {
   scroll-behavior: smooth;
   /* Reserve space so anchored content clears the sticky header */
   scroll-padding-top: 0.75rem;
+  /* 200% text zoom / large rem roots: prefer vertical scroll only (#69) */
+  overflow-x: clip;
 }
 
 body {
   min-height: 100%;
   margin: 0;
+  max-width: 100%;
+  overflow-x: clip;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
@@ -88,6 +92,18 @@ body {
   -webkit-tap-highlight-color: color-mix(in srgb, var(--brand) 12%, transparent);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+}
+
+/* Prevent rem-scaled grids/chips from forcing horizontal page scroll */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+.mobile-dock-item {
+  overflow-wrap: anywhere;
 }
 
 /* Bump root slightly more on very small phones for outdoor use */
@@ -209,16 +225,23 @@ h3 {
 
 .mobile-dock-inner {
   display: grid;
+  /* auto-fit reflows when rem-based type grows (200% text zoom, #69) */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.25rem), 1fr));
   gap: 0.4rem;
   max-width: 28rem;
   margin: 0 auto;
+  width: 100%;
 }
 
 .mobile-dock a,
 .mobile-dock button,
 .mobile-dock-item {
+  min-width: 0;
   min-height: var(--touch-min);
   padding-inline: 0.35rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 /* Reserve space so content is not hidden under the dock */
@@ -250,12 +273,14 @@ h3 {
 /* In-page jump chips (phone desk) */
 .jump-chip-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  /* minmax floor in px so 200% rem text zoom still reflows (#69) */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
   gap: 0.45rem;
 }
 
 .jump-chip {
   display: inline-flex;
+  min-width: 0;
   min-height: var(--touch-min);
   align-items: center;
   justify-content: center;
@@ -267,6 +292,8 @@ h3 {
   font-weight: 700;
   color: var(--brand);
   text-decoration: none;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .jump-chip:focus-visible,
@@ -290,7 +317,7 @@ h3 {
 
 @media (min-width: 640px) {
   .day-chip-row {
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
   }
 }
 

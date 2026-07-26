@@ -959,7 +959,7 @@ export function QrScanner({
             <span className="tabular">#{assigned.reg_no}</span> ·{" "}
             {assigned.full_name}
           </p>
-          <p className="mt-1 text-xs text-brand/80">
+          <p className="mt-1 text-sm font-medium text-brand">
             {assigned.doctor_name
               ? `Doctor: ${assigned.doctor_name}`
               : "Doctor recorded"}
@@ -1045,7 +1045,7 @@ export function QrScanner({
                     <p className="font-bold text-amber-950">
                       Already Seen{lookup.doctor_name ? ` by ${lookup.doctor_name}` : ""}
                     </p>
-                    <p className="mt-0.5 text-xs text-amber-900/80">
+                    <p className="mt-0.5 text-sm text-amber-950">
                       Duplicate examination prevented. Multiple scans for the same patient are blocked.
                     </p>
                   </div>

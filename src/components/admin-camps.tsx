@@ -157,7 +157,7 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
                 ) : (
                   <button
                     type="button"
-                    className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm font-medium transition hover:bg-brand-soft disabled:opacity-50"
+                    className="pressable min-h-12 min-w-12 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold transition hover:bg-brand-soft disabled:opacity-50"
                     disabled={Boolean(activatingId || deletingId)}
                     onClick={() => activate(c.id)}
                   >
@@ -166,7 +166,7 @@ export function AdminCamps({ camps }: { camps: Camp[] }) {
                 )}
                 <button
                   type="button"
-                  className="pressable rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+                  className="pressable min-h-12 min-w-12 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
                   disabled={Boolean(activatingId || deletingId)}
                   onClick={() => removeCamp(c)}
                 >

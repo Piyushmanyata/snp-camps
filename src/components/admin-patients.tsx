@@ -351,11 +351,11 @@ export function AdminPatients({
                 setPage(0);
                 setError(null);
               }}
-              className={`pressable min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
- filter === key
- ? "bg-brand text-white"
- : "border border-border bg-white text-muted hover:bg-brand-soft hover:text-brand"
- }`}
+              className={`pressable min-h-12 min-w-12 rounded-full px-3.5 py-2 text-sm font-semibold transition-colors ${
+                filter === key
+                  ? "bg-brand text-white"
+                  : "border border-border bg-white text-muted hover:bg-brand-soft hover:text-brand"
+              }`}
             >
               {label}
             </button>

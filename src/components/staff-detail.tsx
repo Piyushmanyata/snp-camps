@@ -106,7 +106,7 @@ export function StaffDetailPanel({
         <button
           type="button"
           onClick={closeAndRestoreFocus}
-          className="pressable shrink-0 rounded-lg border border-border bg-white px-2.5 py-1.5 text-xs font-semibold text-muted hover:bg-background"
+          className="pressable min-h-12 min-w-12 shrink-0 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-muted hover:bg-background"
         >
           Close
         </button>

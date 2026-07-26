@@ -65,6 +65,41 @@ test("shared Button/Input targets are ≥48px (min-h-12 or 3.25rem)", () => {
   assert.match(ui, /h-12 w-12/); // back control
 });
 
+/**
+ * Supplemental source locks for #69 defect classes (not proof of render).
+ * Browser proof lives in e2e/a11y-computed.spec.ts.
+ */
+test("#69 seat-board / freshness / admin controls declare ≥48px classes", () => {
+  const seat = readFileSync(join(root, "src/components/seat-board.tsx"), "utf8");
+  const fresh = readFileSync(
+    join(root, "src/components/desk-freshness-indicator.tsx"),
+    "utf8",
+  );
+  const patients = readFileSync(
+    join(root, "src/components/admin-patients.tsx"),
+    "utf8",
+  );
+  const staff = readFileSync(join(root, "src/components/admin-staff.tsx"), "utf8");
+  const camps = readFileSync(join(root, "src/components/admin-camps.tsx"), "utf8");
+  const scanner = readFileSync(
+    join(root, "src/components/qr-scanner.tsx"),
+    "utf8",
+  );
+
+  assert.match(seat, /min-h-12/);
+  assert.doesNotMatch(seat, /min-h-8/);
+  assert.match(fresh, /min-h-12/);
+  assert.doesNotMatch(fresh, /min-h-10/);
+  assert.match(patients, /min-h-12/);
+  assert.doesNotMatch(patients, /min-h-9/);
+  assert.match(staff, /min-h-12/);
+  assert.doesNotMatch(staff, /min-h-11/);
+  assert.match(camps, /min-h-12/);
+  // Computed contrast defect class: no opacity-reduced brand ink on soft panels
+  assert.doesNotMatch(scanner, /text-brand\/80/);
+  assert.doesNotMatch(scanner, /text-amber-900\/80/);
+});
+
 test("palette pairs meet AA normal text (≥4.5:1) for body/labels", () => {
   const foreground = cssVar("--foreground");
   const background = cssVar("--background");

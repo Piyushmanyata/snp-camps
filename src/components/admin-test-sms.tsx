@@ -145,7 +145,7 @@ export function AdminTestSms() {
           </p>
           <button
             type="button"
-            className="text-xs font-semibold text-brand underline-offset-2 hover:underline"
+            className="pressable min-h-12 min-w-12 rounded-lg px-3 py-2 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
             onClick={() => void refresh()}
             disabled={statusLoading}
           >

@@ -142,7 +142,7 @@ export function SeatBoard({
             type="button"
             onClick={onRefresh}
             disabled={busy}
-            className="pressable inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
+            className="pressable inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center gap-1 rounded-lg px-3 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
           >
             {busy ? <Spinner className="h-3 w-3" /> : null}
             Refresh
@@ -152,7 +152,8 @@ export function SeatBoard({
       <ul
         className={
           compact
-            ? "grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-2"
+            ? // min() keeps auto-fit from forcing horizontal overflow at 200% text (#69)
+              "grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-2"
             : "grid gap-2 sm:grid-cols-2"
         }
       >

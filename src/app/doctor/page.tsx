@@ -158,11 +158,11 @@ export default async function DoctorPage() {
               </p>
             </div>
             {camp && statsInitial ? (
-              <div className="sm:min-w-[14rem]">
+              <div className="min-w-0 sm:min-w-[min(100%,14rem)]">
                 <DoctorStatsPanel campId={camp.id} initial={statsInitial} />
               </div>
             ) : (
-              <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[14rem]">
+              <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:w-auto sm:min-w-[min(100%,14rem)]">
                 <Stat label="You saw today" value={0} tone="ok" />
                 <Stat label="Total seen" value={0} />
               </div>

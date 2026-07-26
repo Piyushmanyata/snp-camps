@@ -373,7 +373,7 @@ export function AdminStaff({
                           reactivatingId === person.id || undefined
                         }
                         onClick={() => void onReactivate(person)}
-                        className="pressable min-h-11 rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-1.5 text-xs font-semibold text-brand transition hover:bg-white disabled:opacity-50"
+                        className="pressable min-h-12 min-w-12 rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                       >
                         {reactivatingId === person.id
                           ? "Reactivating…"
@@ -388,7 +388,7 @@ export function AdminStaff({
                             resettingId === person.id || undefined
                           }
                           onClick={() => void onReset(person)}
-                          className="pressable min-h-11 rounded-lg border border-border bg-brand-soft px-2.5 py-1.5 text-xs font-semibold text-brand transition hover:bg-white disabled:opacity-50"
+                          className="pressable min-h-12 min-w-12 rounded-lg border border-border bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                         >
                           {resettingId === person.id
                             ? "Resetting…"
@@ -399,7 +399,7 @@ export function AdminStaff({
                           disabled={busy}
                           aria-busy={deletingId === person.id || undefined}
                           onClick={() => void onDelete(person)}
-                          className="pressable min-h-11 rounded-lg border border-danger/20 bg-danger-soft px-2.5 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
+                          className="pressable min-h-12 min-w-12 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
                         >
                           {deletingId === person.id
                             ? "Deactivating…"

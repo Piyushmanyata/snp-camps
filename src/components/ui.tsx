@@ -30,24 +30,18 @@ function MobileDock({
   label?: string;
 }) {
   if (!items.length) return null;
-  const cols = Math.min(Math.max(items.length, 1), 4);
   return (
     <nav className="mobile-dock no-print" aria-label={label}>
-      <div
-        className="mobile-dock-inner"
-        style={{
-          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        }}
-      >
+      <div className="mobile-dock-inner">
         {items.map((item) => (
           <Link
             key={item.href + item.label}
             href={item.href}
             className={`pressable mobile-dock-item inline-flex items-center justify-center rounded-xl px-1.5 text-center text-[0.8125rem] font-bold leading-tight transition-colors duration-150 sm:text-sm ${
- item.primary
- ? "bg-brand text-white hover:bg-brand-dark"
- : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"
- }`}
+              item.primary
+                ? "bg-brand text-white hover:bg-brand-dark"
+                : "border border-border bg-card text-foreground hover:bg-brand-soft hover:text-brand"
+            }`}
           >
             {item.label}
           </Link>
@@ -93,40 +87,44 @@ export function Shell({
             : { paddingBottom: "calc(2rem + var(--safe-bottom))" }),
         }}
       >
-        <header className="mb-4 flex items-start gap-2.5 rounded-2xl border border-border bg-card p-3.5 sm:mb-6 sm:gap-3 sm:p-4">
-          {backHref ? (
-            <Link
-              href={backHref}
-              className="pressable mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft"
-              aria-label="Go back"
-            >
-              <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M10 4L6 8l4 4" />
-              </svg>
-            </Link>
-          ) : null}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <p className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-brand sm:text-xs">
-                SNP Camps
-              </p>
-              {roleLabel ? (
-                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand ring-1 ring-brand/15 sm:px-2.5 sm:text-[11px]">
-                  {roleLabel}
-                </span>
+        <header className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card p-3.5 sm:mb-6 sm:flex-row sm:items-start sm:gap-3 sm:p-4">
+          <div className="flex min-w-0 flex-1 items-start gap-2.5">
+            {backHref ? (
+              <Link
+                href={backHref}
+                className="pressable mt-0.5 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:border-brand/30 hover:bg-brand-soft"
+                aria-label="Go back"
+              >
+                <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 4L6 8l4 4" />
+                </svg>
+              </Link>
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <p className="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-brand sm:text-xs">
+                  SNP Camps
+                </p>
+                {roleLabel ? (
+                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand ring-1 ring-brand/15 sm:px-2.5 sm:text-[11px]">
+                    {roleLabel}
+                  </span>
+                ) : null}
+              </div>
+              <h1 className="mt-0.5 break-words text-[1.5rem] font-bold leading-tight tracking-tight text-foreground sm:text-[1.9rem]">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="prose-help mt-0.5 text-[0.875rem] text-muted sm:mt-1 sm:text-[0.9375rem]">
+                  {subtitle}
+                </p>
               ) : null}
             </div>
-            <h1 className="mt-0.5 text-[1.5rem] font-bold leading-tight tracking-tight text-foreground sm:text-[1.9rem]">
-              {title}
-            </h1>
-            {subtitle ? (
-              <p className="prose-help mt-0.5 text-[0.875rem] text-muted sm:mt-1 sm:text-[0.9375rem]">
-                {subtitle}
-              </p>
-            ) : null}
           </div>
           {actions ? (
-            <div className="flex shrink-0 items-start gap-2">{actions}</div>
+            <div className="flex w-full min-w-0 flex-wrap items-stretch justify-stretch gap-2 sm:w-auto sm:max-w-[min(100%,16rem)] sm:items-start sm:justify-end">
+              {actions}
+            </div>
           ) : null}
         </header>
         <main id="main" className="flex flex-1 flex-col gap-0">
@@ -440,14 +438,15 @@ export function Badge({
   children: ReactNode;
   tone?: "default" | "ok" | "wait" | "danger";
 }) {
+  // Solid token pairs (no opacity-blended ink) so computed contrast stays ≥ AA (#69).
   const c =
     tone === "ok"
-      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30"
+      ? "bg-brand-soft text-brand ring-1 ring-brand/25"
       : tone === "wait"
-        ? "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/30"
+        ? "bg-warning-soft text-warning ring-1 ring-warning/30"
         : tone === "danger"
           ? "bg-danger-soft text-danger ring-1 ring-danger/25"
-          : "bg-background text-muted ring-1 ring-border/80";
+          : "bg-background text-muted ring-1 ring-border-strong";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold transition-all duration-150 ${c}`}
@@ -473,13 +472,13 @@ export function Stat({
         ? "text-amber-700"
         : "text-brand-dark";
   return (
-    <div className="rounded-xl border border-border bg-card px-2 py-2.5 text-center sm:rounded-2xl sm:p-3.5">
+    <div className="min-w-0 rounded-xl border border-border bg-card px-2 py-2.5 text-center sm:rounded-2xl sm:p-3.5">
       <p
-        className={`tabular text-[1.5rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
+        className={`tabular break-words text-[1.5rem] font-bold tracking-tight sm:text-[1.85rem] ${accent}`}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[0.75rem] font-semibold uppercase leading-tight tracking-wide text-muted sm:text-[0.8125rem]">
+      <p className="mt-0.5 break-words text-[0.75rem] font-semibold uppercase leading-tight tracking-wide text-muted sm:text-[0.8125rem]">
         {label}
       </p>
     </div>
