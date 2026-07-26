@@ -6,11 +6,11 @@ Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
 Desk-only registration, **pre-reg + check-in**, one shared queue, passwordless patient status:
 
-1. **Desk registration (Staff):** Staff registers the patient (age & address required; phone optional).
-   - **Camp day = today** → walk-in: lands in **`waiting`** (in the FCFS Queue) in one step.
-   - **Future camp day** → pre-reg: stays **`registered`** (not in the queue).
-2. **Check-in** (pre-reg only): QR scan, reg number, or name search → `registered` → **`waiting`**. Queue order is by check-in time. Double check-in is a no-op.
-3. **Print desk slip** (optional): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
+1. **Desk registration (Staff):** One screen — **full name + age required**; phone, Aadhaar last-4, gender, address, email optional. One button registers and opens print.
+   - **Camp day = today** → walk-in: lands in **`waiting`** (in line) in one step.
+   - **Future camp day** → pre-reg: stays **`registered`** (not in the line).
+2. **Check-in** (pre-reg only): QR scan, reg number, or name search → `registered` → **`waiting`**. Line order is by check-in time. Double check-in is a no-op.
+3. **Print desk slip** (optional reprint): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
 4. **Doctor scan** → review → confirm → **Seen** (once only).
 5. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
 6. **Patient status (passwordless):** `/s/<token>` with no sign-in. There is **no patient login** and **no public self-registration**.

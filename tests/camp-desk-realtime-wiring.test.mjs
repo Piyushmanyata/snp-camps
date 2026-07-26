@@ -84,7 +84,8 @@ test("#26 no staff copy instructs manual-only refresh on Realtime desks", () => 
   const admin = read("src/app/admin/page.tsx");
   assert.doesNotMatch(volunteer, /refresh manually/i);
   assert.doesNotMatch(admin, /auto-refresh/i);
-  assert.match(volunteer, /FCFS · live/);
+  // #47: volunteer-facing UI drops "FCFS" jargon; keep a live queue hint.
+  assert.match(volunteer, /Line · live/);
   assert.match(admin, /FCFS · assign doctor · live/);
 });
 

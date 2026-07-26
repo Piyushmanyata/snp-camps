@@ -342,7 +342,7 @@ export function LiveQueue({
         {!rows.length ? (
           <li className="px-1 py-2">
             <EmptyState>
-              Queue is empty. Print puts patients here for FCFS. Doctors can
+              Queue is empty. Check-in puts patients here in arrival order. Doctors can
               also scan registered patients directly (no print).
             </EmptyState>
           </li>

@@ -1,32 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
-  aadhaarLast4,
   digitsOnly,
   formatAadhaarDisplay,
   isAadhaarLookupEnabledClient,
   isValidAadhaarNumber,
   type AadhaarProfile,
 } from "@/lib/aadhaar";
-import { normalizePhoneE164 } from "@/lib/phone";
+import { runDeskRegisterAndPrint } from "@/lib/desk-register-flow";
 import {
   createRegistrationAttempt,
-  submitRegistrationOutbound,
 } from "@/lib/registration-request";
 import { createRequestId } from "@/lib/request-id";
+import {
+  validatePatientForm,
+  type PatientFormField,
+} from "@/lib/patient-form-validate";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
   ErrorBox,
   Input,
   SegmentedControl,
-  SuccessBox,
   WarningBox,
 } from "@/components/ui";
-import { ChangeDay } from "@/components/change-day";
 
 type Props = {
   campId: string;
@@ -39,28 +39,8 @@ type Props = {
   userRole?: string | null;
 };
 
-type Created = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  camp_day_id?: string;
-  day_date?: string;
-  queue_status?: "registered" | "waiting" | "seen";
-  claim_token?: string | null;
-  notifyNote?: string;
-  phone?: string | null;
-};
-
+type FormFieldErrors = Partial<Record<PatientFormField, string>>;
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
-type FormField =
-  | "campDay"
-  | "aadhaar"
-  | "fullName"
-  | "phone"
-  | "age"
-  | "address"
-  | "email";
-type FormFieldErrors = Partial<Record<FormField, string>>;
 
 export function PatientForm({
   campId,
@@ -69,10 +49,8 @@ export function PatientForm({
   userId = null,
   createdBy = null,
   isStaff = false,
-  userRole = null,
 }: Props) {
-  const optionalDetailsId = `patient-optional-details-${useId().replace(/:/g, "")}`;
-  const openDays = useMemo(() => days.filter((d) => !d.is_full), [days]);
+  const openDays = days.filter((d) => !d.is_full);
   const firstOpen = openDays[0]?.id || "";
   const lookupEnabled = isAadhaarLookupEnabledClient();
 
@@ -85,42 +63,34 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  /** Staff-only: conflicting reg no when Aadhaar last-4 + name collides. */
+  const [flash, setFlash] = useState<string | null>(null);
   const [aadhaarDuplicateRegNo, setAadhaarDuplicateRegNo] = useState<
     number | null
   >(null);
-  /** One-shot; never sticky across walk-ins. */
   const aadhaarOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
 
-  function failValidation(
-    field: FormField,
-    elementId: string,
-    message: string,
-  ) {
-    setFieldErrors({ [field]: message });
-    setError(message);
-    setLoading(false);
-    requestAnimationFrame(() => {
-      document.getElementById(elementId)?.focus();
-    });
-  }
-
-  const [created, setCreated] = useState<Created | null>(null);
-  const [queueNote, setQueueNote] = useState<string | null>(null);
-
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupMsg, setLookupMsg] = useState<string | null>(null);
-  const [filledFromAadhaar, setFilledFromAadhaar] = useState(false);
-  const [showAadhaarLater, setShowAadhaarLater] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastLookedUp = useRef<string>("");
+  const lastLookedUp = useRef("");
   const lookupRequest = useRef(0);
-  /** Stable idempotency key for the in-flight registration attempt (retries reuse it). */
-  const registrationAttempt = useRef(createRegistrationAttempt(createRequestId));
+  const registrationAttempt = useRef(
+    createRegistrationAttempt(createRequestId),
+  );
   const lookupAbort = useRef<AbortController | null>(null);
+
+  const focusName = useCallback(() => {
+    requestAnimationFrame(() => {
+      document.getElementById("patient-full-name")?.focus();
+    });
+  }, []);
+
+  useEffect(() => {
+    focusName();
+  }, [focusName]);
 
   const applyProfile = useCallback((profile: AadhaarProfile) => {
     if (profile.full_name) setFullName(profile.full_name);
@@ -129,7 +99,6 @@ export function PatientForm({
     if (profile.address) setAddress(profile.address);
     if (profile.phone) setPhone(profile.phone);
     if (profile.email) setEmail(profile.email);
-    setFilledFromAadhaar(true);
   }, []);
 
   const runAadhaarLookup = useCallback(
@@ -148,8 +117,7 @@ export function PatientForm({
       lookupAbort.current = controller;
 
       setLookupState("loading");
-      setLookupMsg("Fetching details from Aadhaar…");
-      setError(null);
+      setLookupMsg("Aadhaar se details…");
 
       try {
         const res = await fetch("/api/aadhaar-lookup", {
@@ -168,32 +136,24 @@ export function PatientForm({
         if (!res.ok) {
           setLookupState(json.available === false ? "skipped" : "fail");
           setLookupMsg(
-            json.error ||
-              "Could not fetch Aadhaar details. Fill the form manually.",
+            json.error || "Aadhaar se nahi mila. Form khud bhariye.",
           );
-          setFilledFromAadhaar(false);
           return;
         }
 
         if (json.profile) {
           applyProfile(json.profile);
           setLookupState("ok");
-          setLookupMsg(
-            "Details filled from Aadhaar — edit if anything is wrong.",
-          );
+          setLookupMsg("Details bhar gaye — check kar lo.");
         } else {
           setLookupState("fail");
-          setLookupMsg("No details returned. Fill the form manually.");
-          setFilledFromAadhaar(false);
+          setLookupMsg("Kuch nahi aaya. Form khud bhariye.");
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         if (requestId !== lookupRequest.current) return;
         setLookupState("fail");
-        setLookupMsg(
-          "Aadhaar lookup failed. Fill name, age and address manually below.",
-        );
-        setFilledFromAadhaar(false);
+        setLookupMsg("Aadhaar lookup fail. Naam aur umar khud bhariye.");
       }
     },
     [applyProfile],
@@ -202,7 +162,6 @@ export function PatientForm({
   function onAadhaarChange(value: string) {
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
-    setFilledFromAadhaar(false);
     lastLookedUp.current = "";
     lookupRequest.current += 1;
     lookupAbort.current?.abort();
@@ -213,9 +172,7 @@ export function PatientForm({
     if (!lookupEnabled || !isStaff) {
       setLookupState("skipped");
       setLookupMsg(
-        d.length >= 4
-          ? "Optional · only last 4 digits are stored when provided."
-          : null,
+        d.length >= 4 ? "Optional · sirf last 4 store hota hai." : null,
       );
       return;
     }
@@ -223,21 +180,19 @@ export function PatientForm({
     if (d.length < 12) {
       setLookupState("idle");
       setLookupMsg(
-        d.length > 0 ? "Enter full 12-digit Aadhaar to auto-fill." : null,
+        d.length > 0 ? "Auto-fill ke liye 12 digit Aadhaar." : null,
       );
       return;
     }
 
     if (!isValidAadhaarNumber(d)) {
       setLookupState("fail");
-      setLookupMsg(
-        "Invalid Aadhaar number. Check digits or enter details manually.",
-      );
+      setLookupMsg("Aadhaar galat. Check karo ya khud bhariye.");
       return;
     }
 
     setLookupState("loading");
-    setLookupMsg("Fetching details…");
+    setLookupMsg("Fetching…");
     lookupTimer.current = setTimeout(() => {
       void runAadhaarLookup(d);
     }, 450);
@@ -251,140 +206,67 @@ export function PatientForm({
     };
   }, []);
 
+  function failValidation(
+    field: PatientFormField,
+    elementId: string,
+    message: string,
+  ) {
+    setFieldErrors({ [field]: message });
+    setError(message);
+    setLoading(false);
+    requestAnimationFrame(() => {
+      document.getElementById(elementId)?.focus();
+    });
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isStaff) return;
 
     setLoading(true);
     setError(null);
+    setFlash(null);
     setFieldErrors({});
-    setQueueNote(null);
     const aadhaarDuplicateOverride = aadhaarOverrideOnceRef.current;
     aadhaarOverrideOnceRef.current = false;
     if (!aadhaarDuplicateOverride) {
       setAadhaarDuplicateRegNo(null);
     }
 
-    if (!campDayId) {
-      failValidation(
-        "campDay",
-        `camp-day-${firstOpen}`,
-        "Select a camp day with open seats.",
-      );
-      return;
-    }
+    const validated = validatePatientForm(
+      {
+        campDayId,
+        fullName,
+        gender,
+        age,
+        address,
+        phone,
+        email,
+        aadhaar,
+      },
+      days,
+    );
 
-    const selected = days.find((d) => d.id === campDayId);
-    if (selected?.is_full) {
-      failValidation(
-        "campDay",
-        `camp-day-${campDayId}`,
-        "That day is full. Choose another day.",
-      );
-      return;
-    }
-
-    const aDigits = digitsOnly(aadhaar);
-    const last4 = aadhaarLast4(aadhaar);
-
-    if (aadhaar.trim()) {
-      if (aDigits.length === 12 && !isValidAadhaarNumber(aDigits)) {
-        setShowAadhaarLater(true);
-        failValidation(
-          "aadhaar",
-          "patient-aadhaar",
-          "Aadhaar number looks invalid. Correct it or clear the field.",
-        );
-        return;
-      }
-      if (aDigits.length > 0 && aDigits.length < 4) {
-        setShowAadhaarLater(true);
-        failValidation(
-          "aadhaar",
-          "patient-aadhaar",
-          "Aadhaar: enter full 12 digits or last 4 only.",
-        );
-        return;
-      }
-      if (last4.length !== 4 && aDigits.length > 0) {
-        setShowAadhaarLater(true);
-        failValidation(
-          "aadhaar",
-          "patient-aadhaar",
-          "Aadhaar: enter full number or last 4 digits (only last 4 is stored).",
-        );
-        return;
-      }
-    }
-
-    if (!fullName.trim()) {
-      failValidation("fullName", "patient-full-name", "Full name is required.");
-      return;
-    }
-
-    const phoneRaw = phone.trim();
-    const normalizedPhone = phoneRaw ? normalizePhoneE164(phoneRaw) : null;
-    const phone10 = normalizedPhone?.slice(-10) || "";
-
-    if (phoneRaw && !normalizedPhone) {
-      failValidation(
-        "phone",
-        "patient-phone",
-        "Phone must be a valid 10-digit Indian mobile, or leave blank.",
-      );
-      return;
-    }
-
-    const ageValue = age === "" ? null : Number(age);
-    if (
-      ageValue === null ||
-      !Number.isInteger(ageValue) ||
-      ageValue < 0 ||
-      ageValue >= 150
-    ) {
-      failValidation(
-        "age",
-        "patient-age",
-        "Age is required (whole number from 0 to 149).",
-      );
-      return;
-    }
-
-    if (!address.trim()) {
-      failValidation("address", "patient-address", "Address is required.");
-      return;
-    }
-
-    if (email.trim() && !/^[^\s@]+@[^\s@]+$/.test(email.trim())) {
-      setShowAadhaarLater(true);
-      failValidation(
-        "email",
-        "patient-email",
-        "Enter a valid email address or leave it blank.",
-      );
+    if (!validated.ok) {
+      failValidation(validated.field, validated.elementId, validated.message);
       return;
     }
 
     const supabase = createClient();
-    const {
-      data,
-      error: registrationError,
-      aadhaarDuplicateRegNo: dupReg,
-    } = await submitRegistrationOutbound({
-      isStaff: true,
+    const outcome = await runDeskRegisterAndPrint({
       attempt: registrationAttempt.current,
       staffFields: {
         campId,
-        fullName: fullName.trim(),
-        gender: gender || null,
-        age: ageValue,
-        address: address.trim() || null,
-        phone: phone10 || null,
-        email: email.trim() || null,
-        aadhaarLast4: last4 || null,
+        fullName: validated.values.fullName,
+        gender: validated.values.gender,
+        age: validated.values.age,
+        address: validated.values.address,
+        phone: validated.values.phone,
+        email: validated.values.email,
+        aadhaarLast4: validated.values.aadhaarLast4,
         userId,
         createdBy,
-        campDayId,
+        campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,
       },
       rpc: async (fn, args) => {
@@ -394,70 +276,58 @@ export function PatientForm({
           error: result.error ? { message: result.error.message } : null,
         };
       },
+      openPrint: (patientId) => {
+        window.open(
+          `/print/${patientId}?auto=1`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      },
+      resetForm: () => {
+        setFullName("");
+        setGender("");
+        setAge("");
+        setAddress("");
+        setPhone(defaultPhone);
+        setEmail("");
+        setAadhaar("");
+        setLookupState("idle");
+        setLookupMsg(null);
+        setFieldErrors({});
+        setAadhaarDuplicateRegNo(null);
+        aadhaarOverrideOnceRef.current = false;
+        setCampDayId(firstOpen);
+        lastLookedUp.current = "";
+        lookupRequest.current += 1;
+        lookupAbort.current?.abort();
+        focusName();
+      },
+      rotateAttempt: () => {
+        registrationAttempt.current.rotate();
+      },
     });
 
-    if (registrationError) {
-      if (dupReg) {
-        setAadhaarDuplicateRegNo(dupReg);
+    if (!outcome.ok) {
+      if (outcome.aadhaarDuplicateRegNo) {
+        setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
         setError(
-          `Name and Aadhaar last-4 match existing reg no ${dupReg}. Look that patient up first. Override only if this is a different person.`,
+          `Naam + Aadhaar last-4 pehle se reg #${outcome.aadhaarDuplicateRegNo} pe hai. Pehle woh patient dekho. Override sirf alag person ho to.`,
         );
       } else {
         setAadhaarDuplicateRegNo(null);
-        setError(registrationError);
+        setError(outcome.error);
       }
       setLoading(false);
       return;
     }
+
     setAadhaarDuplicateRegNo(null);
-
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row) {
-      setError("Registration failed — no row returned.");
-      setLoading(false);
-      return;
-    }
-
-    // Success: rotate idempotency key so the next walk-in is a new request.
-    registrationAttempt.current.rotate();
-
-    const base = row as Created;
-    const inQueue = base.queue_status === "waiting";
-    setCreated({
-      ...base,
-      notifyNote: phone10
-        ? "Registered. Status is passwordless — an SMS status link can be sent when configured."
-        : "Registered. No phone on file — status is passwordless via desk reprint / SMS when configured.",
-    });
-    setQueueNote(
-      inQueue
-        ? `Reg #${base.reg_no} checked in — in the FCFS queue. Print a desk slip if needed.`
-        : `Reg #${base.reg_no} pre-registered (not in queue). Check them in when they arrive, or print a slip for later.`,
+    setFlash(
+      outcome.row.queue_status === "waiting"
+        ? `Reg #${outcome.row.reg_no} — line mein. Print window khuli.`
+        : `Reg #${outcome.row.reg_no} — pehle se register. Print window khuli.`,
     );
     setLoading(false);
-  }
-
-  function resetForm() {
-    setCreated(null);
-    setQueueNote(null);
-    setError(null);
-    setAadhaarDuplicateRegNo(null);
-    aadhaarOverrideOnceRef.current = false;
-    setFullName("");
-    setGender("");
-    setAge("");
-    setAddress("");
-    setPhone(defaultPhone);
-    setEmail("");
-    setAadhaar("");
-    setLookupState("idle");
-    setLookupMsg(null);
-    setFilledFromAadhaar(false);
-    setCampDayId(firstOpen);
-    lastLookedUp.current = "";
-    lookupRequest.current += 1;
-    lookupAbort.current?.abort();
-    registrationAttempt.current.rotate();
   }
 
   function moveDay(currentId: string, direction: -1 | 1) {
@@ -465,7 +335,9 @@ export function PatientForm({
     const currentIndex = selectable.findIndex((d) => d.id === currentId);
     if (currentIndex < 0 || selectable.length < 2) return;
     const next =
-      selectable[(currentIndex + direction + selectable.length) % selectable.length];
+      selectable[
+        (currentIndex + direction + selectable.length) % selectable.length
+      ];
     setCampDayId(next.id);
     window.setTimeout(() => {
       document.getElementById(`camp-day-${next.id}`)?.focus();
@@ -476,118 +348,18 @@ export function PatientForm({
     return (
       <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
         <p className="text-sm font-semibold text-foreground">
-          Registration is at the camp desk only
+          Registration sirf camp desk pe
         </p>
         <p className="prose-help text-sm text-muted">
-          Walk up to a volunteer. Staff register you, print a desk slip with a
-          staff-scan QR, and can share a passwordless status link by SMS later.
-          There is no public online registration or patient login.
+          Volunteer ke paas jao. Staff register karega, desk slip print hogi.
+          Public online registration nahi hai.
         </p>
         <Link
           href="/"
           className="pressable inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft"
         >
-          Back to home
+          Home
         </Link>
-      </div>
-    );
-  }
-
-  if (created) {
-    const inQueue = created.queue_status === "waiting";
-    return (
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-brand/20 bg-brand-soft px-4 py-4 text-center">
-          <p className="text-sm font-semibold text-brand">
-            {inQueue ? "Registered & in queue" : "Pre-registered"}
-          </p>
-          <p
-            className="tabular mt-1 text-4xl font-bold tracking-tight text-brand"
-            translate="no"
-          >
-            #{created.reg_no}
-          </p>
-          <p className="mt-1 text-lg font-bold text-foreground">
-            {created.full_name}
-          </p>
-          <p className="mt-1 text-xs text-brand/80">
-            {created.day_date
-              ? `Day: ${formatCampDay(created.day_date)} · `
-              : ""}
-            {inQueue
-              ? "Walk-in — already checked in to the FCFS queue"
-              : "Not in queue until check-in on camp day"}
-          </p>
-        </div>
-
-        <div className="space-y-3 rounded-xl border border-border bg-card p-3.5 sm:rounded-2xl sm:p-4">
-          {queueNote ? <SuccessBox message={queueNote} /> : null}
-          {created.notifyNote ? (
-            <p className="text-xs text-muted">{created.notifyNote}</p>
-          ) : null}
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              Print desk slip
-            </p>
-            <p className="prose-help mt-0.5 text-xs text-muted">
-              The slip carries the staff-scan QR. Printing can also check them
-              into the queue if they are still only pre-registered. Patient
-              status is passwordless (SMS link later).
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Link
-              href={`/print/${created.id}?auto=1`}
-              className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-[1.0625rem] font-semibold text-white transition-colors hover:bg-brand-dark"
-            >
-              {inQueue ? "Print desk slip" : "Print desk slip (check-in)"}
-            </Link>
-            <Button type="button" variant="secondary" onClick={resetForm}>
-              Register another patient
-            </Button>
-          </div>
-          <ErrorBox message={error} />
-        </div>
-
-        <div className="rounded-xl border border-border p-4">
-          <p className="mb-2 text-sm font-medium">Need a different day?</p>
-          <ChangeDay
-            patientId={created.id}
-            currentDayId={created.camp_day_id || campDayId}
-            days={days}
-            queueStatus={created.queue_status || "registered"}
-            onDayChanged={(newDayId, newDayDate) => {
-              setCreated((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      camp_day_id: newDayId,
-                      day_date: newDayDate || prev.day_date,
-                    }
-                  : null,
-              );
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Link
-            href={
-              userRole === "admin"
-                ? "/admin"
-                : userRole === "doctor"
-                  ? "/doctor"
-                  : "/volunteer"
-            }
-            className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft sm:flex-1"
-          >
-            {userRole === "admin"
-              ? "Back to admin"
-              : userRole === "doctor"
-                ? "Back to doctor desk"
-                : "Back to volunteer desk"}
-          </Link>
-        </div>
       </div>
     );
   }
@@ -595,7 +367,7 @@ export function PatientForm({
   if (!days.length) {
     return (
       <p className="text-sm text-muted">
-        No camp days configured. Ask admin to add days and seat limits.
+        Camp days nahi hain. Admin se days add karwao.
       </p>
     );
   }
@@ -603,8 +375,8 @@ export function PatientForm({
   if (!openDays.length) {
     return (
       <WarningBox>
-        All days are full. You can still view seat status on the home page —
-        registration reopens if seats free up or admin raises limits.
+        Saare din full hain. Seats free hone ya admin limit badhane ka wait
+        karo.
       </WarningBox>
     );
   }
@@ -617,15 +389,24 @@ export function PatientForm({
       noValidate
     >
       <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
-        Desk mode — phone optional; age &amp; address required
+        Desk · sirf poora naam aur umar zaroori
       </div>
 
-      {/* Tap chips — faster than select on outdoor phones */}
+      {flash ? (
+        <p
+          role="status"
+          className="rounded-xl border border-brand/20 bg-brand-soft px-3 py-2 text-sm font-medium text-brand"
+        >
+          {flash}
+        </p>
+      ) : null}
+
       <div>
         <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90">
           Camp day *
         </p>
         <div
+          id="patient-camp-day"
           className="day-chip-row"
           role="radiogroup"
           aria-label="Camp day"
@@ -656,8 +437,8 @@ export function PatientForm({
                   }
                 }}
                 className={`day-chip ${active ? "day-chip-active" : ""} ${
- d.is_full ? "day-chip-full" : ""
- }`}
+                  d.is_full ? "day-chip-full" : ""
+                }`}
               >
                 <span className="day-chip-date">
                   {formatCampDay(d.day_date)}
@@ -669,7 +450,6 @@ export function PatientForm({
             );
           })}
         </div>
-        {/* Hidden native select keeps form semantics + fallback */}
         <select
           className="sr-only"
           tabIndex={-1}
@@ -698,7 +478,7 @@ export function PatientForm({
 
       <Input
         id="patient-full-name"
-        label="Full name *"
+        label="Poora naam *"
         error={fieldErrors.fullName}
         required
         autoComplete="name"
@@ -706,24 +486,84 @@ export function PatientForm({
         enterKeyHint="next"
         value={fullName}
         onChange={(e) => setFullName(e.target.value)}
-        placeholder="Patient full name"
+        placeholder="Patient ka poora naam"
       />
+
+      <Input
+        id="patient-age"
+        label="Umar *"
+        error={fieldErrors.age}
+        type="number"
+        min={0}
+        max={149}
+        required
+        inputMode="numeric"
+        enterKeyHint="next"
+        value={age}
+        onChange={(e) => setAge(e.target.value)}
+        placeholder="Saal"
+      />
+
       <Input
         id="patient-phone"
-        label="Phone (optional)"
+        label="Mobile number (optional)"
         error={fieldErrors.phone}
-        inputMode="tel"
+        inputMode="numeric"
         autoComplete="tel"
         enterKeyHint="next"
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
-        placeholder="10-digit mobile (optional)"
-        hint="Optional — used for status SMS when configured"
+        placeholder="10 digit (optional)"
+        hint="Optional — SMS baad mein, agar number diya"
       />
+
+      <Input
+        id="patient-aadhaar"
+        label={
+          lookupEnabled
+            ? "Aadhaar (optional · last 4 ya poora)"
+            : "Aadhaar last 4 (optional)"
+        }
+        error={fieldErrors.aadhaar}
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="XXXX XXXX 1234"
+        hint="Poora number kabhi store nahi — sirf last 4"
+        value={aadhaar}
+        onChange={(e) => onAadhaarChange(e.target.value)}
+      />
+      {lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={lookupState === "loading"}
+          onClick={() => {
+            lastLookedUp.current = "";
+            void runAadhaarLookup(aadhaar);
+          }}
+        >
+          {lookupState === "loading" ? "Fetching…" : "Details lao"}
+        </Button>
+      ) : null}
+      {lookupMsg ? (
+        <p
+          role="status"
+          className={`rounded-xl px-3 py-2 text-xs ${
+            lookupState === "ok"
+              ? "bg-brand-soft text-brand"
+              : lookupState === "fail"
+                ? "border border-amber-200 bg-amber-50 text-amber-950"
+                : "bg-background text-muted"
+          }`}
+        >
+          {lookupMsg}
+        </p>
+      ) : null}
 
       <div>
         <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90">
-          Gender
+          Gender (optional)
         </p>
         <SegmentedControl
           value={gender || ""}
@@ -738,130 +578,34 @@ export function PatientForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input
-          id="patient-age"
-          label="Age *"
-          error={fieldErrors.age}
-          type="number"
-          min={0}
-          max={149}
-          required
-          inputMode="numeric"
-          enterKeyHint="next"
-          value={age}
-          onChange={(e) => setAge(e.target.value)}
-          placeholder="Years"
-        />
-        <Input
-          id="patient-address"
-          label="Address *"
-          error={fieldErrors.address}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Area / locality"
-          enterKeyHint="next"
-          required
-        />
-      </div>
+      <Input
+        id="patient-address"
+        label="Address (optional)"
+        error={fieldErrors.address}
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+        placeholder="Area / locality"
+        enterKeyHint="next"
+      />
 
-      {/* Optional extras collapsed for speed */}
-      <div className="rounded-xl border border-dashed border-border bg-background/80 sm:rounded-2xl">
-        <button
-          type="button"
-          aria-expanded={showAadhaarLater}
-          aria-controls={optionalDetailsId}
-          className="flex min-h-12 w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left sm:px-4 sm:py-3"
-          onClick={() => setShowAadhaarLater((v) => !v)}
-        >
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              Optional details
-            </p>
-            <p className="text-xs text-muted">
-              Email · Aadhaar last 4 · auto-fill
-            </p>
-          </div>
-          <span className="text-muted" aria-hidden="true">
-            {showAadhaarLater ? "▴" : "▾"}
-          </span>
-        </button>
-        {showAadhaarLater ? (
-          <div
-            id={optionalDetailsId}
-            className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4"
-          >
-            <Input
-              id="patient-email"
-              label="Email"
-              error={fieldErrors.email}
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Optional"
-            />
-            <Input
-              id="patient-aadhaar"
-              label={lookupEnabled ? "Aadhaar number" : "Aadhaar (optional)"}
-              error={fieldErrors.aadhaar}
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="XXXX XXXX 1234"
-              hint="Never stored in full — last 4 only"
-              value={aadhaar}
-              onChange={(e) => onAadhaarChange(e.target.value)}
-            />
-            {lookupEnabled && digitsOnly(aadhaar).length === 12 ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={lookupState === "loading"}
-                onClick={() => {
-                  lastLookedUp.current = "";
-                  void runAadhaarLookup(aadhaar);
-                }}
-              >
-                {lookupState === "loading" ? "Fetching…" : "Fetch details"}
-              </Button>
-            ) : null}
-            {lookupMsg ? (
-              <p
-                role="status"
-                className={`rounded-xl px-3 py-2 text-xs ${
- lookupState === "ok"
- ? "bg-brand-soft text-brand"
- : lookupState === "fail"
- ? "border border-amber-200 bg-amber-50 text-amber-950"
- : "bg-background text-muted"
- }`}
-              >
-                {lookupMsg}
-              </p>
-            ) : null}
-            {filledFromAadhaar ? (
-              <p className="text-xs text-brand">
-                Some fields filled from Aadhaar — review before save.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      <Input
+        id="patient-email"
+        label="Email (optional)"
+        error={fieldErrors.email}
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Optional"
+      />
 
-      <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-muted">
-        After save they stay registered. Print to join the queue, or a doctor
-        can scan them directly (seen). Status is passwordless — no patient
-        login.
-      </p>
       <ErrorBox message={error} />
       {aadhaarDuplicateRegNo != null ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm text-amber-950">
-            Conflicting registration:{" "}
+            Conflict:{" "}
             <span className="font-bold tabular">#{aadhaarDuplicateRegNo}</span>.
-            Override is recorded against the new registration with your staff
-            account and the current time. Not sticky for the next walk-in.
+            Override aapke account pe record hoga. Next patient pe sticky nahi.
           </p>
           <Button
             type="button"
@@ -873,17 +617,18 @@ export function PatientForm({
               formRef.current?.requestSubmit();
             }}
           >
-            Override and register as different person
+            Override — alag person hai
           </Button>
         </div>
       ) : null}
+
       <div className="sticky-submit">
         <Button
           type="submit"
           disabled={loading || lookupState === "loading" || !campDayId}
           loading={loading}
         >
-          {loading ? "Saving…" : "Save registration"}
+          {loading ? "Saving…" : "Register karein aur print"}
         </Button>
       </div>
     </form>

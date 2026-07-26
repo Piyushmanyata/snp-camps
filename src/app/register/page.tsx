@@ -83,7 +83,7 @@ export default async function RegisterPage() {
   return (
     <Shell
       title="Register walk-in"
-      subtitle="Desk registration · age & address required · phone optional"
+      subtitle="Desk · poora naam + umar zaroori · baaki optional"
       backHref={deskHref}
       width="lg"
       roleLabel={role === "admin" ? "Admin" : "Volunteer"}
@@ -109,8 +109,8 @@ export default async function RegisterPage() {
           {/* Form first on phone — speed for walk-ins */}
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
-              One person, one day. Age and address required; phone optional.
-              Print joins the FCFS queue. Doctors can scan without printing.
+              Ek patient, ek din. Sirf naam aur umar zaroori. Register karein
+              aur print — aaj ka din ho to seedha line mein.
             </p>
             <PatientForm
               campId={camp.id}

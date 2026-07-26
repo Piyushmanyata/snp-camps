@@ -15,10 +15,14 @@ const PrintActions = dynamic(
 
 export default async function PrintPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ auto?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
+  const autoPrint = query.auto === "1" || query.auto === "true";
   const { profile } = await getSessionProfile();
   if (!profile) redirect("/login");
   if (!canRegisterPatients(profile.role)) {
@@ -96,6 +100,7 @@ export default async function PrintPage({
         deskLabel={
           profile.role === "admin" ? "Admin dashboard" : "Volunteer desk"
         }
+        autoPrint={autoPrint}
       />
 
       <PrintSheet

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
 import type { QueueStatus } from "@/lib/types";
@@ -13,6 +13,7 @@ export function PrintActions({
   queueStatus: initialQueueStatus,
   deskHref,
   deskLabel,
+  autoPrint = false,
 }: {
   className?: string;
   patientId: string;
@@ -21,6 +22,8 @@ export function PrintActions({
   queueStatus: QueueStatus;
   deskHref: "/admin" | "/volunteer";
   deskLabel: "Admin dashboard" | "Volunteer desk";
+  /** When true (desk register flow), open the print dialog once on mount. */
+  autoPrint?: boolean;
 }) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [queueStatus, setQueueStatus] = useState(initialQueueStatus);
@@ -28,6 +31,7 @@ export function PrintActions({
     tone: "error" | "success";
     text: string;
   } | null>(null);
+  const autoStarted = useRef(false);
 
   async function handlePrint() {
     setIsPrinting(true);
@@ -47,7 +51,7 @@ export function PrintActions({
       };
 
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Could not add the patient to the queue.");
+        throw new Error(payload.error || "Could not prepare print.");
       }
 
       const nextStatus =
@@ -63,8 +67,8 @@ export function PrintActions({
           nextStatus === "seen"
             ? "Completed consultation confirmed. The print dialog is open."
             : payload.alreadyPrinted
-              ? "Queue confirmed. The print dialog is open."
-              : "Patient added to the queue. The print dialog is open.",
+              ? "Already in line. The print dialog is open."
+              : "Patient is in line. The print dialog is open.",
       });
       window.print();
     } catch (error) {
@@ -79,6 +83,14 @@ export function PrintActions({
       setIsPrinting(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoPrint || autoStarted.current) return;
+    autoStarted.current = true;
+    void handlePrint();
+    // One-shot mount trigger for desk "Register karein aur print".
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only
+  }, [autoPrint]);
 
   return (
     <div
@@ -101,7 +113,7 @@ export function PrintActions({
             ? "Reprinting keeps the completed consultation status unchanged."
             : queueStatus === "waiting"
               ? "The patient is already waiting for a doctor."
-              : "Printing a pre-registered patient also checks them into the FCFS queue."}
+              : "Printing a pre-registered patient also checks them into the line."}
         </p>
         {message ? (
           <p

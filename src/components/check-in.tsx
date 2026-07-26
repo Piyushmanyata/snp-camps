@@ -84,7 +84,7 @@ export function CheckIn({
         setSuccess(
           row.already_waiting
             ? `#${row.reg_no} ${row.full_name} is already in the queue.`
-            : `#${row.reg_no} ${row.full_name} checked in — now in the FCFS queue.`,
+            : `#${row.reg_no} ${row.full_name} checked in — ab line mein hain.`,
         );
         setRegInput("");
         setNameQuery("");
