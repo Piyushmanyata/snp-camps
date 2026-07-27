@@ -10,6 +10,12 @@ export type ParsedAadhaarQr = {
   fullName: string | null;
   gender: "M" | "F" | "O" | null;
   age: number | null;
+  /**
+   * Calendar date of birth as `YYYY-MM-DD` when the payload carries a full
+   * date. Null when only year-of-birth or age is present. Exposed for Person
+   * identity (#109); age remains the desk-facing derived field.
+   */
+  dateOfBirth: string | null;
   address: string | null;
   aadhaarLast4: string | null;
   isNonLatinName: boolean;
@@ -23,6 +29,55 @@ export type ParsedAadhaarQr = {
    */
   source: "legacy_xml" | "secure_qr" | "unknown";
 };
+
+/**
+ * Parse a full DOB string into stable `YYYY-MM-DD`, or null when unparseable.
+ * Accepts the same date shapes as {@link calculateAge} (ISO, DMY, separators).
+ */
+export function parseDateOfBirth(
+  dobStr?: string | number | null,
+): string | null {
+  if (dobStr == null || typeof dobStr === "number") return null;
+  const trimmed = String(dobStr).trim();
+  if (!trimmed || /^\d{1,3}$/.test(trimmed)) return null;
+
+  const isoMatch = trimmed.match(
+    /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:T.*)?$/,
+  );
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+
+  let year: number | null = null;
+  let month: number | null = null;
+  let day: number | null = null;
+
+  if (isoMatch) {
+    year = parseInt(isoMatch[1], 10);
+    month = parseInt(isoMatch[2], 10);
+    day = parseInt(isoMatch[3], 10);
+  } else if (dmyMatch) {
+    day = parseInt(dmyMatch[1], 10);
+    month = parseInt(dmyMatch[2], 10);
+    year = parseInt(dmyMatch[3], 10);
+  }
+
+  if (
+    year === null ||
+    month === null ||
+    day === null ||
+    year < 1875 ||
+    year > 2100 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+
+  return `${year.toString().padStart(4, "0")}-${month
+    .toString()
+    .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
 
 /**
  * Checks if a string contains non-Latin script characters
@@ -328,6 +383,7 @@ function parseSecureAadhaarFields(parts: string[], now: Date): ParsedAadhaarQr |
         : null;
 
   const age = calculateAge(dob, null, now);
+  const dateOfBirth = parseDateOfBirth(dob);
   const gender = normalizeGender(gnd);
   const address = buildAddress(addrFields);
 
@@ -336,6 +392,7 @@ function parseSecureAadhaarFields(parts: string[], now: Date): ParsedAadhaarQr |
       fullName: name,
       gender,
       age,
+      dateOfBirth,
       address,
       aadhaarLast4,
       isNonLatinName: isNonLatinText(name),
@@ -466,6 +523,7 @@ export function parseAadhaarQr(
     const aadhaarLast4 = pickAadhaarLast4(attrs);
 
     const age = calculateAge(dob, yob, now);
+    const dateOfBirth = parseDateOfBirth(dob);
     const gender = normalizeGender(gnd);
     const address = buildAddress(attrs) ?? pickWholeAddress(attrs);
 
@@ -477,6 +535,7 @@ export function parseAadhaarQr(
       fullName: name,
       gender,
       age,
+      dateOfBirth,
       address,
       aadhaarLast4,
       isNonLatinName: isNonLatinText(name),
@@ -497,6 +556,7 @@ export function parseAadhaarQr(
       const aadhaarLast4 = uid.replace(/\D/g, "").slice(-4) || null;
 
       const age = calculateAge(dob || directAge, yob, now);
+      const dateOfBirth = parseDateOfBirth(dob);
       const gender = normalizeGender(gnd);
       const address =
         typeof obj.address === "string"
@@ -507,6 +567,7 @@ export function parseAadhaarQr(
         fullName: name,
         gender,
         age,
+        dateOfBirth,
         address,
         aadhaarLast4,
         isNonLatinName: isNonLatinText(name),
@@ -532,6 +593,7 @@ export function parseAadhaarQr(
       const uid = kvs["uid"] || kvs["aadhaar"] || "";
       const aadhaarLast4 = uid.replace(/\D/g, "").slice(-4) || null;
       const age = calculateAge(kvs["dob"], kvs["yob"], now);
+      const dateOfBirth = parseDateOfBirth(kvs["dob"]);
       const gender = normalizeGender(kvs["gender"] || kvs["gnd"]);
       const address = buildAddress(kvs);
 
@@ -539,6 +601,7 @@ export function parseAadhaarQr(
         fullName: name,
         gender,
         age,
+        dateOfBirth,
         address,
         aadhaarLast4,
         isNonLatinName: isNonLatinText(name),

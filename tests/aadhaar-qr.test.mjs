@@ -20,6 +20,7 @@ test("XML Aadhaar QR extraction — standard XML payload", () => {
   assert.equal(parsed.fullName, "Vikram Sharma");
   assert.equal(parsed.gender, "M");
   assert.equal(parsed.age, 35); // Aug 15 1990 has NOT occurred by July 27 2026 -> 35
+  assert.equal(parsed.dateOfBirth, "1990-08-15");
   assert.equal(parsed.aadhaarLast4, "1098");
   assert.equal(parsed.isNonLatinName, false);
   assert.equal(
@@ -36,6 +37,7 @@ test("XML Aadhaar QR extraction — DOB already occurred this year", () => {
   assert.equal(parsed.fullName, "Priya Patel");
   assert.equal(parsed.gender, "F");
   assert.equal(parsed.age, 31); // April 10 1995 HAS occurred by July 27 2026 -> 31
+  assert.equal(parsed.dateOfBirth, "1995-04-10");
   assert.equal(parsed.aadhaarLast4, "3333");
 });
 
@@ -47,6 +49,7 @@ test("XML Aadhaar QR extraction — YOB only when DOB missing", () => {
   assert.equal(parsed.fullName, "Ramesh Kumar");
   assert.equal(parsed.gender, "M");
   assert.equal(parsed.age, 46); // 2026 - 1980 -> 46
+  assert.equal(parsed.dateOfBirth, null); // year-only → no calendar DOB
   assert.equal(parsed.aadhaarLast4, "7777");
 });
 

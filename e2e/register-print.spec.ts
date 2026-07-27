@@ -200,6 +200,48 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   await expect(page.getByLabel(/Poora naam/i)).toHaveValue("");
 });
 
+/** #107 — Register-only saves without opening a print window. */
+test("register-only saves with no print window", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as Window & {
+      __deskOpenArgs?: unknown[][];
+      __deskOpenOrig?: typeof window.open;
+    };
+    w.__deskOpenArgs = [];
+    w.__deskOpenOrig = window.open.bind(window);
+    window.open = ((...args: Parameters<typeof window.open>) => {
+      w.__deskOpenArgs!.push(args);
+      return w.__deskOpenOrig!(...args);
+    }) as typeof window.open;
+  });
+
+  const mock = await mockRegisterSuccess(page);
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, "/register");
+
+  const name = `Codex E2E Patient Register Only ${Date.now()}`;
+  await fillMinimalRegistration(page, name);
+
+  await expect(page.getByTestId("desk-register-only")).toBeVisible();
+  await expect(page.getByTestId("desk-register-submit")).toBeVisible();
+
+  await page.getByTestId("desk-register-only").click();
+
+  await expect(page.getByTestId("desk-register-flash")).toContainText(
+    /register ho gaya|line mein|Print later/i,
+    { timeout: 15_000 },
+  );
+  expect(mock.getCalls()).toBe(1);
+
+  const openArgs = (await page.evaluate(
+    () =>
+      (window as Window & { __deskOpenArgs?: unknown[][] }).__deskOpenArgs ||
+      [],
+  )) as unknown[][];
+  expect(openArgs.length).toBe(0);
+  await expect(page.getByLabel(/Poora naam/i)).toHaveValue("");
+});
+
 test("blocked popup: one registration, recovery Print, never claims window opened", async ({
   page,
 }) => {
