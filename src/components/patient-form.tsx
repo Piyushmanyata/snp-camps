@@ -62,11 +62,13 @@ const ESCALATE_AFTER_FRAMES = 12;
  * to resolve from the whole frame. Cropping in and upscaling is what makes
  * those cards readable at all.
  */
-const LIVE_PROBES: { scale: number; zoom: number }[] = [
+const LIVE_PROBES: { scale: number; zoom: number; offsetX?: number; offsetY?: number }[] = [
   { scale: 1, zoom: 1 },
   { scale: 0.6, zoom: 1 },
   { scale: 0.4, zoom: 2 },
   { scale: 0.25, zoom: 2 },
+  { scale: 0.4, zoom: 2, offsetX: -0.15, offsetY: -0.15 },
+  { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
 ];
 /** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
 const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
@@ -436,7 +438,7 @@ export function PatientForm({
     let busy = false;
 
     const decodeProbe = (
-      probe: { scale: number; zoom: number },
+      probe: { scale: number; zoom: number; offsetX?: number; offsetY?: number },
       thorough: boolean,
     ): QrPayload | null => {
       if (!ctx || !video()) return null;
@@ -454,10 +456,24 @@ export function PatientForm({
         if (cw < 100 || ch < 100 || !cropCtx) return null;
         cropCanvas.width = cw;
         cropCanvas.height = ch;
+        const sx = Math.max(
+          0,
+          Math.min(
+            canvas.width - cw,
+            Math.floor((canvas.width - cw) / 2 + (probe.offsetX || 0) * canvas.width),
+          ),
+        );
+        const sy = Math.max(
+          0,
+          Math.min(
+            canvas.height - ch,
+            Math.floor((canvas.height - ch) / 2 + (probe.offsetY || 0) * canvas.height),
+          ),
+        );
         cropCtx.drawImage(
           canvas,
-          Math.floor((canvas.width - cw) / 2),
-          Math.floor((canvas.height - ch) / 2),
+          sx,
+          sy,
           cw,
           ch,
           0,

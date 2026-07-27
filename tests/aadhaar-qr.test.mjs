@@ -217,3 +217,30 @@ test("gzipped numeric Secure QR autofills in a browser-like env (no node:zlib pa
   }
 });
 
+test("Legacy Base64-encoded XML Aadhaar QR decoding", () => {
+  const xmlStr = `<PrintLetterBarcodeData uid="123456789012" name="Rakesh Verma" g="M" dateofbirth="10/10/1985" house="101" village="Kota" district="Kota" state="Rajasthan" pincode="324005"/>`;
+  const base64Str = Buffer.from(xmlStr, "utf-8").toString("base64");
+
+  const parsed = parseAadhaarQr(base64Str, FIXTURE_DATE);
+
+  assert.equal(parsed.fullName, "Rakesh Verma");
+  assert.equal(parsed.gender, "M");
+  assert.equal(parsed.age, 40);
+  assert.equal(parsed.aadhaarLast4, "9012");
+  assert.ok(parsed.address?.includes("Kota"));
+});
+
+test("Legacy Aadhaar QR attribute aliases (a, u, dateofbirth, careof, pincode, district)", () => {
+  const xmlStr = `<PrintLetterBarcodeData a="555544443333" fullname="Anil Kapoor" g="MALE" dateofbirth="1975-05-20" careof="S/O Ram Kapoor" hno="15" town="Udaipur" district="Udaipur" pincode="313001"/>`;
+
+  const parsed = parseAadhaarQr(xmlStr, FIXTURE_DATE);
+
+  assert.equal(parsed.fullName, "Anil Kapoor");
+  assert.equal(parsed.gender, "M");
+  assert.equal(parsed.age, 51);
+  assert.equal(parsed.aadhaarLast4, "3333");
+  assert.ok(parsed.address?.includes("S/O Ram Kapoor"));
+  assert.ok(parsed.address?.includes("Udaipur"));
+});
+
+

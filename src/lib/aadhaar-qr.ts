@@ -121,23 +121,29 @@ export function calculateAge(
  */
 export function buildAddress(fields: Record<string, string | null | undefined>): string | null {
   const parts: string[] = [];
-  const keys = [
-    "co",
-    "house",
-    "street",
-    "lm",
-    "loc",
-    "vtc",
-    "po",
-    "dist",
-    "subdist",
-    "state",
-    "pc",
-    "pincode",
+  const keyAliases: string[][] = [
+    ["co", "careof", "c_o", "c/o"],
+    ["house", "hno", "house_no", "building"],
+    ["street", "street_name"],
+    ["lm", "landmark"],
+    ["loc", "location", "locality"],
+    ["vtc", "village", "city", "town"],
+    ["po", "postoffice", "post_office"],
+    ["dist", "district", "dist_name"],
+    ["subdist", "subdistrict", "subdist_name", "tehsil", "taluk"],
+    ["state", "st", "state_name"],
+    ["pc", "pincode", "pin", "postalcode"],
   ];
 
-  for (const k of keys) {
-    const val = fields[k]?.trim();
+  for (const group of keyAliases) {
+    let val: string | undefined;
+    for (const k of group) {
+      const candidate = fields[k]?.trim();
+      if (candidate) {
+        val = candidate;
+        break;
+      }
+    }
     if (val && !parts.includes(val)) {
       parts.push(val);
     }
@@ -318,7 +324,32 @@ export function parseAadhaarQr(
 
   const trimmed = payload.trim();
 
-  // 1. Detect SNP patient QR codes (desk slips / internal patient QRs).
+  // 1. Detect Base64-encoded XML payloads (common in legacy cards & e-Aadhaar downloads)
+  if (
+    !trimmed.startsWith("<") &&
+    !trimmed.startsWith("{") &&
+    !trimmed.startsWith("SNP-") &&
+    /^[A-Za-z0-9+/=\s]{40,}$/.test(trimmed)
+  ) {
+    try {
+      const clean = trimmed.replace(/\s/g, "");
+      const decoded =
+        typeof window !== "undefined"
+          ? atob(clean)
+          : Buffer.from(clean, "base64").toString("utf-8");
+      if (
+        decoded.includes("PrintLetterBarcodeData") ||
+        decoded.toLowerCase().includes("printletterbarcodedata") ||
+        (decoded.includes("<") && decoded.includes(">"))
+      ) {
+        return parseAadhaarQr(decoded, now);
+      }
+    } catch {
+      /* not base64 */
+    }
+  }
+
+  // 2. Detect SNP patient QR codes (desk slips / internal patient QRs).
   // Matched structurally, not by substring: a legacy Aadhaar address such as
   // house="12/S/4" contains "/s/" and must not be mistaken for a desk slip.
   if (looksLikeSnpSlip(trimmed)) {
@@ -327,28 +358,56 @@ export function parseAadhaarQr(
     );
   }
 
-  // 2. Parse XML format (<PrintLetterBarcodeData .../>)
-  if (
+  // 3. Parse XML format (<PrintLetterBarcodeData .../>)
+  const isXml =
     trimmed.includes("PrintLetterBarcodeData") ||
     trimmed.toLowerCase().includes("printletterbarcodedata") ||
-    (trimmed.startsWith("<") && trimmed.endsWith(">"))
-  ) {
+    (trimmed.startsWith("<") && (trimmed.endsWith(">") || trimmed.includes(">"))) ||
+    /<[a-zA-Z0-9_:-]+[^>]*>/i.test(trimmed);
+
+  if (isXml) {
     const decodedPayload = decodeXmlEntities(trimmed);
     const attrs: Record<string, string> = {};
-    const attrRegex = /([a-zA-Z0-9_]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+    const attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s/>]+))/gi;
     let match: RegExpExecArray | null;
 
     while ((match = attrRegex.exec(decodedPayload)) !== null) {
-      const key = match[1].toLowerCase();
-      const val = match[2] !== undefined ? match[2] : match[3];
+      const rawKey = match[1].toLowerCase();
+      const key = rawKey.includes(":") ? rawKey.split(":")[1] : rawKey;
+      const val = match[2] ?? match[3] ?? match[4] ?? "";
       attrs[key] = val;
     }
 
-    const uid = attrs["uid"] || attrs["aadhaar"] || attrs["aadhaarnumber"] || "";
-    const name = attrs["name"] || attrs["fullname"] || attrs["name_en"] || null;
-    const gnd = attrs["gender"] || attrs["gnd"] || null;
-    const dob = attrs["dob"] || null;
-    const yob = attrs["yob"] || null;
+    const uid =
+      attrs["uid"] ||
+      attrs["aadhaar"] ||
+      attrs["aadhaarnumber"] ||
+      attrs["a"] ||
+      attrs["u"] ||
+      "";
+    const rawName =
+      attrs["name"] ||
+      attrs["fullname"] ||
+      attrs["full_name"] ||
+      attrs["name_en"] ||
+      attrs["name-en"] ||
+      attrs["name_eng"] ||
+      null;
+    let name = rawName;
+    if (isNonLatinText(name)) {
+      const en =
+        attrs["name_en"] ||
+        attrs["name-en"] ||
+        attrs["name_eng"] ||
+        attrs["fullname_en"];
+      if (en && !isNonLatinText(en)) {
+        name = en;
+      }
+    }
+
+    const gnd = attrs["gender"] || attrs["gnd"] || attrs["g"] || null;
+    const dob = attrs["dob"] || attrs["dateofbirth"] || attrs["d_o_b"] || null;
+    const yob = attrs["yob"] || attrs["yearofbirth"] || attrs["y_o_b"] || null;
     const aadhaarLast4 = uid.replace(/\D/g, "").slice(-4) || null;
 
     const age = calculateAge(dob, yob, now);
