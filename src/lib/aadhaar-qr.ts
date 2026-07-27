@@ -531,9 +531,11 @@ export function parseAadhaarQr(
         const xmlParsed = tryParse(strIso, now);
         if (xmlParsed) return xmlParsed;
       }
-      const parts = strIso.split(/\u00FF|\xFF|ÿ/);
-      const parsed = parseSecureAadhaarFields(parts, now);
-      if (parsed) return parsed;
+      // Re-enter the parser on the decoded text so the delimited branch's
+      // real-date guard applies here too: compressed bytes are full of 0xFF
+      // and a raw ÿ-split of them yields a bogus last4.
+      const parsed = tryParse(strIso, now);
+      if (isUseful(parsed)) return parsed;
     }
   }
 
@@ -563,6 +565,49 @@ function textDecodings(bytes: Uint8Array): string[] {
   } catch {
     return [latin1];
   }
+}
+
+/**
+ * Structure-only fingerprint of a scanned payload, for diagnosing a card format
+ * the parser does not yet handle.
+ *
+ * Deliberately carries NO field values: lengths, byte classes, delimiter counts
+ * and a leading-byte hex prefix are enough to identify an encoding, and none of
+ * it is patient data. Safe to copy out of a camp desk and paste into an issue.
+ */
+export function describeQrPayload(payload: string | Uint8Array): string {
+  const bytes =
+    typeof payload === "string"
+      ? new TextEncoder().encode(payload)
+      : payload;
+  const text = typeof payload === "string" ? payload : decodeLatin1(payload);
+  const hex = Array.from(bytes.slice(0, 16))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(" ");
+
+  const bits = [
+    `kind=${typeof payload === "string" ? "text" : "bytes"}`,
+    `len=${bytes.length}`,
+    `head=${hex}`,
+    `allDigits=${/^\d+$/.test(text.trim())}`,
+    `startsWith=${JSON.stringify(text.trim().slice(0, 1))}`,
+    `gzip=${isGzip(bytes)}`,
+    `zlib=${bytes[0] === 0x78}`,
+    `ffParts=${text.split(/ÿ|ÿ/).length}`,
+    `hasXmlTag=${/<[a-zA-Z]/.test(text)}`,
+  ];
+
+  if (/^\d{50,}$/.test(text.trim())) {
+    const decoded = numericStringToBytes(text.trim());
+    bits.push(
+      `numericDecoded=${decoded.length}`,
+      `numericHead=${Array.from(decoded.slice(0, 16))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(" ")}`,
+    );
+  }
+
+  return bits.join(" ");
 }
 
 /** Parse succeeded only if it yielded a field we would actually autofill. */
@@ -616,10 +661,18 @@ export async function parseAadhaarQrAsync(
     }
   }
 
-  if (typeof payload !== "string") {
-    // Bytes were given but nothing parsed — surface the standard error.
-    return parseAadhaarQr(decodeLatin1(payload), now);
+  // Nothing above yielded an autofillable field. Re-run so a real parse error
+  // (desk slip, unreadable) reaches the operator with its own message — but a
+  // result carrying only an aadhaarLast4 is NOT a successful read: every other
+  // field is null and that last4 came from a payload we could not interpret.
+  // Autofilling it puts four wrong digits in the Aadhaar box, which is worse
+  // than saying the card did not read.
+  const last = parseAadhaarQr(
+    typeof payload === "string" ? payload : decodeLatin1(payload),
+    now,
+  );
+  if (!isUseful(last)) {
+    throw new Error("Invalid or unreadable Aadhaar QR code.");
   }
-
-  return parseAadhaarQr(payload, now);
+  return last;
 }

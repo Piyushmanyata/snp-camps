@@ -32,7 +32,7 @@ import {
   SegmentedControl,
   WarningBox,
 } from "@/components/ui";
-import { parseAadhaarQrAsync, isNonLatinText } from "@/lib/aadhaar-qr";
+import { parseAadhaarQrAsync, isNonLatinText, describeQrPayload } from "@/lib/aadhaar-qr";
 import {
   applyBestEffortCameraConstraints,
   canUseNativeQrDetector,
@@ -178,6 +178,9 @@ export function PatientForm({
   const [isScanningQr, setIsScanningQr] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedBanner, setScannedBanner] = useState<string | null>(null);
+  // Structure-only fingerprint of the last problem scan (no patient data), so an
+  // unsupported card format can be reported from the field.
+  const [scanDiagnostic, setScanDiagnostic] = useState<string | null>(null);
   /** Amber warning shown when the payload came from an old unsigned legacy XML card. */
   const [legacyQrWarning, setLegacyQrWarning] = useState<string | null>(null);
   const qrCameraSessionRef = useRef(new QrCameraSession());
@@ -229,6 +232,7 @@ export function PatientForm({
         // Anything else is just a bad frame; keep scanning.
         if (!requireUseful || /desk slip/i.test(msg)) {
           setScanError(msg);
+          setScanDiagnostic(describeQrPayload(payload));
           setProvenance("self_declared");
           initialVerifiedValuesRef.current = null;
           stopQrScanner();
@@ -264,6 +268,12 @@ export function PatientForm({
       const missingFields: string[] = [];
       if (!parsed.fullName) missingFields.push("name");
       if (parsed.age == null) missingFields.push("age");
+
+      // Partial read means the format is only half-understood — keep the
+      // fingerprint so it can be reported.
+      setScanDiagnostic(
+        missingFields.length > 0 ? describeQrPayload(payload) : null,
+      );
 
       if (missingFields.length > 0) {
         setScannedBanner(
@@ -1093,6 +1103,31 @@ export function PatientForm({
           >
             {scanError}
           </div>
+        ) : null}
+
+        {scanDiagnostic ? (
+          <details
+            data-testid="aadhaar-scan-diagnostic"
+            className="rounded-xl border border-border px-3 py-2 text-xs text-muted"
+          >
+            <summary className="cursor-pointer font-semibold">
+              Card did not read fully — report this format
+            </summary>
+            <p className="mt-2">
+              This describes the QR&apos;s structure only. It contains no name,
+              number, or address.
+            </p>
+            <code className="mt-2 block break-all font-mono text-[11px]">
+              {scanDiagnostic}
+            </code>
+            <button
+              type="button"
+              className="mt-2 min-h-12 rounded-xl border border-border px-3 font-semibold"
+              onClick={() => navigator.clipboard?.writeText(scanDiagnostic)}
+            >
+              Copy
+            </button>
+          </details>
         ) : null}
       </div>
 

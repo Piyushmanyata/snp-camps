@@ -7,6 +7,7 @@ import {
   calculateAge,
   isNonLatinText,
   buildAddress,
+  describeQrPayload,
 } from "../src/lib/aadhaar-qr.ts";
 
 const FIXTURE_DATE = new Date("2026-07-27T12:00:00Z");
@@ -297,4 +298,41 @@ test("gzip bytes as Latin-1 string must not produce garbage aadhaarLast4 (step-5
     () => parseAadhaarQr(asLatin1, FIXTURE_DATE),
     /Invalid or unreadable/,
   );
+});
+
+/**
+ * A payload we could not interpret sometimes still yields a 4-digit tail from a
+ * uid-ish field, with name/age/gender all null. Autofilling that puts four wrong
+ * digits in the Aadhaar box — worse than reporting the card did not read.
+ */
+test("async parse never returns a lone aadhaarLast4 with no other field", async () => {
+  const lonely = [
+    `<PrintLetterBarcodeData uid="987654321098"/>`,
+    `{"uid":"987654321098"}`,
+    "uid=987654321098&foo=bar",
+  ];
+
+  for (const payload of lonely) {
+    // Sync parser still reports what it literally found.
+    assert.equal(parseAadhaarQr(payload, FIXTURE_DATE).aadhaarLast4, "1098");
+
+    // The scanner entry point must refuse it, as text and as bytes.
+    for (const form of [payload, new TextEncoder().encode(payload)]) {
+      await assert.rejects(
+        () => parseAadhaarQrAsync(form, FIXTURE_DATE),
+        /Invalid or unreadable/,
+      );
+    }
+  }
+});
+
+test("payload fingerprint carries structure, never field values", () => {
+  const xml = `<PrintLetterBarcodeData uid="987654321098" name="Vikram Sharma" gender="M" yob="1990"/>`;
+  const desc = describeQrPayload(xml);
+
+  assert.match(desc, /kind=text/);
+  assert.match(desc, /len=\d+/);
+  assert.match(desc, /hasXmlTag=true/);
+  // No patient data may leak into something an operator copies out of the desk.
+  assert.doesNotMatch(desc, /Vikram|Sharma|987654321098|1098|1990/);
 });
