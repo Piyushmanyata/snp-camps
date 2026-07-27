@@ -23,14 +23,14 @@ export default async function RegisterPage() {
   const staff = isStaff(role);
 
   const deskHref =
-    role === "volunteer"
+    role === "volunteer" || role === "team_lead"
       ? "/volunteer"
       : role === "admin"
         ? "/admin"
         : "/";
 
   const staffDock =
-    role === "volunteer"
+    role === "volunteer" || role === "team_lead"
       ? [
           { href: "/register", label: "Register", primary: true as const },
           { href: "/volunteer", label: "Desk" },
@@ -76,7 +76,7 @@ export default async function RegisterPage() {
       subtitle="Desk · poora naam + umar zaroori · baaki optional"
       backHref={deskHref}
       width="lg"
-      roleLabel={role === "admin" ? "Admin" : "Volunteer"}
+      roleLabel={role === "admin" ? "Admin" : role === "team_lead" ? "Team Lead" : "Volunteer"}
       actions={<SignOutButton place="header" />}
       dock={staffDock}
     >

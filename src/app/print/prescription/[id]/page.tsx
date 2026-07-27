@@ -175,7 +175,7 @@ export default async function PrescriptionPrintPage({
   const homeLabel =
     profile.role === "admin"
       ? "Admin dashboard"
-      : profile.role === "volunteer"
+      : profile.role === "volunteer" || profile.role === "team_lead"
         ? "Volunteer desk"
         : "Doctor dashboard";
 

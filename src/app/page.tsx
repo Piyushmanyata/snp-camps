@@ -11,7 +11,7 @@ export default async function HomePage() {
   ]);
   const { profile } = session;
   if (profile?.role === "admin") redirect("/admin");
-  if (profile?.role === "volunteer") redirect("/volunteer");
+  if (profile?.role === "volunteer" || profile?.role === "team_lead") redirect("/volunteer");
   if (profile?.role === "doctor") redirect("/doctor");
   // Patient sessions have no app home; stay on public landing (status is /s/<token>).
 

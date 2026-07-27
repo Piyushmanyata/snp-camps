@@ -5,6 +5,7 @@ import {
   getSessionProfile,
   isStaff,
   isAdmin,
+  isTeamLead,
   roleHome,
 } from "@/lib/auth";
 import {
@@ -23,9 +24,11 @@ import {
   loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
+  loadStaffLeaderboardSection,
   loadVolunteerKpisSection,
   type AwaitingTreatmentData,
   type SectionResult,
+  type StaffKpiRow,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
 import {
@@ -36,10 +39,11 @@ import { DeskScanQueue } from "@/components/desk-scan-queue";
 import { SeatBoard } from "@/components/seat-board";
 import { CheckIn } from "@/components/check-in";
 import { AdminStaff } from "@/components/admin-staff";
+import { TeamLeadPanel } from "@/components/team-lead-panel";
 
 export default async function VolunteerPage() {
   const { userId, profile } = await getSessionProfile();
-  // Staff only (admin | volunteer). Doctors hit roleHome → /doctor; no
+  // Staff only (admin | team_lead | volunteer). Doctors hit roleHome → /doctor; no
   // second-order redirect that depends on check order.
   if (!isStaff(profile?.role)) {
     redirect(roleHome(profile?.role) || "/login");
@@ -47,6 +51,7 @@ export default async function VolunteerPage() {
 
   const supabase = await createClient();
   const admin = isAdmin(profile?.role);
+  const teamLead = isTeamLead(profile?.role);
 
   if (admin) {
     // No narrower-query fallback — column failures (incl. RLS) surface as errors.
@@ -143,16 +148,18 @@ export default async function VolunteerPage() {
     | { ok: false; error: string }
     | null = null;
   let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
+  let leaderboard: StaffKpiRow[] = [];
 
   if (camp && userId) {
     // Independent loads — one failure must not blank the rest of the desk.
-    const [queueRes, seatsRes, doctorsRes, kpisRes, awaitingRes] =
+    const [queueRes, seatsRes, doctorsRes, kpisRes, awaitingRes, leaderboardRes] =
       await Promise.all([
         loadQueueSection(camp.id),
         loadSeatsSection(camp.id),
         loadDoctorsSection(),
         loadVolunteerKpisSection(camp.id, userId),
         loadAwaitingTreatmentSection(camp.id),
+        loadStaffLeaderboardSection(camp.id),
       ]);
 
     if (queueRes.ok) {
@@ -169,6 +176,9 @@ export default async function VolunteerPage() {
     doctorsInitial = doctorsRes;
     kpisInitial = kpisRes;
     awaitingInitial = awaitingRes;
+    if (leaderboardRes.ok) {
+      leaderboard = leaderboardRes.data;
+    }
   }
 
   return (
@@ -176,11 +186,11 @@ export default async function VolunteerPage() {
       title="Volunteer desk"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · Register · Print · Scan`
+          ? `${profile.full_name} · ${teamLead ? "Team Lead Desk" : "Register · Print · Scan"}`
           : "Register · Print · Scan"
       }
       width="xl"
-      roleLabel="Volunteer"
+      roleLabel={teamLead ? "Team Lead" : "Volunteer"}
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
@@ -191,6 +201,12 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
+        {teamLead ? (
+          <TeamLeadPanel
+            currentUserId={userId ?? ""}
+            initialLeaderboard={leaderboard}
+          />
+        ) : null}
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">
             <div>

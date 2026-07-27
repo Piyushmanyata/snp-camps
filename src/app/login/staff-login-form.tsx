@@ -61,7 +61,7 @@ export function StaffLoginForm() {
       }
 
       if (profile.role === "admin") router.replace("/admin");
-      else if (profile.role === "volunteer") router.replace("/volunteer");
+      else if (profile.role === "volunteer" || profile.role === "team_lead") router.replace("/volunteer");
       else if (profile.role === "doctor") router.replace("/doctor");
       else {
         // Residual/non-staff profiles cannot use staff login (#59).

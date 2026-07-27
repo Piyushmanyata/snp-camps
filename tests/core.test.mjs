@@ -31,6 +31,7 @@ import {
   isCampCrew,
   isDoctor,
   isStaff,
+  isTeamLead,
   roleHome,
 } from "../src/lib/roles.ts";
 import {
@@ -331,4 +332,14 @@ test("queue labels and tones map known statuses", () => {
   assert.equal(queueTone("seen"), "ok");
   assert.equal(queueTone("waiting"), "wait");
   assert.equal(queueTone("registered"), "default");
+});
+
+test("team_lead role predicates and roleHome route correctly", () => {
+  assert.equal(isStaff("team_lead"), true);
+  assert.equal(isCampCrew("team_lead"), true);
+  assert.equal(isTeamLead("team_lead"), true);
+  assert.equal(isTeamLead("volunteer"), false);
+  assert.equal(isAdmin("team_lead"), false);
+  assert.equal(canRegisterPatients("team_lead"), true);
+  assert.equal(roleHome("team_lead"), "/volunteer");
 });

@@ -8,6 +8,7 @@ export {
   isStaff,
   isCampCrew,
   isAdmin,
+  isTeamLead,
   isDoctor,
   canRegisterPatients,
   roleHome,
