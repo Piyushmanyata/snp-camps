@@ -13,7 +13,6 @@ import {
   acquireDeskPrintTarget,
   patientPrintPath,
   runDeskRegisterAndPrint,
-  type DeskPrintTarget,
   type DeskSubmitPhase,
 } from "@/lib/desk-register-flow";
 import {
@@ -33,6 +32,32 @@ import {
   SegmentedControl,
   WarningBox,
 } from "@/components/ui";
+import { parseAadhaarQr, isNonLatinText } from "@/lib/aadhaar-qr";
+import { verifyAadhaarQrSignature } from "@/lib/aadhaar-verifier";
+import {
+  canUseNativeQrDetector,
+  decodeQrFromImageData,
+  getBarcodeDetectorConstructor,
+  type BarcodeDetectorInstance,
+} from "@/lib/qr-detector";
+import { QrCameraSession } from "@/lib/qr-camera-session";
+
+type JsQrFn = (
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+) => { data: string } | null;
+
+let jsQrPromise: Promise<JsQrFn> | null = null;
+function loadJsQr(): Promise<JsQrFn> {
+  if (!jsQrPromise) {
+    jsQrPromise = import("jsqr").then((m) => {
+      const fn = (m as { default?: JsQrFn }).default ?? (m as unknown as JsQrFn);
+      return fn;
+    });
+  }
+  return jsQrPromise;
+}
 
 /** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
@@ -86,6 +111,13 @@ export function PatientForm({
   const [likelyDuplicateRegNo, setLikelyDuplicateRegNo] = useState<
     number | null
   >(null);
+  const [provenance, setProvenance] = useState<
+    "self_declared" | "card_verified" | "ekyc_verified"
+  >("self_declared");
+  const initialVerifiedValuesRef = useRef<{
+    fullName: string;
+    aadhaarLast4: string;
+  } | null>(null);
   const aadhaarOverrideOnceRef = useRef(false);
   const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -102,6 +134,171 @@ export function PatientForm({
   const registrationAttempt = useRef(
     createRegistrationAttempt(createRequestId),
   );
+
+  const [isScanningQr, setIsScanningQr] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scannedBanner, setScannedBanner] = useState<string | null>(null);
+  const qrCameraSessionRef = useRef(new QrCameraSession());
+  const qrVideoRef = useRef<HTMLVideoElement | null>(null);
+  const qrAnimFrameRef = useRef<number | null>(null);
+
+  const stopQrScanner = useCallback(() => {
+    qrCameraSessionRef.current.invalidate();
+    if (qrAnimFrameRef.current !== null) {
+      cancelAnimationFrame(qrAnimFrameRef.current);
+      qrAnimFrameRef.current = null;
+    }
+    if (qrVideoRef.current) {
+      qrVideoRef.current.srcObject = null;
+    }
+    setIsScanningQr(false);
+  }, []);
+
+  useEffect(() => {
+    const session = qrCameraSessionRef.current;
+    return () => {
+      session.invalidate();
+      if (qrAnimFrameRef.current !== null) {
+        cancelAnimationFrame(qrAnimFrameRef.current);
+      }
+    };
+  }, []);
+
+  const handleScannedText = useCallback(
+    (rawText: string) => {
+      try {
+        const sigResult = verifyAadhaarQrSignature(rawText);
+        if (!sigResult.isVerified) {
+          setScanError(
+            sigResult.error ||
+              "Signature verification failed or certificate expired. Please enter details manually.",
+          );
+          setProvenance("self_declared");
+          initialVerifiedValuesRef.current = null;
+          stopQrScanner();
+          return;
+        }
+
+        const parsed = parseAadhaarQr(rawText);
+        if (parsed.fullName) setFullName(parsed.fullName);
+        if (parsed.age != null) setAge(String(parsed.age));
+        if (parsed.gender) setGender(parsed.gender);
+        if (parsed.address) setAddress(parsed.address);
+        if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
+
+        setProvenance("card_verified");
+        initialVerifiedValuesRef.current = {
+          fullName: parsed.fullName || "",
+          aadhaarLast4: parsed.aadhaarLast4 || "",
+        };
+
+        setScannedBanner(
+          "Aadhaar card signature verified (card_verified). Phone number is not present in Aadhaar QR. Please enter phone number manually.",
+        );
+        setScanError(null);
+        stopQrScanner();
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error ? err.message : "Invalid Aadhaar QR code.";
+        setScanError(msg);
+        setProvenance("self_declared");
+        initialVerifiedValuesRef.current = null;
+        stopQrScanner();
+      }
+    },
+    [stopQrScanner],
+  );
+
+  const startQrScanner = useCallback(async () => {
+    setScanError(null);
+    setIsScanningQr(true);
+    const token = qrCameraSessionRef.current.begin();
+
+    const stream = await qrCameraSessionRef.current.acquire(
+      token,
+      (c) => navigator.mediaDevices.getUserMedia(c),
+      {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      },
+    );
+
+    if (!stream || !qrCameraSessionRef.current.isCurrent(token)) {
+      setScanError(
+        "Camera unavailable or permission denied. Please type details manually.",
+      );
+      setIsScanningQr(false);
+      return;
+    }
+
+    const useNative = await canUseNativeQrDetector();
+    let detector: BarcodeDetectorInstance | undefined;
+    let jsQR: JsQrFn | undefined;
+
+    if (useNative) {
+      const Ctor = getBarcodeDetectorConstructor();
+      if (Ctor) detector = new Ctor({ formats: ["qr_code"] });
+    } else {
+      try {
+        jsQR = await loadJsQr();
+      } catch {
+        setScanError(
+          "Scanner fallback unavailable. Please type details manually.",
+        );
+        stopQrScanner();
+        return;
+      }
+    }
+
+    if (qrVideoRef.current) {
+      qrVideoRef.current.srcObject = stream;
+      await qrVideoRef.current.play().catch(() => {});
+    }
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const processFrame = async () => {
+      if (
+        !qrCameraSessionRef.current.isCurrent(token) ||
+        !qrVideoRef.current
+      )
+        return;
+      const video = qrVideoRef.current;
+      if (video.readyState >= 2) {
+        if (detector) {
+          try {
+            const hits = await detector.detect(video);
+            if (hits.length > 0 && hits[0].rawValue) {
+              handleScannedText(hits[0].rawValue);
+              return;
+            }
+          } catch {
+            /* ignore frame detect error */
+          }
+        } else if (jsQR && ctx && video.videoWidth > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const text = decodeQrFromImageData(jsQR, imgData);
+          if (text) {
+            handleScannedText(text);
+            return;
+          }
+        }
+      }
+      if (qrCameraSessionRef.current.isCurrent(token)) {
+        qrAnimFrameRef.current = requestAnimationFrame(processFrame);
+      }
+    };
+
+    qrAnimFrameRef.current = requestAnimationFrame(processFrame);
+  }, [handleScannedText, stopQrScanner]);
 
   const focusName = useCallback(() => {
     requestAnimationFrame(() => {
@@ -129,6 +326,13 @@ export function PatientForm({
     setAadhaarHash(null);
     setAadhaarVerifiedAt(null);
     setAadhaarKycRef(null);
+    if (
+      provenance === "card_verified" &&
+      initialVerifiedValuesRef.current &&
+      d !== initialVerifiedValuesRef.current.aadhaarLast4
+    ) {
+      setProvenance("self_declared");
+    }
     setLookupState(d.length >= 4 ? "skipped" : "idle");
     setLookupMsg(d.length >= 4 ? "Optional · sirf last 4 store hota hai." : null);
   }
@@ -163,6 +367,7 @@ export function PatientForm({
     setAadhaarHash(verified.aadhaarHash);
     setAadhaarVerifiedAt(new Date().toISOString());
     setAadhaarKycRef(verified.providerRef);
+    setProvenance("ekyc_verified");
     setLookupState("ok"); setLookupMsg("Aadhaar verified — details editable hain, correction allowed.");
   }
 
@@ -221,6 +426,16 @@ export function PatientForm({
       return;
     }
 
+    if (isNonLatinText(fullName)) {
+      setPhase("idle");
+      failValidation(
+        "fullName",
+        "patient-full-name",
+        "Scanned name is in a non-Latin script. Please enter the name in Latin script.",
+      );
+      return;
+    }
+
     // Acquire print target during the submit gesture BEFORE any await (#62).
     // Do not pass noopener — retain handle, sever opener, navigate after save.
     const printTarget = acquireDeskPrintTarget((url, target, features) =>
@@ -239,6 +454,10 @@ export function PatientForm({
       setAadhaarHash(null);
       setAadhaarVerifiedAt(null);
       setAadhaarKycRef(null);
+      setProvenance("self_declared");
+      initialVerifiedValuesRef.current = null;
+      setScannedBanner(null);
+      setScanError(null);
       setLookupState("idle");
       setLookupMsg(null);
       setFieldErrors({});
@@ -268,6 +487,7 @@ export function PatientForm({
         campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,
         likelyDuplicateOverride,
+        provenance,
       },
       rpc: async (fn, args) => {
         const result = await supabase.rpc(fn, args);
@@ -416,6 +636,8 @@ export function PatientForm({
     setPhone(defaultPhone);
     setEmail("");
     setAadhaar("");
+    setProvenance("self_declared");
+    initialVerifiedValuesRef.current = null;
     setLookupState("idle");
     setLookupMsg(null);
     setFieldErrors({});
@@ -487,6 +709,67 @@ export function PatientForm({
     >
       <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
         Desk · sirf poora naam aur umar zaroori
+      </div>
+
+      {/* Aadhaar QR Scanner Action */}
+      <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-brand">
+              Aadhaar QR Scan-and-Fill
+            </p>
+            <p className="text-xs text-muted">
+              Scan patient&apos;s Aadhaar card to auto-fill form details
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="sm:w-auto"
+            data-testid="scan-aadhaar-qr-button"
+            onClick={isScanningQr ? stopQrScanner : () => void startQrScanner()}
+          >
+            {isScanningQr ? "Stop Scanner" : "Scan Aadhaar QR"}
+          </Button>
+        </div>
+
+        {isScanningQr ? (
+          <div className="relative overflow-hidden rounded-xl bg-black aspect-video max-h-64 flex items-center justify-center">
+            <video
+              ref={qrVideoRef}
+              playsInline
+              muted
+              autoPlay
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 border-2 border-dashed border-white/60 pointer-events-none rounded-xl m-4 flex items-center justify-center">
+              <span className="bg-black/60 px-3 py-1 text-xs text-white rounded-md font-medium">
+                Point camera at Aadhaar QR code
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {scannedBanner ? (
+          <div
+            role="status"
+            data-testid="aadhaar-scanned-banner"
+            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-semibold text-blue-950"
+          >
+            {scannedBanner}
+          </div>
+        ) : null}
+
+        {scanError ? (
+          <div
+            role="alert"
+            data-testid="aadhaar-scan-error"
+            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-950"
+          >
+            {scanError}
+          </div>
+        ) : null}
       </div>
 
       {flash ? (
@@ -613,7 +896,17 @@ export function PatientForm({
         autoFocus
         enterKeyHint="next"
         value={fullName}
-        onChange={(e) => setFullName(e.target.value)}
+        onChange={(e) => {
+          const val = e.target.value;
+          setFullName(val);
+          if (
+            provenance === "card_verified" &&
+            initialVerifiedValuesRef.current &&
+            val !== initialVerifiedValuesRef.current.fullName
+          ) {
+            setProvenance("self_declared");
+          }
+        }}
         placeholder="Patient ka poora naam"
       />
 

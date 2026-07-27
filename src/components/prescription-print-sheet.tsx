@@ -263,7 +263,7 @@ export function PrescriptionPrintSheet({
           </div>
           <div className="text-right">
             <div className="h-12 border-b border-slate-400 w-44 mb-1" />
-            <p className="font-bold text-slate-900">Doctor's Signature & Stamp</p>
+            <p className="font-bold text-slate-900">Doctor&apos;s Signature &amp; Stamp</p>
           </div>
         </footer>
       </article>

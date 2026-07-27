@@ -356,12 +356,14 @@ export function QrScanner({
   useEffect(() => {
     if (!lookup) return;
     if (lookup.queue_status === "seen" || lookup.queue_status === "waiting") {
-      setDiagnosis(lookup.diagnosis || "");
-      setExamination(lookup.examination || "");
-      setMedicines(lookup.medicines || "");
-      setAdvice(lookup.advice || "");
-      setSpectaclesType((lookup.spectacles_type as "fixed" | "bifocal") || "fixed");
-      setDestinations(lookup.destinations || []);
+      queueMicrotask(() => {
+        setDiagnosis(lookup.diagnosis || "");
+        setExamination(lookup.examination || "");
+        setMedicines(lookup.medicines || "");
+        setAdvice(lookup.advice || "");
+        setSpectaclesType((lookup.spectacles_type as "fixed" | "bifocal") || "fixed");
+        setDestinations(lookup.destinations || []);
+      });
     }
   }, [lookup]);
 

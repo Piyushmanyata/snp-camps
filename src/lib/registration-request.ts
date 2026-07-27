@@ -46,6 +46,7 @@ export type StaffRegistrationFields = {
   aadhaarDuplicateOverride?: boolean;
   /** Explicit one-shot soft-duplicate (name+age / phone) override (staff only). */
   likelyDuplicateOverride?: boolean;
+  provenance?: string | null;
 };
 
 /** Parse `AADHAAR_DUPLICATE:reg=N` from RPC / API error text. */
@@ -97,6 +98,7 @@ export function staffRegistrationRpcArgs(
     p_aadhaar_hash: fields.aadhaarHash ?? null,
     p_aadhaar_verified_at: fields.aadhaarVerifiedAt ?? null,
     p_aadhaar_kyc_ref: fields.aadhaarKycRef ?? null,
+    p_provenance: fields.provenance ?? "self_declared",
   };
 }
 

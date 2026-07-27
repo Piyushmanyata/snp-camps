@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect, useCallback, useId } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { QueueStatus } from "@/lib/types";
 import {
   COUNTER_STATIONS,
   type CounterStationKind,
@@ -15,7 +16,6 @@ import {
   Button,
   Card,
   ErrorBox,
-  Input,
   SectionTitle,
   SuccessBox,
 } from "@/components/ui";
@@ -57,7 +57,7 @@ export function CounterDeskPanel({
   const fetchStationQueue = useCallback(
     async (kind: CounterStationKind) => {
       if (!campId) return;
-      setQueueLoading(true);
+      queueMicrotask(() => setQueueLoading(true));
       try {
         const supabase = createClient();
         const { data, error } = await supabase
@@ -84,16 +84,21 @@ export function CounterDeskPanel({
           console.error("Queue fetch error:", error);
           setQueueItems([]);
         } else if (data) {
-          const items: CounterStationQueueItem[] = data.map((row: any) => {
+          const items: CounterStationQueueItem[] = (data as unknown as Array<{
+            id: string;
+            created_at: string;
+            kind: CounterStationKind;
+            patients: { id: string; reg_no: number; full_name: string; queue_status: QueueStatus };
+          }>).map((row) => {
             const p = row.patients;
             return {
               order_id: row.id,
               created_at: row.created_at,
-              kind: row.kind as CounterStationKind,
+              kind: row.kind,
               patient_id: p.id,
               reg_no: p.reg_no,
               full_name: p.full_name,
-              queue_status: p.queue_status,
+              queue_status: p.queue_status as QueueStatus,
             };
           });
           setQueueItems(items);
@@ -108,7 +113,9 @@ export function CounterDeskPanel({
   );
 
   useEffect(() => {
-    fetchStationQueue(station);
+    queueMicrotask(() => {
+      void fetchStationQueue(station);
+    });
   }, [station, fetchStationQueue]);
 
   // Load full patient details (prescription + all treatment orders)
@@ -172,7 +179,7 @@ export function CounterDeskPanel({
             medicines: pData.medicines,
             advice: pData.advice,
             spectacles_type: pData.spectacles_type as "fixed" | "bifocal" | null,
-            doctor_name: (pData as any).profiles?.full_name || "Doctor",
+            doctor_name: (pData as unknown as { profiles?: { full_name?: string } })?.profiles?.full_name || "Doctor",
           };
         }
 
@@ -195,7 +202,7 @@ export function CounterDeskPanel({
           .eq("patient_id", patientId)
           .order("created_at", { ascending: true });
 
-        const orders: TreatmentOrderRow[] = (ordersData || []).map((o: any) => ({
+        const orders: TreatmentOrderRow[] = (ordersData as unknown as TreatmentOrderRow[] || []).map((o) => ({
           id: o.id,
           prescription_id: o.prescription_id,
           patient_id: o.patient_id,
@@ -517,7 +524,7 @@ export function CounterDeskPanel({
               {/* Doctor Prescription Notes */}
               <div>
                 <h4 className="text-sm font-bold uppercase tracking-wider text-muted mb-2">
-                  Doctor's Prescription & Notes
+                  Doctor&apos;s Prescription &amp; Notes
                 </h4>
                 {activePatient.prescription ? (
                   <div className="rounded-xl border border-border bg-background/60 p-4 space-y-3">
