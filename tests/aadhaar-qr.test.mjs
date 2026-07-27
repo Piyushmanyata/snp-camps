@@ -137,3 +137,27 @@ test("JSON formatted Aadhaar QR parsing", () => {
   assert.equal(parsed.aadhaarLast4, "6666");
   assert.equal(parsed.isNonLatinName, false);
 });
+
+test("XML Aadhaar QR extraction — single quotes and HTML entities", () => {
+  const xmlPayload = `<PrintLetterBarcodeData uid='987654321098' name='Vikram &amp; Sharma' gender='M' dob='15.08.1990' vtc='Jaipur'/>`;
+
+  const parsed = parseAadhaarQr(xmlPayload, FIXTURE_DATE);
+
+  assert.equal(parsed.fullName, "Vikram & Sharma");
+  assert.equal(parsed.gender, "M");
+  assert.equal(parsed.age, 35);
+  assert.equal(parsed.aadhaarLast4, "1098");
+});
+
+test("Delimited Secure Aadhaar QR parsing", () => {
+  const securePayload = "202105151098\u00FFVikram Sharma\u00FF15-08-1990\u00FFM\u00FFC/O Sharma\u00FFJaipur\u00FFNear Tower\u00FF42\u00FFMain St\u00FF302001\u00FFPO\u00FFRajasthan\u00FFStreet\u00FFSubdist\u00FFJaipur";
+
+  const parsed = parseAadhaarQr(securePayload, FIXTURE_DATE);
+
+  assert.equal(parsed.fullName, "Vikram Sharma");
+  assert.equal(parsed.gender, "M");
+  assert.equal(parsed.age, 35);
+  assert.equal(parsed.aadhaarLast4, "1098");
+  assert.ok(parsed.address?.includes("Jaipur"));
+});
+

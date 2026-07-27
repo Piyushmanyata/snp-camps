@@ -140,6 +140,7 @@ export function PatientForm({
   const qrCameraSessionRef = useRef(new QrCameraSession());
   const qrVideoRef = useRef<HTMLVideoElement | null>(null);
   const qrAnimFrameRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const stopQrScanner = useCallback(() => {
     qrCameraSessionRef.current.invalidate();
@@ -179,9 +180,19 @@ export function PatientForm({
           aadhaarLast4: parsed.aadhaarLast4 || "",
         };
 
-        setScannedBanner(
-          "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
-        );
+        const missingFields: string[] = [];
+        if (!parsed.fullName) missingFields.push("name");
+        if (parsed.age == null) missingFields.push("age");
+
+        if (missingFields.length > 0) {
+          setScannedBanner(
+            `Aadhaar card scanned. Partial details autofilled. Please enter ${missingFields.join(" and ")} manually.`,
+          );
+        } else {
+          setScannedBanner(
+            "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
+          );
+        }
         setScanError(null);
         stopQrScanner();
       } catch (err: unknown) {
@@ -194,6 +205,82 @@ export function PatientForm({
       }
     },
     [stopQrScanner],
+  );
+
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setScanError(null);
+
+      try {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Could not load image file."));
+          img.src = url;
+        });
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) throw new Error("Canvas unavailable.");
+
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        let foundText: string | null = null;
+        const useNative = await canUseNativeQrDetector();
+
+        if (useNative) {
+          const Ctor = getBarcodeDetectorConstructor();
+          if (Ctor) {
+            const detector = new Ctor({ formats: ["qr_code"] });
+            const hits = await detector.detect(canvas).catch(() => []);
+            if (hits.length > 0 && hits[0].rawValue) {
+              foundText = hits[0].rawValue;
+            }
+          }
+        }
+
+        if (!foundText) {
+          const jsQR = await loadJsQr();
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          foundText = decodeQrFromImageData(jsQR, imgData);
+
+          if (!foundText && canvas.width > 200 && canvas.height > 200) {
+            const cropW = Math.floor(canvas.width * 0.75);
+            const cropH = Math.floor(canvas.height * 0.75);
+            const sx = Math.floor((canvas.width - cropW) / 2);
+            const sy = Math.floor((canvas.height - cropH) / 2);
+            const cropCanvas = document.createElement("canvas");
+            cropCanvas.width = cropW;
+            cropCanvas.height = cropH;
+            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
+            if (cropCtx) {
+              cropCtx.drawImage(canvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+              const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
+              foundText = decodeQrFromImageData(jsQR, cropData);
+            }
+          }
+        }
+
+        URL.revokeObjectURL(url);
+
+        if (foundText) {
+          handleScannedText(foundText);
+        } else {
+          setScanError("No Aadhaar QR code found in selected image. Please try a clearer photo.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Error reading photo file.";
+        setScanError(msg);
+      } finally {
+        if (e.target) e.target.value = "";
+      }
+    },
+    [handleScannedText],
   );
 
   const startQrScanner = useCallback(async () => {
@@ -248,6 +335,7 @@ export function PatientForm({
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let frameTick = 0;
 
     const processFrame = async () => {
       if (
@@ -268,11 +356,30 @@ export function PatientForm({
             /* ignore frame detect error */
           }
         } else if (jsQR && ctx && video.videoWidth > 0) {
+          frameTick += 1;
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const text = decodeQrFromImageData(jsQR, imgData);
+          let text = decodeQrFromImageData(jsQR, imgData);
+
+          // On alternate frames, attempt center crop to boost high-density QR recognition
+          if (!text && frameTick % 2 === 0 && canvas.width > 200) {
+            const cw = Math.floor(canvas.width * 0.75);
+            const ch = Math.floor(canvas.height * 0.75);
+            const sx = Math.floor((canvas.width - cw) / 2);
+            const sy = Math.floor((canvas.height - ch) / 2);
+            const cropCanvas = document.createElement("canvas");
+            cropCanvas.width = cw;
+            cropCanvas.height = ch;
+            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
+            if (cropCtx) {
+              cropCtx.drawImage(canvas, sx, sy, cw, ch, 0, 0, cw, ch);
+              const cropData = cropCtx.getImageData(0, 0, cw, ch);
+              text = decodeQrFromImageData(jsQR, cropData);
+            }
+          }
+
           if (text) {
             handleScannedText(text);
             return;
@@ -706,19 +813,38 @@ export function PatientForm({
               Aadhaar QR Scan-and-Fill
             </p>
             <p className="text-xs text-muted">
-              Scan patient&apos;s Aadhaar card to auto-fill form details
+              Scan or upload patient&apos;s Aadhaar card photo to auto-fill details
             </p>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="sm:w-auto"
-            data-testid="scan-aadhaar-qr-button"
-            onClick={isScanningQr ? stopQrScanner : () => void startQrScanner()}
-          >
-            {isScanningQr ? "Stop Scanner" : "Scan Aadhaar QR"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="sm:w-auto"
+              data-testid="scan-aadhaar-qr-button"
+              onClick={isScanningQr ? stopQrScanner : () => void startQrScanner()}
+            >
+              {isScanningQr ? "Stop Scanner" : "Scan Aadhaar QR"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="sm:w-auto"
+              data-testid="upload-aadhaar-qr-button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Upload Photo
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => void handleFileUpload(e)}
+            />
+          </div>
         </div>
 
         {isScanningQr ? (
