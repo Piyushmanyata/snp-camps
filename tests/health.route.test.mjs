@@ -103,7 +103,7 @@ function goodCatalogFacts(overrides = {}) {
         failed: true,
         ambiguous: true,
       },
-      kinds: { registration: true, reminder: true },
+      kinds: { registration: true, reminder: true, spectacles_deferral: true, surgery_deferral: true },
       claim_fn: true,
       complete_fn: true,
     },
