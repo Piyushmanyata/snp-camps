@@ -173,9 +173,12 @@ export default async function AdminPage() {
             <NavLink href="/register" variant="primary">
               Register patient
             </NavLink>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <NavLink href="/admin/patients" variant="soft">
                 Patients
+              </NavLink>
+              <NavLink href="#team-lead-desk" variant="soft">
+                Team Leads
               </NavLink>
               <NavLink href="/volunteer" variant="soft">
                 Volunteers
@@ -191,6 +194,9 @@ export default async function AdminPage() {
             </NavLink>
             <NavLink href="/counter" variant="soft">
               Counter desk
+            </NavLink>
+            <NavLink href="#team-lead-desk" variant="soft">
+              Team Lead desk
             </NavLink>
             <NavLink href="/volunteer" variant="soft">
               Volunteer desk
@@ -267,12 +273,14 @@ export default async function AdminPage() {
               waitingTotal={waitingCount}
               queueKnown={queueKnown}
             />
-            <CollapsibleSection
-              title="Team Lead desk"
-              hint={`${(teamLeads || []).filter((tl) => !tl.disabled_at).length} active team lead${(teamLeads || []).filter((tl) => !tl.disabled_at).length === 1 ? "" : "s"}`}
-            >
-              <AdminStaff role="team_lead" initial={teamLeads || []} canManage />
-            </CollapsibleSection>
+            <div id="team-lead-desk">
+              <CollapsibleSection
+                title="Team Lead desk"
+                hint={`${(teamLeads || []).filter((tl) => !tl.disabled_at).length} active team lead${(teamLeads || []).filter((tl) => !tl.disabled_at).length === 1 ? "" : "s"}`}
+              >
+                <AdminStaff role="team_lead" initial={teamLeads || []} canManage />
+              </CollapsibleSection>
+            </div>
             <CollapsibleSection
               title="Teams & leaderboards"
               hint={`${leadCount} team lead${leadCount === 1 ? "" : "s"} · ${volunteerCount} volunteer${volunteerCount === 1 ? "" : "s"}`}
