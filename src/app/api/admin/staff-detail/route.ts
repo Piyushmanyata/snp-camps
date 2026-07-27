@@ -24,9 +24,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const id = (url.searchParams.get("id") || "").trim();
   const role = (url.searchParams.get("role") || "").trim();
-  if (!UUID.test(id) || (role !== "doctor" && role !== "volunteer")) {
+  if (!UUID.test(id) || (role !== "doctor" && role !== "volunteer" && role !== "team_lead")) {
     return NextResponse.json(
-      { error: "Valid id and role (doctor|volunteer) required" },
+      { error: "Valid id and role (doctor|volunteer|team_lead) required" },
       { status: 400 },
     );
   }

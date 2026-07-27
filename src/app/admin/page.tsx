@@ -35,6 +35,8 @@ import { CheckIn } from "@/components/check-in";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
+import { createClient } from "@/lib/supabase/server";
+import { AdminStaff } from "@/components/admin-staff";
 import {
   AdminTestSmsLazySection,
   ChangePasswordLazySection,
@@ -45,6 +47,13 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") {
     redirect(roleHome(profile?.role) || "/login");
   }
+
+  const supabase = await createClient();
+  const { data: teamLeads } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone, role, created_at, disabled_at")
+    .eq("role", "team_lead")
+    .order("created_at", { ascending: false });
 
   let camps: Camp[] = [];
   let campsError: string | null = null;
@@ -259,9 +268,14 @@ export default async function AdminPage() {
               queueKnown={queueKnown}
             />
             <CollapsibleSection
+              title="Team Lead desk"
+              hint={`${(teamLeads || []).filter((tl) => !tl.disabled_at).length} active team lead${(teamLeads || []).filter((tl) => !tl.disabled_at).length === 1 ? "" : "s"}`}
+            >
+              <AdminStaff role="team_lead" initial={teamLeads || []} canManage />
+            </CollapsibleSection>
+            <CollapsibleSection
               title="Teams & leaderboards"
               hint={`${leadCount} team lead${leadCount === 1 ? "" : "s"} · ${volunteerCount} volunteer${volunteerCount === 1 ? "" : "s"}`}
-              defaultOpen
             >
               <TeamLeadPanel
                 currentUserId={userId ?? ""}

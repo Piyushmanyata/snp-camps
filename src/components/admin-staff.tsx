@@ -15,7 +15,7 @@ import {
   type StaffPerson,
 } from "@/components/staff-detail";
 
-export type ManageableStaffRole = "doctor" | "volunteer";
+export type ManageableStaffRole = "doctor" | "volunteer" | "team_lead";
 
 type CredentialShare = {
   id: string;
@@ -46,6 +46,30 @@ function roleCopy(role: ManageableStaffRole) {
       namePlaceholder: undefined as string | undefined,
       emailPlaceholder: undefined as string | undefined,
       emailHint: undefined as string | undefined,
+    };
+  }
+  if (role === "team_lead") {
+    return {
+      intro:
+        "Create a team lead with name + email. A temporary password is generated for you to share once. Tap a name for KPIs.",
+      empty: "No team leads yet — add the first below.",
+      addButton: "Register new team lead",
+      createSubmit: "Create team lead & get password",
+      createOk: "Team lead created. Share the temporary password below (shown once).",
+      createFail: "Failed to create team lead",
+      resetFail: "Failed to reset team lead password",
+      reactivateFail: "Failed to reactivate team lead",
+      deactivateFail: "Failed to deactivate team lead",
+      credentialTitle: "SNP Camps team lead login",
+      defaultName: "Team Lead",
+      formId: "team-lead-create-form",
+      credentialHeadingId: "team-lead-credential-heading",
+      detailIdPrefix: "team-lead-detail",
+      historyOnDeactivate:
+        "They will no longer be able to sign in. Their activity history will be preserved.",
+      namePlaceholder: "Team lead name",
+      emailPlaceholder: "teamlead@example.com",
+      emailHint: "Must stay the same — they sign in with this email",
     };
   }
   return {

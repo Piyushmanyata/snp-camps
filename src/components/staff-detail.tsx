@@ -44,7 +44,7 @@ export function StaffDetailPanel({
   onClose,
 }: {
   person: StaffPerson;
-  role: "doctor" | "volunteer";
+  role: "doctor" | "volunteer" | "team_lead";
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(true);

@@ -6,9 +6,9 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { readJsonBody, requireAdmin } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
-export type StaffRole = "doctor" | "volunteer";
+export type StaffRole = "doctor" | "volunteer" | "team_lead";
 
-const STAFF_ROLES = new Set<string>(["doctor", "volunteer"]);
+const STAFF_ROLES = new Set<string>(["doctor", "volunteer", "team_lead"]);
 
 /** Shareable temporary password: 14 chars, no ambiguous glyphs. */
 function generateTemporaryPassword(length = 14): string {
@@ -19,7 +19,9 @@ function generateTemporaryPassword(length = 14): string {
 }
 
 function roleLabel(role: StaffRole): string {
-  return role === "doctor" ? "Doctor" : "Volunteer";
+  if (role === "doctor") return "Doctor";
+  if (role === "team_lead") return "Team Lead";
+  return "Volunteer";
 }
 
 async function parseRole(
