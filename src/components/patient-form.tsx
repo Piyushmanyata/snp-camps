@@ -109,7 +109,28 @@ export function PatientForm({
     duplicateKey: string | null;
   } | null>(null);
 
-  const isAadhaarLocked = provenance === "card_verified" || Boolean(verifiedIdentity);
+  /**
+   * Which identity fields the scanned card actually supplied.
+   *
+   * The lock exists so a scanned value cannot be quietly edited — but a field
+   * the card never filled has nothing to protect, and locking it strands the
+   * desk. Old XML cards routinely carry no uid (so no last 4) and sometimes no
+   * date of birth at all, which left those fields empty, read-only and still
+   * marked required: the banner asked the operator to type them in and the form
+   * refused the keystrokes. Lock per field, not per scan.
+   */
+  const [cardProvided, setCardProvided] = useState({
+    fullName: false,
+    age: false,
+    gender: false,
+    aadhaarLast4: false,
+  });
+
+  const isCardVerified = provenance === "card_verified" || Boolean(verifiedIdentity);
+  const isNameLocked = isCardVerified && cardProvided.fullName;
+  const isAgeLocked = isCardVerified && cardProvided.age;
+  const isGenderLocked = isCardVerified && cardProvided.gender;
+  const isAadhaarLocked = isCardVerified && cardProvided.aadhaarLast4;
   const aadhaarOverrideOnceRef = useRef(false);
   const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -200,6 +221,12 @@ export function PatientForm({
       if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
 
       setProvenance("card_verified");
+      setCardProvided({
+        fullName: Boolean(parsed.fullName),
+        age: parsed.age != null,
+        gender: Boolean(parsed.gender),
+        aadhaarLast4: Boolean(parsed.aadhaarLast4),
+      });
       const identity = {
         fullName: parsed.fullName || "",
         aadhaarLast4: parsed.aadhaarLast4 || "",
@@ -286,9 +313,13 @@ export function PatientForm({
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
     const d = digitsOnly(formatted);
+    // Only a card that actually asserted a last 4 can be contradicted by typing.
+    // Old XML cards often carry no uid, and treating the operator filling that
+    // empty field as tampering downgraded a genuine card-verified scan.
     if (
       provenance === "card_verified" &&
       verifiedIdentity &&
+      cardProvided.aadhaarLast4 &&
       d !== verifiedIdentity.aadhaarLast4
     ) {
       setProvenance("self_declared");
@@ -374,6 +405,7 @@ export function PatientForm({
       setAadhaar("");
       setProvenance("self_declared");
       setVerifiedIdentity(null);
+    setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
       setScannedBanner(null);
       setLegacyQrWarning(null);
       setPartialScanDiagnostic(null);
@@ -563,6 +595,7 @@ export function PatientForm({
     setAadhaar("");
     setProvenance("self_declared");
     setVerifiedIdentity(null);
+    setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
     setLookupState("idle");
     setLookupMsg(null);
     setFieldErrors({});
@@ -849,19 +882,19 @@ export function PatientForm({
 
       <Input
         id="patient-full-name"
-        label={isAadhaarLocked ? "Poora naam (Aadhaar Locked 🔒) *" : "Poora naam *"}
+        label={isNameLocked ? "Poora naam (Aadhaar Locked 🔒) *" : "Poora naam *"}
         error={fieldErrors.fullName}
         required
-        readOnly={isAadhaarLocked}
-        aria-readonly={isAadhaarLocked ? true : undefined}
-        data-locked={isAadhaarLocked ? "true" : undefined}
-        className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
+        readOnly={isNameLocked}
+        aria-readonly={isNameLocked ? true : undefined}
+        data-locked={isNameLocked ? "true" : undefined}
+        className={isNameLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         autoComplete="name"
-        autoFocus={!isAadhaarLocked}
+        autoFocus={!isNameLocked}
         enterKeyHint="next"
         value={fullName}
         onChange={(e) => {
-          if (isAadhaarLocked) return;
+          if (isNameLocked) return;
           const val = e.target.value;
           setFullName(val);
         }}
@@ -883,21 +916,21 @@ export function PatientForm({
 
       <Input
         id="patient-age"
-        label={isAadhaarLocked ? "Umar (Aadhaar Locked 🔒) *" : "Umar *"}
+        label={isAgeLocked ? "Umar (Aadhaar Locked 🔒) *" : "Umar *"}
         error={fieldErrors.age}
         type="number"
         min={0}
         max={149}
         required
-        readOnly={isAadhaarLocked}
-        aria-readonly={isAadhaarLocked ? true : undefined}
-        data-locked={isAadhaarLocked ? "true" : undefined}
-        className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
+        readOnly={isAgeLocked}
+        aria-readonly={isAgeLocked ? true : undefined}
+        data-locked={isAgeLocked ? "true" : undefined}
+        className={isAgeLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         inputMode="numeric"
         enterKeyHint="next"
         value={age}
         onChange={(e) => {
-          if (isAadhaarLocked) return;
+          if (isAgeLocked) return;
           setAge(e.target.value);
         }}
         placeholder="Saal"
@@ -951,12 +984,12 @@ export function PatientForm({
 
       <div>
         <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90 flex items-center gap-1.5">
-          Gender (optional) {isAadhaarLocked ? <span className="text-xs font-normal text-amber-700">🔒 (Locked)</span> : null}
+          Gender (optional) {isGenderLocked ? <span className="text-xs font-normal text-amber-700">🔒 (Locked)</span> : null}
         </p>
         <SegmentedControl
           value={gender || ""}
           onChange={(val) => {
-            if (isAadhaarLocked) return;
+            if (isGenderLocked) return;
             setGender(val);
           }}
           options={[
