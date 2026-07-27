@@ -20,6 +20,7 @@ const dbTestFiles = [
   "tests/ot-overflow.db.test.mjs",
   "tests/deferral.db.test.mjs",
   "tests/person-expand.db.test.mjs",
+  "tests/person-migrate.db.test.mjs",
   "tests/ops-readiness.test.mjs",
 ];
 
