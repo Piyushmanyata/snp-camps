@@ -39,7 +39,12 @@ export type ReadinessResult = {
   failedCheck: ReadinessCheckId | null;
   integrations: {
     sms: boolean;
-    aadhaarEkyc: boolean;
+    /**
+     * The Aadhaar pepper. eKYC provider configuration was retired with the OTP
+     * flow (#116); the pepper survives because the Person duplicate key is
+     * keyed on it, so a scanned registration cannot proceed without it.
+     */
+    aadhaarPepper: boolean;
     cron: boolean;
   };
 };
@@ -52,9 +57,10 @@ export function integrationConfig(env: Record<string, string | undefined> = proc
         (env.MSG91_DLT_TE_ID_REGISTRATION?.trim() || env.MSG91_TEMPLATE_REGISTRATION?.trim()) &&
         (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()),
     ),
-    aadhaarEkyc: Boolean(
-      env.AADHAAR_KYC_PROVIDER?.trim() &&
-        (env.AADHAAR_HASH_PEPPER?.trim() || env.AADHAAR_KYC_PEPPER?.trim() || env.AADHAAR_PEPPER?.trim()),
+    aadhaarPepper: Boolean(
+      env.AADHAAR_HASH_PEPPER?.trim() ||
+        env.AADHAAR_KYC_PEPPER?.trim() ||
+        env.AADHAAR_PEPPER?.trim(),
     ),
     cron: Boolean(env.CRON_SECRET?.trim()),
   };
@@ -450,7 +456,7 @@ export function readinessResponseBody(result: ReadinessResult) {
     checks: result.checks,
     failedCheck: result.failedCheck,
     smsConfigured: result.integrations.sms,
-    aadhaarConfigured: result.integrations.aadhaarEkyc,
+    aadhaarConfigured: result.integrations.aadhaarPepper,
     cronConfigured: result.integrations.cron,
   };
 }

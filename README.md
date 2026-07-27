@@ -2,18 +2,18 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-## Camp flow (v6 — two-round with Aadhaar eKYC self-registration)
+## Camp flow (v7 — two-round with Aadhaar card-scan self-registration)
 
-Desk registration & self-registration (Aadhaar eKYC), **pre-reg + check-in**, one shared queue, passwordless patient status:
+Desk registration & self-registration (Aadhaar card scan), **pre-reg + check-in**, one shared queue, post-doctor counters, passwordless patient status:
 
 1. **Registration**:
-   - **Desk registration (Staff):** Full name + age required; phone, Aadhaar last-4, gender, address, email optional. Walk-in (today) lands in **`waiting`** (in line) in one step; future day pre-reg stays **`registered`**.
-   - **Self-registration (Patient):** Patient registers online via Aadhaar eKYC OTP (`/self-register`). Queue status is **always `registered`** (never `waiting`). Requires a configured eKYC provider (`AADHAAR_KYC_PROVIDER` and `AADHAAR_HASH_PEPPER` / `AADHAAR_KYC_PEPPER`); off with clear unavailable message when unconfigured.
+   - **Desk registration (Staff):** Full name + age required; phone, Aadhaar last-4, gender, address, email optional. Scanning the card's QR fills the form and locks the identity fields. Walk-in (today) lands in **`waiting`** (in line) in one step; future day pre-reg stays **`registered`**.
+   - **Self-registration (Patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, Patient QR, camp day, venue, status link) is the receipt. Queue status is **always `registered`** (never `waiting`). Always available; needs only `AADHAAR_HASH_PEPPER`.
 2. **Check-in** (pre-reg / self-reg): QR scan, reg number, or name search at Volunteer Desk → `registered` → **`waiting`**. Line order is by check-in time. Double check-in is a no-op.
 3. **Print desk slip** (optional reprint): reg number + staff-scan **Patient QR**. Printing a still-`registered` patient also checks them in.
-4. **Doctor Station** → scan or type reg number → read-only details → **Mark seen** (once only; returns immediately to the next patient).
-5. Re-scan of a Seen patient is **blocked** (“Already seen by Dr X”).
-6. **Patient status (passwordless):** `/s/<token>` with no sign-in.
+4. **Doctor Station** → scan or type reg number → **submit a prescription**, which marks the patient `seen` and creates a treatment order per destination (theatre, pharmacy, spectacles).
+5. **Counter desk** → volunteer picks their counter, scans the patient's existing desk slip, and fulfils, defers or cancels each order.
+6. **Patient status (passwordless):** `/s/<token>` with no sign-in. Never carries prescription content.
 
 - Patient QR is for **camp-crew scan only** (payload `/p/{uuid}` or `snp:{uuid}` — never a login)
 - One active camp; FCFS Queue = **`waiting` only** (physically present)
@@ -23,7 +23,7 @@ Desk registration & self-registration (Aadhaar eKYC), **pre-reg + check-in**, on
 
 **Staff** (admin, volunteer, doctor) sign in with email + password at `/login`.
 
-**Patients** do not authenticate with username/password in the app. Self-registration is gated on Aadhaar eKYC OTP verification. Desk registration is staff-operated. Status tracking is passwordless via `/s/<token>`. The former desk-slip passcode + phone-OTP patient login model is **superseded** (see [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md) and issues #41 / #45 / #76). Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
+**Patients** do not authenticate with username/password in the app. Self-registration needs no OTP and creates no account or session — the Aadhaar card QR is parsed offline and assumed authentic (see [`docs/adr/0004-aadhaar-parsed-not-verified.md`](docs/adr/0004-aadhaar-parsed-not-verified.md)). Desk registration is staff-operated. Status tracking is passwordless via `/s/<token>`. The former desk-slip passcode + phone-OTP patient login model is **superseded** (see [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md) and issues #41 / #45 / #76). Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or amended ADR together — or none of them.
 
 ## Document Authority Precedence
 
@@ -122,7 +122,7 @@ npm run compare:migrations
 
 ### 2. Auth settings
 
-- **Email**: enable Email provider (staff: admin, volunteer, doctor). Patient app login and password auth are **not** used. Patient self-registration is gated on Aadhaar eKYC OTP verification (`/self-register`). Optional MSG91 registration SMS can send reg number + status link (not Supabase Auth OTPs).
+- **Email**: enable Email provider (staff: admin, volunteer, doctor). Patient app login and password auth are **not** used. Patient self-registration (`/self-register`) needs no Auth user, no OTP and no provider — it is an offline Aadhaar card scan. Optional MSG91 registration SMS can send reg number + status link (not Supabase Auth OTPs).
 
 ### 3. Env
 
@@ -141,10 +141,10 @@ created by an active admin; there is no public staff self-registration route.
 Optional later:
 
 ```
-# Optional Aadhaar eKYC self-registration provider
-# AADHAAR_KYC_PROVIDER=mock
-# AADHAAR_HASH_PEPPER=…        # Pepper for Aadhaar HMAC hashing (no rotation during active camp)
-# AADHAAR_KYC_PEPPER=…         # Alias for AADHAAR_HASH_PEPPER
+# Aadhaar card scan — HMAC secret for the Person duplicate key.
+# Required for global one-Person-per-Aadhaar. Never rotate during an active camp.
+# AADHAAR_HASH_PEPPER=…
+# AADHAAR_KYC_PEPPER=…         # Legacy alias for AADHAAR_HASH_PEPPER
 # MSG91_AUTH_KEY=…
 # MSG91_SENDER_ID=SNPCP
 # MSG91_DLT_TE_ID_REGISTRATION=…  # (or MSG91_TEMPLATE_REGISTRATION)
@@ -208,19 +208,22 @@ below 1.5 seconds before treating the result as a capacity signal.
 | Admin | Camps, search, counts, create volunteers/doctors, desks, print |
 | Volunteer | Register, print (queue), scan + pick doctor, live queue |
 | Doctor | Login, stats, **scan only** (self-assign, no print required) |
-| Patient | No app login; self-registration (Aadhaar eKYC); staff-scan QR; passwordless status at `/s/<token>` |
+| Patient | No app login; self-registration by Aadhaar card scan; staff-scan QR; passwordless status at `/s/<token>` |
 
 ## Privacy
 
 Never store full Aadhaar. Only `aadhaar_last4`.
 
-### Aadhaar auto-fill (optional)
+### Aadhaar card scan
 
-Set `NEXT_PUBLIC_AADHAAR_LOOKUP_ENABLED=true` and `AADHAAR_LOOKUP_URL`.
-`AADHAAR_LOOKUP_SECRET` is sent as a Bearer token. This is optional desk
-auto-fill; only Aadhaar last four digits are stored.
+The QR printed on the card is decoded **offline** in the browser — no provider,
+no API call, no per-scan cost. It fills name, gender, date of birth (as age),
+address and Aadhaar last-4; the card carries **no phone number**, so that is
+always typed. Only the last four digits are stored.
 
-Provider lookup should return JSON: `full_name`, `gender`, `age` or `dob`, `address`, `phone`, `email`.
+The scan is not cryptographically verified, so the data carries the same
+assurance as typing (ADR 0004). Set `AADHAAR_HASH_PEPPER` so scanned
+registrations can compute the Person duplicate key.
 
 ### Registration SMS via MSG91 (optional)
 

@@ -54,9 +54,12 @@ test.after(async () => {
     try {
       await client.query(`delete from public.profiles where email like '%@person.test'`);
       await client.query(`delete from auth.users where email like '%@person.test'`);
-      await client.end();
     } catch {
       /* ignore */
+    } finally {
+      // Must close even when cleanup throws (a failed test aborts the
+      // transaction), or the open socket keeps the runner alive forever.
+      await client.end().catch(() => {});
     }
   }
 });
@@ -191,9 +194,11 @@ test("New patient registration automatically creates and links a Person", async 
 
   await client.query("begin");
 
-  // Seed camp and active day
+  // Seed camp and active day. `camps_one_active` allows a single active camp,
+  // so stand down whatever a previous suite left behind (same as person-migrate).
   const campId = randomUUID();
   const dayId = randomUUID();
+  await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
      values ($1, 'Person Test Camp', 'Venue', '2026-08-01', true)`,
@@ -225,7 +230,16 @@ test("New patient registration automatically creates and links a Person", async 
        p_aadhaar_last4 => '1234',
        p_user_id => null,
        p_created_by => $3,
-       p_camp_day_id => $4
+       p_camp_day_id => $4,
+       p_aadhaar_duplicate_override => false,
+       p_likely_duplicate_override => false,
+       p_self_service => false,
+       p_aadhaar_hash => null,
+       p_aadhaar_verified_at => null,
+       p_aadhaar_kyc_ref => null,
+       p_provenance => 'self_declared',
+       p_duplicate_key => null,
+       p_date_of_birth => null
      )`,
     [reqId, campId, volunteerId, dayId],
   );

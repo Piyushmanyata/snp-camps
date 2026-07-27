@@ -1,122 +1,322 @@
 "use client";
 
-import { useState } from "react";
-import { digitsOnly, isValidAadhaarNumber, type AadhaarProfile } from "@/lib/aadhaar";
+import { useCallback, useState } from "react";
+import { isNonLatinText, type ParsedAadhaarQr } from "@/lib/aadhaar-qr";
+import { patientScanUrl } from "@/lib/qr";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
+import { QrCode } from "@/components/qr-code";
+import { Button, ErrorBox, Input, Select, WarningBox } from "@/components/ui";
+import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 
 type Props = { campId: string; venue: string | null; days: CampDayStats[] };
 
-function formatAadhaar(value: string) {
-  return digitsOnly(value).slice(0, 12).replace(/(.{4})/g, "$1 ").trim();
-}
+type ScannedCard = {
+  fullName: string;
+  gender: string;
+  age: number;
+  address: string;
+  aadhaarLast4: string;
+  dateOfBirth: string;
+};
 
+type Success = {
+  patientId: string;
+  registrationNumber: number;
+  dayDate: string | null;
+  statusUrl: string;
+};
+
+/**
+ * Patient self-registration by Aadhaar card scan (#113).
+ *
+ * No OTP and no eKYC provider (ADR 0004): the card is parsed on the device and
+ * assumed authentic. The phone number is typed because the QR does not carry
+ * one, and no registration SMS is sent — this screen is the receipt.
+ */
 export function SelfRegistrationFlow({ campId, venue, days }: Props) {
-  const [step, setStep] = useState<"aadhaar" | "otp" | "confirm" | "success">("aadhaar");
-  const [aadhaar, setAadhaar] = useState("");
-  const [handle, setHandle] = useState("");
-  const [maskedMobile, setMaskedMobile] = useState<string | null>(null);
-  const [otp, setOtp] = useState("");
-  const [profile, setProfile] = useState<AadhaarProfile | null>(null);
-  const [dayId, setDayId] = useState(days.find((day) => !day.is_full)?.id ?? "");
-  const [result, setResult] = useState<{ registrationNumber: number; statusUrl: string } | null>(null);
+  const openDays = days.filter((day) => !day.is_full);
+  const [card, setCard] = useState<ScannedCard | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [dayId, setDayId] = useState(openDays[0]?.id ?? "");
+  const [result, setResult] = useState<Success | null>(null);
+  const [deskReferral, setDeskReferral] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function post(path: string, body: Record<string, unknown>) {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  }
-
-  async function initiate() {
-    const digits = digitsOnly(aadhaar);
-    if (!isValidAadhaarNumber(digits)) {
-      setError("Aadhaar number galat hai. 12 digits dobara check karein.");
-      return;
+  const onParsed = useCallback((parsed: ParsedAadhaarQr): boolean => {
+    // Every key field is required: without all four the Person key cannot be
+    // derived, and a half-filled self-registration is worse than a desk visit.
+    if (
+      !parsed.fullName ||
+      !parsed.gender ||
+      parsed.age == null ||
+      !parsed.dateOfBirth ||
+      !parsed.aadhaarLast4
+    ) {
+      return false;
     }
-    setBusy(true); setError(null);
-    try {
-      const body = await post("/api/aadhaar-kyc/initiate", { aadhaar: digits });
-      if (body.ok !== true || typeof body.handle !== "string") {
-        setError(typeof body.error === "string" ? body.error : "Verification abhi unavailable hai.");
-        return;
-      }
-      setHandle(body.handle);
-      setMaskedMobile(typeof body.maskedMobile === "string" ? body.maskedMobile : null);
-      setAadhaar("");
-      setStep("otp");
-    } finally { setBusy(false); }
-  }
+    setCard({
+      fullName: parsed.fullName,
+      gender: parsed.gender,
+      age: parsed.age,
+      address: parsed.address ?? "",
+      aadhaarLast4: parsed.aadhaarLast4,
+      dateOfBirth: parsed.dateOfBirth,
+    });
+    setDisplayName("");
+    setError(null);
+    return true;
+  }, []);
 
-  async function verify() {
-    setBusy(true); setError(null);
-    try {
-      const body = await post("/api/aadhaar-kyc/verify", { handle, otp });
-      if (body.ok !== true || !body.profile) {
-        setError(typeof body.error === "string" ? body.error : "OTP verify nahi hua. Dobara try karein.");
-        if (body.restart === true) { setStep("aadhaar"); setHandle(""); }
-        return;
-      }
-      setProfile(body.profile as AadhaarProfile);
-      setStep("confirm");
-    } finally { setBusy(false); }
-  }
+  const {
+    isScanning: isScanningCard,
+    scanError,
+    videoRef: scanVideoRef,
+    start: startScan,
+    stop: stopScan,
+    clearError: clearScanError,
+  } = useAadhaarScanner(onParsed);
+  const needsLatinName = Boolean(card && isNonLatinText(card.fullName));
 
   async function register() {
-    if (!dayId) { setError("Ek Camp Day chunna zaroori hai."); return; }
-    setBusy(true); setError(null);
+    if (!card) return;
+    if (!dayId) {
+      setError("Ek Camp Day chunna zaroori hai.");
+      return;
+    }
+    if (phone.replace(/\D/g, "").length !== 10) {
+      setError("10-digit mobile number daalein.");
+      return;
+    }
+    if (needsLatinName && !displayName.trim()) {
+      setError("Apna naam English letters mein bhi likhein.");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setDeskReferral(false);
     try {
-      const body = await post("/api/self-registration", { handle, campId, campDayId: dayId });
-      if (body.ok !== true || typeof body.statusUrl !== "string" || typeof body.registrationNumber !== "number") {
-        setError(typeof body.error === "string" ? body.error : "Registration nahi ho paaya. Camp desk par madad lein.");
+      const response = await fetch("/api/self-registration", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          campId,
+          campDayId: dayId,
+          phone,
+          card: { ...card, displayName: displayName.trim() || null },
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      if (body.ok !== true) {
+        setDeskReferral(body.deskReferral === true);
+        setError(
+          typeof body.error === "string"
+            ? body.error
+            : "Registration nahi ho paaya. Camp desk par madad lein.",
+        );
         return;
       }
-      setResult({ registrationNumber: body.registrationNumber, statusUrl: body.statusUrl });
-      setStep("success");
-    } finally { setBusy(false); }
+      setResult({
+        patientId: String(body.patientId),
+        registrationNumber: Number(body.registrationNumber),
+        dayDate: typeof body.dayDate === "string" ? body.dayDate : null,
+        statusUrl: String(body.statusUrl),
+      });
+    } catch {
+      setError("Network problem. Dobara try karein ya camp desk par milen.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (step === "success" && result) return (
-    <section aria-labelledby="registration-success" className="space-y-5">
-      <h2 id="registration-success" className="text-xl font-bold">Registration ho gaya</h2>
-      <p className="text-sm text-muted">Aap registered hain, abhi queue mein nahi. Aane par camp desk par check-in karein.</p>
-      <p className="rounded-2xl bg-brand-soft p-6 text-center"><span className="block text-xs font-bold uppercase text-brand">Registration number</span><strong className="text-5xl tracking-tight">#{result.registrationNumber}</strong></p>
-      <p className="text-sm">Camp SMS Aadhaar-linked number par aayega. Number badal gaya ho to desk par batayein.</p>
-      <a className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline" href={result.statusUrl}>{result.statusUrl}</a>
+  if (result) {
+    return (
+      <section aria-labelledby="registration-success" className="space-y-5">
+        <h2 id="registration-success" className="text-xl font-bold">
+          Registration ho gaya
+        </h2>
+        <p className="rounded-2xl bg-brand-soft p-6 text-center">
+          <span className="block text-xs font-bold uppercase text-brand">
+            Registration number
+          </span>
+          <strong className="text-5xl tracking-tight">#{result.registrationNumber}</strong>
+        </p>
+
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border p-5">
+          <QrCode value={patientScanUrl(result.patientId)} size={180} />
+          <p className="text-center text-sm text-muted">
+            Yeh QR camp desk par dikhayein. Screenshot le lein.
+          </p>
+        </div>
+
+        <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
+          <div>
+            <dt className="text-muted">Camp Day</dt>
+            <dd className="font-semibold">
+              {result.dayDate ? formatCampDay(result.dayDate) : "Desk par confirm karein"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted">Venue</dt>
+            <dd className="font-semibold">{venue || "Desk par confirm karein"}</dd>
+          </div>
+        </dl>
+
+        <p className="text-sm text-muted">
+          Aap <strong>registered</strong> hain, abhi queue mein nahi. Camp par pahunchkar
+          desk par check-in karein.
+        </p>
+
+        <div>
+          <p className="mb-1.5 text-sm font-semibold">Status link</p>
+          <a
+            className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline"
+            href={result.statusUrl}
+          >
+            {result.statusUrl}
+          </a>
+          <p className="mt-1.5 text-sm text-muted">
+            Yeh link save kar lein — SMS nahi bheja jaata.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-labelledby="self-registration-form" className="space-y-5">
+      <h2 id="self-registration-form" className="text-lg font-bold">
+        {card ? "Details confirm karein" : "Aadhaar card scan karein"}
+      </h2>
+
+      {error ? (
+        <div role="alert">
+          <ErrorBox message={error} />
+          {deskReferral ? (
+            <p className="mt-2 text-sm text-muted">
+              Camp desk par volunteer aapki madad karega.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!card ? (
+        <>
+          <p className="text-sm text-muted">
+            Apne Aadhaar card par chhapa QR code camera ke saamne rakhein. Card ki details
+            apne aap bhar jaayengi.
+          </p>
+          <WarningBox>
+            Mobile number Aadhaar QR mein nahi hota — wo aapko khud type karna hoga.
+          </WarningBox>
+
+          <Button
+            type="button"
+            onClick={isScanningCard ? stopScan : () => void startScan()}
+          >
+            {isScanningCard ? "Scanner band karein" : "Aadhaar QR scan karein"}
+          </Button>
+
+          {isScanningCard ? (
+            <video
+              ref={scanVideoRef}
+              className="w-full rounded-xl border border-border"
+              muted
+              playsInline
+              aria-label="Aadhaar QR camera preview"
+            />
+          ) : null}
+
+          {scanError ? (
+            <div role="alert">
+              <ErrorBox message={scanError} />
+            </div>
+          ) : null}
+
+          <p className="rounded-xl border border-border p-4 text-sm text-muted">
+            Card scan nahi ho raha? Koi baat nahi — camp desk par volunteer aapko manually
+            register kar dega.
+          </p>
+        </>
+      ) : (
+        <>
+          <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
+            {(
+              [
+                ["Name", card.fullName],
+                ["Age", String(card.age)],
+                ["Gender", card.gender],
+                ["Address", card.address],
+                ["Aadhaar", `xxxx xxxx ${card.aadhaarLast4}`],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-muted">{label}</dt>
+                <dd className="font-semibold">{value || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-sm text-muted">
+            Yeh details Aadhaar card se aayi hain aur edit nahi ho sakti. Galti ho to camp
+            desk par correction karayein.
+          </p>
+
+          {needsLatinName ? (
+            <Input
+              id="display-name"
+              label="Naam English letters mein"
+              hint="Card par naam English mein nahi hai. Slip aur naam-search ke liye English spelling chahiye."
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              required
+            />
+          ) : null}
+
+          <Input
+            id="phone"
+            label="Mobile number"
+            hint="Aadhaar QR mein number nahi hota, isliye khud daalein."
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={10}
+            value={phone}
+            onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))}
+            required
+          />
+
+          <Select
+            id="camp-day"
+            label="Camp Day"
+            hint={`Camp: ${venue || "venue TBA"}.`}
+            value={dayId}
+            onChange={(event) => setDayId(event.target.value)}
+          >
+            {openDays.map((day) => (
+              <option key={day.id} value={day.id}>
+                {formatCampDay(day.day_date)} · {day.seats_left} seats left
+              </option>
+            ))}
+          </Select>
+
+          <Button type="button" disabled={busy} onClick={() => void register()}>
+            {busy ? "Register kar rahe hain…" : "Confirm registration"}
+          </Button>
+
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setCard(null);
+              setError(null);
+              clearScanError();
+            }}
+          >
+            Dobara scan karein
+          </Button>
+        </>
+      )}
     </section>
   );
-
-  return <section aria-labelledby="self-registration-form" className="space-y-5">
-    {error ? <p role="alert" className="rounded-xl border border-red-200 bg-danger-soft p-3 text-sm text-danger">{error}</p> : null}
-    {step === "aadhaar" ? <>
-      <h2 id="self-registration-form" className="text-lg font-bold">Aadhaar se verify karein</h2>
-      <p className="text-sm text-muted">Aadhaar-linked mobile par OTP aayega. Full number yahan ke baad store nahi hota.</p>
-      <label className="block text-sm font-semibold" htmlFor="aadhaar">Aadhaar number</label>
-      <input id="aadhaar" inputMode="numeric" autoComplete="off" value={formatAadhaar(aadhaar)} onChange={(event) => setAadhaar(event.target.value)} className="min-h-12 w-full rounded-xl border border-border px-3 text-lg tracking-widest" />
-      <button type="button" disabled={busy} onClick={initiate} className="min-h-12 w-full rounded-xl bg-brand px-4 font-bold text-white disabled:opacity-50">{busy ? "Bhej rahe hain…" : "OTP bhejein"}</button>
-    </> : null}
-    {step === "otp" ? <>
-      <h2 className="text-lg font-bold">OTP daalein</h2>
-      <p className="text-sm text-muted">OTP {maskedMobile || "Aadhaar-linked mobile"} par bheja gaya hai.</p>
-      <label className="block text-sm font-semibold" htmlFor="otp">6-digit OTP</label>
-      <input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} className="min-h-12 w-full rounded-xl border border-border px-3 text-lg tracking-widest" />
-      <button type="button" disabled={busy || otp.length !== 6} onClick={verify} className="min-h-12 w-full rounded-xl bg-brand px-4 font-bold text-white disabled:opacity-50">{busy ? "Check kar rahe hain…" : "Verify OTP"}</button>
-    </> : null}
-    {step === "confirm" && profile ? <>
-      <h2 className="text-lg font-bold">Details confirm karein</h2>
-      <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
-        {([["Name", profile.full_name], ["Age", profile.age], ["Gender", profile.gender], ["Address", profile.address], ["Phone", profile.phone]] as const).map(([label, value]) => <div key={label}><dt className="text-muted">{label}</dt><dd className="font-semibold">{value || "—"}</dd></div>)}
-      </dl>
-      <p className="text-sm text-muted">Details Aadhaar se aaye hain aur edit nahi kiye ja sakte. Galti ho to desk par correction karayein.</p>
-      <label className="block text-sm font-semibold" htmlFor="camp-day">Camp Day</label>
-      <select id="camp-day" value={dayId} onChange={(event) => setDayId(event.target.value)} className="min-h-12 w-full rounded-xl border border-border px-3">
-        {days.filter((day) => !day.is_full).map((day) => <option key={day.id} value={day.id}>{formatCampDay(day.day_date)} · {day.seats_left} seats left</option>)}
-      </select>
-      <p className="text-sm text-muted">Camp: {venue || "venue TBA"}. SMS Aadhaar-linked number par aayega; desk phone update kar sakta hai.</p>
-      <button type="button" disabled={busy} onClick={register} className="min-h-12 w-full rounded-xl bg-brand px-4 font-bold text-white disabled:opacity-50">{busy ? "Register kar rahe hain…" : "Confirm registration"}</button>
-    </> : null}
-  </section>;
 }

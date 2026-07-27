@@ -12,9 +12,9 @@ Liveness stays independent so orchestrators can restart or probe the process wit
 Readiness is rate-limited (12 requests / IP / minute).
 
 The response also reports non-blocking integration facts under `integrations`:
-`sms`, `aadhaarEkyc`, and `cron`.
+`sms`, `aadhaarPepper`, and `cron`.
 - **SMS**: Requires `MSG91_AUTH_KEY`, `MSG91_SENDER_ID`, `MSG91_DLT_TE_ID_REGISTRATION` (or `MSG91_TEMPLATE_REGISTRATION`), and `MSG91_DLT_TE_ID_REMINDER` (or `MSG91_TEMPLATE_REMINDER`).
-- **Aadhaar eKYC Self-Registration**: Requires `AADHAAR_KYC_PROVIDER` and `AADHAAR_HASH_PEPPER` (or `AADHAAR_KYC_PEPPER`). **Pepper Rule**: `AADHAAR_HASH_PEPPER` must **never** be rotated while a Camp is active; rotating the pepper changes HMAC SHA256 hashes and invalidates per-camp Aadhaar uniqueness deduplication for existing registrations.
+- **Aadhaar pepper**: Requires `AADHAAR_HASH_PEPPER` (or the `AADHAAR_KYC_PEPPER` / `AADHAAR_PEPPER` aliases). It is the HMAC secret behind the Person duplicate key — `HMAC(last4 + normalised name + DOB + gender)` — so both Volunteer Desk card scans and `/self-register` depend on it. Without it a scan still registers the patient, but on the manual path, and global one-Person-per-Aadhaar does not apply. **Pepper Rule**: never rotate it while a Camp is active; every key already stored becomes unmatchable, so returning patients would be registered a second time. The eKYC provider variables are gone (#116 / ADR 0004): the card QR is parsed offline with no provider and no OTP.
 - **Cron**: Nightly reminder job requires `CRON_SECRET`.
 
 ## Independent checks

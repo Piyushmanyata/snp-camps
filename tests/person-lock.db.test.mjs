@@ -54,9 +54,12 @@ test.after(async () => {
     try {
       await client.query(`delete from public.profiles where email like '%@person-lock.test'`);
       await client.query(`delete from auth.users where email like '%@person-lock.test'`);
-      await client.end();
     } catch {
       /* ignore */
+    } finally {
+      // Must close even when cleanup throws (a failed test aborts the
+      // transaction), or the open socket keeps the runner alive forever.
+      await client.end().catch(() => {});
     }
   }
 });
