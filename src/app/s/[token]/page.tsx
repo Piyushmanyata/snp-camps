@@ -5,6 +5,7 @@ import { formatCampDay } from "@/lib/format-camp-day";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { QrCode } from "@/components/qr-code";
 
 const STATUS_RATE_LIMIT = {
   scope: "status-page",
@@ -20,12 +21,10 @@ type StatusRpcRow = {
   camp_name: string | null;
   venue: string | null;
   day_date: string | null;
+  patient_id?: string | null;
+  pending_orders?: string[] | null;
 };
 
-/**
- * Map a successful patient_status_by_token row to the status-page view model.
- * Pure helper — unit-tested without rendering the RSC tree.
- */
 export function mapStatusRpcRow(row: StatusRpcRow) {
   return {
     fullName: row.full_name,
@@ -38,6 +37,8 @@ export function mapStatusRpcRow(row: StatusRpcRow) {
     campName: row.camp_name?.trim() ? row.camp_name : "—",
     venue: row.venue?.trim() ? row.venue : "—",
     dayDate: row.day_date ? String(row.day_date) : null,
+    patientId: row.patient_id || null,
+    pendingOrders: Array.isArray(row.pending_orders) ? row.pending_orders : [],
   };
 }
 
@@ -45,11 +46,6 @@ function StatusRefresh() {
   return <meta httpEquiv="refresh" content="30" />;
 }
 
-/**
- * Passwordless patient status — zero client JS (Server Component only).
- * Unknown / malformed tokens → same plain not-found (no oracle).
- * Queue position comes from atomic FCFS RPC (#70); never a secondary count.
- */
 export default async function PatientStatusPage({
   params,
 }: {
@@ -66,7 +62,6 @@ export default async function PatientStatusPage({
     }),
     STATUS_RATE_LIMIT,
   );
-  // Keep rate-limited requests indistinguishable from unknown or expired tokens.
   if (!rate.allowed) notFound();
 
   if (!isStatusTokenFormat(token)) notFound();
@@ -78,7 +73,6 @@ export default async function PatientStatusPage({
     p_token: token,
   });
 
-  // Calculation / RPC failure → safe retryable error (not notFound, not fabricated position).
   if (error) {
     return (
       <>
@@ -104,6 +98,13 @@ export default async function PatientStatusPage({
   if (rows.length === 0) notFound();
 
   const view = mapStatusRpcRow(rows[0] as StatusRpcRow);
+  const qrValue = view.patientId ? `snp:${view.patientId}` : `reg:${view.regNo}`;
+
+  const treatmentLabels: Record<string, string> = {
+    pharmacy: "Medicines",
+    spectacles: "Spectacles",
+    ot: "OT / Surgery",
+  };
 
   return (
     <>
@@ -111,37 +112,66 @@ export default async function PatientStatusPage({
         <StatusRefresh />
       </head>
       <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
-        <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
-        <dl className="mt-6 space-y-4 text-[1.0625rem]">
-          <div>
-            <dt className="text-sm font-medium text-muted">Name</dt>
-            <dd className="font-semibold">{view.fullName}</dd>
+        <div className="space-y-6">
+          <div className="text-center">
+            <h1 className="text-xl font-bold tracking-tight text-brand">Camp Status</h1>
+            <p className="text-xs text-muted mt-0.5">Live FCFS status & queue info</p>
           </div>
-          <div>
-            <dt className="text-sm font-medium text-muted">Registration number</dt>
-            <dd className="font-semibold tabular">#{view.regNo}</dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-muted">Camp</dt>
-            <dd className="font-semibold">{view.campName}</dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-muted">Date</dt>
-            <dd className="font-semibold">
-              {view.dayDate ? formatCampDay(view.dayDate) : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-sm font-medium text-muted">Venue</dt>
-            <dd className="font-semibold">{view.venue}</dd>
-          </div>
-          {view.queuePosition != null ? (
-            <div>
-              <dt className="text-sm font-medium text-muted">Queue position</dt>
-              <dd className="font-semibold tabular">{view.queuePosition}</dd>
+
+          {/* Patient QR Code Card */}
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3">
+            <div className="rounded-xl border border-border bg-white p-2.5 shadow-inner">
+              <QrCode value={qrValue} size={140} level="M" />
             </div>
-          ) : null}
-        </dl>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+              Patient QR · Reg #{view.regNo}
+            </p>
+          </div>
+
+          <dl className="rounded-2xl border border-border bg-card p-5 space-y-4 text-[1.0625rem] shadow-sm">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Name</dt>
+              <dd className="font-bold text-foreground text-lg">{view.fullName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Registration Number</dt>
+              <dd className="font-bold text-foreground tabular">#{view.regNo}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Camp Name</dt>
+              <dd className="font-semibold text-foreground">{view.campName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Camp Date</dt>
+              <dd className="font-semibold text-foreground">
+                {view.dayDate ? formatCampDay(view.dayDate) : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Venue</dt>
+              <dd className="font-semibold text-foreground">{view.venue}</dd>
+            </div>
+            {view.queuePosition != null ? (
+              <div className="rounded-xl border border-brand/20 bg-brand-soft/50 p-3">
+                <dt className="text-xs font-semibold uppercase tracking-wider text-brand">Live Queue Position</dt>
+                <dd className="text-2xl font-extrabold tabular text-brand">{view.queuePosition}</dd>
+              </div>
+            ) : null}
+
+            {view.pendingOrders.length > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-1">
+                <dt className="text-xs font-semibold uppercase tracking-wider text-amber-900">Awaited Treatments</dt>
+                <dd className="flex flex-wrap gap-1.5">
+                  {view.pendingOrders.map((k) => (
+                    <span key={k} className="rounded-md bg-white border border-amber-200 px-2 py-0.5 text-xs font-bold text-amber-950 shadow-xs">
+                      {treatmentLabels[k] || k}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
       </main>
     </>
   );

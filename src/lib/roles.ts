@@ -1,26 +1,29 @@
 import type { UserRole } from "@/lib/types";
 
 /**
- * Staff — admin or volunteer.
+ * Staff — admin, team_lead, or volunteer.
  * Desk ops, registration, patient management. Matches SQL `is_staff()`.
  * Does NOT include doctor.
  */
-/** Accept string so residual DB `patient` values never type-pass as staff. */
 export function isStaff(role?: UserRole | string | null) {
-  return role === "admin" || role === "volunteer";
+  return role === "admin" || role === "team_lead" || role === "volunteer";
 }
 
 /**
- * Camp crew — admin, volunteer, or doctor.
+ * Camp crew — admin, team_lead, volunteer, or doctor.
  * Any non-patient operational role at a camp (QR scan handoff, desks).
  * Matches SQL `is_camp_crew()`.
  */
 export function isCampCrew(role?: UserRole | string | null) {
-  return role === "admin" || role === "volunteer" || role === "doctor";
+  return role === "admin" || role === "team_lead" || role === "volunteer" || role === "doctor";
 }
 
 export function isAdmin(role?: UserRole | string | null) {
   return role === "admin";
+}
+
+export function isTeamLead(role?: UserRole | string | null) {
+  return role === "team_lead";
 }
 
 export function isDoctor(role?: UserRole | string | null) {
@@ -34,6 +37,7 @@ export function canRegisterPatients(role?: UserRole | string | null) {
 
 export function roleHome(role?: UserRole | string | null) {
   if (role === "admin") return "/admin";
+  if (role === "team_lead") return "/volunteer";
   if (role === "volunteer") return "/volunteer";
   if (role === "doctor") return "/doctor";
   // Patients do not authenticate (#59). Passwordless status is /s/<token>.
@@ -42,5 +46,5 @@ export function roleHome(role?: UserRole | string | null) {
 
 /** True only for staff/doctor login roles; residual patient profiles are denied. */
 export function isLoginRole(role?: UserRole | string | null): role is UserRole {
-  return role === "admin" || role === "volunteer" || role === "doctor";
+  return role === "admin" || role === "team_lead" || role === "volunteer" || role === "doctor";
 }

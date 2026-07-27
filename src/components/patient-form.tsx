@@ -145,6 +145,7 @@ export function PatientForm({
   const [aadhaarVerifiedAt, setAadhaarVerifiedAt] = useState<string | null>(null);
   const [aadhaarKycRef, setAadhaarKycRef] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
   const [address, setAddress] = useState("");
@@ -161,10 +162,12 @@ export function PatientForm({
   const [provenance, setProvenance] = useState<
     "self_declared" | "card_verified" | "ekyc_verified"
   >("self_declared");
-  const initialVerifiedValuesRef = useRef<{
+  const [verifiedIdentity, setVerifiedIdentity] = useState<{
     fullName: string;
     aadhaarLast4: string;
   } | null>(null);
+
+  const isAadhaarLocked = provenance === "card_verified" || Boolean(verifiedIdentity);
   const aadhaarOverrideOnceRef = useRef(false);
   const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -242,7 +245,7 @@ export function PatientForm({
           setScanError(msg);
           setScanDiagnostic(describeQrPayload(payload));
           setProvenance("self_declared");
-          initialVerifiedValuesRef.current = null;
+          setVerifiedIdentity(null);
           stopQrScanner();
         }
         return false;
@@ -252,17 +255,22 @@ export function PatientForm({
         Boolean(parsed.fullName) || parsed.age != null || Boolean(parsed.gender);
       if (requireUseful && !useful) return false;
 
-      if (parsed.fullName) setFullName(parsed.fullName);
+      if (parsed.fullName) {
+        setFullName(parsed.fullName);
+        if (isNonLatinText(parsed.fullName)) {
+          setDisplayName("");
+        }
+      }
       if (parsed.age != null) setAge(String(parsed.age));
       if (parsed.gender) setGender(parsed.gender);
       if (parsed.address) setAddress(parsed.address);
       if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
 
       setProvenance("card_verified");
-      initialVerifiedValuesRef.current = {
+      setVerifiedIdentity({
         fullName: parsed.fullName || "",
         aadhaarLast4: parsed.aadhaarLast4 || "",
-      };
+      });
 
       // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
       if (parsed.source === "legacy_xml") {
@@ -289,7 +297,7 @@ export function PatientForm({
         );
       } else {
         setScannedBanner(
-          "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
+          "Aadhaar card scanned and autofilled. Identity fields locked.",
         );
       }
       setScanError(null);
@@ -523,8 +531,8 @@ export function PatientForm({
     setAadhaarKycRef(null);
     if (
       provenance === "card_verified" &&
-      initialVerifiedValuesRef.current &&
-      d !== initialVerifiedValuesRef.current.aadhaarLast4
+      verifiedIdentity &&
+      d !== verifiedIdentity.aadhaarLast4
     ) {
       setProvenance("self_declared");
     }
@@ -605,6 +613,7 @@ export function PatientForm({
       {
         campDayId,
         fullName,
+        displayName,
         gender,
         age,
         address,
@@ -621,16 +630,6 @@ export function PatientForm({
       return;
     }
 
-    if (isNonLatinText(fullName)) {
-      setPhase("idle");
-      failValidation(
-        "fullName",
-        "patient-full-name",
-        "Scanned name is in a non-Latin script. Please enter the name in Latin script.",
-      );
-      return;
-    }
-
     // Register & print: acquire print target during the submit gesture BEFORE
     // any await (#62). Register-only: no window (#107).
     const wantPrint = wantPrintRef.current;
@@ -643,6 +642,7 @@ export function PatientForm({
     const supabase = createClient();
     const resetFormFields = () => {
       setFullName("");
+      setDisplayName("");
       setGender("");
       setAge("");
       setAddress("");
@@ -653,7 +653,7 @@ export function PatientForm({
       setAadhaarVerifiedAt(null);
       setAadhaarKycRef(null);
       setProvenance("self_declared");
-      initialVerifiedValuesRef.current = null;
+      setVerifiedIdentity(null);
       setScannedBanner(null);
       setLegacyQrWarning(null);
       setScanError(null);
@@ -673,6 +673,7 @@ export function PatientForm({
       staffFields: {
         campId,
         fullName: validated.values.fullName,
+        displayName: validated.values.displayName,
         gender: validated.values.gender,
         age: validated.values.age,
         address: validated.values.address,
@@ -838,7 +839,7 @@ export function PatientForm({
     setEmail("");
     setAadhaar("");
     setProvenance("self_declared");
-    initialVerifiedValuesRef.current = null;
+    setVerifiedIdentity(null);
     setLookupState("idle");
     setLookupMsg(null);
     setFieldErrors({});
@@ -1128,39 +1129,57 @@ export function PatientForm({
 
       <Input
         id="patient-full-name"
-        label="Poora naam *"
+        label={isAadhaarLocked ? "Poora naam (Aadhaar Locked 🔒) *" : "Poora naam *"}
         error={fieldErrors.fullName}
         required
+        readOnly={isAadhaarLocked}
+        aria-readonly={isAadhaarLocked ? true : undefined}
+        data-locked={isAadhaarLocked ? "true" : undefined}
+        className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         autoComplete="name"
-        autoFocus
+        autoFocus={!isAadhaarLocked}
         enterKeyHint="next"
         value={fullName}
         onChange={(e) => {
+          if (isAadhaarLocked) return;
           const val = e.target.value;
           setFullName(val);
-          if (
-            provenance === "card_verified" &&
-            initialVerifiedValuesRef.current &&
-            val !== initialVerifiedValuesRef.current.fullName
-          ) {
-            setProvenance("self_declared");
-          }
         }}
         placeholder="Patient ka poora naam"
       />
 
+      {isNonLatinText(fullName) ? (
+        <Input
+          id="patient-display-name"
+          label="Latin Display Name / नाम (अंग्रेजी में) *"
+          error={fieldErrors.displayName}
+          required
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="e.g. Ramesh Kumar"
+          hint="Devanagari/non-Latin scanned name requires a Latin display name for printed slips and search."
+        />
+      ) : null}
+
       <Input
         id="patient-age"
-        label="Umar *"
+        label={isAadhaarLocked ? "Umar (Aadhaar Locked 🔒) *" : "Umar *"}
         error={fieldErrors.age}
         type="number"
         min={0}
         max={149}
         required
+        readOnly={isAadhaarLocked}
+        aria-readonly={isAadhaarLocked ? true : undefined}
+        data-locked={isAadhaarLocked ? "true" : undefined}
+        className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         inputMode="numeric"
         enterKeyHint="next"
         value={age}
-        onChange={(e) => setAge(e.target.value)}
+        onChange={(e) => {
+          if (isAadhaarLocked) return;
+          setAge(e.target.value);
+        }}
         placeholder="Saal"
       />
 
@@ -1179,14 +1198,21 @@ export function PatientForm({
 
       <Input
         id="patient-aadhaar"
-        label="Aadhaar last 4 (optional)"
+        label={isAadhaarLocked ? "Aadhaar last 4 (Aadhaar Locked 🔒)" : "Aadhaar last 4 (optional)"}
         error={fieldErrors.aadhaar}
         inputMode="numeric"
+        readOnly={isAadhaarLocked}
+        aria-readonly={isAadhaarLocked ? true : undefined}
+        data-locked={isAadhaarLocked ? "true" : undefined}
+        className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         autoComplete="off"
         placeholder="XXXX XXXX 1234"
         hint="Poora number kabhi store nahi — sirf last 4"
         value={aadhaar}
-        onChange={(e) => onAadhaarChange(e.target.value)}
+        onChange={(e) => {
+          if (isAadhaarLocked) return;
+          onAadhaarChange(e.target.value);
+        }}
       />
       {isStaff && digitsOnly(aadhaar).length === 12 && !aadhaarVerifiedAt ? (
         <Button
@@ -1216,12 +1242,15 @@ export function PatientForm({
       ) : null}
 
       <div>
-        <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90">
-          Gender (optional)
+        <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90 flex items-center gap-1.5">
+          Gender (optional) {isAadhaarLocked ? <span className="text-xs font-normal text-amber-700">🔒 (Locked)</span> : null}
         </p>
         <SegmentedControl
           value={gender || ""}
-          onChange={setGender}
+          onChange={(val) => {
+            if (isAadhaarLocked) return;
+            setGender(val);
+          }}
           options={[
             { value: "", label: "—" },
             { value: "M", label: "Male" },

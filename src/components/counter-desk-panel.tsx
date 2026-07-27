@@ -592,10 +592,115 @@ export function CounterDeskPanel({
               </div>
 
               {/* Treatment Orders List & Actions */}
+              {/* Treatment Orders List & Actions */}
               <div>
-                <h4 className="text-sm font-bold uppercase tracking-wider text-muted mb-2">
-                  Treatment Orders ({activePatient.orders.length})
-                </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
+                    Treatment Orders ({activePatient.orders.length})
+                  </h4>
+                </div>
+
+                {/* Paper Camp Counter Order Creation UI */}
+                <div className="mb-4 rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-2.5">
+                  <p className="text-xs font-bold text-brand uppercase">
+                    Paper Camp — Create &amp; Fulfil Treatment Order
+                  </p>
+                  <p className="text-xs text-muted">
+                    Tick treatments ordered on paper prescription sheet and fulfil in one tap:
+                  </p>
+                  <div className="flex flex-wrap gap-2.5 pt-1">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          try {
+                            const res = await fetch("/api/counter/create-order", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["pharmacy"] }),
+                            });
+                            const data = await res.json();
+                            if (res.ok && data.ok) {
+                              setSearchSuccess("Medicines order created and fulfilled!");
+                              await fetchPatientDetails({ patientId: activePatient.id });
+                              fetchStationQueue(station);
+                            } else {
+                              setSearchError(data.error || "Failed to create order.");
+                            }
+                          } catch {
+                            setSearchError("Network error.");
+                          }
+                        });
+                      }}
+                      className="!min-h-[40px] text-xs font-bold"
+                    >
+                      + Medicines (Pharm)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          try {
+                            const res = await fetch("/api/counter/create-order", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["spectacles"] }),
+                            });
+                            const data = await res.json();
+                            if (res.ok && data.ok) {
+                              setSearchSuccess("Spectacles order created and fulfilled!");
+                              await fetchPatientDetails({ patientId: activePatient.id });
+                              fetchStationQueue(station);
+                            } else {
+                              setSearchError(data.error || "Failed to create order.");
+                            }
+                          } catch {
+                            setSearchError("Network error.");
+                          }
+                        });
+                      }}
+                      className="!min-h-[40px] text-xs font-bold"
+                    >
+                      + Spectacles
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          try {
+                            const res = await fetch("/api/counter/create-order", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["ot"] }),
+                            });
+                            const data = await res.json();
+                            if (res.ok && data.ok) {
+                              setSearchSuccess("OT order created and fulfilled!");
+                              await fetchPatientDetails({ patientId: activePatient.id });
+                              fetchStationQueue(station);
+                            } else {
+                              setSearchError(data.error || "Failed to create order.");
+                            }
+                          } catch {
+                            setSearchError("Network error.");
+                          }
+                        });
+                      }}
+                      className="!min-h-[40px] text-xs font-bold"
+                    >
+                      + OT / Surgery
+                    </Button>
+                  </div>
+                </div>
 
                 {activePatient.orders.length === 0 ? (
                   <p className="text-sm text-muted italic">No treatment orders issued for this patient.</p>

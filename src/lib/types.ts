@@ -1,5 +1,5 @@
 /** Login roles only. Legacy DB enum may still list `patient`; app treats it as non-login. */
-export type UserRole = "admin" | "volunteer" | "doctor";
+export type UserRole = "admin" | "team_lead" | "volunteer" | "doctor";
 export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {
@@ -8,6 +8,7 @@ export type Profile = {
   full_name: string | null;
   phone: string | null;
   email: string | null;
+  team_lead_id?: string | null;
   disabled_at?: string | null;
 };
 

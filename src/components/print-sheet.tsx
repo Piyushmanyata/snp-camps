@@ -5,6 +5,7 @@ export type DeskSlipPatient = {
   id: string;
   reg_no: number;
   full_name: string;
+  display_name?: string | null;
 };
 
 export type DeskSlipCamp = {
@@ -46,7 +47,7 @@ function slipFields(slot: DeskSlipSlot): SlipFields {
   const selectedDay = slot.campDayDate || slot.camp?.camp_date;
   return {
     regNo: slot.patient.reg_no,
-    name: slot.patient.full_name,
+    name: slot.patient.display_name || slot.patient.full_name,
     campDay: selectedDay ? formatCampDay(selectedDay) : "Not set",
     venue: slot.camp?.venue || slot.camp?.name || "—",
     qrValue: slot.qrValue,

@@ -31,6 +31,7 @@ export function createRegistrationAttempt(
 export type StaffRegistrationFields = {
   campId: string;
   fullName: string;
+  displayName?: string | null;
   gender: string | null;
   age: number | null;
   address: string | null;
@@ -47,6 +48,8 @@ export type StaffRegistrationFields = {
   /** Explicit one-shot soft-duplicate (name+age / phone) override (staff only). */
   likelyDuplicateOverride?: boolean;
   provenance?: string | null;
+  duplicateKey?: string | null;
+  dateOfBirth?: string | null;
 };
 
 /** Parse `AADHAAR_DUPLICATE:reg=N` from RPC / API error text. */
@@ -99,6 +102,9 @@ export function staffRegistrationRpcArgs(
     p_aadhaar_verified_at: fields.aadhaarVerifiedAt ?? null,
     p_aadhaar_kyc_ref: fields.aadhaarKycRef ?? null,
     p_provenance: fields.provenance ?? "self_declared",
+    p_duplicate_key: fields.duplicateKey ?? null,
+    p_date_of_birth: fields.dateOfBirth ?? null,
+    p_display_name: fields.displayName ?? null,
   };
 }
 

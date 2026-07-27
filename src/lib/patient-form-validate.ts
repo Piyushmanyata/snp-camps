@@ -9,6 +9,7 @@ export type PatientFormField =
   | "campDay"
   | "aadhaar"
   | "fullName"
+  | "displayName"
   | "phone"
   | "age"
   | "address"
@@ -17,6 +18,7 @@ export type PatientFormField =
 export type PatientFormValues = {
   campDayId: string;
   fullName: string;
+  displayName: string | null;
   gender: string | null;
   age: number;
   address: string | null;
@@ -28,6 +30,7 @@ export type PatientFormValues = {
 export type PatientFormDraft = {
   campDayId: string;
   fullName: string;
+  displayName?: string;
   gender: string;
   age: string;
   address: string;
@@ -48,8 +51,9 @@ export type PatientFormValidation =
     };
 
 /**
- * Desk registration validation (#47).
- * Required: camp day, full name, age. Everything else optional.
+ * Desk registration validation (#47, #112).
+ * Required: camp day, full name, age.
+ * If full name is in non-Latin script, Latin display name is required.
  */
 export function validatePatientForm(
   draft: PatientFormDraft,
@@ -81,6 +85,29 @@ export function validatePatientForm(
       elementId: "patient-full-name",
       message: "Poora naam zaroori hai.",
     };
+  }
+
+  // Devanagari / non-Latin scanned name requires a Latin display name (#112)
+  const isNonLatinName = /[^\u0000-\u007F\u00A0-\u024F\s\.,'-]/u.test(draft.fullName);
+  const trimmedDisplayName = draft.displayName?.trim() || "";
+  if (isNonLatinName) {
+    if (!trimmedDisplayName) {
+      return {
+        ok: false,
+        field: "displayName",
+        elementId: "patient-display-name",
+        message: "Scanned name is in Devanagari/non-Latin. Please enter a Latin display name.",
+      };
+    }
+    const isNonLatinDisplay = /[^\u0000-\u007F\u00A0-\u024F\s\.,'-]/u.test(trimmedDisplayName);
+    if (isNonLatinDisplay) {
+      return {
+        ok: false,
+        field: "displayName",
+        elementId: "patient-display-name",
+        message: "Display name must be in Latin script.",
+      };
+    }
   }
 
   const ageValue = draft.age === "" ? null : Number(draft.age);
@@ -152,6 +179,7 @@ export function validatePatientForm(
     values: {
       campDayId: draft.campDayId,
       fullName: draft.fullName.trim(),
+      displayName: trimmedDisplayName || null,
       gender: draft.gender || null,
       age: ageValue,
       address: draft.address.trim() || null,
