@@ -1,9 +1,16 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { isCampCrew, getSessionProfile, roleHome } from "@/lib/auth";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
 import { PrescriptionPrintSheet } from "@/components/prescription-print-sheet";
+
+type CampRel = {
+  name: string;
+  venue: string | null;
+  camp_date: string | null;
+  is_active: boolean;
+};
 
 type PatientRow = {
   id: string;
@@ -13,8 +20,8 @@ type PatientRow = {
   gender: string | null;
   queue_status: string;
   camps:
-    | { name: string; venue: string | null; camp_date: string | null }
-    | { name: string; venue: string | null; camp_date: string | null }[]
+    | CampRel
+    | CampRel[]
     | null;
   camp_days: { day_date: string } | { day_date: string }[] | null;
 };
@@ -69,7 +76,26 @@ export default async function PrescriptionPrintPage({
     );
   }
 
-  const supabase = await createClient();
+  // Read through the privileged server seam, not the caller's own grants.
+  // Doctors hold no direct SELECT on `patients` (#56) — they read via
+  // `lookup_patient_scan` — so a direct read here renders "Patient not found"
+  // for the one role that authors prescriptions. Access is already decided
+  // above by the camp-crew check; same pattern as the /s/<token> status page.
+  const supabase = createServiceRoleClient();
+  if (!supabase) {
+    return (
+      <main id="main" className="mx-auto max-w-lg px-4 py-10">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold text-foreground">
+            Prescription unavailable
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            Server is not configured to load prescriptions — tell an admin.
+          </p>
+        </div>
+      </main>
+    );
+  }
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
   const proto = h.get("x-forwarded-proto") || "http";
@@ -78,12 +104,27 @@ export default async function PrescriptionPrintPage({
   const { data: rawPatient } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, age, gender, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
+      "id, reg_no, full_name, age, gender, queue_status, camps(name, venue, camp_date, is_active), camp_days(day_date)",
     )
     .eq("id", id)
     .maybeSingle();
 
   const patient = rawPatient as PatientRow | null;
+
+  // The service-role read bypasses RLS, so re-apply the active-camp boundary
+  // that the desk policy and `lookup_patient_scan` both enforce.
+  if (patient && !campFromRow(patient)?.is_active) {
+    return (
+      <main id="main" className="mx-auto max-w-lg px-4 py-10">
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <p className="text-lg font-semibold text-foreground">Camp is closed</p>
+          <p className="mt-1 text-sm text-muted">
+            This patient belongs to a camp that is no longer active.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   if (!patient) {
     return (

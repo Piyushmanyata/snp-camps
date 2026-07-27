@@ -183,6 +183,52 @@ export async function loadVolunteerKpisSection(
   };
 }
 
+export type StaffKpiRow = {
+  staff_id: string;
+  full_name: string;
+  role: string;
+  distinct_patients: number;
+  team_lead_id: string | null;
+  team_headcount: number;
+};
+
+/**
+ * Whole-camp staff rollup for the Team Lead panel (#119/#121).
+ * Note the two `staff_person_kpis` overloads: this is the (camp, staff) one,
+ * not the per-volunteer (user, role, camp, since) one above.
+ */
+export async function loadStaffLeaderboardSection(
+  campId: string,
+): Promise<SectionResult<StaffKpiRow[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("staff_person_kpis", {
+    p_camp_id: campId,
+    p_target_staff_id: null,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      error: mapDbError(error, {
+        context: "section.staff-leaderboard",
+        fallback: "Team stats could not be loaded — retry.",
+      }),
+    };
+  }
+
+  return {
+    ok: true,
+    data: ((data ?? []) as StaffKpiRow[]).map((row) => ({
+      staff_id: row.staff_id,
+      full_name: row.full_name,
+      role: row.role,
+      distinct_patients: Number(row.distinct_patients ?? 0),
+      team_lead_id: row.team_lead_id ?? null,
+      team_headcount: Number(row.team_headcount ?? 0),
+    })),
+  };
+}
+
 export async function loadDoctorsSection(): Promise<
   SectionResult<DoctorOption[]>
 > {

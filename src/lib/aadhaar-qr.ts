@@ -759,6 +759,13 @@ export async function parseAadhaarQrAsync(
 
   if (payload instanceof Uint8Array) {
     candidates.push(payload);
+    // Numeric-mode Secure QR reaches us as the ASCII digits of one huge decimal
+    // integer, because the camera decoders hand back bytes rather than text.
+    // Those digits still have to be converted to the byte stream they encode.
+    const digits = decodeLatin1(payload).trim();
+    if (/^\d{50,}$/.test(digits)) {
+      candidates.push(numericStringToBytes(digits));
+    }
   } else if (/^\d{50,}$/.test(text)) {
     // Numeric-mode Secure QR: one huge decimal integer over the byte stream.
     candidates.push(numericStringToBytes(text));

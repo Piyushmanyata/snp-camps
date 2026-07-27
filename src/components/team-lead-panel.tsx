@@ -46,7 +46,11 @@ export function TeamLeadPanel({
         });
         const data = await res.json();
         if (res.ok && data.ok) {
-          setSuccess(`Volunteer "${fullName}" created and added to your team!`);
+          // Shown once and never stored — without it the new volunteer has no
+          // way to sign in.
+          setSuccess(
+            `Volunteer "${fullName}" added to your team. Temporary password: ${data.temporaryPassword} — share it now, it is not shown again.`,
+          );
           setEmail("");
           setFullName("");
         } else {

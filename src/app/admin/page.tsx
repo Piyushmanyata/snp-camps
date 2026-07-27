@@ -17,9 +17,12 @@ import {
   loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
+  loadStaffLeaderboardSection,
   type AwaitingTreatmentData,
   type SectionResult,
+  type StaffKpiRow,
 } from "@/lib/section-reads";
+import { TeamLeadPanel } from "@/components/team-lead-panel";
 import { mapDbError } from "@/lib/public-error";
 import {
   AdminHeaderStatsPanel,
@@ -38,7 +41,7 @@ import {
 } from "@/components/admin-optional-lazy";
 
 export default async function AdminPage() {
-  const { profile } = await getSessionProfile();
+  const { userId, profile } = await getSessionProfile();
   if (profile?.role !== "admin") {
     redirect(roleHome(profile?.role) || "/login");
   }
@@ -78,16 +81,19 @@ export default async function AdminPage() {
     | { ok: true; data: DoctorOption[] }
     | { ok: false; error: string } = { ok: true, data: [] };
   let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
+  let leaderboard: StaffKpiRow[] = [];
 
   if (active) {
-    const [statsRes, seatsRes, queueRes, doctorsRes, awaitingRes] =
+    const [statsRes, seatsRes, queueRes, doctorsRes, awaitingRes, leaderboardRes] =
       await Promise.all([
         loadAdminQueueCountsSection(active.id),
         loadSeatsSection(active.id),
         loadQueueSection(active.id),
         loadDoctorsSection(),
         loadAwaitingTreatmentSection(active.id),
+        loadStaffLeaderboardSection(active.id),
       ]);
+    if (leaderboardRes.ok) leaderboard = leaderboardRes.data;
     statsInitial = statsRes;
     if (seatsRes.ok) {
       days = seatsRes.data.days;
@@ -104,6 +110,9 @@ export default async function AdminPage() {
     // No active camp — still try doctors for empty scanner readiness is N/A
     doctorsInitial = await loadDoctorsSection();
   }
+
+  const leadCount = leaderboard.filter((r) => r.role === "team_lead").length;
+  const volunteerCount = leaderboard.filter((r) => r.role === "volunteer").length;
 
   return (
     <Shell
@@ -249,6 +258,15 @@ export default async function AdminPage() {
               waitingTotal={waitingCount}
               queueKnown={queueKnown}
             />
+            <CollapsibleSection
+              title="Teams & leaderboards"
+              hint={`${leadCount} team lead${leadCount === 1 ? "" : "s"} · ${volunteerCount} volunteer${volunteerCount === 1 ? "" : "s"}`}
+            >
+              <TeamLeadPanel
+                currentUserId={userId ?? ""}
+                initialLeaderboard={leaderboard}
+              />
+            </CollapsibleSection>
             <AdminSettingsPanel camp={active} />
           </div>
         ) : null}

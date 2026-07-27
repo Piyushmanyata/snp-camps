@@ -74,10 +74,27 @@ export default async function HomePage() {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <ActionCard
+              href="/self-register"
+              title="Register yourself"
+              description={
+                !camp
+                  ? "No active camp"
+                  : anyOpen
+                    ? "Aadhaar card scan · no queue at the desk"
+                    : "All days full"
+              }
+              variant="primary"
+              disabled={!camp || !anyOpen}
+              disabledReason={
+                !camp ? "No active camp" : "All days are full — try again later"
+              }
+            />
+
+            <ActionCard
               href="/login"
               title="Staff login"
               description="Admin · volunteers · doctors"
-              variant="primary"
+              variant="soft"
             />
 
             <ActionCard
@@ -101,8 +118,9 @@ export default async function HomePage() {
           </div>
 
           <p className="text-center text-xs text-muted lg:text-left">
-            First-time staff? Ask an admin to create your account. Patients:
-            register at the desk — no patient login.
+            First-time staff? Ask an admin to create your account. Patients: scan
+            your Aadhaar card to self-register, or register at the desk — no
+            patient login either way.
           </p>
 
           <div className="pt-1 text-left">

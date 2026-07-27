@@ -221,6 +221,30 @@ test("gzipped numeric Secure QR autofills in a browser-like env (no node:zlib pa
   }
 });
 
+test("numeric Secure QR autofills when the scanner hands over bytes, not text", async () => {
+  // What the camera actually produces: ZXing/jsQR return the QR's bytes, so a
+  // numeric-mode Secure QR arrives as the ASCII digits of the decimal integer,
+  // never as a JS string. Taking those bytes literally skips the numeric decode
+  // and the card silently never reads (#1 — "camera opens, never decodes").
+  const gz = gzipSync(Buffer.from(SECURE_V2_PAYLOAD, "latin1"));
+  const numeric = BigInt("0x" + gz.toString("hex")).toString(10);
+  const scannedBytes = new Uint8Array(
+    [...numeric].map((c) => c.charCodeAt(0)),
+  );
+
+  const hadWindow = "window" in globalThis;
+  globalThis.window = globalThis;
+  try {
+    const parsed = await parseAadhaarQrAsync(scannedBytes, FIXTURE_DATE);
+    assert.equal(parsed.fullName, "Vikram Sharma");
+    assert.equal(parsed.gender, "M");
+    assert.equal(parsed.age, 35);
+    assert.equal(parsed.aadhaarLast4, "1098");
+  } finally {
+    if (!hadWindow) delete globalThis.window;
+  }
+});
+
 test("Legacy Base64-encoded XML Aadhaar QR decoding", () => {
   const xmlStr = `<PrintLetterBarcodeData uid="123456789012" name="Rakesh Verma" g="M" dateofbirth="10/10/1985" house="101" village="Kota" district="Kota" state="Rajasthan" pincode="324005"/>`;
   const base64Str = Buffer.from(xmlStr, "utf-8").toString("base64");
