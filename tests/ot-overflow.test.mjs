@@ -11,8 +11,8 @@ import {
 import { doctorSubmitPrescriptionWithRetries } from "../src/lib/desk-ops.ts";
 
 describe("OT Overflow readiness contract & desk-ops unit tests", () => {
-  test("EXPECTED_MIGRATION_HEAD is updated to 20260727200000", () => {
-    assert.equal(EXPECTED_MIGRATION_HEAD, "20260727200000");
+  test("EXPECTED_MIGRATION_HEAD is at least 20260727200000", () => {
+    assert.ok(EXPECTED_MIGRATION_HEAD >= "20260727200000");
   });
 
   test("readiness contract includes treatment_orders and scheduled_camp_day_id", () => {

@@ -292,6 +292,7 @@ test("admin volunteer and doctor can reach counter from navigation", async ({
     // Prescription print route stays camp-crew gated; open by path after counter is live.
     await page.goto(`/print/prescription/${env("E2E_PATIENT_ID")}`);
     await expect(page).not.toHaveURL(/\/login$/);
+    await page.goto(`/${role}`);
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/$/);
   }
