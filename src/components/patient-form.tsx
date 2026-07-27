@@ -36,20 +36,40 @@ import { parseAadhaarQrAsync, isNonLatinText } from "@/lib/aadhaar-qr";
 import {
   applyBestEffortCameraConstraints,
   canUseNativeQrDetector,
-  decodeQrPayloadFromImageData,
   getBarcodeDetectorConstructor,
   type BarcodeDetectorInstance,
   type JsQrFn,
   type JsQrOptions,
 } from "@/lib/qr-detector";
+import type { QrPayload } from "@/lib/qr-decode-pipeline";
 import { QrCameraSession } from "@/lib/qr-camera-session";
 
 /** Dense Aadhaar QR needs pixels; cap decode work to keep the loop responsive. */
 const SCAN_FPS = 12;
 const SCAN_FRAME_INTERVAL_MS = 1000 / SCAN_FPS;
+/**
+ * Frames spent on the cheap path before escalating to the full preprocessing
+ * cascade. Clean originals read almost immediately; a photocopy needs the
+ * heavier passes, so we pay for them only once the easy path has clearly failed.
+ */
+const ESCALATE_AFTER_FRAMES = 12;
 /** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
 const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
 const UPLOAD_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "attemptBoth" };
+
+/**
+ * The decode pipeline (preprocessing + ZXing) is an optional island: it is only
+ * reachable once the operator starts a scan, so it is deferred out of the
+ * /register entry chunk exactly like jsqr.
+ */
+type QrPipeline = typeof import("@/lib/qr-decode-pipeline");
+let pipelinePromise: Promise<QrPipeline> | null = null;
+function loadQrPipeline(): Promise<QrPipeline> {
+  if (!pipelinePromise) {
+    pipelinePromise = import("@/lib/qr-decode-pipeline");
+  }
+  return pipelinePromise;
+}
 
 let jsQrPromise: Promise<JsQrFn> | null = null;
 function loadJsQr(): Promise<JsQrFn> {
@@ -256,41 +276,57 @@ export function PatientForm({
         canvas.height = img.naturalHeight || img.height;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        // jsQR first for a still photo: it yields the raw bytes that a byte-mode
-        // Secure QR needs, which BarcodeDetector's string cannot carry.
-        const jsQR = await loadJsQr();
-        let payload: string | Uint8Array | null = null;
+        // A still photo has no time pressure, so run the whole cascade: every
+        // crop, every preprocessing variant, both decoders. This is the path a
+        // photocopy realistically goes through.
+        const pipeline = await loadQrPipeline();
+        const [jsQR, zxing] = await Promise.all([
+          loadJsQr().catch(() => undefined),
+          pipeline.loadZxing(),
+        ]);
+        let payload: QrPayload | null = null;
+
+        const passOptions = {
+          jsQR,
+          zxing,
+          variants: pipeline.THOROUGH_VARIANTS,
+          jsQrOptions: UPLOAD_JSQR_OPTIONS,
+        };
 
         // Whole frame, then progressively tighter centre crops — a photographed
         // card usually sits mid-frame, and cropping raises effective resolution.
-        for (const scale of [1, 0.75, 0.5]) {
-          const cw = Math.floor(canvas.width * scale);
-          const ch = Math.floor(canvas.height * scale);
-          if (cw < 100 || ch < 100) continue;
+        for (const region of pipeline.cropRegions(
+          canvas,
+          canvas.width,
+          canvas.height,
+          [1, 0.75, 0.5, 0.35],
+        )) {
+          const data = region.ctx.getImageData(
+            0,
+            0,
+            region.canvas.width,
+            region.canvas.height,
+          );
+          payload = pipeline.decodeImageMultiPass(data, passOptions);
+          if (payload) break;
 
-          let data: ImageData;
-          if (scale === 1) {
-            data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          } else {
-            const sx = Math.floor((canvas.width - cw) / 2);
-            const sy = Math.floor((canvas.height - ch) / 2);
-            const cropCanvas = document.createElement("canvas");
-            cropCanvas.width = cw;
-            cropCanvas.height = ch;
-            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
-            if (!cropCtx) continue;
-            cropCtx.drawImage(canvas, sx, sy, cw, ch, 0, 0, cw, ch);
-            data = cropCtx.getImageData(0, 0, cw, ch);
-          }
-
-          const decoded = decodeQrPayloadFromImageData(jsQR, data, UPLOAD_JSQR_OPTIONS);
-          if (decoded) {
-            payload = decoded.bytes ?? decoded.text;
-            break;
+          // Small or low-resolution copies: give the decoders more pixels per
+          // QR module before moving to the next crop.
+          if (region.canvas.width < 1400) {
+            const bigger = pipeline.upscale(
+              region.canvas,
+              region.canvas.width,
+              region.canvas.height,
+              2,
+            );
+            if (bigger) {
+              payload = pipeline.decodeImageMultiPass(bigger, passOptions);
+              if (payload) break;
+            }
           }
         }
 
-        // Last resort: the platform detector may locate a code jsQR missed.
+        // Last resort: the platform detector may locate a code the others missed.
         if (!payload && (await canUseNativeQrDetector())) {
           const Ctor = getBarcodeDetectorConstructor();
           if (Ctor) {
@@ -348,14 +384,13 @@ export function PatientForm({
     // Aadhaar QR resolves at all.
     await applyBestEffortCameraConstraints(stream);
 
-    // jsQR is always loaded: it is the only decoder that returns raw bytes, and
-    // Secure QR is byte-mode binary. The platform detector is an extra fast path.
-    let jsQR: JsQrFn | undefined;
-    try {
-      jsQR = await loadJsQr();
-    } catch {
-      jsQR = undefined;
-    }
+    // jsQR and ZXing both return usable byte payloads and each reads codes the
+    // other misses; the platform detector is an extra fast path for clean cards.
+    const pipeline = await loadQrPipeline();
+    const [jsQR, zxing] = await Promise.all([
+      loadJsQr().catch(() => undefined),
+      pipeline.loadZxing(),
+    ]);
 
     let detector: BarcodeDetectorInstance | undefined;
     if (await canUseNativeQrDetector()) {
@@ -363,7 +398,7 @@ export function PatientForm({
       if (Ctor) detector = new Ctor({ formats: ["qr_code"] });
     }
 
-    if (!jsQR && !detector) {
+    if (!jsQR && !zxing && !detector) {
       setScanError(
         "Scanner fallback unavailable. Please type details manually.",
       );
@@ -384,8 +419,11 @@ export function PatientForm({
     let lastFrameAt = 0;
     let busy = false;
 
-    const decodeRegion = (scale: number): string | Uint8Array | null => {
-      if (!jsQR || !ctx || !video()) return null;
+    const decodeRegion = (
+      scale: number,
+      thorough: boolean,
+    ): QrPayload | null => {
+      if (!ctx || !video()) return null;
       const v = video()!;
       canvas.width = v.videoWidth;
       canvas.height = v.videoHeight;
@@ -414,9 +452,14 @@ export function PatientForm({
         data = cropCtx.getImageData(0, 0, cw, ch);
       }
 
-      const decoded = decodeQrPayloadFromImageData(jsQR, data, LIVE_JSQR_OPTIONS);
-      if (!decoded) return null;
-      return decoded.bytes ?? decoded.text;
+      return pipeline.decodeImageMultiPass(data, {
+        jsQR,
+        zxing,
+        variants: thorough
+          ? pipeline.THOROUGH_VARIANTS
+          : pipeline.FAST_VARIANTS,
+        jsQrOptions: LIVE_JSQR_OPTIONS,
+      });
     };
 
     function video(): HTMLVideoElement | null {
@@ -453,9 +496,11 @@ export function PatientForm({
               }
             }
 
-            // jsQR carries the bytes a Secure QR needs. Alternate whole-frame
-            // and centre-crop passes so both far and near framing resolve.
-            const payload = decodeRegion(frameTick % 2 === 0 ? 0.6 : 1);
+            // Alternate whole-frame and centre-crop passes so both far and near
+            // framing resolve. Once the cheap path has plainly failed (a faded
+            // photocopy), escalate to the full preprocessing cascade.
+            const thorough = frameTick > ESCALATE_AFTER_FRAMES;
+            const payload = decodeRegion(frameTick % 2 === 0 ? 0.6 : 1, thorough);
             if (
               payload &&
               (await handleScannedPayload(payload, { requireUseful: true }))
