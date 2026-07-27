@@ -85,11 +85,30 @@ export default async function globalSetup() {
 
   async function cleanup() {
     const errors: string[] = [];
+    if (createdCampId) {
+      try {
+        await admin.from("treatment_orders").delete().eq("camp_id", createdCampId);
+        const { data: pRows } = await admin.from("patients").select("id").eq("camp_id", createdCampId);
+        if (pRows && pRows.length > 0) {
+          const pIds = pRows.map((r) => r.id);
+          await admin.from("prescription_amendments").delete().in("patient_id", pIds);
+          await admin.from("prescriptions").delete().in("patient_id", pIds);
+        }
+      } catch {
+        // ignore if table/rows absent
+      }
+    }
     if (patientId) {
+      await admin.from("treatment_orders").delete().eq("patient_id", patientId);
+      await admin.from("prescription_amendments").delete().eq("patient_id", patientId);
+      await admin.from("prescriptions").delete().eq("patient_id", patientId);
       const { error } = await admin.from("patients").delete().eq("id", patientId);
       if (error) errors.push(`patient: ${error.message}`);
     }
     if (doctorPatientId) {
+      await admin.from("treatment_orders").delete().eq("patient_id", doctorPatientId);
+      await admin.from("prescription_amendments").delete().eq("patient_id", doctorPatientId);
+      await admin.from("prescriptions").delete().eq("patient_id", doctorPatientId);
       const { error } = await admin.from("patients").delete().eq("id", doctorPatientId);
       if (error) errors.push(`doctor patient: ${error.message}`);
     }

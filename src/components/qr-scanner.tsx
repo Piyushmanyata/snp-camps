@@ -1265,7 +1265,7 @@ export function QrScanner({
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wide text-brand" data-testid="doctor-seen-header">
-                      Patient already seen{lookup.doctor_name ? ` by Dr. ${lookup.doctor_name}` : ""}
+                      Already seen{lookup.doctor_name ? ` by Dr. ${lookup.doctor_name}` : ""}
                     </p>
                     <p className="text-sm font-semibold text-foreground">
                       #{lookup.reg_no} · {lookup.full_name}
@@ -1603,7 +1603,11 @@ export function QrScanner({
                   loading={assigning}
                 >
                   {assigning
-                    ? "Saving prescription & marking seen…"
+                    ? "Saving prescription…"
+                    : lookup.queue_status === "seen"
+                    ? destinations.length > 0
+                      ? `Update Prescription (${destinations.length} order${destinations.length === 1 ? "" : "s"})`
+                      : "Save Prescription"
                     : destinations.length > 0
                     ? `Submit Prescription (${destinations.length} order${destinations.length === 1 ? "" : "s"}) · Mark seen`
                     : "Mark seen"}
