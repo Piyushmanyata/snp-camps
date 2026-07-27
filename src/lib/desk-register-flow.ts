@@ -164,8 +164,9 @@ export type DeskRegisterSuccess = {
    * `navigated` — retained target received the print URL.
    * `recovery` — popup blocked, target closed, or navigation failed;
    *              caller must show a deterministic same-patient Print action.
+   * `skipped` — register-only (#107); no print window was requested.
    */
-  print: "navigated" | "recovery";
+  print: "navigated" | "recovery" | "skipped";
 };
 
 export type DeskRegisterFailure = {
@@ -193,7 +194,11 @@ export async function runDeskRegisterAndPrint(options: {
   attempt: Pick<RegistrationAttempt, "id">;
   staffFields: StaffRegistrationFields;
   rpc: DeskRegisterRpc;
-  printTarget: DeskPrintTarget;
+  /**
+   * Pre-opened print target for register-and-print. Pass `null` for
+   * register-only (#107) — patient is saved and no print window is opened.
+   */
+  printTarget: DeskPrintTarget | null;
   resetForm: () => void;
   rotateAttempt: () => void;
   sleep?: (ms: number) => Promise<void>;
@@ -203,7 +208,7 @@ export async function runDeskRegisterAndPrint(options: {
    */
   onSuccess?: (info: {
     row: DeskRegisterRow;
-    print: "navigated" | "recovery";
+    print: "navigated" | "recovery" | "skipped";
   }) => void;
   /**
    * Fire-and-forget after a successful register (e.g. registration SMS).
@@ -223,7 +228,7 @@ export async function runDeskRegisterAndPrint(options: {
   );
 
   if (result.error) {
-    options.printTarget.abandon();
+    options.printTarget?.abandon();
     const showTryAgain = result.error === RETRY_EXHAUSTED_COPY.register;
     return {
       ok: false,
@@ -239,7 +244,7 @@ export async function runDeskRegisterAndPrint(options: {
     : result.data) as DeskRegisterRow | null | undefined;
 
   if (!row?.id) {
-    options.printTarget.abandon();
+    options.printTarget?.abandon();
     return {
       ok: false,
       error: RETRY_EXHAUSTED_COPY.register,
@@ -249,14 +254,17 @@ export async function runDeskRegisterAndPrint(options: {
 
   // Order is deliberate: patient is already registered/queued, then print opens.
   // A cancelled/blocked print leaves them registered/queued — correct for the desk.
-  // Never claim navigation succeeded when the target was blocked or closed.
-  const navigated = options.printTarget.navigate(row.id);
-  const print: "navigated" | "recovery" = navigated
-    ? "navigated"
-    : "recovery";
-  if (!navigated) {
-    // Neutralize any leftover blank tab when navigation could not complete.
-    options.printTarget.abandon();
+  // Register-only (#107): no print target — skip the window entirely.
+  let print: "navigated" | "recovery" | "skipped";
+  if (!options.printTarget) {
+    print = "skipped";
+  } else {
+    const navigated = options.printTarget.navigate(row.id);
+    print = navigated ? "navigated" : "recovery";
+    if (!navigated) {
+      // Neutralize any leftover blank tab when navigation could not complete.
+      options.printTarget.abandon();
+    }
   }
 
   // Retain recovery reference before form reset clears the only route to the slip.

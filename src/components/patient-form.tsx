@@ -172,6 +172,8 @@ export function PatientForm({
   const [loading, setLoading] = useState(false);
   /** idle | saving | failed-retryable | registered-print-ready (#62). */
   const [phase, setPhase] = useState<DeskSubmitPhase>("idle");
+  /** #107 — which submit button was used; both always visible. */
+  const wantPrintRef = useRef(true);
   const [printRecovery, setPrintRecovery] = useState<PrintRecovery | null>(
     null,
   );
@@ -629,11 +631,14 @@ export function PatientForm({
       return;
     }
 
-    // Acquire print target during the submit gesture BEFORE any await (#62).
-    // Do not pass noopener — retain handle, sever opener, navigate after save.
-    const printTarget = acquireDeskPrintTarget((url, target, features) =>
-      window.open(url, target, features),
-    );
+    // Register & print: acquire print target during the submit gesture BEFORE
+    // any await (#62). Register-only: no window (#107).
+    const wantPrint = wantPrintRef.current;
+    const printTarget = wantPrint
+      ? acquireDeskPrintTarget((url, target, features) =>
+          window.open(url, target, features),
+        )
+      : null;
 
     const supabase = createClient();
     const resetFormFields = () => {
@@ -714,11 +719,13 @@ export function PatientForm({
         setPhase("registered-print-ready");
         const queueBit =
           row.queue_status === "waiting" ? "line mein" : "register ho gaya";
-        setFlash(
+        const flash =
           print === "navigated"
             ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
-            : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`,
-        );
+            : print === "skipped"
+              ? `Reg #${row.reg_no} — ${queueBit}. Print later from the patient list if needed.`
+              : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`;
+        setFlash(flash);
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
       },
@@ -1316,7 +1323,25 @@ export function PatientForm({
         </div>
       ) : null}
 
-      <div className="sticky-submit">
+      <div className="sticky-submit flex flex-col gap-2 sm:flex-row">
+        <Button
+          type="submit"
+          variant="secondary"
+          disabled={
+            loading ||
+            lookupState === "loading" ||
+            !campDayId ||
+            likelyDuplicateRegNo != null
+          }
+          loading={loading && likelyDuplicateRegNo == null}
+          data-testid="desk-register-only"
+          data-phase={phase}
+          onClick={() => {
+            wantPrintRef.current = false;
+          }}
+        >
+          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Register"}
+        </Button>
         <Button
           type="submit"
           disabled={
@@ -1328,10 +1353,13 @@ export function PatientForm({
           loading={loading && likelyDuplicateRegNo == null}
           data-testid="desk-register-submit"
           data-phase={phase}
+          onClick={() => {
+            wantPrintRef.current = true;
+          }}
         >
           {loading && likelyDuplicateRegNo == null
             ? "Saving…"
-            : "Register karein aur print"}
+            : "Register & print"}
         </Button>
       </div>
     </form>

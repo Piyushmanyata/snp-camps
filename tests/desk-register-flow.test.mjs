@@ -457,6 +457,53 @@ test("register-then-print: same request id on retries; navigate then onSuccess t
   ]);
 });
 
+test("register-only: no print target → print=skipped and no window", async () => {
+  const attempt = createRegistrationAttempt(() => "cccccccc-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  /** @type {string[]} */
+  const events = [];
+  let rpcCalls = 0;
+
+  const outcome = await runDeskRegisterAndPrint({
+    attempt,
+    staffFields,
+    rpc: async () => {
+      rpcCalls += 1;
+      return {
+        data: [
+          {
+            id: "patient-no-print",
+            reg_no: 11,
+            full_name: "Register Only",
+            queue_status: "registered",
+          },
+        ],
+        error: null,
+      };
+    },
+    printTarget: null,
+    onSuccess: ({ row, print }) => {
+      events.push(`onSuccess:${row.id}:${print}`);
+    },
+    resetForm: () => {
+      events.push("reset");
+    },
+    rotateAttempt: () => {
+      events.push("rotate");
+    },
+    sleep: async () => {},
+  });
+
+  assert.equal(outcome.ok, true);
+  if (!outcome.ok) return;
+  assert.equal(outcome.print, "skipped");
+  assert.equal(rpcCalls, 1);
+  assert.deepEqual(events, [
+    "onSuccess:patient-no-print:skipped",
+    "rotate",
+    "reset",
+  ]);
+});
+
 test("blocked popup: registration succeeds once, print=recovery, no false navigate", async () => {
   const attempt = createRegistrationAttempt(() => "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   /** @type {string[]} */
