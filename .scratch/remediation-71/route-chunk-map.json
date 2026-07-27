@@ -1,520 +1,222 @@
 {
-  "generatedAt": "2026-07-26T20:33:32.582Z",
+  "generatedAt": "2026-07-27T06:01:16.076Z",
   "measureMode": "eager-initial-vs-async-deferred",
   "routes": {
     "/": {
-      "initialGzip": 202218,
+      "initialGzip": 202221,
       "initialRaw": 676587,
       "deferredGzip": 0,
       "deferredRaw": 0,
-      "frameworkGzip": 178711,
+      "frameworkGzip": 178714,
       "appGzip": 23507,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/1s07nigfo910h.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2iqi5r6scgf5z.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [],
       "deferredMarkers": {},
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/1s07nigfo910h.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     },
     "/_global-error": {
-      "initialGzip": 186999,
+      "initialGzip": 187002,
       "initialRaw": 631831,
       "deferredGzip": 0,
       "deferredRaw": 0,
-      "frameworkGzip": 178711,
+      "frameworkGzip": 178714,
       "appGzip": 8288,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [],
       "deferredMarkers": {},
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     },
     "/_not-found": {
-      "initialGzip": 193140,
+      "initialGzip": 193143,
       "initialRaw": 649506,
       "deferredGzip": 0,
       "deferredRaw": 0,
-      "frameworkGzip": 178711,
+      "frameworkGzip": 178714,
       "appGzip": 14429,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2iqi5r6scgf5z.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [],
       "deferredMarkers": {},
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     },
     "/admin": {
-      "initialGzip": 406129,
-      "initialRaw": 1389505,
-      "deferredGzip": 55010,
-      "deferredRaw": 155102,
-      "frameworkGzip": 178711,
-      "appGzip": 227418,
+      "initialGzip": 406404,
+      "initialRaw": 1390414,
+      "deferredGzip": 55978,
+      "deferredRaw": 160134,
+      "frameworkGzip": 178714,
+      "appGzip": 227690,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
         "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0ejy30xsdlk0a.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2516xqewuu_ql.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2tscxjy-wxty0.js",
+        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/3jbzfa2dfz2oo.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/415xrhawhcken.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [
         "static/chunks/1p4lahote9vxf.js",
-        "static/chunks/2y9y7ad8q7kzm.js",
         "static/chunks/39fgiytt47ohq.js",
-        "static/chunks/3f3rdpgsqj0m_.js"
+        "static/chunks/3f3rdpgsqj0m_.js",
+        "static/chunks/41uf3r52oyj2u.js"
       ],
       "deferredMarkers": {
         "static/chunks/1p4lahote9vxf.js": [],
-        "static/chunks/2y9y7ad8q7kzm.js": [
-          "scanner_ui"
-        ],
         "static/chunks/39fgiytt47ohq.js": [
           "jsqr_lib"
         ],
-        "static/chunks/3f3rdpgsqj0m_.js": []
+        "static/chunks/3f3rdpgsqj0m_.js": [],
+        "static/chunks/41uf3r52oyj2u.js": [
+          "scanner_ui"
+        ]
       },
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0ejy30xsdlk0a.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2516xqewuu_ql.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/3jbzfa2dfz2oo.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/415xrhawhcken.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     },
     "/admin/patients": {
-      "initialGzip": 396434,
-      "initialRaw": 1355231,
+      "initialGzip": 396425,
+      "initialRaw": 1355082,
       "deferredGzip": 0,
       "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 217723,
+      "frameworkGzip": 178714,
+      "appGzip": 217711,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/23i1u-yn5v2dk.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2tscxjy-wxty0.js",
+        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/409zbecui8k0m.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [],
       "deferredMarkers": {},
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/23i1u-yn5v2dk.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/409zbecui8k0m.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     },
-    "/doctor": {
-      "initialGzip": 399283,
-      "initialRaw": 1363886,
-      "deferredGzip": 54776,
-      "deferredRaw": 158129,
-      "frameworkGzip": 178711,
-      "appGzip": 220572,
+    "/counter": {
+      "initialGzip": 397339,
+      "initialRaw": 1361660,
+      "deferredGzip": 55492,
+      "deferredRaw": 162935,
+      "frameworkGzip": 178714,
+      "appGzip": 218625,
       "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/02n6jn-rmd_iu.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/14889ev3t7n9l.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2qfaqfr1k5a_1.js",
-        "static/chunks/2tscxjy-wxty0.js",
+        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
+        "static/chunks/turbopack-059o7jux23qwg.js"
       ],
       "deferredChunks": [
-        "static/chunks/39fgiytt47ohq.js",
-        "static/chunks/3g11bji2yk_fo.js"
-      ],
-      "deferredMarkers": {
-        "static/chunks/39fgiytt47ohq.js": [
-          "jsqr_lib"
-        ],
-        "static/chunks/3g11bji2yk_fo.js": [
-          "scanner_ui"
-        ]
-      },
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/02n6jn-rmd_iu.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2qfaqfr1k5a_1.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
-        "static/chunks/37311a-an80s9.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/login": {
-      "initialGzip": 267121,
-      "initialRaw": 922480,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 88410,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2tscxjy-wxty0.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/3hurxfpg6e270.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/3hurxfpg6e270.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/p/[id]": {
-      "initialGzip": 193140,
-      "initialRaw": 649506,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 14429,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/print/[id]": {
-      "initialGzip": 209622,
-      "initialRaw": 698589,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 30911,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2bl_1mg1xl2qc.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2bl_1mg1xl2qc.js": [
-          "qrcode_react"
-        ],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/print/batch": {
-      "initialGzip": 210291,
-      "initialRaw": 699874,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 31580,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0u9fb9ex_0rmt.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2bl_1mg1xl2qc.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0u9fb9ex_0rmt.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2bl_1mg1xl2qc.js": [
-          "qrcode_react"
-        ],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/register": {
-      "initialGzip": 405824,
-      "initialRaw": 1383685,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 227113,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2tscxjy-wxty0.js",
-        "static/chunks/34335adlp1vpr.js",
-        "static/chunks/37311a-an80s9.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/3q8dq8q629zoj.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
-        "static/chunks/34335adlp1vpr.js": [],
-        "static/chunks/37311a-an80s9.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/3q8dq8q629zoj.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/s/[token]": {
-      "initialGzip": 193140,
-      "initialRaw": 649506,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 14429,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/self-register": {
-      "initialGzip": 198219,
-      "initialRaw": 662868,
-      "deferredGzip": 0,
-      "deferredRaw": 0,
-      "frameworkGzip": 178711,
-      "appGzip": 19508,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0nwynmi2fa8hy.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [],
-      "deferredMarkers": {},
-      "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
-        "static/chunks/0cz1d0mv5g_q7.js": [],
-        "static/chunks/0nwynmi2fa8hy.js": [],
-        "static/chunks/0vk3nqty20h_-.js": [],
-        "static/chunks/1d4h-sglyo8ft.js": [],
-        "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/2dtpai3-ly_at.js": [],
-        "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
-      }
-    },
-    "/volunteer": {
-      "initialGzip": 405686,
-      "initialRaw": 1391941,
-      "deferredGzip": 53209,
-      "deferredRaw": 151335,
-      "frameworkGzip": 178711,
-      "appGzip": 226975,
-      "initialChunks": [
-        "static/chunks/01dkdyukbdpqq.js",
-        "static/chunks/0cz1d0mv5g_q7.js",
-        "static/chunks/0vk3nqty20h_-.js",
-        "static/chunks/1d4h-sglyo8ft.js",
-        "static/chunks/1iv1-a5419qg7.js",
-        "static/chunks/21qr6zy0kc_w0.js",
-        "static/chunks/2dtpai3-ly_at.js",
-        "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/2tscxjy-wxty0.js",
-        "static/chunks/37311a-an80s9.js",
-        "static/chunks/3hdj40qmts5sf.js",
-        "static/chunks/turbopack-2l-codlnm8rcf.js"
-      ],
-      "deferredChunks": [
-        "static/chunks/2y9y7ad8q7kzm.js",
+        "static/chunks/36n1gjyfz2dt2.js",
         "static/chunks/39fgiytt47ohq.js"
       ],
       "deferredMarkers": {
-        "static/chunks/2y9y7ad8q7kzm.js": [
+        "static/chunks/36n1gjyfz2dt2.js": [
           "scanner_ui"
         ],
         "static/chunks/39fgiytt47ohq.js": [
@@ -522,18 +224,364 @@
         ]
       },
       "initialMarkers": {
-        "static/chunks/01dkdyukbdpqq.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/14889ev3t7n9l.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
-        "static/chunks/21qr6zy0kc_w0.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/2tscxjy-wxty0.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/3hdj40qmts5sf.js": [],
-        "static/chunks/turbopack-2l-codlnm8rcf.js": []
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/doctor": {
+      "initialGzip": 399323,
+      "initialRaw": 1363882,
+      "deferredGzip": 55847,
+      "deferredRaw": 164074,
+      "frameworkGzip": 178714,
+      "appGzip": 220609,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/226ye8c2-c3md.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/2pn5h47lr-d0p.js",
+        "static/chunks/3441tlc_9i0xw.js",
+        "static/chunks/37311a-an80s9.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [
+        "static/chunks/1imu27q6y-k60.js",
+        "static/chunks/39fgiytt47ohq.js"
+      ],
+      "deferredMarkers": {
+        "static/chunks/1imu27q6y-k60.js": [
+          "scanner_ui"
+        ],
+        "static/chunks/39fgiytt47ohq.js": [
+          "jsqr_lib"
+        ]
+      },
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/226ye8c2-c3md.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/2pn5h47lr-d0p.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
+        "static/chunks/37311a-an80s9.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/login": {
+      "initialGzip": 267143,
+      "initialRaw": 922476,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 88429,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3441tlc_9i0xw.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/3hurxfpg6e270.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/3hurxfpg6e270.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/p/[id]": {
+      "initialGzip": 193143,
+      "initialRaw": 649506,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 14429,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/print/[id]": {
+      "initialGzip": 207026,
+      "initialRaw": 689787,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 28312,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1i7lbf2s40-2d.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1i7lbf2s40-2d.js": [
+          "qrcode_react"
+        ],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/print/prescription/[id]": {
+      "initialGzip": 201363,
+      "initialRaw": 672677,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 22649,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/1u6m38lqbs_y7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/1u6m38lqbs_y7.js": [
+          "qrcode_react"
+        ],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/register": {
+      "initialGzip": 403789,
+      "initialRaw": 1377192,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 225075,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0ff-4j6jvrwrm.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/2zl2bqpbcu5a8.js",
+        "static/chunks/3441tlc_9i0xw.js",
+        "static/chunks/37311a-an80s9.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0ff-4j6jvrwrm.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/2zl2bqpbcu5a8.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
+        "static/chunks/37311a-an80s9.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/s/[token]": {
+      "initialGzip": 193143,
+      "initialRaw": 649506,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 14429,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/self-register": {
+      "initialGzip": 198222,
+      "initialRaw": 662868,
+      "deferredGzip": 0,
+      "deferredRaw": 0,
+      "frameworkGzip": 178714,
+      "appGzip": 19508,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0nwynmi2fa8hy.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [],
+      "deferredMarkers": {},
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0nwynmi2fa8hy.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
+      }
+    },
+    "/volunteer": {
+      "initialGzip": 406889,
+      "initialRaw": 1392964,
+      "deferredGzip": 54177,
+      "deferredRaw": 156367,
+      "frameworkGzip": 178714,
+      "appGzip": 228175,
+      "initialChunks": [
+        "static/chunks/0cz1d0mv5g_q7.js",
+        "static/chunks/0vk3nqty20h_-.js",
+        "static/chunks/10qk6v6416kh8.js",
+        "static/chunks/195f_-mo9az2u.js",
+        "static/chunks/1d4h-sglyo8ft.js",
+        "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/2dtpai3-ly_at.js",
+        "static/chunks/2iqi5r6scgf5z.js",
+        "static/chunks/3441tlc_9i0xw.js",
+        "static/chunks/37311a-an80s9.js",
+        "static/chunks/3hdj40qmts5sf.js",
+        "static/chunks/3p7e5mkyd8qcm.js",
+        "static/chunks/turbopack-059o7jux23qwg.js"
+      ],
+      "deferredChunks": [
+        "static/chunks/39fgiytt47ohq.js",
+        "static/chunks/41uf3r52oyj2u.js"
+      ],
+      "deferredMarkers": {
+        "static/chunks/39fgiytt47ohq.js": [
+          "jsqr_lib"
+        ],
+        "static/chunks/41uf3r52oyj2u.js": [
+          "scanner_ui"
+        ]
+      },
+      "initialMarkers": {
+        "static/chunks/0cz1d0mv5g_q7.js": [],
+        "static/chunks/0vk3nqty20h_-.js": [],
+        "static/chunks/10qk6v6416kh8.js": [],
+        "static/chunks/195f_-mo9az2u.js": [],
+        "static/chunks/1d4h-sglyo8ft.js": [],
+        "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/2dtpai3-ly_at.js": [],
+        "static/chunks/2iqi5r6scgf5z.js": [],
+        "static/chunks/3441tlc_9i0xw.js": [],
+        "static/chunks/37311a-an80s9.js": [],
+        "static/chunks/3hdj40qmts5sf.js": [],
+        "static/chunks/3p7e5mkyd8qcm.js": [],
+        "static/chunks/turbopack-059o7jux23qwg.js": []
       }
     }
   }

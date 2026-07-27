@@ -55,7 +55,7 @@ test.beforeEach(async ({ page, context }) => {
   await blockRemoteRequests(page);
 });
 
-test("desk slip has no passcode; A4 is one distinct slip + empty cells; thermal one-up", async ({
+test("desk slip has no passcode; thermal 58mm one-up format", async ({
   page,
 }) => {
   const patientId = env("E2E_PATIENT_ID");
@@ -74,14 +74,8 @@ test("desk slip has no passcode; A4 is one distinct slip + empty cells; thermal 
   );
   await expect(page.getByText(/passcode/i)).toHaveCount(0);
 
-  // Default: A4 multi-up — ONE distinct patient, three empty cells (#64).
-  await expect(page.getByTestId("desk-slip-a4")).toBeVisible();
-  await expect(page.getByTestId("desk-slip-a4")).toHaveAttribute(
-    "data-slip-count",
-    "1",
-  );
-  await expect(page.getByTestId("desk-slip-a4-cell")).toHaveCount(1);
-  await expect(page.getByTestId("desk-slip-a4-cell-empty")).toHaveCount(3);
+  // Thermal 58mm is the only format
+  await expect(page.getByTestId("desk-slip-thermal")).toBeVisible();
   await expect(page.getByTestId("desk-slip-reg-no")).toHaveCount(1);
   await expect(page.getByTestId("desk-slip-name").first()).toBeVisible();
   await expect(page.getByTestId("desk-slip-camp-day").first()).toBeVisible();
@@ -89,116 +83,13 @@ test("desk slip has no passcode; A4 is one distinct slip + empty cells; thermal 
 
   fs.mkdirSync(samplesDir, { recursive: true });
   await page
-    .getByTestId("desk-slip-a4")
-    .screenshot({ path: path.join(samplesDir, "a4-multi-up.png") });
-
-  // Switch to 58mm thermal
-  await page.getByRole("button", { name: "58mm thermal" }).click();
-  await expect(page.getByTestId("desk-slip-thermal")).toBeVisible();
-  await expect(page.getByTestId("desk-slip-a4")).toHaveCount(0);
-  await expect(page.getByTestId("desk-slip-reg-no")).toHaveCount(1);
-  await expect(page.getByText(/login passcode|desk-slip passcode/i)).toHaveCount(
-    0,
-  );
-
-  await page
     .getByTestId("desk-slip-thermal")
     .screenshot({ path: path.join(samplesDir, "thermal-58mm.png") });
-
-  // Format setting control is present (one obvious place)
-  await expect(
-    page.getByRole("group", { name: "Desk slip printer format" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "A4 multi-up" }).click();
-  await expect(page.getByTestId("desk-slip-a4")).toBeVisible();
 
   const hydration = consoleErrors.filter((t) => /hydrat/i.test(t));
   expect(hydration, `unexpected console: ${consoleErrors.join(" | ")}`).toEqual(
     [],
   );
-});
-
-test("print media geometry: A4 page, QR inside bounds, no overflow clip", async ({
-  page,
-}) => {
-  const patientId = env("E2E_PATIENT_ID");
-  await loginStaff(page, "volunteer");
-  await gotoHydrated(page, `/print/${patientId}`);
-
-  await page.emulateMedia({ media: "print" });
-  await expect(page.getByTestId("desk-slip-a4")).toBeVisible();
-
-  const geometry = await page.evaluate(() => {
-    const sheet = document.querySelector(
-      '[data-testid="desk-slip-a4"]',
-    ) as HTMLElement | null;
-    const qr = document.querySelector(
-      '[data-testid="desk-slip-qr"]',
-    ) as HTMLElement | null;
-    const name = document.querySelector(
-      '[data-testid="desk-slip-name"]',
-    ) as HTMLElement | null;
-    const reg = document.querySelector(
-      '[data-testid="desk-slip-reg-no"]',
-    ) as HTMLElement | null;
-    if (!sheet || !qr || !name || !reg) {
-      return { ok: false as const, reason: "missing nodes" };
-    }
-    const sheetBox = sheet.getBoundingClientRect();
-    const qrBox = qr.getBoundingClientRect();
-    const nameBox = name.getBoundingClientRect();
-    const style = getComputedStyle(sheet);
-    const overflow = style.overflow;
-    // QR fully inside sheet
-    const qrInside =
-      qrBox.left >= sheetBox.left - 1 &&
-      qrBox.top >= sheetBox.top - 1 &&
-      qrBox.right <= sheetBox.right + 1 &&
-      qrBox.bottom <= sheetBox.bottom + 1;
-    const nameInside =
-      nameBox.left >= sheetBox.left - 1 &&
-      nameBox.right <= sheetBox.right + 1;
-    // Reg number should be the largest text element
-    const regFont = parseFloat(getComputedStyle(reg).fontSize);
-    const nameFont = parseFloat(getComputedStyle(name).fontSize);
-    return {
-      ok: true as const,
-      qrInside,
-      nameInside,
-      overflow,
-      regFont,
-      nameFont,
-      sheetWidth: sheetBox.width,
-      sheetHeight: sheetBox.height,
-      emptyCount: document.querySelectorAll(
-        '[data-testid="desk-slip-a4-cell-empty"]',
-      ).length,
-      filledCount: document.querySelectorAll(
-        '[data-testid="desk-slip-a4-cell"]',
-      ).length,
-    };
-  });
-
-  expect(geometry.ok).toBe(true);
-  if (!geometry.ok) return;
-  expect(geometry.qrInside).toBe(true);
-  expect(geometry.nameInside).toBe(true);
-  expect(geometry.overflow === "hidden").toBe(false);
-  expect(geometry.regFont).toBeGreaterThan(geometry.nameFont);
-  expect(geometry.filledCount).toBe(1);
-  expect(geometry.emptyCount).toBe(3);
-  // A4 preview ~210mm wide at 96dpi ≈ 794px; allow layout variance
-  expect(geometry.sheetWidth).toBeGreaterThan(500);
-
-  fs.mkdirSync(scratchDir, { recursive: true });
-  const pdfPath = path.join(scratchDir, "a4-single-print-media.pdf");
-  const pdf = await page.pdf({
-    path: pdfPath,
-    format: "A4",
-    printBackground: true,
-    margin: { top: "4mm", right: "4mm", bottom: "4mm", left: "4mm" },
-  });
-  expect(pdf.byteLength).toBeGreaterThan(1000);
 });
 
 test("thermal print media: 58mm-class width, content not overflow-hidden", async ({
@@ -207,7 +98,6 @@ test("thermal print media: 58mm-class width, content not overflow-hidden", async
   const patientId = env("E2E_PATIENT_ID");
   await loginStaff(page, "volunteer");
   await gotoHydrated(page, `/print/${patientId}`);
-  await page.getByRole("button", { name: "58mm thermal" }).click();
   await expect(page.getByTestId("desk-slip-thermal")).toBeVisible();
 
   await page.emulateMedia({ media: "print" });
@@ -253,7 +143,6 @@ test("thermal print media: 58mm-class width, content not overflow-hidden", async
   await page.pdf({
     path: path.join(scratchDir, "thermal-print-media.pdf"),
     width: "58mm",
-    // Tall enough for max content — not a hard 110mm clip
     height: "200mm",
     printBackground: true,
     margin: { top: "2mm", right: "2mm", bottom: "2mm", left: "2mm" },

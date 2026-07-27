@@ -23,6 +23,8 @@ export const RETRY_EXHAUSTED_COPY = {
     "Could not check in this patient. Check the internet and press Try Again.",
   search:
     "Could not search names. Check the internet and press Try Again.",
+  prescription:
+    "Could not submit prescription. Check the internet and press Try Again.",
 } as const;
 
 /**

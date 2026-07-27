@@ -19,6 +19,8 @@ import { QrDecodeOrchestrator } from "@/lib/qr-decode-orchestrator";
 import {
   assignPatientDoctorWithRetries,
   checkInPatientWithRetries,
+  doctorSubmitPrescriptionWithRetries,
+  addPrescriptionAmendmentWithRetries,
   lookupPatientScanWithRetries,
   type AssignRow,
   type LookupRow,
@@ -85,6 +87,14 @@ export function QrScanner({
   const [assigned, setAssigned] = useState<AssignRow | null>(null);
   const [doctorId, setDoctorId] = useState("");
   const [assigning, setAssigning] = useState(false);
+
+  const [diagnosis, setDiagnosis] = useState("");
+  const [examination, setExamination] = useState("");
+  const [medicines, setMedicines] = useState("");
+  const [advice, setAdvice] = useState("");
+  const [destinations, setDestinations] = useState<string[]>([]);
+  const [spectaclesType, setSpectaclesType] = useState<"fixed" | "bifocal">("fixed");
+  const [amendmentContent, setAmendmentContent] = useState("");
 
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
@@ -176,8 +186,184 @@ export function QrScanner({
     setAssigned(null);
     setManual("");
     setDoctorId("");
+    setDiagnosis("");
+    setExamination("");
+    setMedicines("");
+    setAdvice("");
+    setDestinations([]);
+    setSpectaclesType("fixed");
+    setAmendmentContent("");
     handledRef.current = false;
   }, []);
+
+  const submitPrescription = useCallback(
+    async (patientId: string) => {
+      if (assigningRef.current) return null;
+      assigningRef.current = true;
+      setAssigning(true);
+      setError(null);
+
+      const supabase = createClient();
+      const outcome = await doctorSubmitPrescriptionWithRetries({
+        patientId,
+        diagnosis: diagnosis.trim() || null,
+        examination: examination.trim() || null,
+        medicines: medicines.trim() || null,
+        advice: advice.trim() || null,
+        spectaclesType: destinations.includes("spectacles") ? spectaclesType : null,
+        destinations,
+        rpc: async (fn, args) => {
+          const result = await supabase.rpc(fn, args);
+          return {
+            data: result.data,
+            error: result.error
+              ? {
+                  message: result.error.message,
+                  code: result.error.code,
+                  details: result.error.details,
+                  hint: result.error.hint,
+                }
+              : null,
+          };
+        },
+        errorContext: "qr-scanner.submit-prescription",
+        errorFallback: "Could not submit prescription. Try again.",
+      });
+
+      if (!outcome.ok) {
+        setError(outcome.error);
+        assigningRef.current = false;
+        setAssigning(false);
+        return null;
+      }
+
+      const row = outcome.row;
+      const fromCamera =
+        lookupOriginRef.current === "camera" && mode === "doctor";
+      const cameraRaw = lastCameraRawRef.current;
+
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(80);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const orderCountText =
+        row.created_orders_count > 0
+          ? ` (${row.created_orders_count} order${row.created_orders_count === 1 ? "" : "s"})`
+          : "";
+      setToastMsg(`#${row.reg_no} marked seen${orderCountText}`);
+      readyForNext();
+
+      if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
+        restartDecodeLoopRef.current?.();
+      } else {
+        await stopScanner();
+      }
+
+      router.refresh();
+      assigningRef.current = false;
+      setAssigning(false);
+      return row;
+    },
+    [
+      mode,
+      diagnosis,
+      examination,
+      medicines,
+      advice,
+      destinations,
+      spectaclesType,
+      readyForNext,
+      resumeDecodeSameSession,
+      router,
+      stopScanner,
+    ],
+  );
+
+  const submitAmendment = useCallback(
+    async (prescriptionId: string) => {
+      if (assigningRef.current || !amendmentContent.trim()) return null;
+      assigningRef.current = true;
+      setAssigning(true);
+      setError(null);
+
+      const supabase = createClient();
+      const outcome = await addPrescriptionAmendmentWithRetries({
+        prescriptionId,
+        content: amendmentContent.trim(),
+        rpc: async (fn, args) => {
+          const result = await supabase.rpc(fn, args);
+          return {
+            data: result.data,
+            error: result.error
+              ? {
+                  message: result.error.message,
+                  code: result.error.code,
+                  details: result.error.details,
+                  hint: result.error.hint,
+                }
+              : null,
+          };
+        },
+        errorContext: "qr-scanner.add-amendment",
+        errorFallback: "Could not add amendment. Try again.",
+      });
+
+      if (!outcome.ok) {
+        setError(outcome.error);
+        assigningRef.current = false;
+        setAssigning(false);
+        return null;
+      }
+
+      try {
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(80);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      setToastMsg("Amendment appended to prescription");
+      setAmendmentContent("");
+      if (lookup) {
+        setLookup({
+          ...lookup,
+          amendments: [
+            ...(lookup.amendments || []),
+            {
+              id: outcome.row.id,
+              author_id: outcome.row.author_id,
+              author_name: "Doctor",
+              content: outcome.row.content,
+              created_at: outcome.row.created_at,
+            },
+          ],
+        });
+      }
+
+      router.refresh();
+      assigningRef.current = false;
+      setAssigning(false);
+      return outcome.row;
+    },
+    [amendmentContent, lookup, router],
+  );
+
+  useEffect(() => {
+    if (!lookup) return;
+    if (lookup.queue_status === "seen" || lookup.queue_status === "waiting") {
+      setDiagnosis(lookup.diagnosis || "");
+      setExamination(lookup.examination || "");
+      setMedicines(lookup.medicines || "");
+      setAdvice(lookup.advice || "");
+      setSpectaclesType((lookup.spectacles_type as "fixed" | "bifocal") || "fixed");
+      setDestinations(lookup.destinations || []);
+    }
+  }, [lookup]);
 
   const assignDoctor = useCallback(
     async (opts: { id?: string; regNo?: number }, chosenDoctorId: string | null) => {
@@ -1034,7 +1220,7 @@ export function QrScanner({
             </>
           ) : null}
 
-          {lookup.queue_status === "seen" ? (
+          {lookup.queue_status === "seen" && mode !== "doctor" ? (
             <>
               <WarningBox>
                 <div className="flex items-start gap-2.5">
@@ -1052,14 +1238,12 @@ export function QrScanner({
                 </div>
               </WarningBox>
               <div className="mt-3 flex flex-wrap gap-2">
-                {mode !== "doctor" ? (
-                  <Link
-                    href={`/print/${lookup.id}`}
-                    className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
-                  >
-                    Reprint form
-                  </Link>
-                ) : null}
+                <Link
+                  href={`/print/${lookup.id}`}
+                  className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
+                >
+                  Reprint form
+                </Link>
                 <Button
                   type="button"
                   variant="secondary"
@@ -1071,6 +1255,118 @@ export function QrScanner({
                 </Button>
               </div>
             </>
+          ) : null}
+
+          {lookup.queue_status === "seen" && mode === "doctor" ? (
+            <div className="mt-3 space-y-4">
+              <div className="rounded-xl border border-brand/20 bg-brand-soft p-3.5 sm:p-4 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-brand" data-testid="doctor-seen-header">
+                      Patient already seen{lookup.doctor_name ? ` by Dr. ${lookup.doctor_name}` : ""}
+                    </p>
+                    <p className="text-sm font-semibold text-foreground">
+                      #{lookup.reg_no} · {lookup.full_name}
+                    </p>
+                  </div>
+                  <div>
+                    {lookup.is_locked ? (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-950 border border-amber-300">
+                        Prescription Locked (Acted Upon)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-950 border border-emerald-300">
+                        Unlocked Edit (Orders Pending)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {lookup.is_locked ? (
+                <div className="space-y-4">
+                  {/* Read-only original prescription body */}
+                  <div className="rounded-xl border border-border bg-slate-50 p-3.5 space-y-2 text-xs">
+                    <p className="font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">
+                      Original Prescription (Locked)
+                    </p>
+                    {lookup.diagnosis ? <p><strong className="text-slate-700">Diagnosis:</strong> {lookup.diagnosis}</p> : null}
+                    {lookup.examination ? <p><strong className="text-slate-700">Examination:</strong> {lookup.examination}</p> : null}
+                    {lookup.medicines ? <p><strong className="text-slate-700">Medicines:</strong> {lookup.medicines}</p> : null}
+                    {lookup.advice ? <p><strong className="text-slate-700">Advice:</strong> {lookup.advice}</p> : null}
+                    {lookup.spectacles_type ? <p><strong className="text-slate-700">Spectacles:</strong> {lookup.spectacles_type}</p> : null}
+                    {lookup.destinations && lookup.destinations.length > 0 ? (
+                      <p><strong className="text-slate-700">Destinations:</strong> {lookup.destinations.join(", ").toUpperCase()}</p>
+                    ) : null}
+                  </div>
+
+                  {/* Existing amendments list */}
+                  {lookup.amendments && lookup.amendments.length > 0 ? (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3.5 space-y-2 text-xs" data-testid="amendments-list">
+                      <p className="font-bold text-amber-950 uppercase tracking-wide border-b border-amber-200 pb-1">
+                        Prescription Amendments ({lookup.amendments.length})
+                      </p>
+                      <div className="space-y-2">
+                        {lookup.amendments.map((a) => (
+                          <div key={a.id} className="rounded border border-amber-200 bg-white p-2.5 space-y-1">
+                            <div className="flex justify-between text-[11px] font-semibold text-amber-950">
+                              <span>Dr. {a.author_name}</span>
+                              <time className="text-slate-500">{new Date(a.created_at).toLocaleString()}</time>
+                            </div>
+                            <p className="text-sm font-medium text-slate-900 whitespace-pre-wrap">{a.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Form to add new amendment */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (lookup.prescription_id) {
+                        void submitAmendment(lookup.prescription_id);
+                      }
+                    }}
+                    className="space-y-3 pt-1"
+                    data-testid="add-amendment-form"
+                  >
+                    <div>
+                      <label htmlFor={`amend-${uid}`} className="block text-xs font-bold text-foreground">
+                        Add Prescription Amendment
+                      </label>
+                      <textarea
+                        id={`amend-${uid}`}
+                        rows={3}
+                        placeholder="Type amendment content (e.g. Prescribed antibiotic eye drop 4x daily)..."
+                        value={amendmentContent}
+                        onChange={(e) => setAmendmentContent(e.target.value)}
+                        disabled={assigning}
+                        className="mt-1 flex w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="submit"
+                        disabled={assigning || !amendmentContent.trim()}
+                        loading={assigning}
+                      >
+                        {assigning ? "Appending amendment…" : "Add Amendment"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="w-auto"
+                        onClick={resetResult}
+                      >
+                        Scan next
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {lookup.queue_status === "waiting" && mode !== "doctor" ? (
@@ -1159,36 +1455,168 @@ export function QrScanner({
             </div>
           ) : null}
 
-          {lookup.queue_status === "waiting" && mode === "doctor" ? (
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-muted">
-                Read-only — check the name matches the patient in front of you.
-              </p>
-              {lookup.phone ? (
-                <p className="text-sm text-foreground">
-                  <span className="text-muted">Phone </span>
-                  <span className="tabular">{lookup.phone}</span>
+          {(lookup.queue_status === "waiting" && mode === "doctor") || (lookup.queue_status === "seen" && mode === "doctor" && !lookup.is_locked) ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitPrescription(lookup.id);
+              }}
+              className="mt-4 space-y-4"
+            >
+              <div className="rounded-xl border border-border bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Prescription Details
                 </p>
-              ) : null}
-              <Button
-                type="button"
-                size="lg"
-                disabled={assigning}
-                loading={assigning}
-                onClick={() => void assignDoctor({ id: lookup.id }, null)}
-              >
-                {assigning ? "Marking seen…" : "Mark seen"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={assigning || looking}
-                onClick={resetResult}
-              >
-                Wrong patient
-              </Button>
-            </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor={`diag-${uid}`} className="block text-xs font-bold text-foreground">
+                      Diagnosis (Nidan)
+                    </label>
+                    <input
+                      id={`diag-${uid}`}
+                      type="text"
+                      placeholder="e.g. Cataract, Refractive error"
+                      value={diagnosis}
+                      onChange={(e) => setDiagnosis(e.target.value)}
+                      disabled={assigning}
+                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`exam-${uid}`} className="block text-xs font-bold text-foreground">
+                      Examination (Jaanch)
+                    </label>
+                    <input
+                      id={`exam-${uid}`}
+                      type="text"
+                      placeholder="e.g. RE 6/12 LE 6/18"
+                      value={examination}
+                      onChange={(e) => setExamination(e.target.value)}
+                      disabled={assigning}
+                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`meds-${uid}`} className="block text-xs font-bold text-foreground">
+                      Medicines (Dawaai)
+                    </label>
+                    <input
+                      id={`meds-${uid}`}
+                      type="text"
+                      placeholder="e.g. Eye drops 3x daily"
+                      value={medicines}
+                      onChange={(e) => setMedicines(e.target.value)}
+                      disabled={assigning}
+                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`adv-${uid}`} className="block text-xs font-bold text-foreground">
+                      Advice (Salah)
+                    </label>
+                    <input
+                      id={`adv-${uid}`}
+                      type="text"
+                      placeholder="e.g. Follow up in 1 month"
+                      value={advice}
+                      onChange={(e) => setAdvice(e.target.value)}
+                      disabled={assigning}
+                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-slate-50 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Treatment Destinations
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { id: "ot", label: "OT (Surgery)" },
+                    { id: "pharmacy", label: "Pharmacy" },
+                    { id: "spectacles", label: "Spectacles" },
+                  ].map((dest) => {
+                    const checked = destinations.includes(dest.id);
+                    return (
+                      <label
+                        key={dest.id}
+                        className={`flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                          checked
+                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
+                            : "border-border bg-white text-foreground hover:border-brand/40"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={assigning}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setDestinations([...destinations, dest.id]);
+                            } else {
+                              setDestinations(destinations.filter((d) => d !== dest.id));
+                            }
+                          }}
+                          className="h-5 w-5 rounded border-border text-brand focus:ring-brand"
+                        />
+                        <span>{dest.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {destinations.includes("spectacles") ? (
+                  <div className="mt-3 rounded-xl border border-brand/30 bg-white p-3 space-y-2">
+                    <p className="text-xs font-bold text-foreground">Spectacles Power Type</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: "fixed", label: "Fixed Power" },
+                        { id: "bifocal", label: "Bifocal" },
+                      ].map((typeOption) => (
+                        <button
+                          key={typeOption.id}
+                          type="button"
+                          disabled={assigning}
+                          onClick={() => setSpectaclesType(typeOption.id as "fixed" | "bifocal")}
+                          className={`min-h-[44px] rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+                            spectaclesType === typeOption.id
+                              ? "border-brand bg-brand text-white"
+                              : "border-border bg-white text-foreground hover:border-brand/40"
+                          }`}
+                        >
+                          {typeOption.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="submit"
+                  size="lg"
+                  disabled={assigning}
+                  loading={assigning}
+                >
+                  {assigning
+                    ? "Saving prescription & marking seen…"
+                    : destinations.length > 0
+                    ? `Submit Prescription (${destinations.length} order${destinations.length === 1 ? "" : "s"}) · Mark seen`
+                    : "Mark seen"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={assigning || looking}
+                  onClick={resetResult}
+                >
+                  Wrong patient
+                </Button>
+              </div>
+            </form>
           ) : null}
         </div>
       ) : null}

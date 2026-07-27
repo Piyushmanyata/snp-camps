@@ -43,13 +43,6 @@ export function patientPrintPath(patientId: string): string {
 }
 
 /**
- * Desk print mode after successful registration (#64).
- * - thermal: immediate one-up print target navigation
- * - a4: enqueue station batch (max 4 distinct); open sheet when full or flush
- */
-export type DeskPrintMode = "thermal" | "a4";
-
-/**
  * Controlled print target acquired during the submit gesture (#62).
  * Browser APIs stay outside registration RPC logic via this adapter.
  */

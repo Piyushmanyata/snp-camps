@@ -45,6 +45,7 @@ next-env.d.ts
 
 .vercel
 
-# Local #38 dump scratch (never commit)
-supabase/_scratch/
+# Scratch directory
+.scratch/
+
 

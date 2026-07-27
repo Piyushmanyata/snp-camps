@@ -7,7 +7,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
 import type { DeskSlipSlot } from "@/components/print-sheet";
 import type { QueueStatus } from "@/lib/types";
-import { A4_BATCH_MAX } from "@/lib/a4-batch-queue";
 
 export type LoadedPrintPatient = DeskSlipSlot & {
   queueStatus: QueueStatus;
@@ -66,7 +65,6 @@ export async function loadPrintSlips(
     if (!isPatientUuid(id) || seen.has(id)) continue;
     seen.add(id);
     clean.push(id);
-    if (clean.length >= A4_BATCH_MAX) break;
   }
   if (clean.length === 0) return [];
 

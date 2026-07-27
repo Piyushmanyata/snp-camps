@@ -13,6 +13,8 @@ const dbTestFiles = [
   "tests/patient-auth-retirement.db.test.mjs",
   "tests/status-queue-position.db.test.mjs",
   "tests/camp-day-capacity-concurrency.db.test.mjs",
+  "tests/prescriptions.db.test.mjs",
+  "tests/counter-desk.db.test.mjs",
   "tests/ops-readiness.test.mjs",
 ];
 

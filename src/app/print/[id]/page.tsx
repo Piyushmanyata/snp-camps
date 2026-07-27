@@ -57,7 +57,7 @@ export default async function PrintPage({
     );
   }
 
-  // Single-patient route: one distinct slip (A4 leaves 3 empty cells; never 4× copy).
+  // Single-patient route: one thermal slip.
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
       <DeskSlipPrint
@@ -75,7 +75,6 @@ export default async function PrintPage({
           profile.role === "admin" ? "Admin dashboard" : "Volunteer desk"
         }
         autoPrint={autoPrint}
-        isBatch={false}
       />
     </main>
   );

@@ -8,33 +8,6 @@
   border: 1px solid var(--border, #e2e8f0);
 }
 
-/* ---- Desk slip: A4 multi-up (screen preview) ---- */
-.desk-slip-a4-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  min-height: 260mm;
-  width: 100%;
-}
-
-.desk-slip-a4-cell {
-  border: 1px dashed #94a3b8;
-  min-height: 128mm;
-  page-break-inside: avoid;
-  break-inside: avoid;
-  overflow: visible;
-}
-
-.desk-slip-a4-cell--empty {
-  background: repeating-linear-gradient(
-    -45deg,
-    #fff,
-    #fff 6px,
-    #f8fafc 6px,
-    #f8fafc 12px
-  );
-}
-
 .desk-slip-thermal {
   width: 58mm;
   max-width: 58mm;
@@ -53,21 +26,21 @@
   hyphens: auto;
 }
 
-/* Named pages — deleting one format = delete its @page + component branch */
-@page desk-a4 {
-  size: A4 portrait;
-  margin: 4mm;
-}
-
-/* Thermal roll: fixed width, auto height (content-safe; not a hard 110 mm clip) */
+/* Thermal roll: fixed width, auto height */
 @page desk-thermal58 {
   size: 58mm auto;
   margin: 2mm;
 }
 
+/* A4 Prescription layout */
+@page prescription-a4 {
+  size: A4;
+  margin: 15mm;
+}
+
 @page {
-  size: A4 portrait;
-  margin: 4mm;
+  size: A4;
+  margin: 15mm;
 }
 
 @media print {
@@ -103,32 +76,9 @@
     box-shadow: none !important;
     background: #fff !important;
     color: var(--print-ink, #0f172a) !important;
-    /* Content-safe: do not clip long names / QR */
     overflow: visible !important;
     page-break-inside: avoid;
     break-inside: avoid;
-  }
-
-  .desk-slip-a4 {
-    page: desk-a4;
-    width: 100%;
-    height: auto;
-  }
-
-  .desk-slip-a4-grid {
-    min-height: 0;
-    height: 289mm; /* A4 printable height ≈ 297 - 8mm margins */
-    width: 100%;
-  }
-
-  .desk-slip-a4-cell {
-    min-height: 0;
-    border-color: #64748b;
-    overflow: visible;
-  }
-
-  .desk-slip-a4-cell--empty {
-    background: none;
   }
 
   .desk-slip-thermal {
@@ -139,6 +89,23 @@
     height: auto !important;
     border: none !important;
     overflow: visible !important;
+  }
+
+  .prescription-a4 {
+    page: prescription-a4;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .ruled-lines {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .no-print {
@@ -155,3 +122,4 @@
     display: none !important;
   }
 }
+

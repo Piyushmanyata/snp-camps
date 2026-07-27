@@ -63,7 +63,7 @@ export const ROUTE_FORBIDDEN_EAGER_MARKERS = {
   "/s/[token]": ["jsqr_lib", "qrcode_react"],
   // Print routes may include qrcode_react eagerly (that is the page purpose).
   "/print/[id]": ["jsqr_lib"],
-  "/print/batch": ["jsqr_lib"],
+  "/print/prescription/[id]": ["jsqr_lib"],
 };
 
 /**

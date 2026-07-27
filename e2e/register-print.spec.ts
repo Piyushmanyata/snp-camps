@@ -122,15 +122,6 @@ async function fillMinimalRegistration(page: Page, fullName: string) {
 test.beforeEach(async ({ page, context }) => {
   await context.clearCookies();
   await blockRemoteRequests(page);
-  // #62 popup recovery paths use thermal immediate print; A4 batches (#64).
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("snp.deskSlipFormat", "thermal58");
-      window.localStorage.removeItem("snp.a4BatchQueue");
-    } catch {
-      // ignore
-    }
-  });
 });
 
 test("delayed success navigates pre-opened print target (no noopener open)", async ({
@@ -201,10 +192,6 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   await expect(page.getByTestId("desk-print-recovery")).toHaveAttribute(
     "data-patient-id",
     mock.patientId,
-  );
-  await expect(page.getByTestId("desk-print-recovery")).toHaveAttribute(
-    "data-print-format",
-    "thermal58",
   );
   await expect(page.getByTestId("desk-register-flash")).toContainText(
     /Print window open/i,

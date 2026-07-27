@@ -32,6 +32,14 @@ export type DeskRpc = (
   args: Record<string, unknown>,
 ) => Promise<{ data: unknown; error: DeskRpcError | null }>;
 
+export type PrescriptionAmendmentItem = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+};
+
 export type LookupRow = {
   id: string;
   reg_no: number;
@@ -40,6 +48,15 @@ export type LookupRow = {
   phone: string | null;
   doctor_id: string | null;
   doctor_name: string | null;
+  prescription_id?: string | null;
+  diagnosis?: string | null;
+  examination?: string | null;
+  medicines?: string | null;
+  advice?: string | null;
+  spectacles_type?: string | null;
+  destinations?: string[] | null;
+  is_locked?: boolean | null;
+  amendments?: PrescriptionAmendmentItem[] | null;
 };
 
 export type AssignRow = {
@@ -534,3 +551,165 @@ export async function searchRegisteredPatientsWithRetries(options: {
     options.sleep,
   );
 }
+
+export type SubmitPrescriptionRow = {
+  prescription_id: string;
+  patient_id: string;
+  reg_no: number;
+  queue_status: string;
+  created_orders_count: number;
+};
+
+export async function doctorSubmitPrescriptionWithRetries(options: {
+  patientId: string;
+  diagnosis?: string | null;
+  examination?: string | null;
+  medicines?: string | null;
+  advice?: string | null;
+  spectaclesType?: "fixed" | "bifocal" | null;
+  destinations?: string[];
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<
+  | { ok: true; row: SubmitPrescriptionRow }
+  | { ok: false; error: string }
+> {
+  type Out =
+    | { ok: true; row: SubmitPrescriptionRow }
+    | { ok: false; error: string };
+
+  const context = options.errorContext ?? "desk-ops.submit-prescription";
+  const fallback =
+    options.errorFallback ?? "Could not submit prescription. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc(
+          "doctor_submit_prescription",
+          {
+            p_patient_id: options.patientId,
+            p_diagnosis: options.diagnosis ?? null,
+            p_examination: options.examination ?? null,
+            p_medicines: options.medicines ?? null,
+            p_advice: options.advice ?? null,
+            p_spectacles_type: options.spectaclesType ?? null,
+            p_destinations: options.destinations ?? [],
+          },
+        );
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const row = firstRow<SubmitPrescriptionRow>(data);
+        if (!row) {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Prescription submission did not complete. Try again.",
+            },
+          };
+        }
+        return { done: true, value: { ok: true, row } };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.prescription },
+    options.sleep,
+  );
+}
+
+export type AmendmentRow = {
+  id: string;
+  prescription_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+};
+
+export async function addPrescriptionAmendmentWithRetries(options: {
+  prescriptionId: string;
+  content: string;
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<
+  | { ok: true; row: AmendmentRow }
+  | { ok: false; error: string }
+> {
+  type Out =
+    | { ok: true; row: AmendmentRow }
+    | { ok: false; error: string };
+
+  const context = options.errorContext ?? "desk-ops.add-amendment";
+  const fallback =
+    options.errorFallback ?? "Could not add amendment. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc(
+          "add_prescription_amendment",
+          {
+            p_prescription_id: options.prescriptionId,
+            p_content: options.content,
+          },
+        );
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const row = firstRow<AmendmentRow>(data);
+        if (!row) {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Adding amendment did not complete. Try again.",
+            },
+          };
+        }
+        return { done: true, value: { ok: true, row } };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.prescription },
+    options.sleep,
+  );
+}
+
+
