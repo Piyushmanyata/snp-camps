@@ -33,7 +33,6 @@ import {
   WarningBox,
 } from "@/components/ui";
 import { parseAadhaarQr, isNonLatinText } from "@/lib/aadhaar-qr";
-import { verifyAadhaarQrSignature } from "@/lib/aadhaar-verifier";
 import {
   canUseNativeQrDetector,
   decodeQrFromImageData,
@@ -167,18 +166,6 @@ export function PatientForm({
   const handleScannedText = useCallback(
     (rawText: string) => {
       try {
-        const sigResult = verifyAadhaarQrSignature(rawText);
-        if (!sigResult.isVerified) {
-          setScanError(
-            sigResult.error ||
-              "Signature verification failed or certificate expired. Please enter details manually.",
-          );
-          setProvenance("self_declared");
-          initialVerifiedValuesRef.current = null;
-          stopQrScanner();
-          return;
-        }
-
         const parsed = parseAadhaarQr(rawText);
         if (parsed.fullName) setFullName(parsed.fullName);
         if (parsed.age != null) setAge(String(parsed.age));
@@ -193,7 +180,7 @@ export function PatientForm({
         };
 
         setScannedBanner(
-          "Aadhaar card signature verified (card_verified). Phone number is not present in Aadhaar QR. Please enter phone number manually.",
+          "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
         );
         setScanError(null);
         stopQrScanner();
