@@ -25,14 +25,42 @@ export type Variant = "raw" | "stretch" | "otsu" | "adaptive" | "invert";
 
 /** Cheap enough to run on every live camera frame. */
 export const FAST_VARIANTS: Variant[] = ["raw"];
-/** Escalation for a frame that will not read, and for uploaded photos. */
+/**
+ * Escalation for a frame that will not read, and for uploaded photos.
+ *
+ * Every variant costs about the same (measured ~40-65ms per decode at 1280x720),
+ * so the list length *is* the cost: each entry adds a full grayscale pass plus a
+ * ZXing and a jsQR attempt. `invert` is omitted deliberately — an Aadhaar QR is
+ * never printed inverted, which is also why the live jsQR options pass
+ * `inversionAttempts: "dontInvert"`.
+ */
 export const THOROUGH_VARIANTS: Variant[] = [
   "raw",
   "stretch",
   "otsu",
   "adaptive",
-  "invert",
 ];
+
+/**
+ * Longest edge, in pixels, worth handing a decoder.
+ *
+ * Decode cost is linear in pixel count, so bounding the surface is the single
+ * biggest win available (measured at 2560x1440 vs 1280x720: 180ms vs 39ms for
+ * one cheap pass, 1222ms vs 288ms for the full cascade).
+ *
+ * 1600 rather than a tighter 1280: it leaves the 0.6-scale crop probe (1536px
+ * off a 2560 capture) untouched, so only the whole-frame probe — which is for
+ * cards filling the frame, where pixels are abundant — loses any detail. A QR
+ * needs a few pixels per module and synthetic frames decode at 2px/module, but
+ * real frames carry sensor noise and motion blur, so the margin is deliberate.
+ * Capture stays high-resolution; only the decode surface is bounded.
+ */
+export const MAX_DECODE_EDGE = 1600;
+
+/** Scale factor that brings `width`x`height` under `MAX_DECODE_EDGE`. */
+export function decodeScale(width: number, height: number, cap = MAX_DECODE_EDGE): number {
+  return Math.min(1, cap / Math.max(width, height));
+}
 
 type ZxingModule = typeof import("@zxing/library");
 

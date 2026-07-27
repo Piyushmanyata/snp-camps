@@ -54,6 +54,14 @@ const SCAN_FRAME_INTERVAL_MS = 1000 / SCAN_FPS;
  */
 const ESCALATE_AFTER_FRAMES = 12;
 /**
+ * Once escalated, how often a frame runs the full cascade rather than the cheap
+ * pass. The cascade costs roughly 7x a cheap pass on a miss, so running it on
+ * every frame both stalls the probe-geometry sweep and drops the effective frame
+ * rate to a crawl. Interleaving keeps the cheap sweep live and still retries the
+ * heavy passes several times a second.
+ */
+const THOROUGH_EVERY_N_FRAMES = 4;
+/**
  * Probe geometries cycled one per frame, so all card sizes are covered within
  * ~4 frames without making any single frame expensive.
  *
@@ -71,6 +79,11 @@ const LIVE_PROBES: { scale: number; zoom: number; offsetX?: number; offsetY?: nu
   { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
 ];
 /** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
+/**
+ * Upload decodes get a looser pixel budget than live frames: there is no frame
+ * deadline, and the tight centre crops need detail left to crop into.
+ */
+const UPLOAD_MAX_EDGE = 2048;
 const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
 const UPLOAD_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "attemptBoth" };
 
@@ -310,14 +323,22 @@ export function PatientForm({
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) throw new Error("Canvas unavailable.");
 
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const pipeline = await loadQrPipeline();
 
-        // A still photo has no time pressure, so run the whole cascade: every
+        // A phone camera photo is 12MP or more, and decode cost is linear in
+        // pixels — the cascade over four crops of a full-resolution photo took
+        // tens of seconds. Bound the working copy generously: even the tightest
+        // 0.35 crop of this still leaves a QR several hundred pixels across.
+        const srcW = img.naturalWidth || img.width;
+        const srcH = img.naturalHeight || img.height;
+        const fit = pipeline.decodeScale(srcW, srcH, UPLOAD_MAX_EDGE);
+        canvas.width = Math.max(1, Math.floor(srcW * fit));
+        canvas.height = Math.max(1, Math.floor(srcH * fit));
+        ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, canvas.width, canvas.height);
+
+        // A still photo has no frame budget, so run the whole cascade: every
         // crop, every preprocessing variant, both decoders. This is the path a
         // photocopy realistically goes through.
-        const pipeline = await loadQrPipeline();
         const [jsQR, zxing] = await Promise.all([
           loadJsQr().catch(() => undefined),
           pipeline.loadZxing(),
@@ -452,87 +473,65 @@ export function PatientForm({
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const cropCanvas = document.createElement("canvas");
-    const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
     let frameTick = 0;
     let lastFrameAt = 0;
     let busy = false;
 
+    /**
+     * Decode one probe geometry.
+     *
+     * Crops straight out of the video element in a single scaled drawImage, at a
+     * size bounded by MAX_DECODE_EDGE. The previous version drew the whole frame
+     * at native camera resolution (2560x1440) into an intermediate canvas on
+     * *every* probe, copied a crop out of it, then upscaled that into a third
+     * canvas — three full-resolution surfaces and a getImageData per probe, for
+     * a decode that gains nothing above ~8px per QR module.
+     */
     const decodeProbe = (
       probe: { scale: number; zoom: number; offsetX?: number; offsetY?: number },
       thorough: boolean,
     ): QrPayload | null => {
       if (!ctx || !video()) return null;
       const v = video()!;
-      canvas.width = v.videoWidth;
-      canvas.height = v.videoHeight;
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const cw = Math.floor(v.videoWidth * probe.scale);
+      const ch = Math.floor(v.videoHeight * probe.scale);
+      if (cw < 100 || ch < 100) return null;
 
-      let source: HTMLCanvasElement = canvas;
-      let sourceCtx: CanvasRenderingContext2D = ctx;
+      const sx = Math.max(
+        0,
+        Math.min(
+          v.videoWidth - cw,
+          Math.floor((v.videoWidth - cw) / 2 + (probe.offsetX || 0) * v.videoWidth),
+        ),
+      );
+      const sy = Math.max(
+        0,
+        Math.min(
+          v.videoHeight - ch,
+          Math.floor((v.videoHeight - ch) / 2 + (probe.offsetY || 0) * v.videoHeight),
+        ),
+      );
 
-      if (probe.scale < 1) {
-        const cw = Math.floor(canvas.width * probe.scale);
-        const ch = Math.floor(canvas.height * probe.scale);
-        if (cw < 100 || ch < 100 || !cropCtx) return null;
-        cropCanvas.width = cw;
-        cropCanvas.height = ch;
-        const sx = Math.max(
-          0,
-          Math.min(
-            canvas.width - cw,
-            Math.floor((canvas.width - cw) / 2 + (probe.offsetX || 0) * canvas.width),
-          ),
-        );
-        const sy = Math.max(
-          0,
-          Math.min(
-            canvas.height - ch,
-            Math.floor((canvas.height - ch) / 2 + (probe.offsetY || 0) * canvas.height),
-          ),
-        );
-        cropCtx.drawImage(
-          canvas,
-          sx,
-          sy,
-          cw,
-          ch,
-          0,
-          0,
-          cw,
-          ch,
-        );
-        source = cropCanvas;
-        sourceCtx = cropCtx;
-      }
+      // Zoom raises pixels-per-module for the physically tiny legacy QR; the cap
+      // then bounds the cost. A tight crop still lands at a higher effective
+      // magnification than the whole-frame probe, so the zoom intent survives.
+      const shrink = pipeline.decodeScale(cw * probe.zoom, ch * probe.zoom);
+      const dw = Math.max(1, Math.floor(cw * probe.zoom * shrink));
+      const dh = Math.max(1, Math.floor(ch * probe.zoom * shrink));
 
-      const options = {
+      canvas.width = dw;
+      canvas.height = dh;
+      // Hard module edges when magnifying; smooth when shrinking, which
+      // averages sensor noise away instead of aliasing it into the modules.
+      ctx.imageSmoothingEnabled = dw < cw;
+      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
+
+      return pipeline.decodeImageMultiPass(ctx.getImageData(0, 0, dw, dh), {
         jsQR,
         zxing,
-        variants: thorough
-          ? pipeline.THOROUGH_VARIANTS
-          : pipeline.FAST_VARIANTS,
+        variants: thorough ? pipeline.THOROUGH_VARIANTS : pipeline.FAST_VARIANTS,
         jsQrOptions: LIVE_JSQR_OPTIONS,
-      };
-
-      // Upscale first when this probe is aimed at a small code: the legacy
-      // pre-2018 QR is physically tiny on the card, and without extra pixels
-      // per module the decoders never see a QR at all.
-      if (probe.zoom > 1) {
-        const bigger = pipeline.upscale(
-          source,
-          source.width,
-          source.height,
-          probe.zoom,
-        );
-        if (bigger) {
-          const hit = pipeline.decodeImageMultiPass(bigger, options);
-          if (hit) return hit;
-        }
-      }
-
-      const data = sourceCtx.getImageData(0, 0, source.width, source.height);
-      return pipeline.decodeImageMultiPass(data, options);
+      });
     };
 
     function video(): HTMLVideoElement | null {
@@ -571,9 +570,14 @@ export function PatientForm({
 
             // Cycle the probe geometries so every card size gets covered within
             // a few frames, while each individual frame stays cheap. Once the
-            // easy path has plainly failed (a faded photocopy), escalate to the
-            // full preprocessing cascade.
-            const thorough = frameTick > ESCALATE_AFTER_FRAMES;
+            // easy path has plainly failed (a faded photocopy), start mixing in
+            // the full preprocessing cascade — but only on some frames. Making
+            // every frame thorough (the previous behaviour, with no way back)
+            // pinned the loop at the cascade's miss cost and stalled the geometry
+            // sweep, so the operator waited seconds per probe.
+            const thorough =
+              frameTick > ESCALATE_AFTER_FRAMES &&
+              frameTick % THOROUGH_EVERY_N_FRAMES === 0;
             const payload = decodeProbe(
               LIVE_PROBES[frameTick % LIVE_PROBES.length],
               thorough,
