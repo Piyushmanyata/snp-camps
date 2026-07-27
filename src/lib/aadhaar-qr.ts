@@ -642,6 +642,16 @@ export function describeQrPayload(payload: string | Uint8Array): string {
     `hasXmlTag=${/<[a-zA-Z]/.test(text)}`,
   ];
 
+  // Root tag and attribute *names* for an XML payload. Names identify the card
+  // variant (<PrintLetterBarcodeData …> vs compact <QDA n= g= d= …>); values are
+  // the patient data and are never included.
+  const tag = text.match(/<([a-zA-Z][\w:-]*)/);
+  if (tag) bits.push(`tag=${tag[1]}`);
+  const keys = [...text.matchAll(/([a-zA-Z0-9_:-]+)\s*=\s*["']/g)].map((m) =>
+    m[1].toLowerCase(),
+  );
+  if (keys.length) bits.push(`attrs=${[...new Set(keys)].join(",")}`);
+
   if (/^\d{50,}$/.test(text.trim())) {
     const decoded = numericStringToBytes(text.trim());
     bits.push(

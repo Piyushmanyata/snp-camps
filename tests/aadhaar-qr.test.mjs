@@ -336,3 +336,61 @@ test("payload fingerprint carries structure, never field values", () => {
   // No patient data may leak into something an operator copies out of the desk.
   assert.doesNotMatch(desc, /Vikram|Sharma|987654321098|1098|1990/);
 });
+
+/**
+ * Compact <QDA n="…" g="…" d="…" a="…"> cards: single-letter attributes, and `a`
+ * is the ADDRESS. `n`/`d` were missing from the alias lists so name and DOB came
+ * back null, while `a` sat in the uid alias list — so slice(-4) of the address
+ * autofilled the pincode's last four digits as the patient's Aadhaar.
+ */
+test("compact QDA Aadhaar card fills real fields and never mines the address for a last4", async () => {
+  const xml = `<QDA n="Kiran Sonawane" g="M" d="14/03/1982" a="Flat 3, Shivaji Nagar, Pune, Maharashtra, 411017"/>`;
+
+  for (const form of [xml, new TextEncoder().encode(xml)]) {
+    const parsed = await parseAadhaarQrAsync(form, FIXTURE_DATE);
+    assert.equal(parsed.fullName, "Kiran Sonawane");
+    assert.equal(parsed.gender, "M");
+    assert.equal(parsed.age, 44);
+    assert.ok(parsed.address?.includes("Shivaji Nagar"));
+    // No uid on the card: the field stays empty for the operator, and the
+    // pincode tail must never stand in for it.
+    assert.equal(parsed.aadhaarLast4, null);
+    assert.notEqual(parsed.aadhaarLast4, "1017");
+  }
+});
+
+test("compact QDA with a real uid, and yob-only variant", async () => {
+  const withUid = `<QDA n="Kiran Sonawane" g="F" d="14/03/1982" u="987654321098" a="Shivaji Nagar, Pune, 411017"/>`;
+  const uidParsed = await parseAadhaarQrAsync(withUid, FIXTURE_DATE);
+  assert.equal(uidParsed.aadhaarLast4, "1098");
+  assert.equal(uidParsed.gender, "F");
+
+  // A 12-digit uid under an unrecognised key is still unmistakably a uid.
+  const oddKey = `<QDA n="Kiran Sonawane" g="M" d="14/03/1982" xyz="987654321098"/>`;
+  assert.equal((await parseAadhaarQrAsync(oddKey, FIXTURE_DATE)).aadhaarLast4, "1098");
+
+  const yobOnly = `<QDA n="Kiran Sonawane" g="M" y="1982" a="Shivaji Nagar, Pune, 411017"/>`;
+  assert.equal((await parseAadhaarQrAsync(yobOnly, FIXTURE_DATE)).age, 44);
+});
+
+test("masked uid is trusted, a 6-digit pincode-like value is not", () => {
+  assert.equal(
+    parseAadhaarQr(`<QDA n="A B" g="M" d="14/03/1982" uid="XXXXXXXX1098"/>`, FIXTURE_DATE)
+      .aadhaarLast4,
+    "1098",
+  );
+  assert.equal(
+    parseAadhaarQr(`<QDA n="A B" g="M" d="14/03/1982" a="Pune 411017"/>`, FIXTURE_DATE)
+      .aadhaarLast4,
+    null,
+  );
+});
+
+test("payload fingerprint names the card variant without leaking values", () => {
+  const desc = describeQrPayload(
+    new TextEncoder().encode(`<QDA n="Kiran Sonawane" g="M" d="14/03/1982" a="Pune, 411017"/>`),
+  );
+  assert.match(desc, /tag=QDA/);
+  assert.match(desc, /attrs=n,g,d,a/);
+  assert.doesNotMatch(desc, /Kiran|Sonawane|411017|1982/);
+});
