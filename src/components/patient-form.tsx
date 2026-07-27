@@ -178,6 +178,8 @@ export function PatientForm({
   const [isScanningQr, setIsScanningQr] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scannedBanner, setScannedBanner] = useState<string | null>(null);
+  /** Amber warning shown when the payload came from an old unsigned legacy XML card. */
+  const [legacyQrWarning, setLegacyQrWarning] = useState<string | null>(null);
   const qrCameraSessionRef = useRef(new QrCameraSession());
   const qrVideoRef = useRef<HTMLVideoElement | null>(null);
   const qrAnimFrameRef = useRef<number | null>(null);
@@ -249,6 +251,15 @@ export function PatientForm({
         fullName: parsed.fullName || "",
         aadhaarLast4: parsed.aadhaarLast4 || "",
       };
+
+      // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
+      if (parsed.source === "legacy_xml") {
+        setLegacyQrWarning(
+          "Old Aadhaar QR — details extracted but not digitally verified. Compare with the physical card before registering.",
+        );
+      } else {
+        setLegacyQrWarning(null);
+      }
 
       const missingFields: string[] = [];
       if (!parsed.fullName) missingFields.push("name");
@@ -740,6 +751,7 @@ export function PatientForm({
       setProvenance("self_declared");
       initialVerifiedValuesRef.current = null;
       setScannedBanner(null);
+      setLegacyQrWarning(null);
       setScanError(null);
       setLookupState("idle");
       setLookupMsg(null);
@@ -1060,6 +1072,16 @@ export function PatientForm({
             className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-semibold text-blue-950"
           >
             {scannedBanner}
+          </div>
+        ) : null}
+
+        {legacyQrWarning ? (
+          <div
+            role="status"
+            data-testid="aadhaar-legacy-qr-warning"
+            className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900"
+          >
+            ⚠️ {legacyQrWarning}
           </div>
         ) : null}
 

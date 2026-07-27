@@ -13,6 +13,15 @@ export type ParsedAadhaarQr = {
   address: string | null;
   aadhaarLast4: string | null;
   isNonLatinName: boolean;
+  /**
+   * Payload origin.
+   * - `legacy_xml`  — old unsigned <PrintLetterBarcodeData> XML; data extracted
+   *                   but NOT cryptographically verified.
+   * - `secure_qr`   — modern UIDAI numeric/binary stream; signature must be
+   *                   checked externally to be considered verified.
+   * - `unknown`     — format could not be classified (JSON / KV / fallback).
+   */
+  source: "legacy_xml" | "secure_qr" | "unknown";
 };
 
 /**
@@ -282,6 +291,7 @@ function parseSecureAadhaarFields(parts: string[], now: Date): ParsedAadhaarQr |
       address,
       aadhaarLast4,
       isNonLatinName: isNonLatinText(name),
+      source: "secure_qr" as const,
     };
   }
 
@@ -425,6 +435,7 @@ export function parseAadhaarQr(
       address,
       aadhaarLast4,
       isNonLatinName: isNonLatinText(name),
+      source: "legacy_xml" as const,
     };
   }
 
@@ -454,6 +465,7 @@ export function parseAadhaarQr(
         address,
         aadhaarLast4,
         isNonLatinName: isNonLatinText(name),
+        source: "unknown" as const,
       };
     } catch {
       /* fallthrough */
@@ -485,6 +497,7 @@ export function parseAadhaarQr(
         address,
         aadhaarLast4,
         isNonLatinName: isNonLatinText(name),
+        source: "unknown" as const,
       };
     }
   }
