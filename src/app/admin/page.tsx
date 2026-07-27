@@ -261,6 +261,7 @@ export default async function AdminPage() {
             <CollapsibleSection
               title="Teams & leaderboards"
               hint={`${leadCount} team lead${leadCount === 1 ? "" : "s"} · ${volunteerCount} volunteer${volunteerCount === 1 ? "" : "s"}`}
+              defaultOpen
             >
               <TeamLeadPanel
                 currentUserId={userId ?? ""}
