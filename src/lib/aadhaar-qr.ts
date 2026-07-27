@@ -167,24 +167,38 @@ function decompressGzipSync(bytes: Uint8Array): Uint8Array | null {
 }
 
 /**
- * Browser-capable gunzip. `decompressGzipSync` is Node-only, so in the browser
- * every 2018+ Secure QR fell through to the last-4-digits fallback and nothing
- * was autofilled. DecompressionStream is async, hence `parseAadhaarQrAsync`.
+ * Browser-capable decompression. `decompressGzipSync` is Node-only, so in the
+ * browser every 2018+ Secure QR fell through to the last-4-digits fallback and
+ * nothing was autofilled. DecompressionStream is async, hence the async parser.
+ *
+ * Producers in the wild wrap the same payload as gzip, zlib, or raw deflate, so
+ * all three are attempted before giving up.
  */
-async function decompressGzip(bytes: Uint8Array): Promise<Uint8Array | null> {
-  if (!isGzip(bytes)) return null;
+async function decompress(bytes: Uint8Array): Promise<Uint8Array | null> {
+  if (bytes.length < 3) return null;
+
   const Ctor = (globalThis as { DecompressionStream?: typeof DecompressionStream })
     .DecompressionStream;
   if (Ctor) {
-    try {
-      const stream = new Blob([bytes as BlobPart])
-        .stream()
-        .pipeThrough(new Ctor("gzip"));
-      return new Uint8Array(await new Response(stream).arrayBuffer());
-    } catch {
-      /* fall through to the Node path */
+    // gzip magic first; zlib streams start 0x78, raw deflate has no header.
+    const formats: CompressionFormat[] = isGzip(bytes)
+      ? ["gzip", "deflate", "deflate-raw"]
+      : bytes[0] === 0x78
+        ? ["deflate", "deflate-raw", "gzip"]
+        : ["deflate-raw", "deflate", "gzip"];
+    for (const format of formats) {
+      try {
+        const stream = new Blob([bytes as BlobPart])
+          .stream()
+          .pipeThrough(new Ctor(format));
+        const out = new Uint8Array(await new Response(stream).arrayBuffer());
+        if (out.length) return out;
+      } catch {
+        /* try the next format */
+      }
     }
   }
+
   return decompressGzipSync(bytes);
 }
 
@@ -439,25 +453,60 @@ export function parseAadhaarQr(
   throw new Error("Invalid or unreadable Aadhaar QR code.");
 }
 
+function decodeLatin1(bytes: Uint8Array): string {
+  return new TextDecoder("iso-8859-1").decode(bytes);
+}
+
+/** Parse succeeded only if it yielded a field we would actually autofill. */
+function isUseful(parsed: ParsedAadhaarQr | null): parsed is ParsedAadhaarQr {
+  return Boolean(
+    parsed && (parsed.fullName || parsed.age != null || parsed.gender),
+  );
+}
+
+function tryParse(payload: string, now: Date): ParsedAadhaarQr | null {
+  try {
+    return parseAadhaarQr(payload, now);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Browser entry point. Identical to `parseAadhaarQr` except that gzipped Secure
- * QR payloads are decompressed via DecompressionStream, which the sync path
- * cannot do. Use this from client components.
+ * Browser entry point — accepts the QR's raw bytes as well as its text.
+ *
+ * Aadhaar Secure QR is byte-mode binary, so the decoder's *text* is a lossy
+ * UTF-8 decode that cannot be decompressed; only `bytes` round-trips. Callers
+ * should pass bytes whenever the decoder exposes them.
  */
 export async function parseAadhaarQrAsync(
-  payload: string,
+  payload: string | Uint8Array,
   now: Date = new Date(),
 ): Promise<ParsedAadhaarQr> {
-  const trimmed = typeof payload === "string" ? payload.trim() : "";
+  const candidates: Uint8Array[] = [];
+  const text = typeof payload === "string" ? payload.trim() : "";
 
-  if (/^\d{50,}$/.test(trimmed)) {
-    const decompressed = await decompressGzip(numericStringToBytes(trimmed));
+  if (payload instanceof Uint8Array) {
+    candidates.push(payload);
+  } else if (/^\d{50,}$/.test(text)) {
+    // Numeric-mode Secure QR: one huge decimal integer over the byte stream.
+    candidates.push(numericStringToBytes(text));
+  }
+
+  for (const bytes of candidates) {
+    const decompressed = await decompress(bytes);
     if (decompressed) {
-      return parseAadhaarQr(
-        new TextDecoder("iso-8859-1").decode(decompressed),
-        now,
-      );
+      const parsed = tryParse(decodeLatin1(decompressed), now);
+      if (isUseful(parsed)) return parsed;
     }
+    // Uncompressed byte-mode payload (legacy XML cards encode plain text here).
+    const parsed = tryParse(decodeLatin1(bytes), now);
+    if (isUseful(parsed)) return parsed;
+  }
+
+  if (typeof payload !== "string") {
+    // Bytes were given but nothing parsed — surface the standard error.
+    return parseAadhaarQr(decodeLatin1(payload), now);
   }
 
   return parseAadhaarQr(payload, now);

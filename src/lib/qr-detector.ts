@@ -43,15 +43,78 @@ export function getBarcodeDetectorConstructor(): BarcodeDetectorConstructor | nu
   return typeof Ctor === "function" ? Ctor : null;
 }
 
+export type JsQrOptions = {
+  inversionAttempts?: "dontInvert" | "onlyInvert" | "attemptBoth" | "invertFirst";
+};
+
+export type JsQrResult = { data: string; binaryData?: number[] };
+
+export type JsQrFn = (
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: JsQrOptions,
+) => JsQrResult | null;
+
 /** Decode a canvas ImageData with jsQR (dynamic-import payload). */
 export function decodeQrFromImageData(
-  jsQR: (
-    data: Uint8ClampedArray,
-    width: number,
-    height: number,
-  ) => { data: string } | null,
+  jsQR: JsQrFn,
   imageData: ImageData,
+  options?: JsQrOptions,
 ): string | null {
-  const code = jsQR(imageData.data, imageData.width, imageData.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height, options);
   return code?.data ?? null;
+}
+
+/**
+ * Decode returning the raw byte payload alongside the text.
+ *
+ * Aadhaar Secure QR is byte-mode binary (a gzip stream), and jsQR's `data` is a
+ * lossy UTF-8 decode of those bytes — unusable for decompression. `binaryData`
+ * is the only faithful copy, so anything parsing Aadhaar must use this.
+ */
+export function decodeQrPayloadFromImageData(
+  jsQR: JsQrFn,
+  imageData: ImageData,
+  options?: JsQrOptions,
+): { text: string; bytes: Uint8Array | null } | null {
+  const code = jsQR(imageData.data, imageData.width, imageData.height, options);
+  if (!code) return null;
+  return {
+    text: code.data ?? "",
+    bytes: code.binaryData?.length ? Uint8Array.from(code.binaryData) : null,
+  };
+}
+
+/**
+ * Best-effort camera tuning for dense QR: continuous autofocus is what makes a
+ * 137-module Aadhaar Secure QR resolvable at all, and a mild zoom fills more of
+ * the sensor with the code. Unsupported constraints are ignored per platform.
+ */
+export async function applyBestEffortCameraConstraints(
+  stream: MediaStream,
+): Promise<void> {
+  try {
+    const track = stream.getVideoTracks()[0];
+    const caps = track?.getCapabilities?.() as
+      | { focusMode?: string[]; zoom?: { min: number; max: number } }
+      | undefined;
+    const constraints: Record<string, unknown> = {};
+    if (caps?.focusMode?.includes("continuous")) {
+      constraints.focusMode = "continuous";
+    }
+    if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
+      constraints.zoom = Math.min(
+        caps.zoom.max,
+        Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.35),
+      );
+    }
+    if (Object.keys(constraints).length && track) {
+      await track.applyConstraints({
+        advanced: [constraints],
+      } as unknown as MediaTrackConstraints);
+    }
+  } catch {
+    /* ignore unsupported constraints */
+  }
 }

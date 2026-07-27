@@ -34,18 +34,22 @@ import {
 } from "@/components/ui";
 import { parseAadhaarQrAsync, isNonLatinText } from "@/lib/aadhaar-qr";
 import {
+  applyBestEffortCameraConstraints,
   canUseNativeQrDetector,
-  decodeQrFromImageData,
+  decodeQrPayloadFromImageData,
   getBarcodeDetectorConstructor,
   type BarcodeDetectorInstance,
+  type JsQrFn,
+  type JsQrOptions,
 } from "@/lib/qr-detector";
 import { QrCameraSession } from "@/lib/qr-camera-session";
 
-type JsQrFn = (
-  data: Uint8ClampedArray,
-  width: number,
-  height: number,
-) => { data: string } | null;
+/** Dense Aadhaar QR needs pixels; cap decode work to keep the loop responsive. */
+const SCAN_FPS = 12;
+const SCAN_FRAME_INTERVAL_MS = 1000 / SCAN_FPS;
+/** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
+const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
+const UPLOAD_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "attemptBoth" };
 
 let jsQrPromise: Promise<JsQrFn> | null = null;
 function loadJsQr(): Promise<JsQrFn> {
@@ -164,45 +168,67 @@ export function PatientForm({
     };
   }, []);
 
-  const handleScannedText = useCallback(
-    async (rawText: string) => {
+  /**
+   * Try one decoded payload. Returns true when it filled the form.
+   *
+   * `requireUseful` keeps the camera running on a payload that decoded but
+   * carried no autofillable field — a partial read on one blurry frame should
+   * not end the session when the next frame may read cleanly.
+   */
+  const handleScannedPayload = useCallback(
+    async (
+      payload: string | Uint8Array,
+      { requireUseful = false }: { requireUseful?: boolean } = {},
+    ): Promise<boolean> => {
+      let parsed;
       try {
-        const parsed = await parseAadhaarQrAsync(rawText);
-        if (parsed.fullName) setFullName(parsed.fullName);
-        if (parsed.age != null) setAge(String(parsed.age));
-        if (parsed.gender) setGender(parsed.gender);
-        if (parsed.address) setAddress(parsed.address);
-        if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
-
-        setProvenance("card_verified");
-        initialVerifiedValuesRef.current = {
-          fullName: parsed.fullName || "",
-          aadhaarLast4: parsed.aadhaarLast4 || "",
-        };
-
-        const missingFields: string[] = [];
-        if (!parsed.fullName) missingFields.push("name");
-        if (parsed.age == null) missingFields.push("age");
-
-        if (missingFields.length > 0) {
-          setScannedBanner(
-            `Aadhaar card scanned. Partial details autofilled. Please enter ${missingFields.join(" and ")} manually.`,
-          );
-        } else {
-          setScannedBanner(
-            "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
-          );
-        }
-        setScanError(null);
-        stopQrScanner();
+        parsed = await parseAadhaarQrAsync(payload);
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : "Invalid Aadhaar QR code.";
-        setScanError(msg);
-        setProvenance("self_declared");
-        initialVerifiedValuesRef.current = null;
-        stopQrScanner();
+        // Non-Aadhaar QR (e.g. a desk slip) is terminal — tell the operator.
+        // Anything else is just a bad frame; keep scanning.
+        if (!requireUseful || /desk slip/i.test(msg)) {
+          setScanError(msg);
+          setProvenance("self_declared");
+          initialVerifiedValuesRef.current = null;
+          stopQrScanner();
+        }
+        return false;
       }
+
+      const useful =
+        Boolean(parsed.fullName) || parsed.age != null || Boolean(parsed.gender);
+      if (requireUseful && !useful) return false;
+
+      if (parsed.fullName) setFullName(parsed.fullName);
+      if (parsed.age != null) setAge(String(parsed.age));
+      if (parsed.gender) setGender(parsed.gender);
+      if (parsed.address) setAddress(parsed.address);
+      if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
+
+      setProvenance("card_verified");
+      initialVerifiedValuesRef.current = {
+        fullName: parsed.fullName || "",
+        aadhaarLast4: parsed.aadhaarLast4 || "",
+      };
+
+      const missingFields: string[] = [];
+      if (!parsed.fullName) missingFields.push("name");
+      if (parsed.age == null) missingFields.push("age");
+
+      if (missingFields.length > 0) {
+        setScannedBanner(
+          `Aadhaar card scanned. Partial details autofilled. Please enter ${missingFields.join(" and ")} manually.`,
+        );
+      } else {
+        setScannedBanner(
+          "Aadhaar card scanned and autofilled. Phone number is not present in Aadhaar QR. Please enter phone number manually.",
+        );
+      }
+      setScanError(null);
+      stopQrScanner();
+      return true;
     },
     [stopQrScanner],
   );
@@ -230,46 +256,54 @@ export function PatientForm({
         canvas.height = img.naturalHeight || img.height;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        let foundText: string | null = null;
-        const useNative = await canUseNativeQrDetector();
+        // jsQR first for a still photo: it yields the raw bytes that a byte-mode
+        // Secure QR needs, which BarcodeDetector's string cannot carry.
+        const jsQR = await loadJsQr();
+        let payload: string | Uint8Array | null = null;
 
-        if (useNative) {
+        // Whole frame, then progressively tighter centre crops — a photographed
+        // card usually sits mid-frame, and cropping raises effective resolution.
+        for (const scale of [1, 0.75, 0.5]) {
+          const cw = Math.floor(canvas.width * scale);
+          const ch = Math.floor(canvas.height * scale);
+          if (cw < 100 || ch < 100) continue;
+
+          let data: ImageData;
+          if (scale === 1) {
+            data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          } else {
+            const sx = Math.floor((canvas.width - cw) / 2);
+            const sy = Math.floor((canvas.height - ch) / 2);
+            const cropCanvas = document.createElement("canvas");
+            cropCanvas.width = cw;
+            cropCanvas.height = ch;
+            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
+            if (!cropCtx) continue;
+            cropCtx.drawImage(canvas, sx, sy, cw, ch, 0, 0, cw, ch);
+            data = cropCtx.getImageData(0, 0, cw, ch);
+          }
+
+          const decoded = decodeQrPayloadFromImageData(jsQR, data, UPLOAD_JSQR_OPTIONS);
+          if (decoded) {
+            payload = decoded.bytes ?? decoded.text;
+            break;
+          }
+        }
+
+        // Last resort: the platform detector may locate a code jsQR missed.
+        if (!payload && (await canUseNativeQrDetector())) {
           const Ctor = getBarcodeDetectorConstructor();
           if (Ctor) {
             const detector = new Ctor({ formats: ["qr_code"] });
             const hits = await detector.detect(canvas).catch(() => []);
-            if (hits.length > 0 && hits[0].rawValue) {
-              foundText = hits[0].rawValue;
-            }
-          }
-        }
-
-        if (!foundText) {
-          const jsQR = await loadJsQr();
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          foundText = decodeQrFromImageData(jsQR, imgData);
-
-          if (!foundText && canvas.width > 200 && canvas.height > 200) {
-            const cropW = Math.floor(canvas.width * 0.75);
-            const cropH = Math.floor(canvas.height * 0.75);
-            const sx = Math.floor((canvas.width - cropW) / 2);
-            const sy = Math.floor((canvas.height - cropH) / 2);
-            const cropCanvas = document.createElement("canvas");
-            cropCanvas.width = cropW;
-            cropCanvas.height = cropH;
-            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
-            if (cropCtx) {
-              cropCtx.drawImage(canvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-              const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
-              foundText = decodeQrFromImageData(jsQR, cropData);
-            }
+            if (hits.length > 0 && hits[0].rawValue) payload = hits[0].rawValue;
           }
         }
 
         URL.revokeObjectURL(url);
 
-        if (foundText) {
-          await handleScannedText(foundText);
+        if (payload) {
+          await handleScannedPayload(payload);
         } else {
           setScanError("No Aadhaar QR code found in selected image. Please try a clearer photo.");
         }
@@ -280,7 +314,7 @@ export function PatientForm({
         if (e.target) e.target.value = "";
       }
     },
-    [handleScannedText],
+    [handleScannedPayload],
   );
 
   const startQrScanner = useCallback(async () => {
@@ -294,8 +328,9 @@ export function PatientForm({
       {
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          // A 137-module Secure QR needs pixels per module; 720p is marginal.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       },
@@ -309,23 +344,31 @@ export function PatientForm({
       return;
     }
 
-    const useNative = await canUseNativeQrDetector();
-    let detector: BarcodeDetectorInstance | undefined;
-    let jsQR: JsQrFn | undefined;
+    // Continuous autofocus is the single biggest factor in whether a dense
+    // Aadhaar QR resolves at all.
+    await applyBestEffortCameraConstraints(stream);
 
-    if (useNative) {
+    // jsQR is always loaded: it is the only decoder that returns raw bytes, and
+    // Secure QR is byte-mode binary. The platform detector is an extra fast path.
+    let jsQR: JsQrFn | undefined;
+    try {
+      jsQR = await loadJsQr();
+    } catch {
+      jsQR = undefined;
+    }
+
+    let detector: BarcodeDetectorInstance | undefined;
+    if (await canUseNativeQrDetector()) {
       const Ctor = getBarcodeDetectorConstructor();
       if (Ctor) detector = new Ctor({ formats: ["qr_code"] });
-    } else {
-      try {
-        jsQR = await loadJsQr();
-      } catch {
-        setScanError(
-          "Scanner fallback unavailable. Please type details manually.",
-        );
-        stopQrScanner();
-        return;
-      }
+    }
+
+    if (!jsQR && !detector) {
+      setScanError(
+        "Scanner fallback unavailable. Please type details manually.",
+      );
+      stopQrScanner();
+      return;
     }
 
     if (qrVideoRef.current) {
@@ -335,64 +378,109 @@ export function PatientForm({
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const cropCanvas = document.createElement("canvas");
+    const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
     let frameTick = 0;
+    let lastFrameAt = 0;
+    let busy = false;
+
+    const decodeRegion = (scale: number): string | Uint8Array | null => {
+      if (!jsQR || !ctx || !video()) return null;
+      const v = video()!;
+      canvas.width = v.videoWidth;
+      canvas.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+
+      let data: ImageData;
+      if (scale >= 1) {
+        data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      } else {
+        const cw = Math.floor(canvas.width * scale);
+        const ch = Math.floor(canvas.height * scale);
+        if (cw < 100 || ch < 100 || !cropCtx) return null;
+        cropCanvas.width = cw;
+        cropCanvas.height = ch;
+        cropCtx.drawImage(
+          canvas,
+          Math.floor((canvas.width - cw) / 2),
+          Math.floor((canvas.height - ch) / 2),
+          cw,
+          ch,
+          0,
+          0,
+          cw,
+          ch,
+        );
+        data = cropCtx.getImageData(0, 0, cw, ch);
+      }
+
+      const decoded = decodeQrPayloadFromImageData(jsQR, data, LIVE_JSQR_OPTIONS);
+      if (!decoded) return null;
+      return decoded.bytes ?? decoded.text;
+    };
+
+    function video(): HTMLVideoElement | null {
+      return qrVideoRef.current;
+    }
 
     const processFrame = async () => {
-      if (
-        !qrCameraSessionRef.current.isCurrent(token) ||
-        !qrVideoRef.current
-      )
-        return;
-      const video = qrVideoRef.current;
-      if (video.readyState >= 2) {
-        if (detector) {
-          try {
-            const hits = await detector.detect(video);
-            if (hits.length > 0 && hits[0].rawValue) {
-              await handleScannedText(hits[0].rawValue);
+      if (!qrCameraSessionRef.current.isCurrent(token) || !video()) return;
+
+      const now = performance.now();
+      // Throttle: an unthrottled rAF loop ran full-resolution decodes at 60fps,
+      // starving the camera and making scanning slower, not faster.
+      if (!busy && now - lastFrameAt >= SCAN_FRAME_INTERVAL_MS) {
+        lastFrameAt = now;
+        busy = true;
+        try {
+          const v = video()!;
+          if (v.readyState >= 2 && v.videoWidth > 0) {
+            frameTick += 1;
+
+            // Platform detector: cheap, and enough for legacy text-mode cards.
+            if (detector) {
+              try {
+                const hits = await detector.detect(v);
+                const raw = hits[0]?.rawValue;
+                if (
+                  raw &&
+                  (await handleScannedPayload(raw, { requireUseful: true }))
+                ) {
+                  return;
+                }
+              } catch {
+                /* ignore frame detect error */
+              }
+            }
+
+            // jsQR carries the bytes a Secure QR needs. Alternate whole-frame
+            // and centre-crop passes so both far and near framing resolve.
+            const payload = decodeRegion(frameTick % 2 === 0 ? 0.6 : 1);
+            if (
+              payload &&
+              (await handleScannedPayload(payload, { requireUseful: true }))
+            ) {
               return;
             }
-          } catch {
-            /* ignore frame detect error */
           }
-        } else if (jsQR && ctx && video.videoWidth > 0) {
-          frameTick += 1;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          let text = decodeQrFromImageData(jsQR, imgData);
-
-          // On alternate frames, attempt center crop to boost high-density QR recognition
-          if (!text && frameTick % 2 === 0 && canvas.width > 200) {
-            const cw = Math.floor(canvas.width * 0.75);
-            const ch = Math.floor(canvas.height * 0.75);
-            const sx = Math.floor((canvas.width - cw) / 2);
-            const sy = Math.floor((canvas.height - ch) / 2);
-            const cropCanvas = document.createElement("canvas");
-            cropCanvas.width = cw;
-            cropCanvas.height = ch;
-            const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
-            if (cropCtx) {
-              cropCtx.drawImage(canvas, sx, sy, cw, ch, 0, 0, cw, ch);
-              const cropData = cropCtx.getImageData(0, 0, cw, ch);
-              text = decodeQrFromImageData(jsQR, cropData);
-            }
-          }
-
-          if (text) {
-            await handleScannedText(text);
-            return;
-          }
+        } catch {
+          /* keep scanning */
+        } finally {
+          busy = false;
         }
       }
+
       if (qrCameraSessionRef.current.isCurrent(token)) {
-        qrAnimFrameRef.current = requestAnimationFrame(processFrame);
+        qrAnimFrameRef.current = requestAnimationFrame(() => {
+          void processFrame();
+        });
       }
     };
 
-    qrAnimFrameRef.current = requestAnimationFrame(processFrame);
-  }, [handleScannedText, stopQrScanner]);
+    qrAnimFrameRef.current = requestAnimationFrame(() => {
+      void processFrame();
+    });
+  }, [handleScannedPayload, stopQrScanner]);
 
   const focusName = useCallback(() => {
     requestAnimationFrame(() => {
