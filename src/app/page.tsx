@@ -45,8 +45,8 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
-                Multi-day eye camp with limited seats. Register at the volunteer
-                desk, get a desk slip, then doctor scan.
+                Multi-day eye camp with limited seats. Self-register, get your
+                slip, then doctor scan.
               </p>
             </div>
           </div>
@@ -96,31 +96,11 @@ export default async function HomePage() {
               description="Admin · volunteers · doctors"
               variant="soft"
             />
-
-            <ActionCard
-              href="/register"
-              title="Desk registration"
-              description={
-                !camp
-                  ? "No active camp"
-                  : anyOpen
-                    ? "Staff only · walk-in at the volunteer desk"
-                    : "All days full"
-              }
-              variant="soft"
-              disabled={!camp || !anyOpen}
-              disabledReason={
-                !camp
-                  ? "No active camp"
-                  : "All days are full — try again later"
-              }
-            />
           </div>
 
           <p className="text-center text-xs text-muted lg:text-left">
             First-time staff? Ask an admin to create your account. Patients: scan
-            your Aadhaar card to self-register, or register at the desk — no
-            patient login either way.
+            your Aadhaar card to self-register — no patient login required.
           </p>
 
           <div className="pt-1 text-left">
@@ -130,8 +110,8 @@ export default async function HomePage() {
             <StepList
               steps={[
                 {
-                  title: "Desk registration",
-                  detail: "Volunteer registers you · desk slip",
+                  title: "Self registration",
+                  detail: "Scan Aadhaar card · get slip",
                 },
                 {
                   title: "Print joins queue",
