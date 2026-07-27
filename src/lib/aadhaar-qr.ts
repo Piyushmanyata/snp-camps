@@ -146,13 +146,17 @@ export function buildAddress(fields: Record<string, string | null | undefined>):
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+function isGzip(bytes: Uint8Array): boolean {
+  return bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
 /** Synchronously decompress gzip bytes if running in Node environment */
 function decompressGzipSync(bytes: Uint8Array): Uint8Array | null {
-  if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+  if (isGzip(bytes)) {
     try {
-      if (typeof process !== "undefined" && process.versions?.node) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const zlib = require("node:zlib");
+      if (typeof window === "undefined" && typeof process !== "undefined" && process.versions?.node) {
+        const getReq = new Function("return require");
+        const zlib = getReq()("node:zlib");
         return new Uint8Array(zlib.gunzipSync(bytes));
       }
     } catch {
@@ -160,6 +164,28 @@ function decompressGzipSync(bytes: Uint8Array): Uint8Array | null {
     }
   }
   return null;
+}
+
+/**
+ * Browser-capable gunzip. `decompressGzipSync` is Node-only, so in the browser
+ * every 2018+ Secure QR fell through to the last-4-digits fallback and nothing
+ * was autofilled. DecompressionStream is async, hence `parseAadhaarQrAsync`.
+ */
+async function decompressGzip(bytes: Uint8Array): Promise<Uint8Array | null> {
+  if (!isGzip(bytes)) return null;
+  const Ctor = (globalThis as { DecompressionStream?: typeof DecompressionStream })
+    .DecompressionStream;
+  if (Ctor) {
+    try {
+      const stream = new Blob([bytes as BlobPart])
+        .stream()
+        .pipeThrough(new Ctor("gzip"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch {
+      /* fall through to the Node path */
+    }
+  }
+  return decompressGzipSync(bytes);
 }
 
 /** Converts BigInt / numeric digit string to Uint8Array */
@@ -185,44 +211,44 @@ function numericStringToBytes(numericStr: string): Uint8Array {
 function parseSecureAadhaarFields(parts: string[], now: Date): ParsedAadhaarQr | null {
   if (!parts || parts.length < 3) return null;
 
-  // Modern UIDAI Secure QR (V2) field index map:
-  // Part 0: Reference ID / Timestamp / Email Mobile indicator
-  // Part 1: Name
-  // Part 2: DOB
-  // Part 3: Gender
-  // Part 4: Care Of
-  // Part 5: District
-  // Part 6: Landmark
-  // Part 7: House
-  // Part 8: Location
-  // Part 9: Pincode
-  // Part 10: Post Office
-  // Part 11: State
-  // Part 12: Street
-  // Part 13: Sub-district
-  // Part 14: VTC
+  // Field order after the reference ID:
+  //   Name, DOB, Gender, Care Of, District, Landmark, House, Location,
+  //   Pincode, Post Office, State, Street, Sub-district, VTC
+  // A real UIDAI Secure QR (V2) prefixes an email/mobile indicator field, so the
+  // reference ID sits at index 1, not 0. Anchor on the DOB field rather than fixed
+  // indices so both layouts parse.
+  const dobIdx = parts.findIndex((p) =>
+    /^\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}$/.test(p?.trim() || ""),
+  );
+  const nameIdx = dobIdx >= 1 ? dobIdx - 1 : 1;
 
-  const name = parts[1]?.trim() || null;
-  const dob = parts[2]?.trim() || null;
-  const gnd = parts[3]?.trim() || null;
+  const name = parts[nameIdx]?.trim() || null;
+  const dob = parts[nameIdx + 1]?.trim() || null;
+  const gnd = parts[nameIdx + 2]?.trim() || null;
 
   const addrFields: Record<string, string> = {
-    co: parts[4] || "",
-    dist: parts[5] || "",
-    lm: parts[6] || "",
-    house: parts[7] || "",
-    loc: parts[8] || "",
-    pincode: parts[9] || "",
-    po: parts[10] || "",
-    state: parts[11] || "",
-    street: parts[12] || "",
-    subdist: parts[13] || "",
-    vtc: parts[14] || "",
+    co: parts[nameIdx + 3] || "",
+    dist: parts[nameIdx + 4] || "",
+    lm: parts[nameIdx + 5] || "",
+    house: parts[nameIdx + 6] || "",
+    loc: parts[nameIdx + 7] || "",
+    pincode: parts[nameIdx + 8] || "",
+    po: parts[nameIdx + 9] || "",
+    state: parts[nameIdx + 10] || "",
+    street: parts[nameIdx + 11] || "",
+    subdist: parts[nameIdx + 12] || "",
+    vtc: parts[nameIdx + 13] || "",
   };
 
-  const refId = parts[0] || "";
-  const digitsInRef = refId.replace(/\D/g, "");
-  const aadhaarLast4 = digitsInRef.length >= 4 ? digitsInRef.slice(-4) : null;
+  // Reference ID is "<Aadhaar last 4><timestamp>", so the last 4 digits are the
+  // timestamp's, not the Aadhaar's, once a timestamp is actually present.
+  const digitsInRef = (parts[nameIdx - 1] || "").replace(/\D/g, "");
+  const aadhaarLast4 =
+    digitsInRef.length >= 16
+      ? digitsInRef.slice(0, 4)
+      : digitsInRef.length >= 4
+        ? digitsInRef.slice(-4)
+        : null;
 
   const age = calculateAge(dob, null, now);
   const gender = normalizeGender(gnd);
@@ -411,4 +437,28 @@ export function parseAadhaarQr(
   }
 
   throw new Error("Invalid or unreadable Aadhaar QR code.");
+}
+
+/**
+ * Browser entry point. Identical to `parseAadhaarQr` except that gzipped Secure
+ * QR payloads are decompressed via DecompressionStream, which the sync path
+ * cannot do. Use this from client components.
+ */
+export async function parseAadhaarQrAsync(
+  payload: string,
+  now: Date = new Date(),
+): Promise<ParsedAadhaarQr> {
+  const trimmed = typeof payload === "string" ? payload.trim() : "";
+
+  if (/^\d{50,}$/.test(trimmed)) {
+    const decompressed = await decompressGzip(numericStringToBytes(trimmed));
+    if (decompressed) {
+      return parseAadhaarQr(
+        new TextDecoder("iso-8859-1").decode(decompressed),
+        now,
+      );
+    }
+  }
+
+  return parseAadhaarQr(payload, now);
 }

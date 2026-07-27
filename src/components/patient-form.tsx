@@ -32,7 +32,7 @@ import {
   SegmentedControl,
   WarningBox,
 } from "@/components/ui";
-import { parseAadhaarQr, isNonLatinText } from "@/lib/aadhaar-qr";
+import { parseAadhaarQrAsync, isNonLatinText } from "@/lib/aadhaar-qr";
 import {
   canUseNativeQrDetector,
   decodeQrFromImageData,
@@ -165,9 +165,9 @@ export function PatientForm({
   }, []);
 
   const handleScannedText = useCallback(
-    (rawText: string) => {
+    async (rawText: string) => {
       try {
-        const parsed = parseAadhaarQr(rawText);
+        const parsed = await parseAadhaarQrAsync(rawText);
         if (parsed.fullName) setFullName(parsed.fullName);
         if (parsed.age != null) setAge(String(parsed.age));
         if (parsed.gender) setGender(parsed.gender);
@@ -269,7 +269,7 @@ export function PatientForm({
         URL.revokeObjectURL(url);
 
         if (foundText) {
-          handleScannedText(foundText);
+          await handleScannedText(foundText);
         } else {
           setScanError("No Aadhaar QR code found in selected image. Please try a clearer photo.");
         }
@@ -349,7 +349,7 @@ export function PatientForm({
           try {
             const hits = await detector.detect(video);
             if (hits.length > 0 && hits[0].rawValue) {
-              handleScannedText(hits[0].rawValue);
+              await handleScannedText(hits[0].rawValue);
               return;
             }
           } catch {
@@ -381,7 +381,7 @@ export function PatientForm({
           }
 
           if (text) {
-            handleScannedText(text);
+            await handleScannedText(text);
             return;
           }
         }

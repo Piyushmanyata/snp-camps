@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { gzipSync } from "node:zlib";
 import {
   parseAadhaarQr,
+  parseAadhaarQrAsync,
   calculateAge,
   isNonLatinText,
   buildAddress,
@@ -159,5 +161,59 @@ test("Delimited Secure Aadhaar QR parsing", () => {
   assert.equal(parsed.age, 35);
   assert.equal(parsed.aadhaarLast4, "1098");
   assert.ok(parsed.address?.includes("Jaipur"));
+});
+
+/** Real UIDAI Secure QR V2: leading email/mobile indicator, then "<last4><timestamp>". */
+const SECURE_V2_PAYLOAD = [
+  "2",
+  "109820210515103000000",
+  "Vikram Sharma",
+  "15-08-1990",
+  "M",
+  "C/O Sharma",
+  "Jaipur",
+  "Near Tower",
+  "42",
+  "Main St",
+  "302001",
+  "PO",
+  "Rajasthan",
+  "Street",
+  "Subdist",
+  "Jaipur",
+].join("ÿ");
+
+test("Secure QR V2 with leading indicator field parses without an index shift", () => {
+  const parsed = parseAadhaarQr(SECURE_V2_PAYLOAD, FIXTURE_DATE);
+
+  assert.equal(parsed.fullName, "Vikram Sharma");
+  assert.equal(parsed.gender, "M");
+  assert.equal(parsed.age, 35);
+  assert.equal(parsed.aadhaarLast4, "1098");
+  assert.ok(parsed.address?.includes("Rajasthan"));
+});
+
+test("gzipped numeric Secure QR autofills in a browser-like env (no node:zlib path)", async () => {
+  const gz = gzipSync(Buffer.from(SECURE_V2_PAYLOAD, "latin1"));
+  const numeric = BigInt("0x" + gz.toString("hex")).toString(10);
+  assert.ok(/^\d{50,}$/.test(numeric));
+
+  // `window` defined => the Node-only sync gunzip bails out, exactly as in a real
+  // browser. Only the DecompressionStream path can satisfy this.
+  const hadWindow = "window" in globalThis;
+  globalThis.window = globalThis;
+  try {
+    // Sync parser is the pre-fix behaviour: no name/age, junk last4.
+    const syncParsed = parseAadhaarQr(numeric, FIXTURE_DATE);
+    assert.equal(syncParsed.fullName, null);
+
+    const parsed = await parseAadhaarQrAsync(numeric, FIXTURE_DATE);
+    assert.equal(parsed.fullName, "Vikram Sharma");
+    assert.equal(parsed.gender, "M");
+    assert.equal(parsed.age, 35);
+    assert.equal(parsed.aadhaarLast4, "1098");
+  } finally {
+    if (!hadWindow) delete globalThis.window;
+  }
 });
 
