@@ -37,7 +37,7 @@ export function canRegisterPatients(role?: UserRole | string | null) {
 
 export function roleHome(role?: UserRole | string | null) {
   if (role === "admin") return "/admin";
-  if (role === "team_lead") return "/volunteer";
+  if (role === "team_lead") return "/team-lead";
   if (role === "volunteer") return "/volunteer";
   if (role === "doctor") return "/doctor";
   // Patients do not authenticate (#59). Passwordless status is /s/<token>.

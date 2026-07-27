@@ -136,13 +136,13 @@ export default async function AdminPage() {
               { href: "#checkin", label: "Check-in", primary: true },
               { href: "/register", label: "Register" },
               { href: "/counter", label: "Counter" },
-              { href: "#scan", label: "Scan" },
-              { href: "#queue", label: "Queue" },
+              { href: "/team-lead", label: "Team Leads" },
               { href: "/admin/patients", label: "Patients" },
             ]
           : [
               { href: "/register", label: "Register", primary: true },
               { href: "/counter", label: "Counter" },
+              { href: "/team-lead", label: "Team Leads" },
               { href: "/admin/patients", label: "Patients" },
               { href: "/volunteer", label: "Volunteers" },
               { href: "/doctor", label: "Doctors" },
@@ -177,7 +177,7 @@ export default async function AdminPage() {
               <NavLink href="/admin/patients" variant="soft">
                 Patients
               </NavLink>
-              <NavLink href="#team-lead-desk" variant="soft">
+              <NavLink href="/team-lead" variant="soft">
                 Team Leads
               </NavLink>
               <NavLink href="/volunteer" variant="soft">
@@ -195,7 +195,7 @@ export default async function AdminPage() {
             <NavLink href="/counter" variant="soft">
               Counter desk
             </NavLink>
-            <NavLink href="#team-lead-desk" variant="soft">
+            <NavLink href="/team-lead" variant="soft">
               Team Lead desk
             </NavLink>
             <NavLink href="/volunteer" variant="soft">
@@ -273,14 +273,7 @@ export default async function AdminPage() {
               waitingTotal={waitingCount}
               queueKnown={queueKnown}
             />
-            <div id="team-lead-desk">
-              <CollapsibleSection
-                title="Team Lead desk"
-                hint={`${(teamLeads || []).filter((tl) => !tl.disabled_at).length} active team lead${(teamLeads || []).filter((tl) => !tl.disabled_at).length === 1 ? "" : "s"}`}
-              >
-                <AdminStaff role="team_lead" initial={teamLeads || []} canManage />
-              </CollapsibleSection>
-            </div>
+
             <CollapsibleSection
               title="Teams & leaderboards"
               hint={`${leadCount} team lead${leadCount === 1 ? "" : "s"} · ${volunteerCount} volunteer${volunteerCount === 1 ? "" : "s"}`}
