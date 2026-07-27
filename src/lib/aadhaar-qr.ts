@@ -503,10 +503,20 @@ export function parseAadhaarQr(
   }
 
   // 5. Delimited text format (e.g. fields separated by \u00FF / ÿ / | )
+  // Guard: require at least one part that looks like a real date before
+  // treating the split result as Secure QR fields. A gzip-compressed Secure
+  // QR payload decoded as Latin-1 routinely contains 0xFF bytes and would
+  // otherwise be split here into binary garbage, producing a wrong aadhaarLast4.
   if (trimmed.includes("\u00FF") || trimmed.includes("ÿ") || trimmed.includes("\xFF")) {
     const parts = trimmed.split(/\u00FF|\xFF|ÿ/);
-    const parsed = parseSecureAadhaarFields(parts, now);
-    if (parsed) return parsed;
+    const hasRealDate = parts.some((p) =>
+      /^\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}$/.test(p?.trim() || "") ||
+      /^\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}$/.test(p?.trim() || ""),
+    );
+    if (hasRealDate) {
+      const parsed = parseSecureAadhaarFields(parts, now);
+      if (parsed) return parsed;
+    }
   }
 
   // 6. Secure Aadhaar QR / Numeric strings (BigInt decimal sequence or decompressed byte sequence)

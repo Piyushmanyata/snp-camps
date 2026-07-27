@@ -271,3 +271,30 @@ test("Legacy numeric-mode Aadhaar QR decodes the real fields, not decimal noise"
 
   assert.equal(parseAadhaarQr(numeric, FIXTURE_DATE).aadhaarLast4, "1098");
 });
+
+/**
+ * Regression: a gzip-compressed Secure QR payload decoded as Latin-1 contains
+ * 0xFF bytes (same byte as the ÿ field delimiter). Before the date-anchor guard
+ * was added to step 5, the sync parser split the binary blob at those bytes,
+ * passed garbage chunks to parseSecureAadhaarFields, and produced a wrong
+ * aadhaarLast4 with all other fields null — exactly the symptom reported in
+ * production.
+ */
+test("gzip bytes as Latin-1 string must not produce garbage aadhaarLast4 (step-5 date guard)", () => {
+  const gz = gzipSync(Buffer.from(
+    "2\xFFVikram Sharma\xFF15-08-1990\xFFM\xFFCare\xFFJaipur\xFF\xFF42\xFF\xFF302001\xFF\xFF\xFF\xFF\xFF",
+    "latin1",
+  ));
+  const asLatin1 = Buffer.from(gz).toString("latin1");
+
+  // The gzip blob must contain 0xFF bytes so this tests the right scenario.
+  assert.ok(asLatin1.includes("\xFF"), "fixture must contain 0xFF bytes");
+
+  // With the date-anchor guard in place, the garbage ÿ-split parts contain no
+  // recognisable date, so the step-5 path is skipped entirely. The numeric path
+  // also won't match (the string is not all-digits). The parser must throw.
+  assert.throws(
+    () => parseAadhaarQr(asLatin1, FIXTURE_DATE),
+    /Invalid or unreadable/,
+  );
+});
