@@ -54,6 +54,13 @@ type Props = {
   userRole?: string | null;
 };
 
+/**
+ * Cap on the background Person-key mint. Well past a healthy round trip, short
+ * enough that a dead network resolves to the manual path while the operator is
+ * still filling the remaining fields.
+ */
+const PERSON_KEY_TIMEOUT_MS = 8000;
+
 type FormFieldErrors = Partial<Record<PatientFormField, string>>;
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
 
@@ -134,6 +141,8 @@ export function PatientForm({
    * secret, so the browser cannot derive it. Returns null when the card is
    * missing a key field or the mint fails — the desk still registers, just on
    * the manual path, because a scanner hiccup must never block a queue.
+   *
+   * Called in the background, never awaited by the scan: see `onCardScanned`.
    */
   async function mintPersonKey(parsed: {
     fullName: string | null;
@@ -148,6 +157,9 @@ export function PatientForm({
       const response = await fetch("/api/person-key", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // A hung request must not leave the identity unresolved indefinitely;
+        // the manual path is the designed fallback.
+        signal: AbortSignal.timeout(PERSON_KEY_TIMEOUT_MS),
         body: JSON.stringify({
           name: parsed.fullName,
           aadhaarLast4: parsed.aadhaarLast4,
@@ -188,11 +200,30 @@ export function PatientForm({
       if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
 
       setProvenance("card_verified");
-      setVerifiedIdentity({
+      const identity = {
         fullName: parsed.fullName || "",
         aadhaarLast4: parsed.aadhaarLast4 || "",
         dateOfBirth: parsed.dateOfBirth,
-        duplicateKey: await mintPersonKey(parsed),
+        duplicateKey: null as string | null,
+      };
+      setVerifiedIdentity(identity);
+
+      // Mint the Person key in the background. Awaiting it here held the camera
+      // open on a server round trip after every successful scan — on a camp's
+      // mobile connection that is the entire perceived scan time. The same
+      // reasoning that lets a failed mint fall back to the manual path applies
+      // to a slow one: the desk must never wait on the network to finish a scan.
+      void mintPersonKey(parsed).then((duplicateKey) => {
+        if (!duplicateKey) return;
+        setVerifiedIdentity((current) =>
+          // Ignore a late arrival if the operator has since rescanned or reset.
+          current &&
+          current.aadhaarLast4 === identity.aadhaarLast4 &&
+          current.fullName === identity.fullName &&
+          current.duplicateKey === null
+            ? { ...current, duplicateKey }
+            : current,
+        );
       });
 
       // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
