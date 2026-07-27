@@ -121,6 +121,7 @@ export default async function DoctorPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "#scan", label: "Scan", primary: true },
+        { href: "/counter", label: "Counter" },
         { href: "#seen", label: "Seen" },
       ]}
     >
@@ -146,6 +147,11 @@ export default async function DoctorPage() {
                 <Stat label="Total seen" value={0} />
               </div>
             )}
+          </div>
+          <div className="desk-inline-actions mt-3">
+            <NavLink href="/counter" variant="soft">
+              Counter desk
+            </NavLink>
           </div>
         </Card>
 

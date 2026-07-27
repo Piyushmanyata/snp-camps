@@ -37,6 +37,8 @@ export type AdminPatientRow = {
   volunteer_name?: string | null;
   checked_in_by_name?: string | null;
   doctor_name?: string | null;
+  /** True when at least one prescriptions row exists for this patient. */
+  has_prescription?: boolean;
 };
 
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -107,6 +109,13 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
     const doctorName = Array.isArray(doctor)
       ? doctor[0]?.full_name ?? null
       : doctor?.full_name ?? null;
+    const prescriptions = patient.prescriptions as
+      | { id: string }
+      | { id: string }[]
+      | null;
+    const hasPrescription = Array.isArray(prescriptions)
+      ? prescriptions.length > 0
+      : Boolean(prescriptions?.id);
     return {
       id: patient.id as string,
       reg_no: patient.reg_no as number,
@@ -130,12 +139,13 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
       doctor_name: doctorName,
+      has_prescription: hasPrescription,
     };
   });
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, aadhaar_verified_at, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, aadhaar_verified_at, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name), prescriptions(id)";
 
 export function AdminPatients({
   initial,
@@ -455,10 +465,19 @@ export function AdminPatients({
                   </Badge>
                   <Link
                     href={`/print/${r.id}`}
-                    className="pressable rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
+                    className="pressable inline-flex min-h-12 items-center rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
                   >
-                    Print
+                    Print slip
                   </Link>
+                  {r.has_prescription ? (
+                    <Link
+                      href={`/print/prescription/${r.id}`}
+                      className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-2 text-sm font-semibold text-brand hover:bg-white"
+                      data-testid="print-prescription"
+                    >
+                      Print prescription
+                    </Link>
+                  ) : null}
                   <Button
                     type="button"
                     variant="danger"

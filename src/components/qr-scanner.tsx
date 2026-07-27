@@ -1272,7 +1272,16 @@ export function QrScanner({
                       #{lookup.reg_no} · {lookup.full_name}
                     </p>
                   </div>
-                  <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {lookup.prescription_id ? (
+                      <Link
+                        href={`/print/prescription/${lookup.id}`}
+                        className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-brand/25 bg-white px-3 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
+                        data-testid="print-prescription"
+                      >
+                        Print prescription
+                      </Link>
+                    ) : null}
                     {lookup.is_locked ? (
                       <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-950 border border-amber-300">
                         Prescription Locked (Acted Upon)

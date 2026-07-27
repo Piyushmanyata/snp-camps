@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useTransition, type ReactNode } from "react";
+import Link from "next/link";
 import { SectionLoadError } from "@/components/section-load-error";
 import { fetchDeskSection } from "@/lib/section-client";
 import type { SectionKey } from "@/lib/section-reads";
@@ -191,6 +192,13 @@ export function DoctorSeenPanel({
                           : "—"}
                       </p>
                     </div>
+                    <Link
+                      href={`/print/prescription/${p.id}`}
+                      className="pressable inline-flex min-h-12 shrink-0 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand hover:bg-white"
+                      data-testid="print-prescription"
+                    >
+                      Print prescription
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useCallback, useId } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { QueueStatus } from "@/lib/types";
 import {
@@ -532,9 +533,21 @@ export function CounterDeskPanel({
                 </h4>
                 {activePatient.prescription ? (
                   <div className="rounded-xl border border-border bg-background/60 p-4 space-y-3">
-                    <p className="text-xs font-semibold text-muted">
-                      Prescribed by: <span className="text-foreground font-bold">{activePatient.prescription.doctor_name}</span>
-                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-semibold text-muted">
+                        Prescribed by:{" "}
+                        <span className="text-foreground font-bold">
+                          {activePatient.prescription.doctor_name}
+                        </span>
+                      </p>
+                      <Link
+                        href={`/print/prescription/${activePatient.id}`}
+                        className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-brand/25 bg-brand-soft px-4 text-sm font-semibold text-brand hover:bg-white"
+                        data-testid="print-prescription"
+                      >
+                        Print prescription
+                      </Link>
+                    </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
                       {activePatient.prescription.diagnosis && (

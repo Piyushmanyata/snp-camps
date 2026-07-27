@@ -34,12 +34,14 @@ export default async function RegisterPage() {
       ? [
           { href: "/register", label: "Register", primary: true as const },
           { href: "/volunteer", label: "Desk" },
+          { href: "/counter", label: "Counter" },
           { href: "/volunteer#scan", label: "Scan" },
         ]
       : role === "admin"
         ? [
             { href: "/register", label: "Register", primary: true as const },
             { href: "/admin", label: "Admin" },
+            { href: "/counter", label: "Counter" },
             { href: "/admin/patients", label: "Patients" },
           ]
         : undefined;

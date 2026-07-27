@@ -174,6 +174,7 @@ export default async function VolunteerPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
+        { href: "/counter", label: "Counter" },
         { href: "#checkin", label: "Check-in" },
         { href: "#scan", label: "Scan" },
         { href: "#queue", label: "Queue" },
@@ -243,6 +244,9 @@ export default async function VolunteerPage() {
           <div className="desk-inline-actions mt-4">
             <NavLink href="/register" variant="primary">
               Register walk-in patient
+            </NavLink>
+            <NavLink href="/counter" variant="soft">
+              Counter desk
             </NavLink>
           </div>
         </Card>

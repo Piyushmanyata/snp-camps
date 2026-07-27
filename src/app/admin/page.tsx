@@ -109,12 +109,14 @@ export default async function AdminPage() {
           ? [
               { href: "#checkin", label: "Check-in", primary: true },
               { href: "/register", label: "Register" },
+              { href: "/counter", label: "Counter" },
               { href: "#scan", label: "Scan" },
               { href: "#queue", label: "Queue" },
               { href: "/admin/patients", label: "Patients" },
             ]
           : [
               { href: "/register", label: "Register", primary: true },
+              { href: "/counter", label: "Counter" },
               { href: "/admin/patients", label: "Patients" },
               { href: "/volunteer", label: "Volunteers" },
               { href: "/doctor", label: "Doctors" },
@@ -155,6 +157,9 @@ export default async function AdminPage() {
           <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
             <NavLink href="/register" variant="primary">
               Register patient
+            </NavLink>
+            <NavLink href="/counter" variant="soft">
+              Counter desk
             </NavLink>
             <NavLink href="/volunteer" variant="soft">
               Volunteer desk

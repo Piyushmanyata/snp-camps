@@ -201,6 +201,7 @@ export default async function PatientDeskPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
+        { href: "/counter", label: "Counter" },
         { href: "/admin", label: "Admin" },
         { href: "/volunteer", label: "Volunteers" },
       ]}

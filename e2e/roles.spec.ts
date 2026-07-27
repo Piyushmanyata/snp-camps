@@ -275,6 +275,28 @@ test("doctor can sign in and review without mutating patient status", async ({
   await expect(page).toHaveURL(/\/$/);
 });
 
+/** #105 — counter desk and prescription print page are reachable without typing a URL. */
+test("admin volunteer and doctor can reach counter from navigation", async ({
+  page,
+}) => {
+  for (const role of ["admin", "volunteer", "doctor"] as const) {
+    await loginStaff(page, role);
+    // Prefer the in-page link (desktop); fall back to the mobile dock label.
+    const counterLink = page.getByRole("link", { name: /Counter/ }).first();
+    await expect(counterLink).toBeVisible();
+    await counterLink.click();
+    await expect(page).toHaveURL(/\/counter$/);
+    await expect(
+      page.getByRole("heading", { name: "Counter desk" }),
+    ).toBeVisible();
+    // Prescription print route stays camp-crew gated; open by path after counter is live.
+    await page.goto(`/print/prescription/${env("E2E_PATIENT_ID")}`);
+    await expect(page).not.toHaveURL(/\/login$/);
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/$/);
+  }
+});
+
 test("staff-scan QR never logs a public visitor in", async ({ page }) => {
   const patientId = env("E2E_PATIENT_ID");
 
