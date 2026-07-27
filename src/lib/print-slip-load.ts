@@ -10,16 +10,32 @@ import type { QueueStatus } from "@/lib/types";
 
 export type LoadedPrintPatient = DeskSlipSlot & {
   queueStatus: QueueStatus;
+  age: number | null;
+  gender: string | null;
+  /** Camp registration print mode: true → Prescription Sheet (#108). */
+  paperFallbackMode: boolean;
 };
 
 type PatientRow = {
   id: string;
   reg_no: number;
   full_name: string;
+  age: number | null;
+  gender: string | null;
   queue_status: QueueStatus;
   camps:
-    | { name: string; venue: string | null; camp_date: string | null }
-    | { name: string; venue: string | null; camp_date: string | null }[]
+    | {
+        name: string;
+        venue: string | null;
+        camp_date: string | null;
+        paper_fallback_mode?: boolean | null;
+      }
+    | {
+        name: string;
+        venue: string | null;
+        camp_date: string | null;
+        paper_fallback_mode?: boolean | null;
+      }[]
     | null;
   camp_days: { day_date: string } | { day_date: string }[] | null;
 };
@@ -36,16 +52,26 @@ function campDayFromRow(row: PatientRow): string | null {
 }
 
 function toSlot(row: PatientRow, origin: string): LoadedPrintPatient {
+  const camp = campFromRow(row);
   return {
     patient: {
       id: row.id,
       reg_no: row.reg_no,
       full_name: row.full_name,
     },
-    camp: campFromRow(row),
+    camp: camp
+      ? {
+          name: camp.name,
+          venue: camp.venue,
+          camp_date: camp.camp_date,
+        }
+      : null,
     campDayDate: campDayFromRow(row),
     qrValue: patientScanUrl(row.id, origin),
     queueStatus: row.queue_status,
+    age: row.age,
+    gender: row.gender,
+    paperFallbackMode: Boolean(camp?.paper_fallback_mode),
   };
 }
 
@@ -71,7 +97,7 @@ export async function loadPrintSlips(
   const { data, error } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, queue_status, camps(name, venue, camp_date), camp_days(day_date)",
+      "id, reg_no, full_name, age, gender, queue_status, camps(name, venue, camp_date, paper_fallback_mode), camp_days(day_date)",
     )
     .in("id", clean);
 

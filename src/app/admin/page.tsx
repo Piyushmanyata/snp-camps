@@ -13,13 +13,17 @@ import type { LiveQueuePatient } from "@/components/live-queue";
 import { getCampsList } from "@/lib/metadata";
 import {
   loadAdminQueueCountsSection,
+  loadAwaitingTreatmentSection,
   loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
+  type AwaitingTreatmentData,
+  type SectionResult,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
 import {
   AdminHeaderStatsPanel,
+  AwaitingTreatmentCard,
   CampsLoadFailed,
 } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
@@ -73,14 +77,17 @@ export default async function AdminPage() {
   let doctorsInitial:
     | { ok: true; data: DoctorOption[] }
     | { ok: false; error: string } = { ok: true, data: [] };
+  let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
 
   if (active) {
-    const [statsRes, seatsRes, queueRes, doctorsRes] = await Promise.all([
-      loadAdminQueueCountsSection(active.id),
-      loadSeatsSection(active.id),
-      loadQueueSection(active.id),
-      loadDoctorsSection(),
-    ]);
+    const [statsRes, seatsRes, queueRes, doctorsRes, awaitingRes] =
+      await Promise.all([
+        loadAdminQueueCountsSection(active.id),
+        loadSeatsSection(active.id),
+        loadQueueSection(active.id),
+        loadDoctorsSection(),
+        loadAwaitingTreatmentSection(active.id),
+      ]);
     statsInitial = statsRes;
     if (seatsRes.ok) {
       days = seatsRes.data.days;
@@ -92,6 +99,7 @@ export default async function AdminPage() {
       queueKnown = true;
     }
     doctorsInitial = doctorsRes;
+    awaitingInitial = awaitingRes;
   } else if (!campsError) {
     // No active camp — still try doctors for empty scanner readiness is N/A
     doctorsInitial = await loadDoctorsSection();
@@ -125,6 +133,11 @@ export default async function AdminPage() {
     >
       <div className="space-y-3 sm:space-y-4 lg:space-y-5">
         <AdminHeaderStatsPanel campId={active?.id ?? null} initial={statsInitial} />
+
+        <AwaitingTreatmentCard
+          campId={active?.id ?? null}
+          initial={awaitingInitial}
+        />
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">

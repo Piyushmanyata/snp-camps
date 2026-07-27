@@ -1,10 +1,19 @@
 "use client";
 
-import { useCallback, useState, useTransition, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { SectionLoadError } from "@/components/section-load-error";
 import { fetchDeskSection } from "@/lib/section-client";
-import type { SectionKey } from "@/lib/section-reads";
+import type {
+  AwaitingTreatmentData,
+  SectionKey,
+} from "@/lib/section-reads";
 import {
   Card,
   CollapsibleSection,
@@ -211,6 +220,116 @@ export function DoctorSeenPanel({
           </CollapsibleSection>
         )}
       </SectionDataIsland>
+    </div>
+  );
+}
+
+const AWAITING_POLL_MS = 20_000;
+
+const AWAITING_STATIONS: {
+  kind: keyof AwaitingTreatmentData;
+  label: string;
+  href: string;
+}[] = [
+  { kind: "ot", label: "OT", href: "/counter?station=ot" },
+  {
+    kind: "pharmacy",
+    label: "Medicines",
+    href: "/counter?station=pharmacy",
+  },
+  {
+    kind: "spectacles",
+    label: "Spectacles",
+    href: "/counter?station=spectacles",
+  },
+];
+
+/**
+ * Awaiting treatment card (#106) — derived counts of seen patients with
+ * pending orders, polled (no realtime on patient rows).
+ */
+export function AwaitingTreatmentCard({
+  campId,
+  initial,
+}: {
+  campId: string | null;
+  initial:
+    | { ok: true; data: AwaitingTreatmentData }
+    | { ok: false; error: string }
+    | null;
+}) {
+  if (!campId) {
+    return (
+      <Card className="!p-4 sm:!p-5" data-testid="awaiting-treatment-card">
+        <SectionTitle hint="After the doctor">Awaiting treatment</SectionTitle>
+        <p className="text-sm text-muted" role="status">
+          No active camp — these counts stay at zero until an admin activates
+          one.
+        </p>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {AWAITING_STATIONS.map((s) => (
+            <div
+              key={s.kind}
+              className="rounded-xl border border-border bg-background/50 px-2 py-3 text-center"
+            >
+              <p className="text-xs font-semibold text-muted">{s.label}</p>
+              <p className="mt-0.5 text-xl font-bold tabular">0</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  if (!initial) {
+    return null;
+  }
+
+  return (
+    <Card className="!p-4 sm:!p-5" data-testid="awaiting-treatment-card">
+      <SectionTitle hint="Seen · pending orders">Awaiting treatment</SectionTitle>
+      <SectionDataIsland
+        section="awaiting-treatment"
+        campId={campId}
+        initial={initial}
+      >
+        {(data, { refresh }) => (
+          <AwaitingTreatmentBody data={data} refresh={refresh} />
+        )}
+      </SectionDataIsland>
+    </Card>
+  );
+}
+
+function AwaitingTreatmentBody({
+  data,
+  refresh,
+}: {
+  data: AwaitingTreatmentData;
+  refresh: () => void;
+}) {
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      refresh();
+    }, AWAITING_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
+  return (
+    <div className="mt-1 grid grid-cols-3 gap-2">
+      {AWAITING_STATIONS.map((s) => (
+        <Link
+          key={s.kind}
+          href={s.href}
+          className="pressable rounded-xl border border-border bg-background/50 px-2 py-3 text-center transition-colors hover:border-brand/40 hover:bg-brand-soft/40"
+          data-testid={`awaiting-${s.kind}`}
+        >
+          <p className="text-xs font-semibold text-muted">{s.label}</p>
+          <p className="mt-0.5 text-xl font-bold tabular text-brand">
+            {data[s.kind]}
+          </p>
+        </Link>
+      ))}
     </div>
   );
 }

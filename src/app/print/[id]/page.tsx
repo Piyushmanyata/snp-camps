@@ -5,6 +5,8 @@ import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 import { loadPrintSlips } from "@/lib/print-slip-load";
 import { DeskSlipPrint } from "@/components/desk-slip-print";
+import { RegistrationPrescriptionSheet } from "@/components/registration-prescription-sheet";
+import { PrintActions } from "@/components/print-actions";
 
 export default async function PrintPage({
   params,
@@ -57,7 +59,49 @@ export default async function PrintPage({
     );
   }
 
-  // Single-patient route: one thermal slip.
+  const deskHref = profile.role === "admin" ? "/admin" : "/volunteer";
+  const deskLabel =
+    profile.role === "admin" ? "Admin dashboard" : "Volunteer desk";
+
+  // #108 — camp paper_fallback_mode prints the blank Prescription Sheet
+  // instead of the desk slip. One or the other, never both.
+  if (slip.paperFallbackMode) {
+    return (
+      <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
+        <PrintActions
+          className="no-print mb-4"
+          patients={[
+            {
+              id: slip.patient.id,
+              regNo: slip.patient.reg_no,
+              name: slip.patient.full_name,
+              queueStatus: slip.queueStatus ?? "waiting",
+            },
+          ]}
+          deskHref={deskHref}
+          deskLabel={deskLabel}
+          autoPrint={autoPrint}
+        />
+        <RegistrationPrescriptionSheet
+          patient={{
+            id: slip.patient.id,
+            reg_no: slip.patient.reg_no,
+            full_name: slip.patient.full_name,
+            age: slip.age,
+            gender: slip.gender,
+          }}
+          camp={slip.camp}
+          campDayDate={slip.campDayDate}
+          qrValue={slip.qrValue}
+        />
+        <p className="no-print mt-3 text-center text-xs text-muted">
+          Prescription Sheet · blank form for handwritten notes · Patient QR is
+          for <strong>staff scan only</strong>.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
       <DeskSlipPrint
@@ -70,10 +114,8 @@ export default async function PrintPage({
             queueStatus: slip.queueStatus,
           },
         ]}
-        deskHref={profile.role === "admin" ? "/admin" : "/volunteer"}
-        deskLabel={
-          profile.role === "admin" ? "Admin dashboard" : "Volunteer desk"
-        }
+        deskHref={deskHref}
+        deskLabel={deskLabel}
         autoPrint={autoPrint}
       />
     </main>

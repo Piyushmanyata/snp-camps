@@ -19,13 +19,19 @@ import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
 import type { CampDayStats, DoctorOption } from "@/lib/types";
 import {
+  loadAwaitingTreatmentSection,
   loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
   loadVolunteerKpisSection,
+  type AwaitingTreatmentData,
+  type SectionResult,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { VolunteerKpisSection } from "@/components/section-data";
+import {
+  AwaitingTreatmentCard,
+  VolunteerKpisSection,
+} from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
 import { SeatBoard } from "@/components/seat-board";
 import { CheckIn } from "@/components/check-in";
@@ -136,15 +142,18 @@ export default async function VolunteerPage() {
       }
     | { ok: false; error: string }
     | null = null;
+  let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
 
   if (camp && userId) {
     // Independent loads — one failure must not blank the rest of the desk.
-    const [queueRes, seatsRes, doctorsRes, kpisRes] = await Promise.all([
-      loadQueueSection(camp.id),
-      loadSeatsSection(camp.id),
-      loadDoctorsSection(),
-      loadVolunteerKpisSection(camp.id, userId),
-    ]);
+    const [queueRes, seatsRes, doctorsRes, kpisRes, awaitingRes] =
+      await Promise.all([
+        loadQueueSection(camp.id),
+        loadSeatsSection(camp.id),
+        loadDoctorsSection(),
+        loadVolunteerKpisSection(camp.id, userId),
+        loadAwaitingTreatmentSection(camp.id),
+      ]);
 
     if (queueRes.ok) {
       waiting = queueRes.data.waiting as LiveQueuePatient[];
@@ -159,6 +168,7 @@ export default async function VolunteerPage() {
 
     doctorsInitial = doctorsRes;
     kpisInitial = kpisRes;
+    awaitingInitial = awaitingRes;
   }
 
   return (
@@ -212,6 +222,13 @@ export default async function VolunteerPage() {
                 activates one. They are not a career total.
               </p>
             ) : null}
+          </div>
+
+          <div className="mt-3">
+            <AwaitingTreatmentCard
+              campId={camp?.id ?? null}
+              initial={awaitingInitial}
+            />
           </div>
 
           {/* Always visible on phone — desk-inline-actions is desktop-only */}
