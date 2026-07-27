@@ -57,6 +57,12 @@ export type LookupRow = {
   destinations?: string[] | null;
   is_locked?: boolean | null;
   amendments?: PrescriptionAmendmentItem[] | null;
+  theatre_capacity?: number | null;
+  theatre_reserved?: number | null;
+  theatre_remaining?: number | null;
+  ot_scheduled_day_id?: string | null;
+  ot_scheduled_day_date?: string | null;
+  next_available_ot_day_date?: string | null;
 };
 
 export type AssignRow = {
@@ -558,6 +564,8 @@ export type SubmitPrescriptionRow = {
   reg_no: number;
   queue_status: string;
   created_orders_count: number;
+  scheduled_camp_day_id?: string | null;
+  scheduled_day_date?: string | null;
 };
 
 export async function doctorSubmitPrescriptionWithRetries(options: {

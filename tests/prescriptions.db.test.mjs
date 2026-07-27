@@ -170,7 +170,11 @@ async function createTestCamp() {
   const campId = randomUUID();
   const dayId = randomUUID();
   await client.query(
-    `insert into public.camps (id, name, venue, is_active) values ($1, $2, $3, false)`,
+    `insert into public.camps (
+       id, name, venue, is_active,
+       spectacles_collection_date, spectacles_collection_venue,
+       post_camp_surgery_date, post_camp_surgery_venue
+     ) values ($1, $2, $3, false, '2026-10-15', 'Prescription Hall', '2026-11-20', 'Prescription Hospital OT')`,
     [campId, "Prescription Test Camp", VENUE],
   );
   await client.query(
@@ -251,7 +255,12 @@ test("doctor_submit_prescription RPC: doctor submits prescription with treatment
     tRows.map((r) => r.kind),
     ["ot", "pharmacy", "spectacles"],
   );
-  assert.ok(tRows.every((r) => r.status === "pending"));
+  const otOrder = tRows.find((r) => r.kind === "ot");
+  const pharmacyOrder = tRows.find((r) => r.kind === "pharmacy");
+  const specOrder = tRows.find((r) => r.kind === "spectacles");
+  assert.equal(otOrder.status, "pending");
+  assert.equal(pharmacyOrder.status, "pending");
+  assert.equal(specOrder.status, "deferred");
 });
 
 test("doctor_submit_prescription RPC: one-tap submit for healthy patient with 0 destinations", async (t) => {

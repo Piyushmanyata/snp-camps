@@ -25,14 +25,15 @@ export function AdminCampDays({
   const router = useRouter();
   const days = initialDays;
 
-  const isValidSeatLimitInput = (valueStr: string) => {
-    const trimmed = valueStr.trim();
-    if (!/^\d+$/.test(trimmed)) return false;
-    const value = Number(trimmed);
-    return Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
+  const isValidNum = (s: string, allowBlank = false) => {
+    const t = s.trim();
+    if (allowBlank && t === "") return true;
+    return /^\d+$/.test(t) && Number(t) <= 2_147_483_647;
   };
+
   const [dayDate, setDayDate] = useState("");
   const [seats, setSeats] = useState("100");
+  const [theatreSeats, setTheatreSeats] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [dayError, setDayError] = useState<{
     dayId: string;
@@ -42,11 +43,10 @@ export function AdminCampDays({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
+  const [editingTheatre, setEditingTheatre] = useState<Record<string, string>>({});
   const mutationBusy = loading || savingId !== null || deletingId !== null;
 
   async function refresh() {
-    // The server page is the single source of truth; avoid a duplicate RPC
-    // followed immediately by the same RSC request.
     router.refresh();
   }
 
@@ -55,12 +55,13 @@ export function AdminCampDays({
     if (mutationBusy) return;
     setLoading(true);
     setAddError(null);
-    if (!dayDate || !isValidSeatLimitInput(seats)) {
-      setAddError("Enter a date and seat limit ≥ 0");
+    if (!dayDate || !isValidNum(seats) || !isValidNum(theatreSeats, true)) {
+      setAddError("Enter a date, seat limit ≥ 0, and valid theatre capacity (or blank)");
       setLoading(false);
       return;
     }
     const limit = Number(seats);
+    const theatreCap = theatreSeats.trim() === "" ? null : Number(theatreSeats);
     try {
       const supabase = createClient();
       const { error: err } = await supabase.rpc("upsert_camp_day", {
@@ -68,6 +69,7 @@ export function AdminCampDays({
         p_day_date: dayDate,
         p_seat_limit: limit,
         p_day_id: null,
+        p_theatre_capacity: theatreCap,
       });
       if (err) {
         setAddError(
@@ -79,6 +81,7 @@ export function AdminCampDays({
       } else {
         setDayDate("");
         setSeats("100");
+        setTheatreSeats("");
         await refresh();
       }
     } catch {
@@ -92,17 +95,28 @@ export function AdminCampDays({
     dayId: string,
     dayDateIso: string,
     seatsTaken: number,
+    otReserved: number = 0,
   ) {
     if (mutationBusy) return;
     setDayError(null);
     const seatsVal = editing[dayId] ?? "";
-    if (!isValidSeatLimitInput(seatsVal)) {
+    const theatreVal = editingTheatre[dayId] ?? "";
+
+    if (!isValidNum(seatsVal)) {
       setDayError({
         dayId,
         message: "Seat limit must be a whole number ≥ 0",
       });
       return;
     }
+    if (!isValidNum(theatreVal, true)) {
+      setDayError({
+        dayId,
+        message: "Theatre capacity must be a whole number ≥ 0 or blank for unlimited",
+      });
+      return;
+    }
+
     const limit = Number(seatsVal);
     if (limit < seatsTaken) {
       setDayError({
@@ -111,6 +125,16 @@ export function AdminCampDays({
       });
       return;
     }
+
+    const theatreCap = theatreVal.trim() === "" ? null : Number(theatreVal);
+    if (theatreCap !== null && theatreCap < otReserved) {
+      setDayError({
+        dayId,
+        message: `Theatre capacity cannot be below ${otReserved} reserved OT slots`,
+      });
+      return;
+    }
+
     setSavingId(dayId);
     try {
       const supabase = createClient();
@@ -119,17 +143,23 @@ export function AdminCampDays({
         p_day_date: dayDateIso,
         p_seat_limit: limit,
         p_day_id: dayId,
+        p_theatre_capacity: theatreCap,
       });
       if (err) {
         setDayError({
           dayId,
           message: mapDbError(err, {
             context: "admin-camp-days.save-seats",
-            fallback: "Could not update the seat limit. Try again.",
+            fallback: "Could not update the camp day limit. Try again.",
           }),
         });
       } else {
         setEditing((prev) => {
+          const next = { ...prev };
+          delete next[dayId];
+          return next;
+        });
+        setEditingTheatre((prev) => {
           const next = { ...prev };
           delete next[dayId];
           return next;
@@ -139,7 +169,7 @@ export function AdminCampDays({
     } catch {
       setDayError({
         dayId,
-        message: "Could not update the seat limit. Check your connection and try again.",
+        message: "Could not update the camp day limit. Check your connection and try again.",
       });
     } finally {
       setSavingId(null);
@@ -184,65 +214,91 @@ export function AdminCampDays({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        {campName}: each day has a seat cap. Registration closes for a day when
-        full; other days stay open. One patient = one day.
+        {campName}: each day has a seat cap and an optional theatre slot cap.
       </p>
 
       <ul className="mb-4 divide-y divide-border">
-        {days.map((d) => (
-          <li key={d.id} className="space-y-2 py-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-semibold">{formatCampDay(d.day_date)}</p>
-                <p className="text-xs text-muted">
-                  {d.seats_taken} taken · {d.seats_left} left
-                </p>
+        {days.map((d) => {
+          const otReserved = d.theatre_reserved ?? 0;
+          const currentTheatreVal =
+            editingTheatre[d.id] ??
+            (d.theatre_capacity === null || d.theatre_capacity === undefined
+              ? ""
+              : String(d.theatre_capacity));
+          return (
+            <li key={d.id} className="space-y-2 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{formatCampDay(d.day_date)}</p>
+                  <p className="text-xs text-muted">
+                    Seats: {d.seats_taken} taken · {d.seats_left} left | OT Slots:{" "}
+                    {d.theatre_capacity === null || d.theatre_capacity === undefined
+                      ? `${otReserved} reserved (Unlimited)`
+                      : `${otReserved} reserved · ${d.theatre_remaining ?? 0} left (of ${d.theatre_capacity})`}
+                  </p>
+                </div>
+                <Badge tone={d.is_full ? "wait" : "ok"}>
+                  {d.is_full ? "Seats Full" : "Open"}
+                </Badge>
               </div>
-              <Badge tone={d.is_full ? "wait" : "ok"}>
-                {d.is_full ? "Full" : "Open"}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-[7rem] flex-1">
-                <Input
-                  label="Seat limit"
-                  type="number"
-                  min={d.seats_taken}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[7rem] flex-1">
+                  <Input
+                    label="Seat limit"
+                    type="number"
+                    min={d.seats_taken}
+                    disabled={mutationBusy}
+                    value={editing[d.id] ?? String(d.seat_limit)}
+                    onChange={(e) =>
+                      setEditing((prev) => ({ ...prev, [d.id]: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="min-w-[7rem] flex-1">
+                  <Input
+                    label="Theatre capacity (blank = unlimited)"
+                    type="number"
+                    min={otReserved}
+                    placeholder="Unlimited"
+                    disabled={mutationBusy}
+                    value={currentTheatreVal}
+                    onChange={(e) =>
+                      setEditingTheatre((prev) => ({
+                        ...prev,
+                        [d.id]: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-auto"
                   disabled={mutationBusy}
-                  value={editing[d.id] ?? String(d.seat_limit)}
-                  onChange={(e) =>
-                    setEditing((prev) => ({ ...prev, [d.id]: e.target.value }))
-                  }
-                />
+                  loading={savingId === d.id}
+                  onClick={() => saveSeats(d.id, d.day_date, d.seats_taken, otReserved)}
+                >
+                  {savingId === d.id ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-auto text-danger"
+                  disabled={mutationBusy}
+                  loading={deletingId === d.id}
+                  onClick={() => removeDay(d.id)}
+                >
+                  {deletingId === d.id ? "Deleting…" : "Delete"}
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-auto"
-                disabled={mutationBusy}
-                loading={savingId === d.id}
-                onClick={() => saveSeats(d.id, d.day_date, d.seats_taken)}
-              >
-                {savingId === d.id ? "Saving…" : "Save"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-auto text-danger"
-                disabled={mutationBusy}
-                loading={deletingId === d.id}
-                onClick={() => removeDay(d.id)}
-              >
-                {deletingId === d.id ? "Deleting…" : "Delete"}
-              </Button>
-            </div>
-            <ErrorBox
-              message={dayError?.dayId === d.id ? dayError.message : null}
-            />
-          </li>
-        ))}
+              <ErrorBox
+                message={dayError?.dayId === d.id ? dayError.message : null}
+              />
+            </li>
+          );
+        })}
         {!days.length ? (
           <li className="py-2">
             <EmptyState>No days yet — add the first below.</EmptyState>
@@ -268,6 +324,15 @@ export function AdminCampDays({
           disabled={mutationBusy}
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
+        />
+        <Input
+          label="Theatre capacity (optional, blank = unlimited)"
+          type="number"
+          min={0}
+          placeholder="Unlimited"
+          disabled={mutationBusy}
+          value={theatreSeats}
+          onChange={(e) => setTheatreSeats(e.target.value)}
         />
         <ErrorBox message={addError} />
         <Button type="submit" variant="secondary" disabled={mutationBusy}>

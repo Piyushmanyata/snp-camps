@@ -171,7 +171,11 @@ async function createTestCamp() {
   const campId = randomUUID();
   const dayId = randomUUID();
   await client.query(
-    `insert into public.camps (id, name, venue, is_active) values ($1, $2, $3, false)`,
+    `insert into public.camps (
+       id, name, venue, is_active,
+       spectacles_collection_date, spectacles_collection_venue,
+       post_camp_surgery_date, post_camp_surgery_venue
+     ) values ($1, $2, $3, false, '2026-10-15', 'Counter Spec Venue', '2026-11-20', 'Counter OT Hospital')`,
     [campId, "Counter Test Camp", VENUE],
   );
   await client.query(
@@ -247,7 +251,7 @@ test("resolve_treatment_order RPC: fulfills, defers, and cancels orders for a pa
         "RE: 6/18, LE: 6/24",
         "Antibiotic Eye Drops",
         "Spectacles & Surgery needed",
-        "bifocal",
+        "fixed",
         ["pharmacy", "spectacles", "ot"],
       ],
     );

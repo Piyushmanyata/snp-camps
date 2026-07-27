@@ -107,7 +107,7 @@ test("admin can sign in, inspect the patient desk, and sign out", async ({
   page,
 }) => {
   await loginStaff(page, "admin");
-  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
   await expect(
     page.getByText("Camps & camp days", { exact: true }),
   ).toBeVisible();

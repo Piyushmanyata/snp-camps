@@ -13,7 +13,7 @@
     "/p/[id]": 199000,
     "/print/[id]": 212000,
     "/print/prescription/[id]": 208000,
-    "/register": 410000,
+    "/register": 411000,
     "/self-register": 205000,
     "/s/[token]": 199000,
     "/volunteer": 418000

@@ -107,3 +107,7 @@ export function createServerClient() {
     },
   };
 }
+
+export function createBrowserClient() {
+  return createServerClient();
+}

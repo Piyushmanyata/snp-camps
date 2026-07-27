@@ -197,12 +197,14 @@ export function CounterDeskPanel({
             closed_at,
             closed_by,
             deferred_date,
-            deferred_venue
+            deferred_venue,
+            scheduled_camp_day_id,
+            camp_days:scheduled_camp_day_id ( day_date )
           `)
           .eq("patient_id", patientId)
           .order("created_at", { ascending: true });
 
-        const orders: TreatmentOrderRow[] = (ordersData as unknown as TreatmentOrderRow[] || []).map((o) => ({
+        const orders: TreatmentOrderRow[] = (ordersData as unknown as Array<TreatmentOrderRow & { camp_days?: { day_date?: string } | null }> || []).map((o) => ({
           id: o.id,
           prescription_id: o.prescription_id,
           patient_id: o.patient_id,
@@ -214,6 +216,8 @@ export function CounterDeskPanel({
           closed_by: o.closed_by,
           deferred_date: o.deferred_date,
           deferred_venue: o.deferred_venue,
+          scheduled_camp_day_id: o.scheduled_camp_day_id,
+          scheduled_day_date: o.camp_days?.day_date ?? null,
         }));
 
         const isCompleted = isPatientCompletedDerived(patientData.queue_status, orders);
@@ -630,6 +634,16 @@ export function CounterDeskPanel({
                                 : "Cancelled"}
                             </Badge>
                           </div>
+
+                          {/* Scheduled OT Info Display */}
+                          {ord.kind === "ot" && ord.scheduled_day_date && (
+                            <div className="text-xs font-semibold text-brand bg-brand-soft/40 p-2.5 rounded-lg border border-brand/20">
+                              <p>
+                                <strong className="text-foreground">Scheduled Camp Day:</strong>{" "}
+                                {ord.scheduled_day_date}
+                              </p>
+                            </div>
+                          )}
 
                           {/* Deferred Info Display */}
                           {ord.status === "deferred" && (

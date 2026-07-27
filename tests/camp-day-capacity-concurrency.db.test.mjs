@@ -33,7 +33,7 @@ async function connect() {
     await c.connect();
     const { rows } = await c.query(
       `select
-         to_regprocedure('public.upsert_camp_day(uuid,date,integer,uuid)') is not null
+         to_regprocedure('public.upsert_camp_day(uuid,date,integer,uuid,integer)') is not null
            and to_regprocedure(
              'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean)'
            ) is not null as ok`,

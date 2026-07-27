@@ -255,13 +255,19 @@ export function classifyOperationError(
     publicCategory = "capacity";
     publicMessage = "That camp day is full. Choose another day.";
   }
-  const belowAssigned = message.match(
-    /SEAT_LIMIT_BELOW_ASSIGNED:taken=(\d+)|Cannot set seats below taken \((\d+)\)/i,
+  const belowMatch = message.match(
+    /(?:SEAT_LIMIT_BELOW_ASSIGNED:taken|THEATRE_CAPACITY_BELOW_RESERVED:reserved)=(\d+)|Cannot set seats below taken \((\d+)\)/i,
   );
-  if (!publicMessage && belowAssigned) {
-    const n = belowAssigned[1] || belowAssigned[2];
+  if (!publicMessage && belowMatch) {
+    const n = belowMatch[1] || belowMatch[2];
     publicCategory = "capacity";
-    publicMessage = `Seat limit cannot be below ${n} existing bookings`;
+    publicMessage = message.includes("THEATRE")
+      ? `Theatre capacity cannot be below ${n} reserved OT slots`
+      : `Seat limit cannot be below ${n} existing bookings`;
+  }
+  if (!publicMessage && /Theatre slot capacity reached|no theatre capacity remaining/i.test(message)) {
+    publicCategory = "capacity";
+    publicMessage = "Camp has no theatre capacity remaining";
   }
   if (!publicMessage && /already registered/i.test(message)) {
     publicCategory = "conflict";

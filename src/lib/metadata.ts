@@ -13,7 +13,9 @@ export const getCampsList = cache(async (): Promise<Camp[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("camps")
-    .select("id, name, venue, camp_date, is_active, created_at")
+    .select(
+      "id, name, venue, camp_date, is_active, created_at, spectacles_collection_date, spectacles_collection_venue, post_camp_surgery_date, post_camp_surgery_venue, paper_fallback_mode"
+    )
     .order("created_at", { ascending: false });
   if (error) throw new Error("Camps data could not be loaded");
   return (data || []) as Camp[];

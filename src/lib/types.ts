@@ -18,6 +18,11 @@ export type Camp = {
   camp_date: string | null;
   is_active: boolean;
   created_at: string;
+  spectacles_collection_date?: string | null;
+  spectacles_collection_venue?: string | null;
+  post_camp_surgery_date?: string | null;
+  post_camp_surgery_venue?: string | null;
+  paper_fallback_mode?: boolean;
 };
 
 /** Doctor picker option shared by desk RSC loaders and client scanners. */
@@ -34,6 +39,9 @@ export type CampDayStats = {
   seats_taken: number;
   seats_left: number;
   is_full: boolean;
+  theatre_capacity?: number;
+  theatre_reserved?: number;
+  theatre_remaining?: number;
 };
 
 export function queueLabel(status: string) {

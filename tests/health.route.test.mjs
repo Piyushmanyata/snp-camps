@@ -32,6 +32,7 @@ function goodCatalogFacts(overrides = {}) {
     camp_days: true,
     profiles: true,
     sms_deliveries: true,
+    treatment_orders: true,
   };
   const columns = {
     "patients.id": true,
@@ -50,6 +51,7 @@ function goodCatalogFacts(overrides = {}) {
     "camp_days.camp_id": true,
     "camp_days.day_date": true,
     "camp_days.seat_limit": true,
+    "camp_days.theatre_capacity": true,
     "profiles.id": true,
     "profiles.disabled_at": true,
     "sms_deliveries.id": true,
@@ -60,6 +62,8 @@ function goodCatalogFacts(overrides = {}) {
     "sms_deliveries.phone_last4": true,
     "sms_deliveries.attempt_count": true,
     "sms_deliveries.updated_at": true,
+    "treatment_orders.id": true,
+    "treatment_orders.scheduled_camp_day_id": true,
   };
   const functions = {
     latest_applied_migration: true,

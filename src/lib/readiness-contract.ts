@@ -16,7 +16,7 @@ export const READINESS_CONTRACT_VERSION = 1;
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260727150000";
+export const EXPECTED_MIGRATION_HEAD = "20260727200000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -43,6 +43,7 @@ export const REQUIRED_TABLES = [
   "camp_days",
   "profiles",
   "sms_deliveries",
+  "treatment_orders",
 ] as const;
 
 /** table → required columns (runtime-critical subset). */
@@ -58,7 +59,7 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "full_name",
   ],
   camps: ["id", "name", "is_active", "venue"],
-  camp_days: ["id", "camp_id", "day_date", "seat_limit"],
+  camp_days: ["id", "camp_id", "day_date", "seat_limit", "theatre_capacity"],
   profiles: ["id", "disabled_at"],
   sms_deliveries: [
     "id",
@@ -70,6 +71,7 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "attempt_count",
     "updated_at",
   ],
+  treatment_orders: ["id", "scheduled_camp_day_id"],
 };
 
 /** Functions that must exist (name only — signatures evolve; existence via pg_proc). */
@@ -121,7 +123,12 @@ export const SMS_DELIVERY_STATES = [
   "ambiguous",
 ] as const;
 
-export const SMS_DELIVERY_KINDS = ["registration", "reminder"] as const;
+export const SMS_DELIVERY_KINDS = [
+  "registration",
+  "reminder",
+  "spectacles_deferral",
+  "surgery_deferral",
+] as const;
 
 /** Safe operator explanations (no SQL, secrets, PHI, connection strings). */
 export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =

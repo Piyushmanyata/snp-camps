@@ -557,7 +557,7 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await loginStaff(page, "admin");
-  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
 
   await page.goto("/admin/patients");
   await page.waitForLoadState("networkidle");

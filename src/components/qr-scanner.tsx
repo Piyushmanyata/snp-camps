@@ -254,7 +254,8 @@ export function QrScanner({
         row.created_orders_count > 0
           ? ` (${row.created_orders_count} order${row.created_orders_count === 1 ? "" : "s"})`
           : "";
-      setToastMsg(`#${row.reg_no} marked seen${orderCountText}`);
+      const otNotice = row.scheduled_day_date ? ` · OT Scheduled for ${row.scheduled_day_date}` : "";
+      setToastMsg(`#${row.reg_no} marked seen${orderCountText}${otNotice}`);
       readyForNext();
 
       if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
@@ -1540,33 +1541,78 @@ export function QrScanner({
                     { id: "spectacles", label: "Spectacles" },
                   ].map((dest) => {
                     const checked = destinations.includes(dest.id);
+                    let sublabel: string | null = null;
+                    if (dest.id === "ot" && lookup) {
+                      if (lookup.ot_scheduled_day_date) {
+                        sublabel = `Scheduled for ${lookup.ot_scheduled_day_date}`;
+                      } else if (lookup.next_available_ot_day_date) {
+                        sublabel = `Scheduled for ${lookup.next_available_ot_day_date}`;
+                      } else if (lookup.theatre_capacity != null) {
+                        const rem = lookup.theatre_remaining ?? 0;
+                        sublabel = rem === 0 ? "No theatre capacity remaining" : `${rem}/${lookup.theatre_capacity} slots left`;
+                      } else {
+                        sublabel = "Unlimited slots";
+                      }
+                    }
                     return (
                       <label
                         key={dest.id}
-                        className={`flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                        className={`flex min-h-[44px] cursor-pointer items-center justify-between gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
                           checked
                             ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
                             : "border-border bg-white text-foreground hover:border-brand/40"
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={assigning}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setDestinations([...destinations, dest.id]);
-                            } else {
-                              setDestinations(destinations.filter((d) => d !== dest.id));
-                            }
-                          }}
-                          className="h-5 w-5 rounded border-border text-brand focus:ring-brand"
-                        />
-                        <span>{dest.label}</span>
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={assigning}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setDestinations([...destinations, dest.id]);
+                              } else {
+                                setDestinations(destinations.filter((d) => d !== dest.id));
+                              }
+                            }}
+                            className="h-6 w-6 min-h-[44px] min-w-[44px] rounded border-border text-brand focus:ring-brand accent-brand cursor-pointer shrink-0"
+                          />
+                          <span>{dest.label}</span>
+                        </div>
+                        {sublabel ? (
+                          <span
+                            className={`text-xs font-medium ${
+                              dest.id === "ot" && (sublabel.includes("No theatre capacity") || sublabel.includes("Full"))
+                                ? "text-danger font-semibold"
+                                : "text-brand font-semibold"
+                            }`}
+                          >
+                            {sublabel}
+                          </span>
+                        ) : null}
                       </label>
                     );
                   })}
                 </div>
+
+                {destinations.includes("ot") && lookup ? (
+                  <div
+                    className={`mt-3 rounded-xl border p-3 text-xs font-bold ${
+                      lookup.ot_scheduled_day_date || lookup.next_available_ot_day_date
+                        ? "border-brand/30 bg-brand-soft/60 text-brand"
+                        : "border-danger/30 bg-danger-soft text-danger"
+                    }`}
+                    data-testid="ot-scheduled-banner"
+                  >
+                    {lookup.ot_scheduled_day_date ? (
+                      <p>Scheduled for {lookup.ot_scheduled_day_date}</p>
+                    ) : lookup.next_available_ot_day_date ? (
+                      <p>Scheduled for {lookup.next_available_ot_day_date}</p>
+                    ) : (
+                      <p>Camp has no theatre capacity remaining</p>
+                    )}
+                  </div>
+                ) : null}
 
                 {destinations.includes("spectacles") ? (
                   <div className="mt-3 rounded-xl border border-brand/30 bg-white p-3 space-y-2">

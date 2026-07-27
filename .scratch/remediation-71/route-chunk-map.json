@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-27T07:58:43.125Z",
+  "generatedAt": "2026-07-27T08:25:00.689Z",
   "measureMode": "eager-initial-vs-async-deferred",
   "routes": {
     "/": {
@@ -99,15 +99,16 @@
       }
     },
     "/admin": {
-      "initialGzip": 406482,
-      "initialRaw": 1391204,
-      "deferredGzip": 57144,
-      "deferredRaw": 166305,
+      "initialGzip": 408230,
+      "initialRaw": 1398640,
+      "deferredGzip": 57314,
+      "deferredRaw": 166814,
       "frameworkGzip": 178711,
-      "appGzip": 227771,
+      "appGzip": 229519,
       "initialChunks": [
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
@@ -115,30 +116,30 @@
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
-        "static/chunks/44e9n5n0jddt7.js",
+        "static/chunks/3u249o_f9hdi6.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
       "deferredChunks": [
         "static/chunks/1p4lahote9vxf.js",
-        "static/chunks/2heogb3kw138j.js",
         "static/chunks/39fgiytt47ohq.js",
-        "static/chunks/3f3rdpgsqj0m_.js"
+        "static/chunks/3f3rdpgsqj0m_.js",
+        "static/chunks/3hu1z6977363f.js"
       ],
       "deferredMarkers": {
         "static/chunks/1p4lahote9vxf.js": [],
-        "static/chunks/2heogb3kw138j.js": [
-          "scanner_ui"
-        ],
         "static/chunks/39fgiytt47ohq.js": [
           "jsqr_lib"
         ],
-        "static/chunks/3f3rdpgsqj0m_.js": []
+        "static/chunks/3f3rdpgsqj0m_.js": [],
+        "static/chunks/3hu1z6977363f.js": [
+          "scanner_ui"
+        ]
       },
       "initialMarkers": {
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
@@ -146,29 +147,28 @@
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
-        "static/chunks/44e9n5n0jddt7.js": [],
+        "static/chunks/3u249o_f9hdi6.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
     },
     "/admin/patients": {
-      "initialGzip": 396421,
-      "initialRaw": 1355082,
+      "initialGzip": 396513,
+      "initialRaw": 1355321,
       "deferredGzip": 0,
       "deferredRaw": 0,
       "frameworkGzip": 178711,
-      "appGzip": 217710,
+      "appGzip": 217802,
       "initialChunks": [
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/409zbecui8k0m.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
@@ -178,45 +178,45 @@
       "initialMarkers": {
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/409zbecui8k0m.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
     },
     "/counter": {
-      "initialGzip": 397351,
-      "initialRaw": 1361703,
-      "deferredGzip": 56712,
-      "deferredRaw": 169896,
+      "initialGzip": 397444,
+      "initialRaw": 1361942,
+      "deferredGzip": 56887,
+      "deferredRaw": 170405,
       "frameworkGzip": 178711,
-      "appGzip": 218640,
+      "appGzip": 218733,
       "initialChunks": [
-        "static/chunks/0754josghh96s.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
+        "static/chunks/3fx8n0z1-yqmu.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
       "deferredChunks": [
-        "static/chunks/2i-t290spd77_.js",
+        "static/chunks/2t5q4p6t0_gnj.js",
         "static/chunks/39fgiytt47ohq.js"
       ],
       "deferredMarkers": {
-        "static/chunks/2i-t290spd77_.js": [
+        "static/chunks/2t5q4p6t0_gnj.js": [
           "scanner_ui"
         ],
         "static/chunks/39fgiytt47ohq.js": [
@@ -224,87 +224,87 @@
         ]
       },
       "initialMarkers": {
-        "static/chunks/0754josghh96s.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
+        "static/chunks/3fx8n0z1-yqmu.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
     },
     "/doctor": {
-      "initialGzip": 399318,
-      "initialRaw": 1363882,
-      "deferredGzip": 57065,
-      "deferredRaw": 171035,
+      "initialGzip": 399409,
+      "initialRaw": 1364121,
+      "deferredGzip": 57240,
+      "deferredRaw": 171544,
       "frameworkGzip": 178711,
-      "appGzip": 220607,
+      "appGzip": 220698,
       "initialChunks": [
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
+        "static/chunks/1shxjijfet1y6.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
         "static/chunks/2pn5h47lr-d0p.js",
-        "static/chunks/2rnxgszczf3om.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
       "deferredChunks": [
-        "static/chunks/26ngju3u--cb0.js",
-        "static/chunks/39fgiytt47ohq.js"
+        "static/chunks/39fgiytt47ohq.js",
+        "static/chunks/3r4xrad6uh_wt.js"
       ],
       "deferredMarkers": {
-        "static/chunks/26ngju3u--cb0.js": [
-          "scanner_ui"
-        ],
         "static/chunks/39fgiytt47ohq.js": [
           "jsqr_lib"
+        ],
+        "static/chunks/3r4xrad6uh_wt.js": [
+          "scanner_ui"
         ]
       },
       "initialMarkers": {
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
+        "static/chunks/1shxjijfet1y6.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
         "static/chunks/2pn5h47lr-d0p.js": [],
-        "static/chunks/2rnxgszczf3om.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
     },
     "/login": {
-      "initialGzip": 267139,
-      "initialRaw": 922476,
+      "initialGzip": 267231,
+      "initialRaw": 922715,
       "deferredGzip": 0,
       "deferredRaw": 0,
       "frameworkGzip": 178711,
-      "appGzip": 88428,
+      "appGzip": 88520,
       "initialChunks": [
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/3hurxfpg6e270.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
@@ -313,13 +313,13 @@
       "initialMarkers": {
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/3hurxfpg6e270.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
@@ -429,15 +429,16 @@
       }
     },
     "/register": {
-      "initialGzip": 409798,
-      "initialRaw": 1394242,
+      "initialGzip": 410054,
+      "initialRaw": 1394963,
       "deferredGzip": 168561,
       "deferredRaw": 589886,
       "frameworkGzip": 178711,
-      "appGzip": 231087,
+      "appGzip": 231343,
       "initialChunks": [
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1985bcb6iqcl1.js",
         "static/chunks/1d4h-sglyo8ft.js",
@@ -446,8 +447,7 @@
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
-        "static/chunks/34ecd7vbayj_2.js",
+        "static/chunks/2x2qhbgixu7s8.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
@@ -468,6 +468,7 @@
       "initialMarkers": {
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1985bcb6iqcl1.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
@@ -476,8 +477,7 @@
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
-        "static/chunks/34ecd7vbayj_2.js": [],
+        "static/chunks/2x2qhbgixu7s8.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []
       }
@@ -549,50 +549,50 @@
       }
     },
     "/volunteer": {
-      "initialGzip": 406968,
-      "initialRaw": 1393754,
-      "deferredGzip": 55343,
-      "deferredRaw": 162538,
+      "initialGzip": 407061,
+      "initialRaw": 1393993,
+      "deferredGzip": 55513,
+      "deferredRaw": 163047,
       "frameworkGzip": 178711,
-      "appGzip": 228257,
+      "appGzip": 228350,
       "initialChunks": [
+        "static/chunks/098p5uc-semtr.js",
         "static/chunks/0cz1d0mv5g_q7.js",
         "static/chunks/0mncrx1lwu6c3.js",
-        "static/chunks/0omagu7n7fzwf.js",
+        "static/chunks/0xqcc0_3sd3bf.js",
         "static/chunks/10g7aftijtoy5.js",
         "static/chunks/1d4h-sglyo8ft.js",
         "static/chunks/1iv1-a5419qg7.js",
         "static/chunks/2dtpai3-ly_at.js",
         "static/chunks/2ez3qdpx13r2n.js",
         "static/chunks/2iqi5r6scgf5z.js",
-        "static/chunks/3441tlc_9i0xw.js",
         "static/chunks/37311a-an80s9.js",
         "static/chunks/3p7e5mkyd8qcm.js",
         "static/chunks/turbopack-2mko0yhm_yirw.js"
       ],
       "deferredChunks": [
-        "static/chunks/2heogb3kw138j.js",
-        "static/chunks/39fgiytt47ohq.js"
+        "static/chunks/39fgiytt47ohq.js",
+        "static/chunks/3hu1z6977363f.js"
       ],
       "deferredMarkers": {
-        "static/chunks/2heogb3kw138j.js": [
-          "scanner_ui"
-        ],
         "static/chunks/39fgiytt47ohq.js": [
           "jsqr_lib"
+        ],
+        "static/chunks/3hu1z6977363f.js": [
+          "scanner_ui"
         ]
       },
       "initialMarkers": {
+        "static/chunks/098p5uc-semtr.js": [],
         "static/chunks/0cz1d0mv5g_q7.js": [],
         "static/chunks/0mncrx1lwu6c3.js": [],
-        "static/chunks/0omagu7n7fzwf.js": [],
+        "static/chunks/0xqcc0_3sd3bf.js": [],
         "static/chunks/10g7aftijtoy5.js": [],
         "static/chunks/1d4h-sglyo8ft.js": [],
         "static/chunks/1iv1-a5419qg7.js": [],
         "static/chunks/2dtpai3-ly_at.js": [],
         "static/chunks/2ez3qdpx13r2n.js": [],
         "static/chunks/2iqi5r6scgf5z.js": [],
-        "static/chunks/3441tlc_9i0xw.js": [],
         "static/chunks/37311a-an80s9.js": [],
         "static/chunks/3p7e5mkyd8qcm.js": [],
         "static/chunks/turbopack-2mko0yhm_yirw.js": []

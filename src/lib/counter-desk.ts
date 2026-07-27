@@ -20,6 +20,8 @@ export type TreatmentOrderRow = {
   closed_by: string | null;
   deferred_date: string | null;
   deferred_venue: string | null;
+  scheduled_camp_day_id?: string | null;
+  scheduled_day_date?: string | null;
 };
 
 export type PrescriptionDetails = {
@@ -53,6 +55,8 @@ export type CounterStationQueueItem = {
   reg_no: number;
   full_name: string;
   queue_status: QueueStatus;
+  scheduled_camp_day_id?: string | null;
+  scheduled_day_date?: string | null;
 };
 
 /** Compute derived completion state per Rule 1: seen + 0 pending orders. */

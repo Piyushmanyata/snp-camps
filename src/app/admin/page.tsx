@@ -27,6 +27,7 @@ import { SeatBoard } from "@/components/seat-board";
 import { CheckIn } from "@/components/check-in";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
+import { AdminSettingsPanel } from "@/components/admin-settings-panel";
 import {
   AdminTestSmsLazySection,
   ChangePasswordLazySection,
@@ -230,6 +231,7 @@ export default async function AdminPage() {
               waitingTotal={waitingCount}
               queueKnown={queueKnown}
             />
+            <AdminSettingsPanel camp={active} />
           </div>
         ) : null}
 

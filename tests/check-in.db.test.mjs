@@ -130,6 +130,16 @@ async function seedCampWithDays({ futureDate = "2099-06-15" } = {}) {
     await client.query("select pg_advisory_xact_lock(918273645)");
     // Clear leftover test camps so camps_one_active never collides.
     await client.query(
+      `delete from public.treatment_orders where camp_id in (
+         select id from public.camps where venue in ('check-in-test', 'db-test', 'aadhaar-test')
+       )`,
+    );
+    await client.query(
+      `delete from public.prescriptions where camp_id in (
+         select id from public.camps where venue in ('check-in-test', 'db-test', 'aadhaar-test')
+       )`,
+    );
+    await client.query(
       `delete from public.patients where camp_id in (
          select id from public.camps where venue in ('check-in-test', 'db-test', 'aadhaar-test')
        )`,

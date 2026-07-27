@@ -161,6 +161,54 @@ export function buildAddress(fields: Record<string, string | null | undefined>):
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+/**
+ * Aadhaar last 4 from a uid-ish attribute — only when the value really is a uid.
+ *
+ * The old code took `slice(-4)` of the first candidate attribute's digits, with
+ * `a` in the candidate list. Compact <QDA> cards use `a` for the *address*, so
+ * that scraped the pincode's last four digits and autofilled them as the
+ * patient's Aadhaar. A uid is 12 digits, or a masked form whose only non-digits
+ * are mask characters; anything else is not a uid and yields nothing.
+ */
+function pickAadhaarLast4(attrs: Record<string, string>): string | null {
+  const keys = ["uid", "aadhaar", "aadhaarnumber", "aadhaarlast4", "u", "a"];
+
+  for (const k of keys) {
+    const raw = (attrs[k] ?? "").trim();
+    if (!raw) continue;
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 12) return digits.slice(-4);
+    // Masked uid: "XXXXXXXX1234", "**** **** 1234".
+    if (digits.length === 4 && !/[a-wyz0-9]/i.test(raw.replace(/\d/g, ""))) {
+      return digits;
+    }
+  }
+
+  // Unknown key holding a full uid: a bare 12-digit value is a uid and nothing
+  // else on these cards (pincode is 6, mobile 10, dates never 12).
+  for (const raw of Object.values(attrs)) {
+    if (/^\d{12}$/.test(raw.trim())) return raw.trim().slice(-4);
+  }
+
+  return null;
+}
+
+/**
+ * Address held whole in one attribute, as compact cards do, rather than split
+ * into the house/street/vtc components `buildAddress` expects.
+ */
+function pickWholeAddress(attrs: Record<string, string>): string | null {
+  const keys = ["address", "addr", "a", "ad"];
+
+  for (const k of keys) {
+    const val = (attrs[k] ?? "").trim();
+    // Long enough, and not a bare number that is really a uid or pincode.
+    if (val.length >= 10 && /[a-z]/i.test(val)) return val;
+  }
+
+  return null;
+}
+
 function isGzip(bytes: Uint8Array): boolean {
   return bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
@@ -388,13 +436,6 @@ export function parseAadhaarQr(
       attrs[key] = val;
     }
 
-    const uid =
-      attrs["uid"] ||
-      attrs["aadhaar"] ||
-      attrs["aadhaarnumber"] ||
-      attrs["a"] ||
-      attrs["u"] ||
-      "";
     const rawName =
       attrs["name"] ||
       attrs["fullname"] ||
@@ -402,6 +443,8 @@ export function parseAadhaarQr(
       attrs["name_en"] ||
       attrs["name-en"] ||
       attrs["name_eng"] ||
+      // Compact <QDA n="..." g="M" d="..."> cards use single-letter attributes.
+      attrs["n"] ||
       null;
     let name = rawName;
     if (isNonLatinText(name)) {
@@ -416,13 +459,15 @@ export function parseAadhaarQr(
     }
 
     const gnd = attrs["gender"] || attrs["gnd"] || attrs["g"] || null;
-    const dob = attrs["dob"] || attrs["dateofbirth"] || attrs["d_o_b"] || null;
-    const yob = attrs["yob"] || attrs["yearofbirth"] || attrs["y_o_b"] || null;
-    const aadhaarLast4 = uid.replace(/\D/g, "").slice(-4) || null;
+    const dob =
+      attrs["dob"] || attrs["dateofbirth"] || attrs["d_o_b"] || attrs["d"] || null;
+    const yob =
+      attrs["yob"] || attrs["yearofbirth"] || attrs["y_o_b"] || attrs["y"] || null;
+    const aadhaarLast4 = pickAadhaarLast4(attrs);
 
     const age = calculateAge(dob, yob, now);
     const gender = normalizeGender(gnd);
-    const address = buildAddress(attrs);
+    const address = buildAddress(attrs) ?? pickWholeAddress(attrs);
 
     if (!name && !aadhaarLast4 && !dob && !yob) {
       throw new Error("Invalid or unreadable Aadhaar QR code.");

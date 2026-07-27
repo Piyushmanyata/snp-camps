@@ -14,7 +14,11 @@ const dbTestFiles = [
   "tests/status-queue-position.db.test.mjs",
   "tests/camp-day-capacity-concurrency.db.test.mjs",
   "tests/prescriptions.db.test.mjs",
+  "tests/theatre-capacity-concurrency.db.test.mjs",
   "tests/counter-desk.db.test.mjs",
+  "tests/admin-settings.db.test.mjs",
+  "tests/ot-overflow.db.test.mjs",
+  "tests/deferral.db.test.mjs",
   "tests/ops-readiness.test.mjs",
 ];
 
