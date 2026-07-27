@@ -197,13 +197,15 @@ export function LiveQueue({
                 >
                   {index + 1}
                 </span>
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">
-                    <span className="tabular text-brand">#{p.reg_no}</span>{" "}
+                <div className="min-w-0 flex-1">
+                  <p className="tabular text-sm font-bold text-brand">
+                    #{p.reg_no}
+                  </p>
+                  <p className="break-words font-semibold leading-snug">
                     {p.full_name}
                   </p>
                   {p.phone ? (
-                    <p className="truncate text-xs text-muted">{p.phone}</p>
+                    <p className="break-all text-xs text-muted">{p.phone}</p>
                   ) : null}
                 </div>
               </div>

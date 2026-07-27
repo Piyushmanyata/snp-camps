@@ -79,13 +79,7 @@ const LIVE_PROBES: { scale: number; zoom: number; offsetX?: number; offsetY?: nu
   { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
 ];
 /** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
-/**
- * Upload decodes get a looser pixel budget than live frames: there is no frame
- * deadline, and the tight centre crops need detail left to crop into.
- */
-const UPLOAD_MAX_EDGE = 2048;
 const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
-const UPLOAD_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "attemptBoth" };
 
 /**
  * The decode pipeline (preprocessing + ZXing) is an optional island: it is only
@@ -199,7 +193,6 @@ export function PatientForm({
   const qrCameraSessionRef = useRef(new QrCameraSession());
   const qrVideoRef = useRef<HTMLVideoElement | null>(null);
   const qrAnimFrameRef = useRef<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const stopQrScanner = useCallback(() => {
     qrCameraSessionRef.current.invalidate();
@@ -302,114 +295,6 @@ export function PatientForm({
       return true;
     },
     [stopQrScanner],
-  );
-
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setScanError(null);
-
-      try {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error("Could not load image file."));
-          img.src = url;
-        });
-
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) throw new Error("Canvas unavailable.");
-
-        const pipeline = await loadQrPipeline();
-
-        // A phone camera photo is 12MP or more, and decode cost is linear in
-        // pixels — the cascade over four crops of a full-resolution photo took
-        // tens of seconds. Bound the working copy generously: even the tightest
-        // 0.35 crop of this still leaves a QR several hundred pixels across.
-        const srcW = img.naturalWidth || img.width;
-        const srcH = img.naturalHeight || img.height;
-        const fit = pipeline.decodeScale(srcW, srcH, UPLOAD_MAX_EDGE);
-        canvas.width = Math.max(1, Math.floor(srcW * fit));
-        canvas.height = Math.max(1, Math.floor(srcH * fit));
-        ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, canvas.width, canvas.height);
-
-        // A still photo has no frame budget, so run the whole cascade: every
-        // crop, every preprocessing variant, both decoders. This is the path a
-        // photocopy realistically goes through.
-        const [jsQR, zxing] = await Promise.all([
-          loadJsQr().catch(() => undefined),
-          pipeline.loadZxing(),
-        ]);
-        let payload: QrPayload | null = null;
-
-        const passOptions = {
-          jsQR,
-          zxing,
-          variants: pipeline.THOROUGH_VARIANTS,
-          jsQrOptions: UPLOAD_JSQR_OPTIONS,
-        };
-
-        // Whole frame, then progressively tighter centre crops — a photographed
-        // card usually sits mid-frame, and cropping raises effective resolution.
-        for (const region of pipeline.cropRegions(
-          canvas,
-          canvas.width,
-          canvas.height,
-          [1, 0.75, 0.5, 0.35],
-        )) {
-          const data = region.ctx.getImageData(
-            0,
-            0,
-            region.canvas.width,
-            region.canvas.height,
-          );
-          payload = pipeline.decodeImageMultiPass(data, passOptions);
-          if (payload) break;
-
-          // Small or low-resolution copies: give the decoders more pixels per
-          // QR module before moving to the next crop.
-          if (region.canvas.width < 1400) {
-            const bigger = pipeline.upscale(
-              region.canvas,
-              region.canvas.width,
-              region.canvas.height,
-              2,
-            );
-            if (bigger) {
-              payload = pipeline.decodeImageMultiPass(bigger, passOptions);
-              if (payload) break;
-            }
-          }
-        }
-
-        // Last resort: the platform detector may locate a code the others missed.
-        if (!payload && (await canUseNativeQrDetector())) {
-          const Ctor = getBarcodeDetectorConstructor();
-          if (Ctor) {
-            const detector = new Ctor({ formats: ["qr_code"] });
-            const hits = await detector.detect(canvas).catch(() => []);
-            if (hits.length > 0 && hits[0].rawValue) payload = hits[0].rawValue;
-          }
-        }
-
-        URL.revokeObjectURL(url);
-
-        if (payload) {
-          await handleScannedPayload(payload);
-        } else {
-          setScanError("No Aadhaar QR code found in selected image. Please try a clearer photo.");
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Error reading photo file.";
-        setScanError(msg);
-      } finally {
-        if (e.target) e.target.value = "";
-      }
-    },
-    [handleScannedPayload],
   );
 
   const startQrScanner = useCallback(async () => {
@@ -1028,7 +913,8 @@ export function PatientForm({
               Aadhaar QR Scan-and-Fill
             </p>
             <p className="text-xs text-muted">
-              Scan or upload patient&apos;s Aadhaar card photo to auto-fill details
+              Scan the Aadhaar card QR to auto-fill details. If the camera is
+              unavailable, type the details manually.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1042,23 +928,6 @@ export function PatientForm({
             >
               {isScanningQr ? "Stop Scanner" : "Scan Aadhaar QR"}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="sm:w-auto"
-              data-testid="upload-aadhaar-qr-button"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Upload Photo
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => void handleFileUpload(e)}
-            />
           </div>
         </div>
 
