@@ -285,26 +285,29 @@ export function useAadhaarScanner(
         ),
       );
 
-      // Zoom raises pixels-per-module for the physically tiny legacy QR; the cap
-      // then bounds the cost. A tight crop still lands at a higher effective
-      // magnification than the whole-frame probe, so the zoom intent survives.
-      const shrink = pipeline.decodeScale(cw * probe.zoom, ch * probe.zoom);
-      const dw = Math.max(1, Math.floor(cw * probe.zoom * shrink));
-      const dh = Math.max(1, Math.floor(ch * probe.zoom * shrink));
+      canvas.width = cw;
+      canvas.height = ch;
+      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, cw, ch);
 
-      canvas.width = dw;
-      canvas.height = dh;
-      // Hard module edges when magnifying; smooth when shrinking, which
-      // averages sensor noise away instead of aliasing it into the modules.
-      ctx.imageSmoothingEnabled = dw < cw;
-      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
-
-      return pipeline.decodeImageMultiPass(ctx.getImageData(0, 0, dw, dh), {
+      const options = {
         jsQR,
         zxing,
         variants: thorough ? pipeline.THOROUGH_VARIANTS : pipeline.FAST_VARIANTS,
         jsQrOptions: LIVE_JSQR_OPTIONS,
-      });
+      };
+
+      // Upscale first when this probe is aimed at a small code. The cap ensures
+      // we stay responsive even on high-res devices.
+      if (probe.zoom > 1) {
+        const bigger = pipeline.upscale(canvas, cw, ch, probe.zoom, pipeline.MAX_DECODE_EDGE);
+        if (bigger) {
+          const hit = pipeline.decodeImageMultiPass(bigger, options);
+          if (hit) return hit;
+        }
+      }
+
+      const data = ctx.getImageData(0, 0, cw, ch);
+      return pipeline.decodeImageMultiPass(data, options);
     };
 
     const processFrame = async () => {

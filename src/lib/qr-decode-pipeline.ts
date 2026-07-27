@@ -396,20 +396,28 @@ export function cropRegions(
 
 /**
  * Upscale a small/dense code so its modules span enough pixels for the
- * decoders' grid detection. Smoothing off keeps module edges hard.
+ * decoders' grid detection. Smoothing off keeps module edges hard. The cap
+ * ensures we stay responsive even on high-res devices.
  */
 export function upscale(
   source: CanvasImageSource,
   width: number,
   height: number,
   factor = 2,
+  cap = MAX_DECODE_EDGE,
 ): ImageData | null {
+  const targetWidth = width * factor;
+  const targetHeight = height * factor;
+  const scale = decodeScale(targetWidth, targetHeight, cap);
+  const finalWidth = Math.floor(targetWidth * scale);
+  const finalHeight = Math.floor(targetHeight * scale);
+
   const canvas = document.createElement("canvas");
-  canvas.width = Math.floor(width * factor);
-  canvas.height = Math.floor(height * factor);
+  canvas.width = finalWidth;
+  canvas.height = finalHeight;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, finalWidth, finalHeight);
+  return ctx.getImageData(0, 0, finalWidth, finalHeight);
 }
