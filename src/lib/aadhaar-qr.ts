@@ -499,30 +499,19 @@ export function parseAadhaarQr(
   // 6. Secure Aadhaar QR / Numeric strings (BigInt decimal sequence or decompressed byte sequence)
   if (/^\d{50,}$/.test(trimmed)) {
     const bytes = numericStringToBytes(trimmed);
-    const decompressed = decompressGzipSync(bytes);
-    if (decompressed) {
-      const strIso = new TextDecoder("iso-8859-1").decode(decompressed);
-      if (strIso.includes("<PrintLetterBarcodeData") || strIso.startsWith("<")) {
-        return parseAadhaarQr(strIso, now);
-      }
-      if (strIso.startsWith("{")) {
-        return parseAadhaarQr(strIso, now);
+    // Legacy numeric-mode QR is uncompressed — the integer *is* the XML bytes.
+    // Secure QR is gzipped. Try both, decoded as text.
+    for (const payload of [decompressGzipSync(bytes), bytes]) {
+      if (!payload) continue;
+      const strIso = textDecodings(payload)[0];
+      if (strIso.startsWith("<") || strIso.startsWith("{")) {
+        const xmlParsed = tryParse(strIso, now);
+        if (xmlParsed) return xmlParsed;
       }
       const parts = strIso.split(/\u00FF|\xFF|ÿ/);
       const parsed = parseSecureAadhaarFields(parts, now);
       if (parsed) return parsed;
     }
-
-    // Fallback if gzip fail or legacy numeric: extract last 4 digits
-    const aadhaarLast4 = trimmed.slice(-4);
-    return {
-      fullName: null,
-      gender: null,
-      age: null,
-      address: null,
-      aadhaarLast4,
-      isNonLatinName: false,
-    };
   }
 
   throw new Error("Invalid or unreadable Aadhaar QR code.");

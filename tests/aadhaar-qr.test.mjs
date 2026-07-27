@@ -203,9 +203,9 @@ test("gzipped numeric Secure QR autofills in a browser-like env (no node:zlib pa
   const hadWindow = "window" in globalThis;
   globalThis.window = globalThis;
   try {
-    // Sync parser is the pre-fix behaviour: no name/age, junk last4.
-    const syncParsed = parseAadhaarQr(numeric, FIXTURE_DATE);
-    assert.equal(syncParsed.fullName, null);
+    // Sync parser cannot gunzip here, and must reject rather than invent a last4
+    // from the decimal digits.
+    assert.throws(() => parseAadhaarQr(numeric, FIXTURE_DATE), /Invalid or unreadable/);
 
     const parsed = await parseAadhaarQrAsync(numeric, FIXTURE_DATE);
     assert.equal(parsed.fullName, "Vikram Sharma");
@@ -244,3 +244,30 @@ test("Legacy Aadhaar QR attribute aliases (a, u, dateofbirth, careof, pincode, d
 });
 
 
+
+/**
+ * Legacy (pre-2018) cards use numeric-mode QR: the plain XML bytes encoded as one
+ * big decimal integer, uncompressed. Decoders hand that back as digit text or as
+ * the ASCII bytes of that text — both used to fall through to a "last 4 digits of
+ * the decimal" fallback, autofilling a 4-digit number that was not the Aadhaar.
+ */
+test("Legacy numeric-mode Aadhaar QR decodes the real fields, not decimal noise", async () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><PrintLetterBarcodeData uid="987654321098" name="Vikram Sharma" gender="M" yob="1990" house="42" street="MG Road" vtc="Jaipur" dist="Jaipur" state="Rajasthan" pc="302001"/>`;
+  const xmlBytes = new TextEncoder().encode(xml);
+  let big = 0n;
+  for (const b of xmlBytes) big = (big << 8n) | BigInt(b);
+  const numeric = big.toString();
+  assert.ok(/^\d{50,}$/.test(numeric));
+  assert.notEqual(numeric.slice(-4), "1098");
+
+  for (const payload of [numeric, new TextEncoder().encode(numeric), xmlBytes]) {
+    const parsed = await parseAadhaarQrAsync(payload, FIXTURE_DATE);
+    assert.equal(parsed.fullName, "Vikram Sharma");
+    assert.equal(parsed.gender, "M");
+    assert.equal(parsed.age, 36);
+    assert.equal(parsed.aadhaarLast4, "1098");
+    assert.ok(parsed.address?.includes("Jaipur"));
+  }
+
+  assert.equal(parseAadhaarQr(numeric, FIXTURE_DATE).aadhaarLast4, "1098");
+});
