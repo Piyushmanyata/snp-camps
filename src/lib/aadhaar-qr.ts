@@ -282,6 +282,28 @@ function parseSecureAadhaarFields(parts: string[], now: Date): ParsedAadhaarQr |
   return null;
 }
 
+/** Our own desk-slip / status QR codes, matched on structure not substrings. */
+function looksLikeSnpSlip(trimmed: string): boolean {
+  if (trimmed.startsWith("SNP-")) return true;
+
+  const lower = trimmed.toLowerCase();
+  // Our status and desk URLs.
+  if (
+    /^https?:\/\//.test(lower) &&
+    (lower.includes("/s/") || lower.includes("/desk"))
+  ) {
+    return true;
+  }
+  // Our JSON slip payloads — keyed fields, not free text that happens to match.
+  if (
+    trimmed.startsWith("{") &&
+    /"(reg_no|token|patientid|patient_id)"\s*:/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Parse an Aadhaar QR payload string (XML, JSON, Key-Value, or Secure QR).
  * Rejects SNP patient desk slip QR code with an explicit message.
@@ -296,16 +318,10 @@ export function parseAadhaarQr(
 
   const trimmed = payload.trim();
 
-  // 1. Detect SNP patient QR codes (desk slips / internal patient QRs)
-  const lower = trimmed.toLowerCase();
-  if (
-    lower.includes("reg_no") ||
-    lower.includes("token") ||
-    lower.includes("patientid") ||
-    trimmed.startsWith("SNP-") ||
-    lower.includes("/s/") ||
-    lower.includes("/desk")
-  ) {
+  // 1. Detect SNP patient QR codes (desk slips / internal patient QRs).
+  // Matched structurally, not by substring: a legacy Aadhaar address such as
+  // house="12/S/4" contains "/s/" and must not be mistaken for a desk slip.
+  if (looksLikeSnpSlip(trimmed)) {
     throw new Error(
       "This is an SNP patient desk slip QR code, not an Aadhaar card. Please scan the patient's Aadhaar card.",
     );
@@ -457,6 +473,27 @@ function decodeLatin1(bytes: Uint8Array): string {
   return new TextDecoder("iso-8859-1").decode(bytes);
 }
 
+/**
+ * Text decodings to try for a byte payload, best first.
+ *
+ * Legacy (pre-2018) cards carry plain XML, usually UTF-8 — decoding those as
+ * latin-1 mangles any non-ASCII name. Secure QR is binary and must stay latin-1
+ * so its bytes survive 1:1. Leading '<' or '{' distinguishes the text cases.
+ */
+function textDecodings(bytes: Uint8Array): string[] {
+  const first = bytes[0];
+  const looksLikeText = first === 0x3c || first === 0x7b; // '<' or '{'
+  const latin1 = decodeLatin1(bytes);
+  if (!looksLikeText) return [latin1];
+
+  try {
+    const utf8 = new TextDecoder("utf-8").decode(bytes);
+    return utf8 === latin1 ? [latin1] : [utf8, latin1];
+  } catch {
+    return [latin1];
+  }
+}
+
 /** Parse succeeded only if it yielded a field we would actually autofill. */
 function isUseful(parsed: ParsedAadhaarQr | null): parsed is ParsedAadhaarQr {
   return Boolean(
@@ -496,12 +533,16 @@ export async function parseAadhaarQrAsync(
   for (const bytes of candidates) {
     const decompressed = await decompress(bytes);
     if (decompressed) {
-      const parsed = tryParse(decodeLatin1(decompressed), now);
-      if (isUseful(parsed)) return parsed;
+      for (const text of textDecodings(decompressed)) {
+        const parsed = tryParse(text, now);
+        if (isUseful(parsed)) return parsed;
+      }
     }
     // Uncompressed byte-mode payload (legacy XML cards encode plain text here).
-    const parsed = tryParse(decodeLatin1(bytes), now);
-    if (isUseful(parsed)) return parsed;
+    for (const text of textDecodings(bytes)) {
+      const parsed = tryParse(text, now);
+      if (isUseful(parsed)) return parsed;
+    }
   }
 
   if (typeof payload !== "string") {

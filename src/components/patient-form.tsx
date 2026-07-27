@@ -53,6 +53,21 @@ const SCAN_FRAME_INTERVAL_MS = 1000 / SCAN_FPS;
  * heavier passes, so we pay for them only once the easy path has clearly failed.
  */
 const ESCALATE_AFTER_FRAMES = 12;
+/**
+ * Probe geometries cycled one per frame, so all card sizes are covered within
+ * ~4 frames without making any single frame expensive.
+ *
+ * The tight, upscaled probes exist for legacy pre-2018 cards: their QR is
+ * printed far smaller than the modern Secure QR, so it occupies too few pixels
+ * to resolve from the whole frame. Cropping in and upscaling is what makes
+ * those cards readable at all.
+ */
+const LIVE_PROBES: { scale: number; zoom: number }[] = [
+  { scale: 1, zoom: 1 },
+  { scale: 0.6, zoom: 1 },
+  { scale: 0.4, zoom: 2 },
+  { scale: 0.25, zoom: 2 },
+];
 /** Live frames skip the inverted pass — roughly 2x faster, and Aadhaar is never inverted. */
 const LIVE_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "dontInvert" };
 const UPLOAD_JSQR_OPTIONS: JsQrOptions = { inversionAttempts: "attemptBoth" };
@@ -364,9 +379,10 @@ export function PatientForm({
       {
         video: {
           facingMode: { ideal: "environment" },
-          // A 137-module Secure QR needs pixels per module; 720p is marginal.
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          // Dense Secure QR and tiny legacy QR are both pixel-starved; ask for
+          // the most the device will give and let it fall back on its own.
+          width: { ideal: 2560 },
+          height: { ideal: 1440 },
         },
         audio: false,
       },
@@ -419,8 +435,8 @@ export function PatientForm({
     let lastFrameAt = 0;
     let busy = false;
 
-    const decodeRegion = (
-      scale: number,
+    const decodeProbe = (
+      probe: { scale: number; zoom: number },
       thorough: boolean,
     ): QrPayload | null => {
       if (!ctx || !video()) return null;
@@ -429,12 +445,12 @@ export function PatientForm({
       canvas.height = v.videoHeight;
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
 
-      let data: ImageData;
-      if (scale >= 1) {
-        data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      } else {
-        const cw = Math.floor(canvas.width * scale);
-        const ch = Math.floor(canvas.height * scale);
+      let source: HTMLCanvasElement = canvas;
+      let sourceCtx: CanvasRenderingContext2D = ctx;
+
+      if (probe.scale < 1) {
+        const cw = Math.floor(canvas.width * probe.scale);
+        const ch = Math.floor(canvas.height * probe.scale);
         if (cw < 100 || ch < 100 || !cropCtx) return null;
         cropCanvas.width = cw;
         cropCanvas.height = ch;
@@ -449,17 +465,37 @@ export function PatientForm({
           cw,
           ch,
         );
-        data = cropCtx.getImageData(0, 0, cw, ch);
+        source = cropCanvas;
+        sourceCtx = cropCtx;
       }
 
-      return pipeline.decodeImageMultiPass(data, {
+      const options = {
         jsQR,
         zxing,
         variants: thorough
           ? pipeline.THOROUGH_VARIANTS
           : pipeline.FAST_VARIANTS,
         jsQrOptions: LIVE_JSQR_OPTIONS,
-      });
+      };
+
+      // Upscale first when this probe is aimed at a small code: the legacy
+      // pre-2018 QR is physically tiny on the card, and without extra pixels
+      // per module the decoders never see a QR at all.
+      if (probe.zoom > 1) {
+        const bigger = pipeline.upscale(
+          source,
+          source.width,
+          source.height,
+          probe.zoom,
+        );
+        if (bigger) {
+          const hit = pipeline.decodeImageMultiPass(bigger, options);
+          if (hit) return hit;
+        }
+      }
+
+      const data = sourceCtx.getImageData(0, 0, source.width, source.height);
+      return pipeline.decodeImageMultiPass(data, options);
     };
 
     function video(): HTMLVideoElement | null {
@@ -496,11 +532,15 @@ export function PatientForm({
               }
             }
 
-            // Alternate whole-frame and centre-crop passes so both far and near
-            // framing resolve. Once the cheap path has plainly failed (a faded
-            // photocopy), escalate to the full preprocessing cascade.
+            // Cycle the probe geometries so every card size gets covered within
+            // a few frames, while each individual frame stays cheap. Once the
+            // easy path has plainly failed (a faded photocopy), escalate to the
+            // full preprocessing cascade.
             const thorough = frameTick > ESCALATE_AFTER_FRAMES;
-            const payload = decodeRegion(frameTick % 2 === 0 ? 0.6 : 1, thorough);
+            const payload = decodeProbe(
+              LIVE_PROBES[frameTick % LIVE_PROBES.length],
+              thorough,
+            );
             if (
               payload &&
               (await handleScannedPayload(payload, { requireUseful: true }))
