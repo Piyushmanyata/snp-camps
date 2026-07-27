@@ -49,8 +49,15 @@ console.log(`DB TEST SUMMARY: ${summary}`);
 
 if (skipped > 0) {
   console.error(
-    `BLOCKER[DB-UNAVAILABLE]: ${skipped} database test(s) were skipped. ` +
-      "Local Postgres and the required migrations must be available; skipped tests are not passes.",
+    [
+      `BLOCKER[DB-UNAVAILABLE]: ${skipped} database test(s) were skipped.`,
+      "Skipped database tests are a failure, not a pass.",
+      "Start local Supabase Postgres (never production):",
+      "  npx supabase start",
+      "Then run the disposable replay suite:",
+      "  npm run test:db:replay",
+      "Default URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    ].join("\n"),
   );
   process.exitCode = 1;
 } else if (result.error) {
