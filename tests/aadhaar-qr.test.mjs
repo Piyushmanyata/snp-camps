@@ -202,14 +202,17 @@ test("gzipped numeric Secure QR autofills in a browser-like env (no node:zlib pa
   const numeric = BigInt("0x" + gz.toString("hex")).toString(10);
   assert.ok(/^\d{50,}$/.test(numeric));
 
-  // `window` defined => the Node-only sync gunzip bails out, exactly as in a real
-  // browser. Only the DecompressionStream path can satisfy this.
+  // `window` defined => any Node-only sync gunzip path bails out, exactly as in
+  // a real browser. pako is pure JS and identical in both, so unlike the old
+  // node:zlib path the *sync* parser now resolves this payload too.
   const hadWindow = "window" in globalThis;
   globalThis.window = globalThis;
   try {
-    // Sync parser cannot gunzip here, and must reject rather than invent a last4
-    // from the decimal digits.
-    assert.throws(() => parseAadhaarQr(numeric, FIXTURE_DATE), /Invalid or unreadable/);
+    // The point being defended: whatever the sync parser returns must come from
+    // the inflated fields, never a last4 invented from the decimal digits.
+    const sync = parseAadhaarQr(numeric, FIXTURE_DATE);
+    assert.equal(sync.fullName, "Vikram Sharma");
+    assert.equal(sync.aadhaarLast4, "1098");
 
     const parsed = await parseAadhaarQrAsync(numeric, FIXTURE_DATE);
     assert.equal(parsed.fullName, "Vikram Sharma");

@@ -6,7 +6,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run wasm:copy && next dev",
+    "wasm:copy": "node scripts/copy-wasm.mjs",
+    "prebuild": "node scripts/copy-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -27,13 +29,21 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
-    "@zxing/library": "^0.23.0",
+    "@techstark/opencv-js": "^5.0.0-release.1",
+    "@undecaf/zbar-wasm": "^0.11.0",
+    "comlink": "^4.4.2",
+    "fast-xml-parser": "^5.10.1",
+    "heic-to": "^1.5.2",
     "jsqr": "^1.4.0",
     "next": "16.2.11",
+    "pako": "^3.0.1",
+    "pdfjs-dist": "^6.1.200",
     "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "zod": "^4.4.3",
+    "zxing-wasm": "^3.1.2"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
@@ -42,6 +52,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@zxing/library": "^0.23.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "pg": "^8.22.0",

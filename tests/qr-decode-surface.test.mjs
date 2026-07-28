@@ -18,10 +18,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
+import { join, sep } from "node:path";
+
 import {
   MAX_DECODE_EDGE,
   decodeImageMultiPass,
   probeSurface,
+  loadZbar,
+  loadZxing,
+  setDecoderWasmBase,
   FAST_VARIANTS,
   THOROUGH_VARIANTS,
 } from "@/lib/qr-decode-pipeline";
@@ -37,9 +43,25 @@ if (typeof globalThis.ImageData === "undefined") {
   };
 }
 
+// @zxing/library is the *writer* here — it renders the QR fixtures. The
+// decoders under test are the two WASM engines the app actually ships.
 const zxing = await import("@zxing/library");
-const jsQrModule = await import("jsqr");
-const jsQR = jsQrModule.default ?? jsQrModule;
+
+// Point the engines at the local binaries copied by scripts/copy-wasm.mjs.
+// Emscripten resolves locateFile against a URL, which has no meaning here, so
+// ZXing gets its binary directly while ZBar takes a filesystem path.
+const wasmDir = join(process.cwd(), "public", "wasm");
+const zxingWasm = readFileSync(join(wasmDir, "zxing_reader.wasm"));
+setDecoderWasmBase(`${wasmDir}${sep}`, {
+  zxingWasmBinary: zxingWasm.buffer.slice(
+    zxingWasm.byteOffset,
+    zxingWasm.byteOffset + zxingWasm.byteLength,
+  ),
+});
+
+const [zxingReader, zbarReader] = await Promise.all([loadZxing(), loadZbar()]);
+assert.ok(zxingReader, "zxing-wasm failed to load — run `npm run wasm:copy`");
+assert.ok(zbarReader, "zbar-wasm failed to load — run `npm run wasm:copy`");
 
 /** The probe geometries the live loop cycles (use-aadhaar-scanner LIVE_PROBES). */
 const LIVE_PROBES = [
@@ -132,18 +154,20 @@ function resample(frame, sx, sy, sw, sh, dw, dh) {
 }
 
 /** Run the probe sweep the way the live loop does, returning the first payload. */
-function sweep(frame, { thorough = false } = {}) {
+async function sweep(frame, { thorough = false } = {}) {
   const options = {
-    jsQR,
-    zxing,
+    zxing: zxingReader,
+    zbar: zbarReader,
     variants: thorough ? THOROUGH_VARIANTS : FAST_VARIANTS,
-    jsQrOptions: { inversionAttempts: "dontInvert" },
   };
   for (const probe of LIVE_PROBES) {
     const surface = probeSurface(frame.width, frame.height, probe);
     if (!surface) continue;
     const { sx, sy, cw, ch, dw, dh } = surface;
-    const hit = decodeImageMultiPass(resample(frame, sx, sy, cw, ch, dw, dh), options);
+    const hit = await decodeImageMultiPass(
+      resample(frame, sx, sy, cw, ch, dw, dh),
+      options,
+    );
     if (hit) return hit;
   }
   return null;
@@ -177,7 +201,7 @@ test("tiny legacy XML card decodes and parses through the live probe sweep", asy
   // 3px/module in a 2560-wide frame: the QR spans ~8% of the frame, which is
   // what an old card's physically small QR actually looks like at desk distance.
   const qr = renderQr(legacyNumericPayload(LEGACY_XML), 3);
-  const payload = sweep(frameWith(qr, 2560, 1440));
+  const payload = await sweep(frameWith(qr, 2560, 1440));
   assert.ok(payload, "no probe geometry read the tiny legacy QR");
 
   const parsed = await parseAadhaarQrAsync(payload);
@@ -188,14 +212,14 @@ test("tiny legacy XML card decodes and parses through the live probe sweep", asy
   assert.equal(parsed.source, "legacy_xml");
 });
 
-test("dense modern Secure QR still reads at MAX_DECODE_EDGE", () => {
+test("dense modern Secure QR still reads at MAX_DECODE_EDGE", async () => {
   // High-entropy payload of the size a real Secure QR carries — this is the
   // floor that stops MAX_DECODE_EDGE being tuned down for the legacy case.
   const dense = Array.from({ length: 1000 }, (_, i) => String.fromCharCode(32 + ((i * 61) % 95))).join("");
   const qr = renderQr(dense, 6);
   assert.ok(qr.modules >= 100, `expected a dense code, got ${qr.modules} modules`);
   assert.ok(
-    sweep(frameWith(qr, 2560, 1440)),
+    await sweep(frameWith(qr, 2560, 1440)),
     `dense ${qr.modules}-module Secure QR no longer reads at MAX_DECODE_EDGE=${MAX_DECODE_EDGE}`,
   );
 });

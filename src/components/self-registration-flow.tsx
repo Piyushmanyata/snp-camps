@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { isNonLatinText, type ParsedAadhaarQr } from "@/lib/aadhaar-qr";
+import { isNonLatinText } from "@/lib/aadhaar-text";
+import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { patientScanUrl } from "@/lib/qr";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import { QrCode } from "@/components/qr-code";
 import { Button, ErrorBox, Input, Select, WarningBox } from "@/components/ui";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
+import { AadhaarCapture } from "@/components/aadhaar-capture";
 
 type Props = { campId: string; venue: string | null; days: CampDayStats[] };
 
@@ -69,14 +71,8 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
     return true;
   }, []);
 
-  const {
-    isScanning: isScanningCard,
-    scanError,
-    videoRef: scanVideoRef,
-    start: startScan,
-    stop: stopScan,
-    clearError: clearScanError,
-  } = useAadhaarScanner(onParsed);
+  const scanner = useAadhaarScanner(onParsed);
+  const { clearError: clearScanError } = scanner;
   const needsLatinName = Boolean(card && isNonLatinText(card.fullName));
 
   async function register() {
@@ -205,35 +201,17 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       {!card ? (
         <>
           <p className="text-sm text-muted">
-            Apne Aadhaar card par chhapa QR code camera ke saamne rakhein. Card ki details
+            Aadhaar QR camera ke saamne rakhein. Ya phir card ki photo,
+            mAadhaar ka screenshot, ya e-Aadhaar PDF upload karein — details
             apne aap bhar jaayengi.
           </p>
           <WarningBox>
             Mobile number Aadhaar QR mein nahi hota — wo aapko khud type karna hoga.
           </WarningBox>
 
-          <Button
-            type="button"
-            onClick={isScanningCard ? stopScan : () => void startScan()}
-          >
-            {isScanningCard ? "Scanner band karein" : "Aadhaar QR scan karein"}
-          </Button>
-
-          {isScanningCard ? (
-            <video
-              ref={scanVideoRef}
-              className="w-full rounded-xl border border-border"
-              muted
-              playsInline
-              aria-label="Aadhaar QR camera preview"
-            />
-          ) : null}
-
-          {scanError ? (
-            <div role="alert">
-              <ErrorBox message={scanError} />
-            </div>
-          ) : null}
+          {/* Upload matters most here: a patient cannot point this phone's
+              camera at a QR that is showing on this same phone. */}
+          <AadhaarCapture scanner={scanner} tone="patient" />
 
           <p className="rounded-xl border border-border p-4 text-sm text-muted">
             Card scan nahi ho raha? Koi baat nahi — camp desk par volunteer aapko manually

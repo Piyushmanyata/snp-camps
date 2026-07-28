@@ -1,22 +1,22 @@
 /**
  * Multi-pass QR decoding for real-world Aadhaar cards, including photocopies.
  *
- * Why this exists: jsQR alone binarises with a simple threshold and gives up on
- * the first failure. A photocopied Aadhaar card is the worst case for that —
- * low contrast, grey background, halftone noise, and a very dense Secure QR
- * (up to 177x177 modules). The fix is not a better single call; it is trying
- * the same frame several ways:
+ * Two independent WASM engines run over each image, because they fail on
+ * different things:
  *
- *   1. Preprocess the image (contrast stretch, Otsu, adaptive threshold) so a
- *      faded or unevenly lit copy becomes clean black-and-white.
- *   2. Decode with ZXing (HybridBinarizer + TRY_HARDER, strongest on damaged
- *      and dense codes) and with jsQR, since each reads codes the other misses.
+ *   - **ZXing-C++ (zxing-wasm)** is the primary. It is strongest on dense and
+ *     damaged codes, and its own `tryHarder` / `tryRotate` / `tryInvert` /
+ *     `tryDenoise` flags already cover rotation, inversion and denoising, so
+ *     those are not re-implemented here.
+ *   - **ZBar (@undecaf/zbar-wasm)** is a genuinely separate implementation, not
+ *     another wrapper over the same core, so it reads codes ZXing misses.
  *
- * Payloads are returned as bytes whenever possible: Aadhaar Secure QR is
- * byte-mode binary, and any string form is a lossy decode of those bytes.
+ * Ahead of them sits the preprocessing cascade: a faded or unevenly lit
+ * photocopy becomes clean black-and-white before either engine sees it.
+ *
+ * Payloads are returned as **bytes**. Aadhaar Secure QR is byte-mode binary and
+ * any string form is a lossy decode that cannot be inflated.
  */
-
-import type { JsQrFn, JsQrOptions } from "@/lib/qr-detector";
 
 export type QrPayload = string | Uint8Array;
 
@@ -28,11 +28,10 @@ export const FAST_VARIANTS: Variant[] = ["raw"];
 /**
  * Escalation for a frame that will not read, and for uploaded photos.
  *
- * Every variant costs about the same (measured ~40-65ms per decode at 1280x720),
- * so the list length *is* the cost: each entry adds a full grayscale pass plus a
- * ZXing and a jsQR attempt. `invert` is omitted deliberately — an Aadhaar QR is
- * never printed inverted, which is also why the live jsQR options pass
- * `inversionAttempts: "dontInvert"`.
+ * Each entry costs a full grayscale pass plus one attempt per engine, so the
+ * list length *is* the cost. `invert` is omitted deliberately: an Aadhaar QR is
+ * never printed inverted, and ZXing's own `tryInvert` covers the odd scan that
+ * is.
  */
 export const THOROUGH_VARIANTS: Variant[] = [
   "raw",
@@ -41,90 +40,92 @@ export const THOROUGH_VARIANTS: Variant[] = [
   "adaptive",
 ];
 
-/**
- * Longest edge, in pixels, worth handing a decoder.
- *
- * Decode cost is linear in pixel count, so bounding the surface is the single
- * biggest win available (measured at 2560x1440 vs 1280x720: 180ms vs 39ms for
- * one cheap pass, 1222ms vs 288ms for the full cascade).
- *
- * 1200 is measured, not guessed. Against a synthetic 2560x1440 frame holding a
- * faint tiny legacy QR, tightening 1600 -> 1200 *raised* the hit rate (4/8 ->
- * 5/8 probe-variant combinations) while halving cost (1082 -> 549ms): shrinking
- * averages sensor noise away instead of aliasing it into the modules. The floor
- * is set by the densest modern Secure QR, which still reads at 1200 but fails
- * outright at 800 — so do not lower this without re-running that check
- * (tests/qr-decode-surface.test.mjs).
- *
- * Capture stays high-resolution; only the decode surface is bounded.
- */
-export const MAX_DECODE_EDGE = 1200;
+// Geometry lives in its own dependency-free module so the main thread can size
+// probes without loading the preprocessing cascade below.
+export {
+  MAX_DECODE_EDGE,
+  decodeScale,
+  probeSurface,
+  type Probe,
+} from "@/lib/qr-decode-geometry";
 
-/** Scale factor that brings `width`x`height` under `MAX_DECODE_EDGE`. */
-export function decodeScale(width: number, height: number, cap = MAX_DECODE_EDGE): number {
-  return Math.min(1, cap / Math.max(width, height));
-}
-
-/** One probe geometry: a centre-ish crop of the frame, magnified by `zoom`. */
-export type Probe = {
-  scale: number;
-  zoom: number;
-  offsetX?: number;
-  offsetY?: number;
-};
+/* ------------------------------------------------------------------ */
+/* Engine loading                                                      */
+/* ------------------------------------------------------------------ */
 
 /**
- * Source rect and bounded destination size for one probe against a frame.
+ * Where the decoder binaries are served from.
  *
- * Pure and exported so the destination bound is testable: twice now a refactor
- * of the live loop dropped the cap and decoded crops at native camera
- * resolution, which costs seconds per frame and reads as a frozen scanner.
- * Returns null when the crop is too small to hold a QR.
+ * Both packages default to a CDN. A camp desk runs on a phone hotspot and is
+ * frequently offline, so a CDN fetch is the request that hangs — the binaries
+ * are copied into `public/wasm` by scripts/copy-wasm.mjs and served
+ * same-origin. Overridable so the Node test suite can point at node_modules.
  */
-export function probeSurface(
-  frameWidth: number,
-  frameHeight: number,
-  probe: Probe,
-): { sx: number; sy: number; cw: number; ch: number; dw: number; dh: number } | null {
-  const cw = Math.floor(frameWidth * probe.scale);
-  const ch = Math.floor(frameHeight * probe.scale);
-  if (cw < 100 || ch < 100) return null;
+let wasmBase = "/wasm/";
+/**
+ * Preloaded ZXing binary. Emscripten's `locateFile` resolves against a URL, so
+ * outside a browser (the Node test suite) the binary has to be handed over
+ * directly instead.
+ */
+let zxingWasmBinary: ArrayBuffer | null = null;
 
-  const sx = Math.max(
-    0,
-    Math.min(frameWidth - cw, Math.floor((frameWidth - cw) / 2 + (probe.offsetX || 0) * frameWidth)),
-  );
-  const sy = Math.max(
-    0,
-    Math.min(
-      frameHeight - ch,
-      Math.floor((frameHeight - ch) / 2 + (probe.offsetY || 0) * frameHeight),
-    ),
-  );
-
-  // Zoom raises pixels-per-module for the physically tiny legacy QR; the cap
-  // then bounds the cost, so the zoom intent survives without the pixel bill.
-  const shrink = decodeScale(cw * probe.zoom, ch * probe.zoom);
-  return {
-    sx,
-    sy,
-    cw,
-    ch,
-    dw: Math.max(1, Math.floor(cw * probe.zoom * shrink)),
-    dh: Math.max(1, Math.floor(ch * probe.zoom * shrink)),
-  };
+export function setDecoderWasmBase(
+  base: string,
+  options: { zxingWasmBinary?: ArrayBuffer } = {},
+): void {
+  wasmBase = base;
+  zxingWasmBinary = options.zxingWasmBinary ?? null;
+  // Engines cache their module on first load; a later base change must re-load.
+  zxingPromise = null;
+  zbarPromise = null;
 }
 
-type ZxingModule = typeof import("@zxing/library");
+type ZxingReader = typeof import("zxing-wasm/reader");
+type ZbarModule = typeof import("@undecaf/zbar-wasm");
 
-let zxingPromise: Promise<ZxingModule | null> | null = null;
+let zxingPromise: Promise<ZxingReader | null> | null = null;
+let zbarPromise: Promise<ZbarModule | null> | null = null;
 
-/** Loaded on demand only — keeps ZXing out of the initial route bundle. */
-export function loadZxing(): Promise<ZxingModule | null> {
+/** Loaded on demand only — keeps ~1MB of WASM out of the route bundle. */
+export function loadZxing(): Promise<ZxingReader | null> {
   if (!zxingPromise) {
-    zxingPromise = import("@zxing/library").catch(() => null);
+    zxingPromise = import("zxing-wasm/reader")
+      .then((module) => {
+        module.prepareZXingModule({
+          overrides: zxingWasmBinary
+            ? { wasmBinary: zxingWasmBinary }
+            : {
+                locateFile: (path: string, prefix: string) =>
+                  path.endsWith(".wasm")
+                    ? `${wasmBase}zxing_reader.wasm`
+                    : prefix + path,
+              },
+        });
+        return module;
+      })
+      .catch(() => null);
   }
   return zxingPromise;
+}
+
+export function loadZbar(): Promise<ZbarModule | null> {
+  if (!zbarPromise) {
+    zbarPromise = import("@undecaf/zbar-wasm")
+      .then((module) => {
+        module.setModuleArgs({
+          locateFile: (file: string) =>
+            file.endsWith(".wasm") ? `${wasmBase}zbar.wasm` : file,
+        });
+        return module;
+      })
+      .catch(() => null);
+  }
+  return zbarPromise;
+}
+
+/** Warm both engines so the first scanned frame is not the one paying for it. */
+export async function preloadDecoders(): Promise<void> {
+  await Promise.all([loadZxing(), loadZbar()]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,8 +284,8 @@ function applyVariant(
   }
 }
 
-/** jsQR needs RGBA, so a processed grey plane is expanded back out. */
-function grayToImageData(
+/** Both engines want RGBA, so a processed grey plane is expanded back out. */
+export function grayToImageData(
   gray: Uint8ClampedArray,
   width: number,
   height: number,
@@ -298,66 +299,58 @@ function grayToImageData(
 }
 
 /* ------------------------------------------------------------------ */
-/* Decoders                                                            */
+/* Engines                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Latin-1 text round-trips to bytes 1:1, which is why we ask ZXing for it. */
-function latin1ToBytes(text: string): Uint8Array {
-  const bytes = new Uint8Array(text.length);
-  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
-  return bytes;
-}
+/**
+ * ZXing reader options.
+ *
+ * `binarizer: "LocalAverage"` is ZXing's own adaptive threshold and is what
+ * makes an unevenly lit phone photo readable. Rotation, inversion and denoising
+ * are delegated to the engine rather than re-implemented as extra image
+ * variants — one WASM call covering four cases is far cheaper than four calls.
+ */
+const ZXING_OPTIONS: import("zxing-wasm/reader").ReaderOptions = {
+  formats: ["QRCode"],
+  tryHarder: true,
+  tryRotate: true,
+  tryInvert: true,
+  tryDownscale: true,
+  tryDenoise: true,
+  binarizer: "LocalAverage",
+  maxNumberOfSymbols: 1,
+};
 
-function decodeWithZxing(
-  zxing: ZxingModule,
-  gray: Uint8ClampedArray,
-  width: number,
-  height: number,
-): QrPayload | null {
+async function decodeWithZxing(
+  zxing: ZxingReader,
+  image: ImageData,
+): Promise<Uint8Array | null> {
   try {
-    const {
-      BarcodeFormat,
-      BinaryBitmap,
-      DecodeHintType,
-      HybridBinarizer,
-      MultiFormatReader,
-      RGBLuminanceSource,
-    } = zxing;
-
-    const hints = new Map<number, unknown>();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    // Force ISO-8859-1 so byte-mode payloads survive as text we can turn back
-    // into the exact original bytes. Without it ZXing may guess UTF-8 and
-    // corrupt the compressed Secure QR stream.
-    hints.set(DecodeHintType.CHARACTER_SET, "ISO-8859-1");
-
-    const reader = new MultiFormatReader();
-    reader.setHints(hints);
-
-    const source = new RGBLuminanceSource(gray, width, height);
-    const bitmap = new BinaryBitmap(new HybridBinarizer(source));
-    const result = reader.decode(bitmap, hints);
-
-    const text = result?.getText?.();
-    if (!text) return null;
-    return latin1ToBytes(text);
+    const results = await zxing.readBarcodes(image, ZXING_OPTIONS);
+    for (const result of results) {
+      // `bytes` is the faithful byte-mode payload; `text` is a lossy decode of
+      // it and cannot be inflated, so only bytes are ever returned.
+      if (result?.isValid && result.bytes?.length) return new Uint8Array(result.bytes);
+    }
+    return null;
   } catch {
-    // NotFoundException is the normal "no code in this frame" path.
     return null;
   }
 }
 
-function decodeWithJsQr(
-  jsQR: JsQrFn,
+async function decodeWithZbar(
+  zbar: ZbarModule,
   image: ImageData,
-  options?: JsQrOptions,
-): QrPayload | null {
+): Promise<Uint8Array | null> {
   try {
-    const code = jsQR(image.data, image.width, image.height, options);
-    if (!code) return null;
-    if (code.binaryData?.length) return Uint8Array.from(code.binaryData);
-    return code.data || null;
+    const symbols = await zbar.scanImageData(image);
+    for (const symbol of symbols) {
+      if (symbol.type !== zbar.ZBarSymbolType.ZBAR_QRCODE) continue;
+      if (!symbol.data?.length) continue;
+      // ZBar hands back a signed view over the same buffer.
+      return new Uint8Array(symbol.data.buffer.slice(0), 0, symbol.data.length);
+    }
+    return null;
   } catch {
     return null;
   }
@@ -368,40 +361,42 @@ function decodeWithJsQr(
 /* ------------------------------------------------------------------ */
 
 export type MultiPassOptions = {
-  jsQR?: JsQrFn;
-  zxing?: ZxingModule | null;
+  zxing?: ZxingReader | null;
+  zbar?: ZbarModule | null;
   variants?: Variant[];
-  jsQrOptions?: JsQrOptions;
 };
 
 /**
- * Try one image every configured way, cheapest first. Returns the first
- * payload found, preferring bytes over text.
+ * Try one image every configured way, cheapest first. Returns the first payload
+ * found.
+ *
+ * Engines are passed in rather than loaded here so a caller decoding many
+ * variants in a row pays the module load once, and so the Node test suite can
+ * drive the same cascade.
  */
-export function decodeImageMultiPass(
+export async function decodeImageMultiPass(
   image: ImageData,
-  { jsQR, zxing, variants = FAST_VARIANTS, jsQrOptions }: MultiPassOptions,
-): QrPayload | null {
+  { zxing, zbar, variants = FAST_VARIANTS }: MultiPassOptions,
+): Promise<QrPayload | null> {
   const { width, height } = image;
   if (width < 40 || height < 40) return null;
 
   const gray = toGrayscale(image);
 
   for (const variant of variants) {
-    const processed = applyVariant(gray, width, height, variant);
+    const processed =
+      variant === "raw" ? null : applyVariant(gray, width, height, variant);
+    const candidate =
+      processed === null ? image : grayToImageData(processed, width, height);
 
     // ZXing first: strongest on dense and damaged codes.
     if (zxing) {
-      const hit = decodeWithZxing(zxing, processed, width, height);
+      const hit = await decodeWithZxing(zxing, candidate);
       if (hit) return hit;
     }
 
-    if (jsQR) {
-      const hit = decodeWithJsQr(
-        jsQR,
-        variant === "raw" ? image : grayToImageData(processed, width, height),
-        jsQrOptions,
-      );
+    if (zbar) {
+      const hit = await decodeWithZbar(zbar, candidate);
       if (hit) return hit;
     }
   }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isNonLatinText } from "@/lib/aadhaar-qr";
+import { isNonLatinText } from "@/lib/aadhaar-text";
 import { derivePersonDuplicateKey } from "@/lib/person-duplicate-key";
 import {
   parseAadhaarDuplicateError,

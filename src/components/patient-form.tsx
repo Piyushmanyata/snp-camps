@@ -27,12 +27,10 @@ import {
   SegmentedControl,
   WarningBox,
 } from "@/components/ui";
-import {
-  isNonLatinText,
-  describeQrPayload,
-  type ParsedAadhaarQr,
-} from "@/lib/aadhaar-qr";
+import { isNonLatinText } from "@/lib/aadhaar-text";
+import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
+import { AadhaarCapture } from "@/components/aadhaar-capture";
 
 /** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
@@ -201,10 +199,7 @@ export function PatientForm({
    * one blurry frame should not end the session when the next may read cleanly.
    */
   const onCardScanned = useCallback(
-    async (
-      parsed: ParsedAadhaarQr,
-      payload: string | Uint8Array,
-    ): Promise<boolean> => {
+    async (parsed: ParsedAadhaarQr, diagnostic: string): Promise<boolean> => {
       const useful =
         Boolean(parsed.fullName) || parsed.age != null || Boolean(parsed.gender);
       if (!useful) return false;
@@ -268,9 +263,7 @@ export function PatientForm({
 
       // Partial read means the format is only half-understood — keep the
       // fingerprint so it can be reported.
-      setPartialScanDiagnostic(
-        missingFields.length > 0 ? describeQrPayload(payload) : null,
-      );
+      setPartialScanDiagnostic(missingFields.length > 0 ? diagnostic : null);
 
       if (missingFields.length > 0) {
         setScannedBanner(
@@ -286,17 +279,23 @@ export function PatientForm({
     [],
   );
 
-  const {
-    isScanning: isScanningQr,
-    scanError,
-    scanDiagnostic: rejectedScanDiagnostic,
-    videoRef: qrVideoRef,
-    start: startQrScanner,
-    stop: stopQrScanner,
-    clearError: clearScanError,
-  } = useAadhaarScanner(onCardScanned);
+  const scanner = useAadhaarScanner(onCardScanned);
+  const { clearError: clearScanError } = scanner;
   // A rejected payload (the app's own desk slip) means nothing was filled.
-  const scanDiagnostic = rejectedScanDiagnostic ?? partialScanDiagnostic;
+  const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
+
+  /**
+   * Aadhaar is the source of patient identity, so the typed fields stay out of
+   * the way until they are actually needed: either a card was read (and the
+   * fields are shown filled and locked, for confirmation) or the operator has
+   * explicitly declared the scan a failure.
+   *
+   * Showing them by default is what makes a desk type a name it could have
+   * scanned — slower, and it loses the Aadhaar last-4 and DOB that the
+   * duplicate-detection Person key is built from.
+   */
+  const [manualEntry, setManualEntry] = useState(false);
+  const identityVisible = isCardVerified || manualEntry;
 
 
   const focusName = useCallback(() => {
@@ -407,6 +406,7 @@ export function PatientForm({
       setVerifiedIdentity(null);
     setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
       setScannedBanner(null);
+      setManualEntry(false);
       setLegacyQrWarning(null);
       setPartialScanDiagnostic(null);
       clearScanError();
@@ -668,46 +668,21 @@ export function PatientForm({
 
       {/* Aadhaar QR Scanner Action */}
       <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-brand">
-              Aadhaar QR Scan-and-Fill
-            </p>
-            <p className="text-xs text-muted">
-              Scan the Aadhaar card QR to auto-fill details. If the camera is
-              unavailable, type the details manually.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="sm:w-auto"
-              data-testid="scan-aadhaar-qr-button"
-              onClick={isScanningQr ? stopQrScanner : () => void startQrScanner()}
-            >
-              {isScanningQr ? "Stop Scanner" : "Scan Aadhaar QR"}
-            </Button>
-          </div>
+        <div>
+          <p className="text-sm font-semibold text-brand">
+            Aadhaar Scan-and-Fill
+          </p>
+          <p className="text-xs text-muted">
+            Scan the card&apos;s QR, or upload a photo, screenshot, or e-Aadhaar
+            PDF. Details fill in automatically — only the mobile number is typed.
+          </p>
         </div>
 
-        {isScanningQr ? (
-          <div className="relative overflow-hidden rounded-xl bg-black aspect-video max-h-64 flex items-center justify-center">
-            <video
-              ref={qrVideoRef}
-              playsInline
-              muted
-              autoPlay
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 border-2 border-dashed border-white/60 pointer-events-none rounded-xl m-4 flex items-center justify-center">
-              <span className="bg-black/60 px-3 py-1 text-xs text-white rounded-md font-medium">
-                Point camera at Aadhaar QR code
-              </span>
-            </div>
-          </div>
-        ) : null}
+        <AadhaarCapture
+          scanner={scanner}
+          tone="desk"
+          diagnostic={scanDiagnostic}
+        />
 
         {scannedBanner ? (
           <div
@@ -725,46 +700,21 @@ export function PatientForm({
             data-testid="aadhaar-legacy-qr-warning"
             className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900"
           >
-            ⚠️ {legacyQrWarning}
+            &#9888;&#65039; {legacyQrWarning}
           </div>
         ) : null}
 
-        {scanError ? (
-          <div
-            role="alert"
-            data-testid="aadhaar-scan-error"
-            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-950"
+        {!identityVisible ? (
+          <button
+            type="button"
+            data-testid="desk-manual-entry-escape"
+            className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
+            onClick={() => setManualEntry(true)}
           >
-            {scanError}
-          </div>
-        ) : null}
-
-        {scanDiagnostic ? (
-          <details
-            data-testid="aadhaar-scan-diagnostic"
-            className="rounded-xl border border-border px-3 py-2 text-xs text-muted"
-          >
-            <summary className="cursor-pointer font-semibold">
-              Card did not read fully — report this format
-            </summary>
-            <p className="mt-2">
-              This describes the QR&apos;s structure only. It contains no name,
-              number, or address.
-            </p>
-            <code className="mt-2 block break-all font-mono text-[11px]">
-              {scanDiagnostic}
-            </code>
-            <button
-              type="button"
-              className="mt-2 min-h-12 rounded-xl border border-border px-3 font-semibold"
-              onClick={() => navigator.clipboard?.writeText(scanDiagnostic)}
-            >
-              Copy
-            </button>
-          </details>
+            Card scan nahi ho raha &mdash; details type karein
+          </button>
         ) : null}
       </div>
-
       {flash ? (
         <p
           role="status"
@@ -880,6 +830,8 @@ export function PatientForm({
         ) : null}
       </div>
 
+      {identityVisible ? (
+        <>
       <Input
         id="patient-full-name"
         label={isNameLocked ? "Poora naam (Aadhaar Locked 🔒) *" : "Poora naam *"}
@@ -935,6 +887,8 @@ export function PatientForm({
         }}
         placeholder="Saal"
       />
+        </>
+      ) : null}
 
       <Input
         id="patient-phone"
@@ -949,6 +903,8 @@ export function PatientForm({
         hint="Optional — SMS baad mein, agar number diya"
       />
 
+      {identityVisible ? (
+        <>
       <Input
         id="patient-aadhaar"
         label={isAadhaarLocked ? "Aadhaar last 4 (Aadhaar Locked 🔒)" : "Aadhaar last 4 (optional)"}
@@ -1022,6 +978,8 @@ export function PatientForm({
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Optional"
       />
+        </>
+      ) : null}
 
       <ErrorBox message={error} />
       {phase === "failed-retryable" && error ? (
@@ -1101,6 +1059,7 @@ export function PatientForm({
             loading ||
             lookupState === "loading" ||
             !campDayId ||
+            !identityVisible ||
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}
@@ -1118,6 +1077,7 @@ export function PatientForm({
             loading ||
             lookupState === "loading" ||
             !campDayId ||
+            !identityVisible ||
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}

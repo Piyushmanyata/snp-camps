@@ -115,6 +115,13 @@ async function mockRegisterSuccess(
 }
 
 async function fillMinimalRegistration(page: Page, fullName: string) {
+  // Registration is Aadhaar-first: the typed identity fields stay hidden until
+  // a card is read or the operator declares the scan a failure. These tests are
+  // about print behaviour, so they take the same escape a desk takes when a
+  // card will not scan.
+  const manualEntry = page.getByTestId("desk-manual-entry-escape");
+  if (await manualEntry.isVisible()) await manualEntry.click();
+
   await page.getByLabel(/Poora naam/i).fill(fullName);
   await page.getByLabel(/^Umar/i).fill("42");
 }
@@ -196,8 +203,11 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   await expect(page.getByTestId("desk-register-flash")).toContainText(
     /Print window open/i,
   );
-  // Form reset after success — name cleared, recovery retained.
-  await expect(page.getByLabel(/Poora naam/i)).toHaveValue("");
+  // Form reset after success — recovery retained, and the desk returns to
+  // scan-first for the next patient, so the typed identity fields are gone
+  // entirely rather than merely blank.
+  await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
+  await expect(page.getByLabel(/Poora naam/i)).toHaveCount(0);
 });
 
 /** #107 — Register-only saves without opening a print window. */
@@ -239,7 +249,9 @@ test("register-only saves with no print window", async ({ page }) => {
       [],
   )) as unknown[][];
   expect(openArgs.length).toBe(0);
-  await expect(page.getByLabel(/Poora naam/i)).toHaveValue("");
+  // Saved and reset: the desk goes back to scan-first for the next patient.
+  await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
+  await expect(page.getByLabel(/Poora naam/i)).toHaveCount(0);
 });
 
 test("blocked popup: one registration, recovery Print, never claims window opened", async ({

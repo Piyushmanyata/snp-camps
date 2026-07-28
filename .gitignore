@@ -22,6 +22,11 @@
 # production
 /build
 
+# Decoder binaries copied out of node_modules by scripts/copy-wasm.mjs.
+# Generated at install/build time — never committed, so they cannot drift from
+# the versions in package-lock.json.
+/public/wasm/
+
 # misc
 .DS_Store
 *.pem

@@ -27,9 +27,15 @@ export function buildContentSecurityPolicy(
         })()
       : "wss://*.supabase.co");
 
+  // 'wasm-unsafe-eval' is required to instantiate WebAssembly at all, and the
+  // Aadhaar scanner is entirely WASM (ZXing, ZBar, OpenCV). It is the narrow
+  // grant: it permits WebAssembly compilation and nothing else — unlike
+  // 'unsafe-eval' it does NOT re-enable eval() or new Function() for JS.
+  // Without it the scanner works in dev (which has 'unsafe-eval') and fails in
+  // production only, which is the worst possible way to find out.
   const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'unsafe-eval'`
-    : `script-src 'self' 'nonce-${nonce}'`;
+    ? `script-src 'self' 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval'`
+    : `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`;
 
   return [
     "default-src 'self'",

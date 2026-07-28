@@ -157,6 +157,10 @@ test("CSP script-src keeps self and nonce without unsafe-inline or strict-dynami
   assert.ok(prodScript);
   assert.match(prodScript, /'self'/);
   assert.doesNotMatch(prodScript, /'unsafe-inline'/);
+  // Narrow WASM grant only — the bare 'unsafe-eval' must stay out of production.
+  // The Aadhaar scanner cannot instantiate ZXing/ZBar/OpenCV without this, and
+  // its absence fails in production only, since dev carries 'unsafe-eval'.
+  assert.match(prodScript, /'wasm-unsafe-eval'/);
   assert.doesNotMatch(prodScript, /'unsafe-eval'/);
   assert.doesNotMatch(prodScript, /'strict-dynamic'/);
 

@@ -16,6 +16,10 @@ const eslintConfig = defineConfig([
     ".playwright-cli/**",
     ".scratch/**",
     "next-env.d.ts",
+    // Decoder binaries copied out of node_modules by scripts/copy-wasm.mjs.
+    // Third-party Emscripten output — not ours to lint, and opencv.js alone is
+    // 13MB on one line, which is minutes of pointless work per run.
+    "public/wasm/**",
   ]),
 ]);
 

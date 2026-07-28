@@ -10,7 +10,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { parseDateOfBirth } from "@/lib/aadhaar-qr";
+import { parseDateOfBirth } from "@/lib/aadhaar-text";
 
 /**
  * The Aadhaar pepper. Survives the eKYC deletion (#116) because the Person
