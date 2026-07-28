@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-route gzipped EAGER/initial client JS budgets (bytes). #71: budgets measure only sync-reachable production chunks; async islands (jsqr, scanner shell, optional admin) excluded. Ratcheted 2026-07-26 from measured post-fix baseline (budgetFromMeasured ≈ ceil(gzip*1.03/1000)*1000). Never raise to hide a regression. 2026-07-28 reconciliation: /lookup added (route shipped by #114 with no entry, so the gate could not pass); /s/[token] 199000→206000 for the patient QR added to the extended status page (#114); /self-register 205000→220000 for the Aadhaar scanner island and receipt QR (#113) — the decoder itself stays deferred. /team-lead added (route shipped by 7ef1e58 with no entry, so the gate could not pass); it is the admin team-lead roster only, measured 396186.",
+  "_comment": "Per-route gzipped EAGER/initial client JS budgets (bytes). #71: budgets measure only sync-reachable production chunks; async islands (scanner decoder and optional admin UI) are excluded. Ratcheted 2026-07-26 from the measured baseline (budgetFromMeasured ≈ ceil(gzip*1.03/1000)*1000). Never raise to hide a regression. /lookup and /team-lead were later added as new routes; the pre-feature /s/[token] and /self-register limits remain unchanged.",
   "measureMode": "eager-initial-vs-async-deferred",
   "routes": {
     "/": 209000,
@@ -15,8 +15,8 @@
     "/print/[id]": 212000,
     "/print/prescription/[id]": 208000,
     "/register": 411000,
-    "/self-register": 220000,
-    "/s/[token]": 206000,
+    "/self-register": 205000,
+    "/s/[token]": 199000,
     "/team-lead": 409000,
     "/volunteer": 418000
   }

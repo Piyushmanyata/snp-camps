@@ -8,7 +8,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isCampCrew, isStaff, isDoctor } from "../src/lib/roles.ts";
+import { isCampCrew } from "../src/lib/roles.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

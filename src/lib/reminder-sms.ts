@@ -18,6 +18,7 @@ import {
 import {
   claimSmsDelivery,
   completeSmsDelivery,
+  markSmsDispatchStarted,
   phoneLast4FromRaw,
   pruneSmsDeliveries,
   type SmsDeliveryClient,
@@ -225,7 +226,11 @@ export type ReminderJobDeps = {
     outcome: "sent" | "failed" | "ambiguous" | "release";
     providerRequestId?: string | null;
     lastError?: string | null;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
+  startReminder: (claim: {
+    deliveryId: string;
+    claimToken: string;
+  }) => Promise<boolean>;
   send?: SendFn;
   now?: Date;
   /** When true, listCandidates already day-filtered — re-check status/phone/ledger. */
@@ -308,6 +313,24 @@ export async function runDayBeforeReminders(
       continue;
     }
 
+    let dispatchMarked = false;
+    try {
+      dispatchMarked = await deps.startReminder(claim);
+    } catch {
+      dispatchMarked = false;
+    }
+    if (!dispatchMarked) {
+      await deps.completeReminder({
+        deliveryId: claim.deliveryId,
+        claimToken: claim.claimToken,
+        outcome: "release",
+      }).catch(() => false);
+      summary.failed += 1;
+      summary.ok = false;
+      summary.error = "SMS dispatch boundary could not be recorded.";
+      continue;
+    }
+
     const result = await sendReminderSms(
       {
         phone: row.phone,
@@ -320,15 +343,25 @@ export async function runDayBeforeReminders(
 
     if (result.status === "sent") {
       try {
-        await deps.completeReminder({
+        const completed = await deps.completeReminder({
           deliveryId: claim.deliveryId,
           claimToken: claim.claimToken,
           outcome: "sent",
           providerRequestId: result.requestId ?? null,
         });
+        if (!completed) {
+          summary.ambiguous += 1;
+          summary.ok = false;
+          summary.error = "Provider accepted an SMS but ledger confirmation failed.";
+          continue;
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : "complete sent failed";
         console.error("[reminder-sms] complete sent failed", row.id, detail);
+        summary.ambiguous += 1;
+        summary.ok = false;
+        summary.error = "Provider accepted an SMS but ledger confirmation failed.";
+        continue;
       }
       summary.sent += 1;
       continue;
@@ -403,6 +436,7 @@ export function createReminderJobStore(
   | "listCandidates"
   | "claimReminder"
   | "completeReminder"
+  | "startReminder"
   | "preFiltered"
   | "prune"
 > {
@@ -472,7 +506,10 @@ export function createReminderJobStore(
       });
     },
     async completeReminder(input) {
-      await completeSmsDelivery(supabase, input);
+      return completeSmsDelivery(supabase, input);
+    },
+    async startReminder(claim) {
+      return markSmsDispatchStarted(supabase, claim);
     },
     async prune() {
       await pruneSmsDeliveries(supabase);

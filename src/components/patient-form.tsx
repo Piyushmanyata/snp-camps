@@ -52,13 +52,6 @@ type Props = {
   userRole?: string | null;
 };
 
-/**
- * Cap on the background Person-key mint. Well past a healthy round trip, short
- * enough that a dead network resolves to the manual path while the operator is
- * still filling the remaining fields.
- */
-const PERSON_KEY_TIMEOUT_MS = 8000;
-
 type FormFieldErrors = Partial<Record<PatientFormField, string>>;
 type LookupState = "idle" | "loading" | "ok" | "fail" | "skipped";
 
@@ -90,21 +83,13 @@ export function PatientForm({
     number | null
   >(null);
   const [provenance, setProvenance] = useState<
-    // `ekyc_verified` still exists in the column's check constraint for rows
-    // written before #116, but nothing can produce it any more.
     "self_declared" | "card_verified"
   >("self_declared");
   const [verifiedIdentity, setVerifiedIdentity] = useState<{
     fullName: string;
     aadhaarLast4: string;
-    /** Card DOB — the key needs the full date, the form only shows the age. */
-    dateOfBirth: string | null;
-    /**
-     * HMAC minted by /api/person-key. Null when the card lacked a field the key
-     * needs (or the mint failed): registration then falls back to the manual
-     * path rather than blocking the desk.
-     */
-    duplicateKey: string | null;
+    /** Card DOB — the trusted server route needs the full date. */
+    dateOfBirth: string;
   } | null>(null);
 
   /**
@@ -156,44 +141,6 @@ export function PatientForm({
   const [legacyQrWarning, setLegacyQrWarning] = useState<string | null>(null);
 
   /**
-   * Ask the server for this card's Person key (#111). The pepper is a server
-   * secret, so the browser cannot derive it. Returns null when the card is
-   * missing a key field or the mint fails — the desk still registers, just on
-   * the manual path, because a scanner hiccup must never block a queue.
-   *
-   * Called in the background, never awaited by the scan: see `onCardScanned`.
-   */
-  async function mintPersonKey(parsed: {
-    fullName: string | null;
-    aadhaarLast4: string | null;
-    dateOfBirth: string | null;
-    gender: string | null;
-  }): Promise<string | null> {
-    if (!parsed.fullName || !parsed.aadhaarLast4 || !parsed.dateOfBirth || !parsed.gender) {
-      return null;
-    }
-    try {
-      const response = await fetch("/api/person-key", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // A hung request must not leave the identity unresolved indefinitely;
-        // the manual path is the designed fallback.
-        signal: AbortSignal.timeout(PERSON_KEY_TIMEOUT_MS),
-        body: JSON.stringify({
-          name: parsed.fullName,
-          aadhaarLast4: parsed.aadhaarLast4,
-          dateOfBirth: parsed.dateOfBirth,
-          gender: parsed.gender,
-        }),
-      });
-      const body = (await response.json()) as { ok?: boolean; key?: string };
-      return body.ok && typeof body.key === "string" ? body.key : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Fill the form from one decoded card. Returns false to keep the camera
    * running when the payload carried no autofillable field — a partial read on
    * one blurry frame should not end the session when the next may read cleanly.
@@ -215,37 +162,40 @@ export function PatientForm({
       if (parsed.address) setAddress(parsed.address);
       if (parsed.aadhaarLast4) setAadhaar(parsed.aadhaarLast4);
 
+      const completeIdentity =
+        Boolean(parsed.fullName) &&
+        parsed.age != null &&
+        Boolean(parsed.gender) &&
+        Boolean(parsed.aadhaarLast4) &&
+        Boolean(parsed.dateOfBirth);
+
+      if (!completeIdentity) {
+        setProvenance("self_declared");
+        setVerifiedIdentity(null);
+        setCardProvided({
+          fullName: false,
+          age: false,
+          gender: false,
+          aadhaarLast4: false,
+        });
+        setPartialScanDiagnostic(diagnostic);
+        setScannedBanner(
+          "Aadhaar card scan is incomplete. Scan again, or close the scanner and choose manual entry.",
+        );
+        return false;
+      }
+
       setProvenance("card_verified");
       setCardProvided({
-        fullName: Boolean(parsed.fullName),
-        age: parsed.age != null,
-        gender: Boolean(parsed.gender),
-        aadhaarLast4: Boolean(parsed.aadhaarLast4),
+        fullName: true,
+        age: true,
+        gender: true,
+        aadhaarLast4: true,
       });
-      const identity = {
-        fullName: parsed.fullName || "",
-        aadhaarLast4: parsed.aadhaarLast4 || "",
-        dateOfBirth: parsed.dateOfBirth,
-        duplicateKey: null as string | null,
-      };
-      setVerifiedIdentity(identity);
-
-      // Mint the Person key in the background. Awaiting it here held the camera
-      // open on a server round trip after every successful scan — on a camp's
-      // mobile connection that is the entire perceived scan time. The same
-      // reasoning that lets a failed mint fall back to the manual path applies
-      // to a slow one: the desk must never wait on the network to finish a scan.
-      void mintPersonKey(parsed).then((duplicateKey) => {
-        if (!duplicateKey) return;
-        setVerifiedIdentity((current) =>
-          // Ignore a late arrival if the operator has since rescanned or reset.
-          current &&
-          current.aadhaarLast4 === identity.aadhaarLast4 &&
-          current.fullName === identity.fullName &&
-          current.duplicateKey === null
-            ? { ...current, duplicateKey }
-            : current,
-        );
+      setVerifiedIdentity({
+        fullName: parsed.fullName!,
+        aadhaarLast4: parsed.aadhaarLast4!,
+        dateOfBirth: parsed.dateOfBirth!,
       });
 
       // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
@@ -257,23 +207,10 @@ export function PatientForm({
         setLegacyQrWarning(null);
       }
 
-      const missingFields: string[] = [];
-      if (!parsed.fullName) missingFields.push("name");
-      if (parsed.age == null) missingFields.push("age");
-
-      // Partial read means the format is only half-understood — keep the
-      // fingerprint so it can be reported.
-      setPartialScanDiagnostic(missingFields.length > 0 ? diagnostic : null);
-
-      if (missingFields.length > 0) {
-        setScannedBanner(
-          `Aadhaar card scanned. Partial details autofilled. Please enter ${missingFields.join(" and ")} manually.`,
-        );
-      } else {
-        setScannedBanner(
-          "Aadhaar card scanned and autofilled. Identity fields locked.",
-        );
-      }
+      setPartialScanDiagnostic(null);
+      setScannedBanner(
+        "Aadhaar card scanned and autofilled. Identity fields locked.",
+      );
       return true;
     },
     [],
@@ -433,10 +370,8 @@ export function PatientForm({
         phone: validated.values.phone,
         email: validated.values.email,
         aadhaarLast4: validated.values.aadhaarLast4,
-        // Present only for a scanned card, and only when every key field was
-        // read. This is what makes the Person path — and global
-        // one-Person-per-Aadhaar — actually run (#111).
-        duplicateKey: verifiedIdentity?.duplicateKey ?? null,
+        // The Person key is derived only by the trusted server route.
+        duplicateKey: null,
         dateOfBirth: verifiedIdentity?.dateOfBirth ?? null,
         createdBy,
         campDayId: validated.values.campDayId,
@@ -445,6 +380,57 @@ export function PatientForm({
         provenance,
       },
       rpc: async (fn, args) => {
+        if (provenance === "card_verified") {
+          try {
+            const response = await fetch("/api/desk/register-scanned", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                requestId: args.p_request_id,
+                campId: args.p_camp_id,
+                campDayId: args.p_camp_day_id,
+                fullName: args.p_full_name,
+                displayName: args.p_display_name,
+                gender: args.p_gender,
+                age: args.p_age,
+                address: args.p_address,
+                phone: args.p_phone,
+                email: args.p_email,
+                aadhaarLast4: args.p_aadhaar_last4,
+                dateOfBirth: args.p_date_of_birth,
+              }),
+            });
+            const body = (await response.json()) as {
+              data?: unknown;
+              error?: {
+                message?: string;
+                code?: string;
+                details?: string;
+                hint?: string;
+              } | null;
+            };
+            return {
+              data: body.data ?? null,
+              error: body.error?.message
+                ? {
+                    message: body.error.message,
+                    code: body.error.code,
+                    details: body.error.details,
+                    hint: body.error.hint,
+                  }
+                : null,
+            };
+          } catch {
+            return {
+              data: null,
+              error: {
+                message:
+                  "Registration service is unavailable. Check your connection and try again.",
+                code: "NETWORK_ERROR",
+              },
+            };
+          }
+        }
         const result = await supabase.rpc(fn, args);
         return {
           data: result.data,
@@ -673,8 +659,8 @@ export function PatientForm({
             Aadhaar Scan-and-Fill
           </p>
           <p className="text-xs text-muted">
-            Scan the card&apos;s QR, or upload a photo, screenshot, or e-Aadhaar
-            PDF. Details fill in automatically — only the mobile number is typed.
+            Scan the QR printed on the Aadhaar card. Details fill in
+            automatically — only the mobile number is typed.
           </p>
         </div>
 

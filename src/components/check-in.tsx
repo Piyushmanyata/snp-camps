@@ -263,15 +263,12 @@ export function CheckIn({
         {visibleResults.length > 0 ? (
           <ul
             className="divide-y divide-border overflow-hidden rounded-xl border border-border"
-            role="listbox"
             aria-label="Matching registered patients"
           >
             {visibleResults.map((m) => (
               <li key={m.id}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={selectedId === m.id}
                   disabled={busy}
                   onClick={() => void runCheckIn({ id: m.id })}
                   className="pressable flex min-h-12 w-full flex-col items-start justify-center gap-0.5 px-3 py-3 text-left hover:bg-brand-soft disabled:opacity-50"

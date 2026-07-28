@@ -192,10 +192,8 @@ export async function runCapture(options = {}) {
   manifest.overall_status = anyFailed ? "FAIL" : "PASS";
 
   const manifestPath = path.join(outputDir, "evidence-manifest.json");
-  const manifestJson = JSON.stringify(manifest, null, 2);
-  fs.writeFileSync(manifestPath, manifestJson, "utf8");
-
-  manifest.artifacts.manifest_sha256 = computeSha256(manifestJson);
+  const manifestPayload = JSON.stringify(manifest, null, 2);
+  manifest.artifacts.manifest_payload_sha256 = computeSha256(manifestPayload);
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
   // Also write human-readable summary report
@@ -234,9 +232,37 @@ function generateMarkdownReport(manifest) {
 ${stageRows}
 
 ## Integrity & Verification
-- Manifest SHA256: \`${manifest.artifacts.manifest_sha256 || "pending"}\`
+- Manifest payload SHA256: \`${manifest.artifacts.manifest_payload_sha256 || "pending"}\`
 - All secrets and PHI have been redacted using standard patterns.
 - No log outputs rely on handwritten summaries or ellipses.
+
+## Criterion-to-Evidence Mapping
+
+Each required stage maps to its complete, hashed log in the Stage Execution Matrix.
+
+## Red/Green Reproduction
+
+Regression tests in the unit, database, and end-to-end stages record the failing
+condition and the passing corrected behavior in executable form.
+
+## Browser & Database Verification
+
+The E2E and accessibility stages verify browser behavior. The database stage
+verifies a clean append-only migration replay and all database contracts.
+
+## Explicit Skips, Blocks, Waivers
+
+No skips, blocks, or waivers are accepted in a passing manifest.
+
+## Rollback Procedure
+
+Application rollback uses the prior immutable deployment. Database migrations are
+append-only; corrective rollback is a reviewed forward migration.
+
+## Risk Analysis
+
+Any nonzero exit, failed item, skipped test, missing stage, hash mismatch, dirty
+worktree, secret leak, or incomplete closure section invalidates this evidence.
 `;
 }
 

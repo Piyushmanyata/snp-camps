@@ -7,14 +7,6 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   turbopack: {
     root: path.join(__dirname),
-    resolveAlias: {
-      // OpenCV's Emscripten bundle keeps its Node and browser bootstraps in one
-      // file; the Node branch requires "fs" and never runs in a browser, but
-      // the bundler still has to resolve it. See src/lib/node-builtin-stub.ts.
-      fs: { browser: "./src/lib/node-builtin-stub.ts" },
-      path: { browser: "./src/lib/node-builtin-stub.ts" },
-      crypto: { browser: "./src/lib/node-builtin-stub.ts" },
-    },
   },
   poweredByHeader: false,
   compress: true,

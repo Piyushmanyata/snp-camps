@@ -178,6 +178,21 @@ test("volunteer_my_counts is dropped from the catalog", async (t) => {
   assert.equal(rows[0].gone, true);
 });
 
+test("staff_person_kpis has one row shape and leaderboard has its own contract", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows } = await client.query(
+    `select
+       count(*) filter (where p.proname = 'staff_person_kpis')::integer as kpi_overloads,
+       to_regprocedure('public.staff_leaderboard(uuid,uuid)') is not null as leaderboard_exists,
+       to_regprocedure('public.staff_person_kpis(uuid,uuid)') is null as old_overload_gone
+     from pg_proc p
+     where p.pronamespace = 'public'::regnamespace`,
+  );
+  assert.equal(rows[0].kpi_overloads, 1);
+  assert.equal(rows[0].leaderboard_exists, true);
+  assert.equal(rows[0].old_overload_gone, true);
+});
+
 test("active camp yields camp-scoped volunteer counts", async (t) => {
   if (skipIfNoDb(t)) return;
 

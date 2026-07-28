@@ -11,6 +11,7 @@ import {
 import {
   ActionCard,
   Card,
+  ErrorBox,
   NavLink,
   SectionTitle,
   Shell,
@@ -150,21 +151,23 @@ export default async function VolunteerPage() {
     | null = null;
   let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
   let leaderboard: StaffKpiRow[] = [];
+  let leaderboardError: string | null = null;
   let teamVolunteers: StaffPerson[] = [];
+  let rosterError: string | null = null;
 
   // A team lead manages their own roster from the desk. Read it before the camp
   // gate below: the roster exists whether or not a camp is active.
   if (teamLead && userId) {
-    const { data: roster, error: rosterError } = await supabase
+    const { data: roster, error: rosterQueryError } = await supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, disabled_at")
       .eq("role", "volunteer")
       .eq("team_lead_id", userId)
       .order("created_at", { ascending: false });
 
-    if (rosterError) {
-      // Soft failure — the desk must still open. The panel shows an empty roster.
-      mapDbError(rosterError, { context: "volunteer-page.team-roster" });
+    if (rosterQueryError) {
+      mapDbError(rosterQueryError, { context: "volunteer-page.team-roster" });
+      rosterError = "Your team roster could not be loaded. Refresh and try again.";
     } else {
       teamVolunteers = roster ?? [];
     }
@@ -177,7 +180,11 @@ export default async function VolunteerPage() {
         loadQueueSection(camp.id),
         loadSeatsSection(camp.id),
         loadDoctorsSection(),
-        loadVolunteerKpisSection(camp.id, userId),
+        loadVolunteerKpisSection(
+          camp.id,
+          userId,
+          teamLead ? "team_lead" : "volunteer",
+        ),
         loadAwaitingTreatmentSection(camp.id),
         loadStaffLeaderboardSection(camp.id),
       ]);
@@ -198,6 +205,8 @@ export default async function VolunteerPage() {
     awaitingInitial = awaitingRes;
     if (leaderboardRes.ok) {
       leaderboard = leaderboardRes.data;
+    } else {
+      leaderboardError = leaderboardRes.error;
     }
   }
 
@@ -221,12 +230,16 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
-        {teamLead ? (
-          <TeamLeadPanel
-            currentUserId={userId ?? ""}
-            initialLeaderboard={leaderboard}
-            teamVolunteers={teamVolunteers}
-          />
+        {camp ? (
+          <>
+            {leaderboardError ? <ErrorBox message={leaderboardError} /> : null}
+            {rosterError ? <ErrorBox message={rosterError} /> : null}
+            <TeamLeadPanel
+              currentUserId={userId ?? ""}
+              initialLeaderboard={leaderboard}
+              teamVolunteers={teamLead ? teamVolunteers : undefined}
+            />
+          </>
         ) : null}
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <div className="flex flex-col gap-3">

@@ -6,6 +6,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { QrCode } from "@/components/qr-code";
+import { getPatientStatusGuidance } from "@/lib/patient-status-guidance";
 
 const STATUS_RATE_LIMIT = {
   scope: "status-page",
@@ -99,6 +100,10 @@ export default async function PatientStatusPage({
 
   const view = mapStatusRpcRow(rows[0] as StatusRpcRow);
   const qrValue = view.patientId ? `snp:${view.patientId}` : `reg:${view.regNo}`;
+  const statusGuidance = getPatientStatusGuidance(
+    view.queueStatus,
+    view.pendingOrders.length,
+  );
 
   const treatmentLabels: Record<string, string> = {
     pharmacy: "Medicines",
@@ -127,6 +132,26 @@ export default async function PatientStatusPage({
               Patient QR · Reg #{view.regNo}
             </p>
           </div>
+
+          <section
+            aria-labelledby="current-status-heading"
+            className={
+              statusGuidance.tone === "complete"
+                ? "rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"
+                : statusGuidance.tone === "waiting"
+                  ? "rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
+                  : "rounded-2xl border border-brand/20 bg-brand-soft/50 p-4 text-foreground"
+            }
+          >
+            <h2
+              id="current-status-heading"
+              className="text-xs font-semibold uppercase tracking-wider"
+            >
+              Current status
+            </h2>
+            <p className="mt-1 text-lg font-bold">{statusGuidance.label}</p>
+            <p className="mt-1 text-sm">{statusGuidance.instruction}</p>
+          </section>
 
           <dl className="rounded-2xl border border-border bg-card p-5 space-y-4 text-[1.0625rem] shadow-sm">
             <div>

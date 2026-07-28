@@ -134,7 +134,7 @@ async function asAuthenticated(userId, fn) {
   }
 }
 
-/** @param {"admin"|"volunteer"|"doctor"} role */
+/** @param {"admin"|"team_lead"|"volunteer"|"doctor"} role */
 async function seedProfile(role) {
   const userId = randomUUID();
   const email = `${role}-${userId.slice(0, 8)}@assign-lifecycle.test`;
@@ -278,6 +278,33 @@ test("volunteer assign of registered returns check_in_required", async (t) => {
   assert.equal(after.queue_status, "registered");
   assert.equal(after.seen_at, null);
   assert.equal(after.seen_by, null);
+});
+
+test("Team Lead can perform the same doctor assignment as a volunteer", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const teamLeadId = await seedProfile("team_lead");
+  const volunteerId = await seedProfile("volunteer");
+  const doctorId = await seedProfile("doctor");
+  const { campId, dayId } = await seedCampFutureDay();
+  const patient = await registerPatient(campId, dayId, "Team Lead Assignment");
+
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.check_in_patient($1, null)`, [
+      patient.id,
+    ]);
+  });
+
+  const result = await asAuthenticated(teamLeadId, async (c) => {
+    const { rows } = await c.query(
+      `select * from public.assign_patient_doctor($1, null, $2)`,
+      [patient.id, doctorId],
+    );
+    return rows[0];
+  });
+
+  assert.equal(result.error_code, null);
+  assert.equal(result.queue_status, "seen");
+  assert.equal(result.doctor_id, doctorId);
 });
 
 test("waiting patient transitions to seen once and preserves check-in fields", async (t) => {

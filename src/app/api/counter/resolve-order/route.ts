@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { loadSessionProfile, isCampCrew, readJsonBody } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { mapDbError } from "@/lib/public-error";
+import { isPatientUuid } from "@/lib/qr";
 
 export async function POST(req: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -16,7 +17,11 @@ export async function POST(req: Request) {
     deferredVenue?: string | null;
   }>(req);
 
-  if (!body?.orderId || typeof body.orderId !== "string") {
+  if (
+    !body?.orderId ||
+    typeof body.orderId !== "string" ||
+    !isPatientUuid(body.orderId.trim())
+  ) {
     return NextResponse.json({ error: "orderId is required" }, { status: 400 });
   }
 
@@ -35,12 +40,33 @@ export async function POST(req: Request) {
     );
   }
 
+  if (
+    body.deferredDate &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(body.deferredDate)
+  ) {
+    return NextResponse.json(
+      { error: "deferredDate must use YYYY-MM-DD" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.deferredVenue != null &&
+    (typeof body.deferredVenue !== "string" ||
+      body.deferredVenue.trim().length > 160)
+  ) {
+    return NextResponse.json(
+      { error: "deferredVenue must be at most 160 characters" },
+      { status: 400 },
+    );
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("resolve_treatment_order", {
-    p_order_id: body.orderId,
+    p_order_id: body.orderId.trim(),
     p_action: action,
     p_deferred_date: body.deferredDate || null,
-    p_deferred_venue: body.deferredVenue || null,
+    p_deferred_venue: body.deferredVenue?.trim() || null,
   });
 
   if (error) {

@@ -289,11 +289,22 @@ describe("Theatre slot capacity and atomic reservation", () => {
         /Theatre slot capacity reached for this camp day|Camp has no theatre capacity remaining|Post-camp surgery date and venue must be configured by admin/i,
       );
 
-      // Cancel patient 1's OT order
-      await adminClient.query(
-        `update public.treatment_orders set status = 'cancelled' where patient_id = $1 and kind = 'ot'`,
+      // Cancel through the guarded workflow so closure attribution and state
+      // invariants are exercised along with capacity release.
+      const { rows: orders } = await adminClient.query(
+        `select id from public.treatment_orders
+         where patient_id = $1 and kind = 'ot' and status = 'pending'`,
         [patient1Id],
       );
+      assert.equal(orders.length, 1);
+      await asAuthenticated(c1, doctorId, async () => {
+        await c1.query(
+          `select * from public.resolve_treatment_order(
+             $1::uuid, 'cancelled', null, null
+           )`,
+          [orders[0].id],
+        );
+      });
 
       // Verify lookup_patient_scan now reflects 1 remaining slot
       const scanRows = await asAuthenticated(c1, doctorId, async () => {

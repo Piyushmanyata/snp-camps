@@ -7,7 +7,14 @@ import test from "node:test";
 import { GET } from "../src/app/api/health/route.ts";
 import {
   EXPECTED_MIGRATION_HEAD,
+  GRANT_EXPECTATIONS,
   READINESS_CONTRACT_VERSION,
+  REQUIRED_COLUMNS,
+  REQUIRED_FUNCTIONS,
+  REQUIRED_INVARIANTS,
+  REQUIRED_TABLES,
+  SMS_DELIVERY_KINDS,
+  SMS_DELIVERY_STATES,
 } from "../src/lib/readiness-contract.ts";
 import {
   __resetServiceRoleClient,
@@ -26,84 +33,33 @@ function healthRequest(path, ip) {
 
 /** Catalog facts that satisfy the versioned contract. */
 function goodCatalogFacts(overrides = {}) {
-  const tables = {
-    patients: true,
-    camps: true,
-    camp_days: true,
-    profiles: true,
-    sms_deliveries: true,
-    treatment_orders: true,
-  };
-  const columns = {
-    "patients.id": true,
-    "patients.status_token": true,
-    "patients.queue_status": true,
-    "patients.queued_at": true,
-    "patients.reg_no": true,
-    "patients.camp_id": true,
-    "patients.camp_day_id": true,
-    "patients.full_name": true,
-    "camps.id": true,
-    "camps.name": true,
-    "camps.is_active": true,
-    "camps.venue": true,
-    "camp_days.id": true,
-    "camp_days.camp_id": true,
-    "camp_days.day_date": true,
-    "camp_days.seat_limit": true,
-    "camp_days.theatre_capacity": true,
-    "profiles.id": true,
-    "profiles.disabled_at": true,
-    "sms_deliveries.id": true,
-    "sms_deliveries.patient_id": true,
-    "sms_deliveries.kind": true,
-    "sms_deliveries.state": true,
-    "sms_deliveries.claim_token": true,
-    "sms_deliveries.phone_last4": true,
-    "sms_deliveries.attempt_count": true,
-    "sms_deliveries.updated_at": true,
-    "treatment_orders.id": true,
-    "treatment_orders.scheduled_camp_day_id": true,
-  };
-  const functions = {
-    latest_applied_migration: true,
-    readiness_catalog_probe: true,
-    patient_status_by_token: true,
-    upsert_camp_day: true,
-    register_patient_idempotent: true,
-    check_in_patient: true,
-    claim_sms_delivery: true,
-    complete_sms_delivery: true,
-  };
-  const grants = {
-    patients_status_token_authenticated_select: false,
-    patient_status_by_token_authenticated_execute: false,
-    patient_status_by_token_anon_execute: false,
-    patient_status_by_token_service_role_execute: true,
-    sms_deliveries_authenticated_select: false,
-    claim_sms_delivery_service_role_execute: true,
-    complete_sms_delivery_service_role_execute: true,
-    upsert_camp_day_authenticated_execute: true,
-    check_in_patient_authenticated_execute: true,
-    register_patient_idempotent_authenticated_execute: true,
-    latest_applied_migration_service_role_execute: true,
-  };
+  const tables = Object.fromEntries(REQUIRED_TABLES.map((name) => [name, true]));
+  const columns = Object.fromEntries(
+    Object.entries(REQUIRED_COLUMNS).flatMap(([table, names]) =>
+      names.map((name) => [`${table}.${name}`, true]),
+    ),
+  );
+  const functions = Object.fromEntries(
+    REQUIRED_FUNCTIONS.map((name) => [name, true]),
+  );
+  const invariants = Object.fromEntries(
+    REQUIRED_INVARIANTS.map((name) => [name, true]),
+  );
   return {
     tables,
     columns,
     functions,
-    grants,
+    invariants,
+    grants: { ...GRANT_EXPECTATIONS },
     publication: { patients_in_supabase_realtime: false },
     sms: {
       table: true,
       states: {
-        pending: true,
-        sending: true,
-        sent: true,
-        failed: true,
-        ambiguous: true,
+        ...Object.fromEntries(SMS_DELIVERY_STATES.map((name) => [name, true])),
       },
-      kinds: { registration: true, reminder: true, spectacles_deferral: true, surgery_deferral: true },
+      kinds: {
+        ...Object.fromEntries(SMS_DELIVERY_KINDS.map((name) => [name, true])),
+      },
       claim_fn: true,
       complete_fn: true,
     },
@@ -186,6 +142,7 @@ test.beforeEach(() => {
   __resetServiceRoleClient();
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+  process.env.AADHAAR_HASH_PEPPER = "health-route-test-pepper";
 });
 
 test.afterEach(() => {
@@ -233,6 +190,7 @@ test("ready-ok when fully aligned: 200 with all checks", async () => {
   assert.equal(body.failedCheck, null);
   for (const id of [
     "database_reachability",
+    "required_configuration",
     "migration_head_discovery",
     "applied_head_agreement",
     "schema_contract",
@@ -262,6 +220,28 @@ test("readiness returns 200 ready: true when optional integrations are unconfigu
     assert.equal(body.cronConfigured, false);
   } finally {
     if (prevSecret !== undefined) process.env.CRON_SECRET = prevSecret;
+  }
+});
+
+test("missing Aadhaar Person pepper fails required configuration", async () => {
+  __setServiceRoleClient(mockServiceRole());
+  const previous = process.env.AADHAAR_HASH_PEPPER;
+  delete process.env.AADHAAR_HASH_PEPPER;
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.98"),
+    );
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.failedCheck, "required_configuration");
+    assert.equal(body.checks.required_configuration.ok, false);
+    assert.equal(
+      body.checks.required_configuration.code,
+      "aadhaar_pepper_missing",
+    );
+  } finally {
+    if (previous !== undefined) process.env.AADHAAR_HASH_PEPPER = previous;
   }
 });
 

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/auth";
+import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
@@ -17,10 +19,11 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { regNo?: unknown; dateOfBirth?: unknown };
-  try {
-    body = await request.json();
-  } catch {
+  const body = await readJsonBody<{
+    regNo?: unknown;
+    dateOfBirth?: unknown;
+  }>(request, 1_024);
+  if (!body) {
     return NextResponse.json(
       { ok: false, error: "Registration details did not match our records." },
       { status: 400 },
@@ -42,6 +45,22 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, error: "Registration details did not match our records." },
       { status: 500 },
+    );
+  }
+
+  const durableRate = await checkDistributedRateLimit(request, admin, {
+    ...LOOKUP_RATE_LIMIT,
+    identifier: String(regNo),
+  });
+  if (!durableRate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Registration details did not match our records." },
+      {
+        status: durableRate.unavailable ? 503 : 429,
+        headers: {
+          "Retry-After": String(durableRate.retryAfterSeconds),
+        },
+      },
     );
   }
 

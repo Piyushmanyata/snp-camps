@@ -8,6 +8,10 @@ export function __resetCookies(entries = []) {
   }
 }
 
+export function __setCookies(entries = []) {
+  __resetCookies(entries);
+}
+
 export async function cookies() {
   return {
     getAll() {

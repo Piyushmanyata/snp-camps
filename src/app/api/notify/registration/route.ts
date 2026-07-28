@@ -11,6 +11,7 @@ import { isPatientUuid } from "@/lib/qr";
 import {
   claimSmsDelivery,
   completeSmsDelivery,
+  markSmsDispatchStarted,
   phoneLast4FromRaw,
 } from "@/lib/sms-deliveries";
 
@@ -92,6 +93,28 @@ export async function POST(req: Request) {
     });
   }
 
+  let dispatchMarked = false;
+  try {
+    dispatchMarked = await markSmsDispatchStarted(supabase, claim);
+  } catch {
+    dispatchMarked = false;
+  }
+  if (!dispatchMarked) {
+    await completeSmsDelivery(supabase, {
+      deliveryId: claim.deliveryId,
+      claimToken: claim.claimToken,
+      outcome: "release",
+    }).catch(() => false);
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "failed",
+        detail: "SMS dispatch could not be started safely.",
+      },
+      { status: 502 },
+    );
+  }
+
   const result = await sendRegistrationSms(
     {
       phone: row.phone,
@@ -106,22 +129,42 @@ export async function POST(req: Request) {
   );
 
   if (result.status === "sent") {
-    await completeSmsDelivery(supabase, {
+    const completed = await completeSmsDelivery(supabase, {
       deliveryId: claim.deliveryId,
       claimToken: claim.claimToken,
       outcome: "sent",
       providerRequestId: result.requestId ?? null,
-    }).catch(() => {});
+    }).catch(() => false);
+    if (!completed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "ambiguous",
+          detail: "Provider accepted the SMS but ledger confirmation is pending.",
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({ ok: true, status: "sent", requestId: result.requestId });
   }
 
   if (result.status === "skipped") {
     // Unconfigured mid-flight or no phone — release claim to pending.
-    await completeSmsDelivery(supabase, {
+    const completed = await completeSmsDelivery(supabase, {
       deliveryId: claim.deliveryId,
       claimToken: claim.claimToken,
       outcome: "release",
-    }).catch(() => {});
+    }).catch(() => false);
+    if (!completed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "ambiguous",
+          detail: "SMS claim release could not be confirmed.",
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({ ok: true, ...result });
   }
 
@@ -131,15 +174,25 @@ export async function POST(req: Request) {
       claimToken: claim.claimToken,
       outcome: "ambiguous",
       lastError: result.detail,
-    }).catch(() => {});
+    }).catch(() => false);
     return NextResponse.json({ ok: false, status: "ambiguous", detail: result.detail });
   }
 
-  await completeSmsDelivery(supabase, {
+  const failedRecorded = await completeSmsDelivery(supabase, {
     deliveryId: claim.deliveryId,
     claimToken: claim.claimToken,
     outcome: "failed",
     lastError: result.detail,
-  }).catch(() => {});
+  }).catch(() => false);
+  if (!failedRecorded) {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "ambiguous",
+        detail: "Provider rejected the SMS but ledger confirmation failed.",
+      },
+      { status: 502 },
+    );
+  }
   return NextResponse.json({ ok: false, status: "failed", detail: result.detail });
 }

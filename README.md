@@ -138,13 +138,17 @@ characters, then run `npm run bootstrap:admin`. Remove those three bootstrap
 values immediately after it succeeds. All later volunteers and doctors are
 created by an active admin; there is no public staff self-registration route.
 
-Optional later:
+Required for scanner registration:
 
 ```
 # Aadhaar card scan — HMAC secret for the Person duplicate key.
-# Required for global one-Person-per-Aadhaar. Never rotate during an active camp.
+# Readiness fails closed without it. Never rotate during an active camp.
 # AADHAAR_HASH_PEPPER=…
-# AADHAAR_KYC_PEPPER=…         # Legacy alias for AADHAAR_HASH_PEPPER
+```
+
+Optional later:
+
+```
 # MSG91_AUTH_KEY=…
 # MSG91_SENDER_ID=SNPCP
 # MSG91_DLT_TE_ID_REGISTRATION=…  # (or MSG91_TEMPLATE_REGISTRATION)
@@ -237,7 +241,7 @@ MSG91_AUTH_KEY=…
 MSG91_SENDER_ID=SNPCP             # DLT-registered sender / header
 MSG91_DLT_TE_ID_REGISTRATION=…    # (or MSG91_TEMPLATE_REGISTRATION) MSG91 Flow / template id for registration
 MSG91_DLT_TE_ID_REMINDER=…        # (or MSG91_TEMPLATE_REMINDER) separate Flow / template id for day-before reminder
-AADHAAR_HASH_PEPPER=…             # (or AADHAAR_KYC_PEPPER) Pepper for HMAC SHA256 Aadhaar hash (do not rotate during active camp)
+AADHAAR_HASH_PEPPER=…             # Required Person HMAC secret (do not rotate during active camp)
 CRON_SECRET=…                     # Bearer secret for Vercel Cron (/api/cron/reminder-sms)
 ```
 

@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 1;
+export const READINESS_CONTRACT_VERSION = 2;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260728090000";
+export const EXPECTED_MIGRATION_HEAD = "20260728114000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -27,6 +27,7 @@ export const READINESS_OVERALL_TIMEOUT_MS = 6_000;
 /** Stable check identifiers returned in JSON (machine-readable). */
 export const READINESS_CHECK_IDS = [
   "database_reachability",
+  "required_configuration",
   "migration_head_discovery",
   "applied_head_agreement",
   "schema_contract",
@@ -39,11 +40,14 @@ export type ReadinessCheckId = (typeof READINESS_CHECK_IDS)[number];
 
 export const REQUIRED_TABLES = [
   "patients",
+  "persons",
   "camps",
   "camp_days",
   "profiles",
   "sms_deliveries",
+  "prescriptions",
   "treatment_orders",
+  "public_rate_limit_buckets",
 ] as const;
 
 /** table → required columns (runtime-critical subset). */
@@ -57,10 +61,25 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "camp_id",
     "camp_day_id",
     "full_name",
+    "display_name",
+    "person_id",
+    "provenance",
+  ],
+  persons: [
+    "id",
+    "reg_no",
+    "full_name",
+    "display_name",
+    "gender",
+    "date_of_birth",
+    "aadhaar_last4",
+    "duplicate_key",
+    "aadhaar_locked_at",
+    "name_locked_at",
   ],
   camps: ["id", "name", "is_active", "venue"],
   camp_days: ["id", "camp_id", "day_date", "seat_limit", "theatre_capacity"],
-  profiles: ["id", "disabled_at"],
+  profiles: ["id", "role", "disabled_at", "team_lead_id"],
   sms_deliveries: [
     "id",
     "patient_id",
@@ -69,9 +88,28 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "claim_token",
     "phone_last4",
     "attempt_count",
+    "dispatch_started_at",
     "updated_at",
   ],
-  treatment_orders: ["id", "scheduled_camp_day_id"],
+  prescriptions: ["id", "patient_id", "camp_id", "doctor_id"],
+  treatment_orders: [
+    "id",
+    "patient_id",
+    "camp_id",
+    "prescription_id",
+    "kind",
+    "status",
+    "scheduled_camp_day_id",
+    "source",
+    "created_by",
+  ],
+  public_rate_limit_buckets: [
+    "scope",
+    "key_hash",
+    "window_started_at",
+    "attempts",
+    "expires_at",
+  ],
 };
 
 /** Functions that must exist (name only — signatures evolve; existence via pg_proc). */
@@ -82,8 +120,38 @@ export const REQUIRED_FUNCTIONS = [
   "upsert_camp_day",
   "register_patient_idempotent",
   "check_in_patient",
+  "lookup_patient_status_token",
+  "consume_public_rate_limit",
+  "active_registration_id",
+  "assign_patient_doctor",
+  "doctor_submit_prescription",
+  "resolve_treatment_order",
+  "counter_create_and_fulfill_order",
+  "staff_person_kpis",
+  "staff_leaderboard",
   "claim_sms_delivery",
+  "mark_sms_dispatch_started",
   "complete_sms_delivery",
+  "patient_registration_notify_fields",
+] as const;
+
+/** Catalog invariants that cannot be proven by table/column presence alone. */
+export const REQUIRED_INVARIANTS = [
+  "patients_camp_reg_no_unique",
+  "patients_person_camp_unique",
+  "patients_person_id_not_null",
+  "patients_provenance_current",
+  "retired_ekyc_storage_absent",
+  "register_rpc_supported_signatures_only",
+  "profiles_team_lead_fk",
+  "team_membership_guards",
+  "prescription_patient_scope_fk",
+  "treatment_order_patient_scope_fk",
+  "treatment_order_prescription_scope_fk",
+  "treatment_order_state_integrity",
+  "treatment_order_attribution_columns_required",
+  "treatment_order_attribution_guard",
+  "public_rate_limit_primary_key",
 ] as const;
 
 /**
@@ -106,6 +174,27 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   upsert_camp_day_authenticated_execute: true,
   check_in_patient_authenticated_execute: true,
   register_patient_idempotent_authenticated_execute: true,
+  lookup_patient_status_token_anon_execute: false,
+  lookup_patient_status_token_authenticated_execute: false,
+  lookup_patient_status_token_service_role_execute: true,
+  consume_public_rate_limit_anon_execute: false,
+  consume_public_rate_limit_authenticated_execute: false,
+  consume_public_rate_limit_service_role_execute: true,
+  prescriptions_authenticated_insert: false,
+  prescriptions_authenticated_update: false,
+  prescriptions_authenticated_delete: false,
+  treatment_orders_authenticated_insert: false,
+  treatment_orders_authenticated_update: false,
+  treatment_orders_authenticated_delete: false,
+  assign_patient_doctor_authenticated_execute: true,
+  doctor_submit_prescription_authenticated_execute: true,
+  resolve_treatment_order_authenticated_execute: true,
+  counter_create_and_fulfill_order_authenticated_execute: true,
+  staff_person_kpis_authenticated_execute: true,
+  staff_leaderboard_authenticated_execute: true,
+  mark_sms_dispatch_started_authenticated_execute: true,
+  mark_sms_dispatch_started_service_role_execute: true,
+  patient_registration_notify_fields_authenticated_execute: true,
   latest_applied_migration_service_role_execute: true,
 };
 
@@ -135,6 +224,8 @@ export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =
   {
     database_reachability:
       "Database did not answer within the readiness budget. Check Supabase status and service-role configuration.",
+    required_configuration:
+      "AADHAAR_HASH_PEPPER is required for stable Person identity. Configure the existing production pepper; never rotate it during an active Camp.",
     migration_head_discovery:
       "Could not read the applied migration ledger. Treat the environment as not ready until discovery succeeds.",
     applied_head_agreement:

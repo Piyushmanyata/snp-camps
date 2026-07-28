@@ -385,6 +385,46 @@ test("RLS Boundaries: Staff can read prescriptions; Anon cannot", async (t) => {
   );
 });
 
+test("clinical writes require guarded RPCs instead of direct table DML", async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const volunteerId = await asServiceRole(() =>
+    createTestUser(`vol_${randomUUID()}@prescription.test`, "volunteer"),
+  );
+  const { campId, dayId } = await asServiceRole(() => createTestCamp());
+  const patientId = await asServiceRole(() =>
+    createTestPatient(campId, dayId, "waiting"),
+  );
+
+  await assert.rejects(
+    () =>
+      asAuthenticated(volunteerId, () =>
+        client.query(
+          `insert into public.prescriptions (
+             patient_id, camp_id, doctor_id, diagnosis
+           ) values ($1, $2, $3, 'forged')`,
+          [patientId, campId, volunteerId],
+        ),
+      ),
+    (err) => err.code === "42501" || /permission denied/i.test(err.message),
+    "volunteers must not bypass doctor_submit_prescription",
+  );
+
+  await assert.rejects(
+    () =>
+      asAuthenticated(volunteerId, () =>
+        client.query(
+          `insert into public.treatment_orders (
+             patient_id, camp_id, kind, status
+           ) values ($1, $2, 'pharmacy', 'pending')`,
+          [patientId, campId],
+        ),
+      ),
+    (err) => err.code === "42501" || /permission denied/i.test(err.message),
+    "camp crew must not forge treatment-order state directly",
+  );
+});
+
 test("Unique constraint: treatment_orders (patient_id, kind) WHERE status = 'pending'", async (t) => {
   if (skipIfNoDb(t)) return;
 
@@ -422,10 +462,13 @@ test("Unique constraint: treatment_orders (patient_id, kind) WHERE status = 'pen
 
   // Inserting non-pending status ('fulfilled') for same kind works without conflict
   await asServiceRole(async () => {
-    await client.query(
-      `insert into public.treatment_orders (prescription_id, patient_id, camp_id, kind, status)
-       values ($1, $2, $3, 'ot', 'fulfilled')`,
-      [pRes.prescription_id, patientId, campId],
-    );
-  });
+      await client.query(
+          `insert into public.treatment_orders (
+             prescription_id, patient_id, camp_id, kind, status,
+             closed_at, closed_by
+           )
+           values ($1, $2, $3, 'ot', 'fulfilled', now(), $4)`,
+          [pRes.prescription_id, patientId, campId, doctorId],
+        );
+      });
 });

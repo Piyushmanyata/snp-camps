@@ -33,6 +33,7 @@ export function CounterDeskPanel({
   const [station, setStation] = useState<CounterStationKind>(initialStation);
   const [queueItems, setQueueItems] = useState<CounterStationQueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
   const [searchInput, setSearchInput] = useState("");
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export function CounterDeskPanel({
     async (kind: CounterStationKind) => {
       if (!campId) return;
       queueMicrotask(() => setQueueLoading(true));
+      setQueueError(null);
       try {
         const supabase = createClient();
         const { data, error } = await supabase
@@ -83,7 +85,7 @@ export function CounterDeskPanel({
 
         if (error) {
           console.error("Queue fetch error:", error);
-          setQueueItems([]);
+          setQueueError("Could not refresh this counter queue. Try again.");
         } else if (data) {
           const items: CounterStationQueueItem[] = (data as unknown as Array<{
             id: string;
@@ -106,6 +108,7 @@ export function CounterDeskPanel({
         }
       } catch (err) {
         console.error("Failed to fetch queue:", err);
+        setQueueError("Could not refresh this counter queue. Try again.");
       } finally {
         setQueueLoading(false);
       }
@@ -155,21 +158,51 @@ export function CounterDeskPanel({
 
         const patientId = patientData.id;
 
-        // Fetch prescription
-        const { data: pData } = await supabase
-          .from("prescriptions")
-          .select(`
-            id,
-            diagnosis,
-            examination,
-            medicines,
-            advice,
-            spectacles_type,
-            doctor_id,
-            profiles!doctor_id ( full_name )
-          `)
-          .eq("patient_id", patientId)
-          .maybeSingle();
+        const [prescriptionResult, ordersResult] = await Promise.all([
+          supabase
+            .from("prescriptions")
+            .select(`
+              id,
+              diagnosis,
+              examination,
+              medicines,
+              advice,
+              spectacles_type,
+              doctor_id,
+              profiles!doctor_id ( full_name )
+            `)
+            .eq("patient_id", patientId)
+            .maybeSingle(),
+          supabase
+            .from("treatment_orders")
+            .select(`
+              id,
+              prescription_id,
+              patient_id,
+              camp_id,
+              kind,
+              status,
+              source,
+              created_by,
+              created_at,
+              closed_at,
+              closed_by,
+              deferred_date,
+              deferred_venue,
+              scheduled_camp_day_id,
+              camp_days:scheduled_camp_day_id ( day_date )
+            `)
+            .eq("patient_id", patientId)
+            .order("created_at", { ascending: true }),
+        ]);
+
+        if (prescriptionResult.error || ordersResult.error) {
+          setSearchError("Could not load the complete treatment record. Try again.");
+          setActivePatient(null);
+          return;
+        }
+
+        const pData = prescriptionResult.data;
 
         let prescription: CounterPatientRecord["prescription"] = null;
         if (pData) {
@@ -184,26 +217,7 @@ export function CounterDeskPanel({
           };
         }
 
-        // Fetch all treatment orders for this patient
-        const { data: ordersData } = await supabase
-          .from("treatment_orders")
-          .select(`
-            id,
-            prescription_id,
-            patient_id,
-            camp_id,
-            kind,
-            status,
-            created_at,
-            closed_at,
-            closed_by,
-            deferred_date,
-            deferred_venue,
-            scheduled_camp_day_id,
-            camp_days:scheduled_camp_day_id ( day_date )
-          `)
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: true });
+        const ordersData = ordersResult.data;
 
         const orders: TreatmentOrderRow[] = (ordersData as unknown as Array<TreatmentOrderRow & { camp_days?: { day_date?: string } | null }> || []).map((o) => ({
           id: o.id,
@@ -212,6 +226,8 @@ export function CounterDeskPanel({
           camp_id: o.camp_id,
           kind: o.kind as CounterStationKind,
           status: o.status,
+          source: o.source,
+          created_by: o.created_by,
           created_at: o.created_at,
           closed_at: o.closed_at,
           closed_by: o.closed_by,
@@ -307,6 +323,43 @@ export function CounterDeskPanel({
     });
   };
 
+  const handleCreatePaperOrder = (kind: CounterStationKind) => {
+    if (!activePatient || isPending) return;
+    setSearchError(null);
+    setSearchSuccess(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/counter/create-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patientId: activePatient.id, kinds: [kind] }),
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+        };
+        if (!response.ok || data.ok !== true) {
+          setSearchError(data.error || "Failed to record treatment.");
+          return;
+        }
+
+        const label =
+          kind === "pharmacy"
+            ? "Medicines"
+            : kind === "spectacles"
+              ? "Spectacles"
+              : "OT / Surgery";
+        setSearchSuccess(`${label} recorded and fulfilled.`);
+        await Promise.all([
+          fetchPatientDetails({ patientId: activePatient.id }),
+          fetchStationQueue(station),
+        ]);
+      } catch {
+        setSearchError("Network error while recording treatment.");
+      }
+    });
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Station Selector Card */}
@@ -319,7 +372,7 @@ export function CounterDeskPanel({
           aria-label="Counter stations"
           className="grid grid-cols-1 gap-2.5 sm:grid-cols-3"
         >
-          {COUNTER_STATIONS.map((st) => {
+          {COUNTER_STATIONS.map((st, index) => {
             const isSelected = station === st.kind;
             return (
               <button
@@ -327,12 +380,35 @@ export function CounterDeskPanel({
                 type="button"
                 role="radio"
                 aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
                 onClick={() => setStation(st.kind)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setStation(st.kind);
-                  }
+                  if (
+                    ![
+                      "ArrowLeft",
+                      "ArrowRight",
+                      "ArrowUp",
+                      "ArrowDown",
+                      "Home",
+                      "End",
+                    ].includes(e.key)
+                  )
+                    return;
+                  e.preventDefault();
+                  const nextIndex =
+                    e.key === "Home"
+                      ? 0
+                      : e.key === "End"
+                        ? COUNTER_STATIONS.length - 1
+                        : e.key === "ArrowLeft" || e.key === "ArrowUp"
+                          ? (index - 1 + COUNTER_STATIONS.length) %
+                            COUNTER_STATIONS.length
+                          : (index + 1) % COUNTER_STATIONS.length;
+                  const nextStation = COUNTER_STATIONS[nextIndex]!;
+                  e.currentTarget.parentElement
+                    ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+                    [nextIndex]?.focus();
+                  setStation(nextStation.kind);
                 }}
                 className={`pressable flex min-h-[52px] cursor-pointer flex-col justify-center rounded-xl px-4 py-3 text-left transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
                   isSelected
@@ -383,6 +459,20 @@ export function CounterDeskPanel({
               </Button>
             </div>
 
+            {queueError ? (
+              <div className="mb-3 space-y-2">
+                <ErrorBox message={queueError} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void fetchStationQueue(station)}
+                >
+                  Retry queue
+                </Button>
+              </div>
+            ) : null}
+
             {!campId ? (
               <p className="text-xs text-muted py-4 text-center">
                 No active camp selected.
@@ -391,7 +481,7 @@ export function CounterDeskPanel({
               <p className="text-xs text-muted py-4 text-center" role="status">
                 Loading queue…
               </p>
-            ) : queueItems.length === 0 ? (
+            ) : queueError && queueItems.length === 0 ? null : queueItems.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-4 text-center">
                 <p className="text-sm font-semibold text-foreground">Queue Empty</p>
                 <p className="text-xs text-muted mt-1">
@@ -608,98 +698,51 @@ export function CounterDeskPanel({
                   <p className="text-xs text-muted">
                     Tick treatments ordered on paper prescription sheet and fulfil in one tap:
                   </p>
-                  <div className="flex flex-wrap gap-2.5 pt-1">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={isPending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          try {
-                            const res = await fetch("/api/counter/create-order", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["pharmacy"] }),
-                            });
-                            const data = await res.json();
-                            if (res.ok && data.ok) {
-                              setSearchSuccess("Medicines order created and fulfilled!");
-                              await fetchPatientDetails({ patientId: activePatient.id });
-                              fetchStationQueue(station);
-                            } else {
-                              setSearchError(data.error || "Failed to create order.");
-                            }
-                          } catch {
-                            setSearchError("Network error.");
-                          }
-                        });
-                      }}
-                      className="!min-h-[40px] text-xs font-bold"
-                    >
-                      + Medicines (Pharm)
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={isPending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          try {
-                            const res = await fetch("/api/counter/create-order", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["spectacles"] }),
-                            });
-                            const data = await res.json();
-                            if (res.ok && data.ok) {
-                              setSearchSuccess("Spectacles order created and fulfilled!");
-                              await fetchPatientDetails({ patientId: activePatient.id });
-                              fetchStationQueue(station);
-                            } else {
-                              setSearchError(data.error || "Failed to create order.");
-                            }
-                          } catch {
-                            setSearchError("Network error.");
-                          }
-                        });
-                      }}
-                      className="!min-h-[40px] text-xs font-bold"
-                    >
-                      + Spectacles
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={isPending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          try {
-                            const res = await fetch("/api/counter/create-order", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ patientId: activePatient.id, kinds: ["ot"] }),
-                            });
-                            const data = await res.json();
-                            if (res.ok && data.ok) {
-                              setSearchSuccess("OT order created and fulfilled!");
-                              await fetchPatientDetails({ patientId: activePatient.id });
-                              fetchStationQueue(station);
-                            } else {
-                              setSearchError(data.error || "Failed to create order.");
-                            }
-                          } catch {
-                            setSearchError("Network error.");
-                          }
-                        });
-                      }}
-                      className="!min-h-[40px] text-xs font-bold"
-                    >
-                      + OT / Surgery
-                    </Button>
-                  </div>
+                  {activePatient.queue_status !== "seen" ? (
+                    <p className="text-xs font-semibold text-amber-900">
+                      The doctor must mark this patient seen before treatments
+                      can be recorded.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2.5 pt-1">
+                      {COUNTER_STATIONS.filter(
+                        ({ kind }) =>
+                          !activePatient.orders.some(
+                            (order) =>
+                              order.kind === kind &&
+                              order.status !== "cancelled",
+                          ),
+                      ).map(({ kind }) => (
+                        <Button
+                          key={kind}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          loading={isPending}
+                          onClick={() => handleCreatePaperOrder(kind)}
+                          className="!min-h-[44px] text-xs font-bold"
+                        >
+                          +{" "}
+                          {kind === "pharmacy"
+                            ? "Medicines"
+                            : kind === "spectacles"
+                              ? "Spectacles"
+                              : "OT / Surgery"}
+                        </Button>
+                      ))}
+                      {COUNTER_STATIONS.every(({ kind }) =>
+                        activePatient.orders.some(
+                          (order) =>
+                            order.kind === kind &&
+                            order.status !== "cancelled",
+                        ),
+                      ) ? (
+                        <p className="text-xs font-semibold text-muted">
+                          All treatment types are already recorded.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 {activePatient.orders.length === 0 ? (

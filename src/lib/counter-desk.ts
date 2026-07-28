@@ -15,6 +15,8 @@ export type TreatmentOrderRow = {
   camp_id: string;
   kind: CounterStationKind;
   status: "pending" | "fulfilled" | "deferred" | "cancelled";
+  source: "doctor" | "counter";
+  created_by: string;
   created_at: string;
   closed_at: string | null;
   closed_by: string | null;

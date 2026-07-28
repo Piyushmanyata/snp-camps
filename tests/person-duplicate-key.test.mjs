@@ -82,9 +82,7 @@ test("missing pepper fails loudly", () => {
     () =>
       derivePersonDuplicateKey(base, {
         AADHAAR_HASH_PEPPER: "",
-        AADHAAR_KYC_PEPPER: "",
-        AADHAAR_PEPPER: "",
       }),
-    /AADHAAR_HASH_PEPPER|AADHAAR_KYC_PEPPER|required/i,
+    /AADHAAR_HASH_PEPPER|required/i,
   );
 });

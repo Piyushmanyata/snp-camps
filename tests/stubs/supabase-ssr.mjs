@@ -56,9 +56,9 @@ export function createServerClient() {
         return { data: { claims: null }, error: null };
       },
     },
-    async rpc(fn) {
+    async rpc(fn, args) {
       if (typeof authMock.rpc === "function") {
-        return authMock.rpc(fn);
+        return authMock.rpc(fn, args);
       }
       // Default: empty durable SMS issues / benign no-op RPCs for route tests.
       if (fn === "list_recent_sms_delivery_issues") {

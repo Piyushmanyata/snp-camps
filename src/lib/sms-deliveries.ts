@@ -73,6 +73,22 @@ export async function completeSmsDelivery(
   return Boolean(data);
 }
 
+/**
+ * Persist the point immediately before the provider call. If the worker dies
+ * after this succeeds, an expired lease is ambiguous and is never auto-retried.
+ */
+export async function markSmsDispatchStarted(
+  client: SmsDeliveryClient,
+  claim: SmsClaim,
+): Promise<boolean> {
+  const { data, error } = await client.rpc("mark_sms_dispatch_started", {
+    p_delivery_id: claim.deliveryId,
+    p_claim_token: claim.claimToken,
+  });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
 export type SmsDeliveryIssue = {
   at: string;
   template: "registration" | "reminder" | "test";

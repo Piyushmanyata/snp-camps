@@ -15,6 +15,7 @@ import {
   READINESS_PROBE_TIMEOUT_MS,
   REQUIRED_COLUMNS,
   REQUIRED_FUNCTIONS,
+  REQUIRED_INVARIANTS,
   REQUIRED_TABLES,
   SMS_DELIVERY_KINDS,
   SMS_DELIVERY_STATES,
@@ -57,11 +58,7 @@ export function integrationConfig(env: Record<string, string | undefined> = proc
         (env.MSG91_DLT_TE_ID_REGISTRATION?.trim() || env.MSG91_TEMPLATE_REGISTRATION?.trim()) &&
         (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()),
     ),
-    aadhaarPepper: Boolean(
-      env.AADHAAR_HASH_PEPPER?.trim() ||
-        env.AADHAAR_KYC_PEPPER?.trim() ||
-        env.AADHAAR_PEPPER?.trim(),
-    ),
+    aadhaarPepper: Boolean(env.AADHAAR_HASH_PEPPER?.trim()),
     cron: Boolean(env.CRON_SECRET?.trim()),
   };
 }
@@ -71,6 +68,7 @@ export type CatalogProbeFacts = {
   tables?: Record<string, boolean>;
   columns?: Record<string, boolean>;
   functions?: Record<string, boolean>;
+  invariants?: Record<string, boolean>;
   grants?: Record<string, boolean>;
   publication?: { patients_in_supabase_realtime?: boolean };
   sms?: {
@@ -188,10 +186,16 @@ export function evaluateCatalogFacts(facts: CatalogProbeFacts | null | undefined
     if (!facts.functions?.[fn]) missingFns.push(fn);
   }
 
+  const missingInvariants: string[] = [];
+  for (const invariant of REQUIRED_INVARIANTS) {
+    if (!facts.invariants?.[invariant]) missingInvariants.push(invariant);
+  }
+
   const schemaMissing = [
     ...missingTables.map((t) => `table:${t}`),
     ...missingColumns.map((c) => `column:${c}`),
     ...missingFns.map((f) => `function:${f}`),
+    ...missingInvariants.map((name) => `invariant:${name}`),
   ];
 
   const schema_contract =
@@ -281,6 +285,9 @@ export async function evaluateReadiness(
         checks[id] = fail("service_role_unconfigured", id);
       }
     }
+    checks.required_configuration = base.integrations.aadhaarPepper
+      ? pass("required_configuration_ok")
+      : fail("aadhaar_pepper_missing", "required_configuration");
     return {
       ...base,
       ok: false,
@@ -339,6 +346,10 @@ async function evaluateReadinessInner(
       "database_reachability",
     );
   }
+
+  checks.required_configuration = base.integrations.aadhaarPepper
+    ? pass("required_configuration_ok")
+    : fail("aadhaar_pepper_missing", "required_configuration");
 
   // 2) Migration-head discovery — failure is not ready (never coerce to null success).
   let applied: string | null = null;
@@ -430,7 +441,9 @@ async function evaluateReadinessInner(
   // If DB is unreachable, mark dependent checks failed even if somehow ok.
   if (!checks.database_reachability.ok) {
     for (const id of READINESS_CHECK_IDS) {
-      if (id === "database_reachability") continue;
+      if (id === "database_reachability" || id === "required_configuration") {
+        continue;
+      }
       if (checks[id].ok) {
         checks[id] = fail("database_unreachable", id);
       }

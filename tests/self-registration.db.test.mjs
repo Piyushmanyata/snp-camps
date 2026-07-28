@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
@@ -13,7 +13,7 @@ const DATABASE_URL =
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
 const RPC =
-  "public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,timestamptz,text)";
+  "public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,text,date,text)";
 
 /** @type {pg.Client | null} */
 let client = null;
@@ -64,11 +64,15 @@ function skipIfNoDb(t) {
   return false;
 }
 
-async function asServiceRole(fn) {
+async function asAuthenticated(userId, fn) {
   await client.query("begin");
   try {
     await client.query(
-      `select set_config('request.jwt.claim.role', 'service_role', true)`,
+      `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+    );
+    await client.query(
+      `select set_config('request.jwt.claim.sub', $1, true)`,
+      [userId],
     );
     const result = await fn();
     await client.query("commit");
@@ -168,9 +172,9 @@ async function callSelf({
   aadhaarOverride = false,
   likelyOverride = false,
   createdBy = null,
-  kycRef = "mock-kyc-a",
   phone = "9876501234",
 }) {
+  const duplicateKey = createHash("sha256").update(hash).digest("hex");
   await client.query("begin");
   try {
     await client.query(
@@ -181,8 +185,8 @@ async function callSelf({
        from public.register_patient_idempotent(
          $1::uuid, $2::uuid, $3::text, 'M', $4::integer, 'Test address',
          $5::text, null, $6::text, null, $7::uuid, $8::uuid,
-         $9::boolean, $10::boolean, $11::boolean, $12::text,
-         now(), $13::text
+         $9::boolean, $10::boolean, $11::boolean, 'card_verified'::text,
+         $12::text, '1986-01-01'::date, null::text
        )`,
       [
         requestId,
@@ -196,8 +200,7 @@ async function callSelf({
         aadhaarOverride,
         likelyOverride,
         selfService,
-        hash,
-        kycRef,
+        duplicateKey,
       ],
     );
     await client.query("commit");
@@ -217,9 +220,11 @@ test("today self-registration stays registered with provenance and no queue fiel
     assert.equal(result.row.queue_status, "registered");
 
     const { rows } = await client.query(
-      `select queue_status, queued_at, checked_in_by, created_by,
-              aadhaar_last4, aadhaar_hash, aadhaar_verified_at, aadhaar_kyc_ref
-       from public.patients where id = $1`,
+      `select p.queue_status, p.queued_at, p.checked_in_by, p.created_by,
+              p.aadhaar_last4, p.provenance, pe.duplicate_key
+       from public.patients p
+       join public.persons pe on pe.id = p.person_id
+       where p.id = $1`,
       [result.row.id],
     );
     assert.equal(rows[0].queue_status, "registered");
@@ -227,9 +232,19 @@ test("today self-registration stays registered with provenance and no queue fiel
     assert.equal(rows[0].checked_in_by, null);
     assert.equal(rows[0].created_by, null);
     assert.equal(rows[0].aadhaar_last4, "9012");
-    assert.equal(rows[0].aadhaar_hash, "hmac-self-a");
-    assert.ok(rows[0].aadhaar_verified_at);
-    assert.equal(rows[0].aadhaar_kyc_ref, "mock-kyc-a");
+    assert.equal(rows[0].provenance, "card_verified");
+    assert.equal(
+      rows[0].duplicate_key,
+      createHash("sha256").update("hmac-self-a").digest("hex"),
+    );
+
+    const { rows: sms } = await client.query(
+      `select count(*)::int as count
+       from public.sms_deliveries
+       where patient_id = $1 and kind = 'registration'`,
+      [result.row.id],
+    );
+    assert.equal(sms[0].count, 0);
   } finally {
     await cleanupCamp(campId);
   }
@@ -285,9 +300,14 @@ test("same Aadhaar replays within a camp but registers in another camp", async (
     assert.equal(replay.row.reg_no, first.row.reg_no);
 
     const { rows: oneCamp } = await client.query(
-      `select count(*)::int as count from public.patients
-       where camp_id = $1 and aadhaar_hash = $2`,
-      [firstCamp.campId, "hmac-cross-camp"],
+      `select count(*)::int as count
+       from public.patients p
+       join public.persons pe on pe.id = p.person_id
+       where p.camp_id = $1 and pe.duplicate_key = $2`,
+      [
+        firstCamp.campId,
+        createHash("sha256").update("hmac-cross-camp").digest("hex"),
+      ],
     );
     assert.equal(oneCamp[0].count, 1);
 
@@ -301,14 +321,18 @@ test("same Aadhaar replays within a camp but registers in another camp", async (
       requestId: randomUUID(),
     });
     assert.equal(otherCamp.ok, true, otherCamp.message);
-    assert.notEqual(otherCamp.row.reg_no, first.row.reg_no);
+    assert.equal(
+      otherCamp.row.reg_no,
+      first.row.reg_no,
+      "a Person keeps one permanent registration number across Camps",
+    );
   } finally {
     if (secondCamp) await cleanupCamp(secondCamp.campId);
     await cleanupCamp(firstCamp.campId);
   }
 });
 
-test("null-day desk replay remains visible and desk provenance does not collide with self-service", async (t) => {
+test("null-day desk replay remains visible and one scanned Person cannot register twice in a Camp", async (t) => {
   if (skipIfNoDb(t)) return;
   const { campId, dayId } = await seedCampWithDay("2099-12-10");
   const staffId = await seedStaff();
@@ -322,7 +346,7 @@ test("null-day desk replay remains visible and desk provenance does not collide 
       [nullDayPatientId, requestId, campId],
     );
 
-    const { rows: replay } = await asServiceRole(() =>
+    const { rows: replay } = await asAuthenticated(staffId, () =>
       client.query(
         `select id, camp_day_id, day_date, queue_status
          from public.register_patient_idempotent(
@@ -348,7 +372,6 @@ test("null-day desk replay remains visible and desk provenance does not collide 
       selfService: false,
       createdBy: staffId,
       requestId: randomUUID(),
-      kycRef: "desk-kyc",
       phone: "9876501234",
     });
     assert.equal(desk.ok, true, desk.message);
@@ -365,7 +388,7 @@ test("null-day desk replay remains visible and desk provenance does not collide 
       phone: "9876505678",
     });
     assert.equal(self.ok, true, self.message);
-    assert.notEqual(self.row.id, desk.row.id);
+    assert.equal(self.row.id, desk.row.id);
   } finally {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);
@@ -391,7 +414,11 @@ test("patient storage has no full Aadhaar field or twelve-digit value", async (t
     );
     assert.deepEqual(
       columns.map((row) => row.column_name).sort(),
-      ["aadhaar_duplicate_override_at", "aadhaar_duplicate_override_by", "aadhaar_hash", "aadhaar_kyc_ref", "aadhaar_last4", "aadhaar_verified_at"].sort(),
+      [
+        "aadhaar_duplicate_override_at",
+        "aadhaar_duplicate_override_by",
+        "aadhaar_last4",
+      ].sort(),
     );
 
     const { rows } = await client.query(

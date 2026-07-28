@@ -1,30 +1,15 @@
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 
-const dbTestFiles = [
-  "tests/register-patient-idempotent.db.test.mjs",
-  "tests/staff-person-kpis.db.test.mjs",
-  "tests/aadhaar-duplicate.db.test.mjs",
-  "tests/check-in.db.test.mjs",
-  "tests/likely-duplicate.db.test.mjs",
-  "tests/likely-duplicate-concurrency.db.test.mjs",
-  "tests/sms-deliveries.db.test.mjs",
-  "tests/patient-read-boundary.db.test.mjs",
-  "tests/assign-waiting-before-seen.db.test.mjs",
-  "tests/patient-auth-retirement.db.test.mjs",
-  "tests/status-queue-position.db.test.mjs",
-  "tests/camp-day-capacity-concurrency.db.test.mjs",
-  "tests/prescriptions.db.test.mjs",
-  "tests/theatre-capacity-concurrency.db.test.mjs",
-  "tests/counter-desk.db.test.mjs",
-  "tests/admin-settings.db.test.mjs",
-  "tests/ot-overflow.db.test.mjs",
-  "tests/deferral.db.test.mjs",
-  "tests/person-expand.db.test.mjs",
-  "tests/person-migrate.db.test.mjs",
-  "tests/person-lock.db.test.mjs",
-  "tests/team-lead-team-read.db.test.mjs",
-  "tests/ops-readiness.test.mjs",
-];
+const dbTestFiles = fs
+  .readdirSync("tests")
+  .filter(
+    (name) =>
+      name.endsWith(".test.mjs") &&
+      /\bfrom\s+["']pg["']/.test(fs.readFileSync(`tests/${name}`, "utf8")),
+  )
+  .sort()
+  .map((name) => `tests/${name}`);
 
 const result = spawnSync(
   process.execPath,

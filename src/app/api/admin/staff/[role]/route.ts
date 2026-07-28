@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { getSessionProfile, readJsonBody, requireAdmin } from "@/lib/auth";
+import { getSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
 export type StaffRole = "doctor" | "volunteer" | "team_lead";

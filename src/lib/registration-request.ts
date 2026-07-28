@@ -40,9 +40,6 @@ export type StaffRegistrationFields = {
   aadhaarLast4: string | null;
   createdBy: string | null;
   campDayId: string;
-  aadhaarHash?: string | null;
-  aadhaarVerifiedAt?: string | null;
-  aadhaarKycRef?: string | null;
   /** Explicit one-shot Aadhaar last-4 + name duplicate override (staff only). */
   aadhaarDuplicateOverride?: boolean;
   /** Explicit one-shot soft-duplicate (name+age / phone) override (staff only). */
@@ -98,9 +95,6 @@ export function staffRegistrationRpcArgs(
     p_aadhaar_duplicate_override: Boolean(fields.aadhaarDuplicateOverride),
     p_likely_duplicate_override: Boolean(fields.likelyDuplicateOverride),
     p_self_service: false,
-    p_aadhaar_hash: fields.aadhaarHash ?? null,
-    p_aadhaar_verified_at: fields.aadhaarVerifiedAt ?? null,
-    p_aadhaar_kyc_ref: fields.aadhaarKycRef ?? null,
     p_provenance: fields.provenance ?? "self_declared",
     p_duplicate_key: fields.duplicateKey ?? null,
     p_date_of_birth: fields.dateOfBirth ?? null,

@@ -5,12 +5,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
+const personKey = (value) =>
+  createHash("sha256").update(value).digest("hex");
 
 /** @type {pg.Client | null} */
 let admin = null;
@@ -223,6 +226,97 @@ test("registration without phone creates no delivery", async (t) => {
       [rows[0].id],
     );
     assert.equal(d.length, 0);
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(staffId);
+  }
+});
+
+test("self-registration with a typed phone never creates a registration delivery", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
+  const { campId, dayId } = await seedCampDay();
+  try {
+    const { rows } = await asService(admin, () =>
+      admin.query(
+        `select id
+         from public.register_patient_idempotent(
+           p_request_id => $1,
+           p_camp_id => $2,
+           p_full_name => 'Self Service Patient',
+           p_gender => 'F',
+           p_age => 35,
+           p_address => 'A',
+           p_phone => '9876505678',
+           p_email => null,
+           p_aadhaar_last4 => '5678',
+           p_user_id => null,
+           p_created_by => null,
+           p_camp_day_id => $3,
+           p_aadhaar_duplicate_override => false,
+           p_likely_duplicate_override => false,
+           p_self_service => true,
+           p_provenance => 'card_verified',
+           p_duplicate_key => $4,
+           p_date_of_birth => '1991-02-03'::date
+         )`,
+        [
+          randomUUID(),
+          campId,
+          dayId,
+          personKey(`self-sms-${randomUUID()}`),
+        ],
+      ),
+    );
+
+    const { rows: deliveries } = await admin.query(
+      `select kind
+       from public.sms_deliveries
+       where patient_id = $1`,
+      [rows[0].id],
+    );
+    assert.deepEqual(
+      deliveries,
+      [],
+      "an unverified self-service phone must never receive a live status link",
+    );
+
+    const claim = await asService(admin, () =>
+      admin.query(
+        `select *
+         from public.claim_sms_delivery($1, 'registration', '5678', 60)`,
+        [rows[0].id],
+      ),
+    );
+    assert.deepEqual(claim.rows, [], "the claim seam must also refuse the SMS");
+
+    await admin.query("begin");
+    try {
+      await admin.query(
+        `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+      );
+      await admin.query(
+        `select set_config('request.jwt.claim.sub', $1, true)`,
+        [staffId],
+      );
+      await admin.query(
+        `select set_config('request.jwt.claims', $1, true)`,
+        [JSON.stringify({ role: "authenticated", sub: staffId })],
+      );
+      await admin.query(`set local role authenticated`);
+      const notify = await admin.query(
+        `select *
+         from public.patient_registration_notify_fields($1)`,
+        [rows[0].id],
+      );
+      assert.deepEqual(
+        notify.rows,
+        [],
+        "staff notification lookup must not expose a self-registration link",
+      );
+    } finally {
+      await admin.query("rollback");
+    }
   } finally {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);
@@ -451,6 +545,56 @@ test("stale sending lease is reclaimable", async (t) => {
     return rows[0];
   });
   assert.ok(claim?.delivery_id, "expired sending lease must reclaim");
+
+  await admin.query(`delete from public.sms_deliveries where patient_id = $1`, [
+    patientId,
+  ]);
+  await admin.query(`delete from public.patients where id = $1`, [patientId]);
+  await admin.query(`delete from public.camps where id = $1`, [campId]);
+});
+
+test("stale lease after dispatch began becomes ambiguous and is never reclaimed", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const patientId = randomUUID();
+  const campId = randomUUID();
+  await admin.query(
+    `insert into public.camps (id, name, is_active)
+     values ($1, 'dispatched-stale-camp', false)`,
+    [campId],
+  );
+  await admin.query(
+    `insert into public.patients (id, camp_id, full_name, queue_status, phone)
+     values ($1, $2, 'Dispatched Stale', 'registered', '9000000005')`,
+    [patientId, campId],
+  );
+  await admin.query(
+    `insert into public.sms_deliveries (
+       patient_id, kind, state, claim_token, claim_expires_at,
+       dispatch_started_at, attempt_count, phone_last4
+     ) values (
+       $1, 'reminder', 'sending', $2, now() - interval '1 minute',
+       now() - interval '2 minutes', 1, '0005'
+     )`,
+    [patientId, randomUUID()],
+  );
+
+  const claim = await asService(admin, async () => {
+    const { rows } = await admin.query(
+      `select * from public.claim_sms_delivery($1, 'reminder', '0005', 60)`,
+      [patientId],
+    );
+    return rows;
+  });
+  assert.deepEqual(claim, []);
+
+  const { rows } = await admin.query(
+    `select state, last_error
+     from public.sms_deliveries
+     where patient_id = $1`,
+    [patientId],
+  );
+  assert.equal(rows[0].state, "ambiguous");
+  assert.match(rows[0].last_error, /outcome unknown/i);
 
   await admin.query(`delete from public.sms_deliveries where patient_id = $1`, [
     patientId,

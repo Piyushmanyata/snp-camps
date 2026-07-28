@@ -3,23 +3,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
 
 import {
   redactSecretsAndPhi,
   parseCounts,
   computeSha256,
-  runCapture,
 } from "../scripts/capture-evidence.mjs";
 
 import {
   validateManifest,
   validateClosureDocument,
-  detectUnredactedSecrets,
-  detectEllipsesOrTruncation,
+  computeManifestPayloadSha256,
 } from "../scripts/validate-evidence.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempDirBase = path.join(os.tmpdir(), "snp-evidence-tests");
 
 describe("Evidence Capture & Validator Tooling (#74)", () => {
@@ -117,7 +113,27 @@ describe("Evidence Capture & Validator Tooling (#74)", () => {
 
     const result = validateManifest(failedManifest, mockDir);
     assert.equal(result.valid, false);
-    assert.ok(result.errors.some((e) => e.includes("failed with exit code 1")), "Must reject non-zero exit code stage");
+    assert.ok(result.errors.some((e) => e.includes("not a clean PASS")), "Must reject non-zero exit code stage");
+
+    failedManifest.stages.unit.status = "PASS";
+    const falseGreen = validateManifest(failedManifest, mockDir);
+    assert.ok(
+      falseGreen.errors.some((e) => e.includes("status=PASS, exit=1")),
+      "A PASS label must never hide a nonzero exit",
+    );
+  });
+
+  test("manifest payload hash is stable only when the hash field is excluded", () => {
+    const manifest = {
+      overall_status: "PASS",
+      artifacts: {},
+      stages: {},
+    };
+    const hash = computeManifestPayloadSha256(manifest);
+    manifest.artifacts.manifest_payload_sha256 = hash;
+    assert.equal(computeManifestPayloadSha256(manifest), hash);
+    manifest.overall_status = "FAIL";
+    assert.notEqual(computeManifestPayloadSha256(manifest), hash);
   });
 
   test("validateManifest detects SHA256 tamper/mismatch", () => {

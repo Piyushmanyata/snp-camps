@@ -9,6 +9,7 @@ import {
 import { SignOutButton } from "@/components/sign-out";
 import { mapDbError } from "@/lib/public-error";
 import { AdminStaff } from "@/components/admin-staff";
+import { TeamAssignments } from "@/components/team-assignments";
 
 export default async function TeamLeadPage() {
   const { userId, profile } = await getSessionProfile();
@@ -26,7 +27,7 @@ export default async function TeamLeadPage() {
   const supabase = await createClient();
   const { data: teamLeadsFull, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, phone, role, created_at, disabled_at")
+    .select("id, full_name, email, phone, role, created_at, disabled_at, team_lead_id")
     .eq("role", "team_lead")
     .order("created_at", { ascending: false });
 
@@ -36,6 +37,16 @@ export default async function TeamLeadPage() {
   }
   const activeTeamLeads = teamLeadsFull?.filter((tl) => !tl.disabled_at).length ?? 0;
   const disabledTeamLeads = (teamLeadsFull?.length ?? 0) - activeTeamLeads;
+  const { data: volunteers, error: volunteersError } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, team_lead_id")
+    .eq("role", "volunteer")
+    .is("disabled_at", null)
+    .order("full_name", { ascending: true });
+  if (volunteersError) {
+    mapDbError(volunteersError, { context: "team-lead-page.assignments" });
+    throw new Error("Team assignments could not be loaded");
+  }
 
   return (
     <Shell
@@ -70,6 +81,15 @@ export default async function TeamLeadPage() {
         </Card>
         <Card>
           <AdminStaff role="team_lead" initial={teamLeadsFull || []} canManage />
+        </Card>
+        <Card>
+          <h2 className="text-base font-bold text-foreground">Team assignments</h2>
+          <div className="mt-3">
+            <TeamAssignments
+              teamLeads={(teamLeadsFull ?? []).filter((lead) => !lead.disabled_at)}
+              volunteers={volunteers ?? []}
+            />
+          </div>
         </Card>
       </div>
     </Shell>

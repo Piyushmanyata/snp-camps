@@ -159,9 +159,11 @@ test("provider failure does not throw from send or job", async () => {
         states.set(id, "sending");
         return { deliveryId: `d-${id}`, claimToken: `t-${id}` };
       },
+      startReminder: async () => true,
       completeReminder: async ({ deliveryId, outcome }) => {
         const id = deliveryId.replace(/^d-/, "");
         states.set(id, outcome === "release" ? "pending" : outcome);
+        return true;
       },
       send: async () => {
         throw new Error("provider outage");
@@ -223,9 +225,11 @@ test("running the job twice sends exactly once per patient", async () => {
         states.set(id, "sending");
         return { deliveryId: `d-${id}`, claimToken: `t-${id}` };
       },
+      startReminder: async () => true,
       completeReminder: async ({ deliveryId, outcome }) => {
         const id = deliveryId.replace(/^d-/, "");
         states.set(id, outcome === "release" ? "pending" : outcome);
+        return true;
       },
       send: async () => {
         sendCalls += 1;
@@ -241,6 +245,44 @@ test("running the job twice sends exactly once per patient", async () => {
     assert.equal(sendCalls, 1);
     assert.equal(states.get("p1"), "sent");
     assert.equal(states.get("p2"), null);
+  } finally {
+    delete process.env.MSG91_AUTH_KEY;
+    delete process.env.MSG91_SENDER_ID;
+    delete process.env.MSG91_TEMPLATE_REMINDER;
+  }
+});
+
+test("provider success plus ledger-completion failure is truthful ambiguity", async () => {
+  process.env.MSG91_AUTH_KEY = "k";
+  process.env.MSG91_SENDER_ID = "SNPCP";
+  process.env.MSG91_TEMPLATE_REMINDER = "tpl-rem";
+  try {
+    const summary = await runDayBeforeReminders({
+      now: new Date("2026-07-26T03:00:00.000Z"),
+      preFiltered: false,
+      listCandidates: async () => [
+        {
+          id: "p-ledger-fail",
+          regNo: 1003,
+          phone: "9876543212",
+          queueStatus: "registered",
+          dayDate: "2026-07-27",
+          venue: "Hall",
+        },
+      ],
+      claimReminder: async () => ({
+        deliveryId: "d-ledger-fail",
+        claimToken: "t-ledger-fail",
+      }),
+      startReminder: async () => true,
+      completeReminder: async () => false,
+      send: async () => ({ ok: true, requestId: "provider-accepted" }),
+    });
+
+    assert.equal(summary.sent, 0);
+    assert.equal(summary.ambiguous, 1);
+    assert.equal(summary.ok, false);
+    assert.match(String(summary.error), /ledger confirmation/i);
   } finally {
     delete process.env.MSG91_AUTH_KEY;
     delete process.env.MSG91_SENDER_ID;

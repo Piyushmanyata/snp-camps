@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isNonLatinText } from "@/lib/aadhaar-text";
+import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { derivePersonDuplicateKey } from "@/lib/person-duplicate-key";
 import {
   parseAadhaarDuplicateError,
@@ -19,7 +21,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
  * mistyped digit would deliver a working medical status link to a stranger.
  */
 
-/** Public write endpoint: bound it per instance. A WAF rule still belongs in front. */
+/** Public write endpoint: bound both per instance and durably across instances. */
 const SELF_REGISTRATION_RATE_LIMIT = {
   scope: "self-registration",
   limit: 10,
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => null)) as SelfRegistrationBody | null;
+  const body = await readJsonBody<SelfRegistrationBody>(request, 16_384);
   const campId = str(body?.campId);
   const campDayId = str(body?.campDayId);
   if (!campId || !campDayId) {
@@ -119,6 +121,27 @@ export async function POST(request: Request) {
     );
   }
 
+  const durableRate = await checkDistributedRateLimit(request, supabase, {
+    ...SELF_REGISTRATION_RATE_LIMIT,
+    identifier: duplicateKey,
+  });
+  if (!durableRate.allowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: durableRate.unavailable
+          ? "Self-registration abhi available nahi hai. Kripya camp desk par register karayein."
+          : "Bahut zyada koshish. Thodi der baad try karein.",
+      },
+      {
+        status: durableRate.unavailable ? 503 : 429,
+        headers: {
+          "Retry-After": String(durableRate.retryAfterSeconds),
+        },
+      },
+    );
+  }
+
   const { data, error } = await supabase.rpc("register_patient_idempotent", {
     p_request_id: randomUUID(),
     p_camp_id: campId,
@@ -136,10 +159,6 @@ export async function POST(request: Request) {
     p_aadhaar_duplicate_override: false,
     p_likely_duplicate_override: false,
     p_self_service: true,
-    // Retired with the eKYC flow (#116); the columns remain for historical rows.
-    p_aadhaar_hash: null,
-    p_aadhaar_verified_at: null,
-    p_aadhaar_kyc_ref: null,
     p_provenance: "card_verified",
     p_duplicate_key: duplicateKey,
     p_date_of_birth: dateOfBirth,

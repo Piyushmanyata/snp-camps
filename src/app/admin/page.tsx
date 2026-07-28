@@ -35,7 +35,6 @@ import { CheckIn } from "@/components/check-in";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
-import { createClient } from "@/lib/supabase/server";
 import {
   AdminTestSmsLazySection,
   ChangePasswordLazySection,
@@ -46,8 +45,6 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") {
     redirect(roleHome(profile?.role) || "/login");
   }
-
-  const supabase = await createClient();
 
   let camps: Camp[] = [];
   let campsError: string | null = null;

@@ -15,6 +15,7 @@ import {
   PUBLICATION_EXPECTATIONS,
   REQUIRED_COLUMNS,
   REQUIRED_FUNCTIONS,
+  REQUIRED_INVARIANTS,
   REQUIRED_TABLES,
   SMS_DELIVERY_KINDS,
   SMS_DELIVERY_STATES,
@@ -123,6 +124,9 @@ test("readiness_catalog_probe returns full contract facts on clean DB", async (t
   for (const fn of REQUIRED_FUNCTIONS) {
     assert.equal(facts.functions[fn], true, `function ${fn}`);
   }
+  for (const invariant of REQUIRED_INVARIANTS) {
+    assert.equal(facts.invariants[invariant], true, `invariant ${invariant}`);
+  }
   for (const [key, expected] of Object.entries(GRANT_EXPECTATIONS)) {
     assert.equal(facts.grants[key], expected, `grant ${key}`);
   }
@@ -181,6 +185,7 @@ test("evaluateCatalogFacts fails closed on missing critical column", () => {
       ),
     ),
     functions: Object.fromEntries(REQUIRED_FUNCTIONS.map((f) => [f, true])),
+    invariants: Object.fromEntries(REQUIRED_INVARIANTS.map((name) => [name, true])),
     grants: { ...GRANT_EXPECTATIONS },
     publication: { patients_in_supabase_realtime: false },
     sms: {

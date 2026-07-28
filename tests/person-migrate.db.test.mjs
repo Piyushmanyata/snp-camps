@@ -6,12 +6,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
+const personKey = (value) =>
+  createHash("sha256").update(value).digest("hex");
 
 /** @type {pg.Client | null} */
 let client = null;
@@ -95,13 +98,70 @@ async function seedProfile(role) {
   return userId;
 }
 
+test("authenticated browsers cannot submit a chosen scanned Person key", async () => {
+  if (!dbAvailable || !client) return;
+
+  const volunteerId = await seedProfile("volunteer");
+  const campId = randomUUID();
+  const dayId = randomUUID();
+
+  await client.query("begin");
+  try {
+    await client.query("update public.camps set is_active = false where is_active = true");
+    await client.query(
+      `insert into public.camps (id, name, venue, camp_date, is_active)
+       values ($1, 'Trusted Boundary Camp', 'Venue', '2026-08-09', true)`,
+      [campId],
+    );
+    await client.query(
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
+       values ($1, $2, '2026-08-09', 50)`,
+      [dayId, campId],
+    );
+    await client.query("set local role authenticated");
+    await client.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    );
+
+    await assert.rejects(
+      client.query(
+        `select id from public.register_patient_idempotent(
+           p_request_id => $1,
+           p_camp_id => $2,
+           p_full_name => 'Forged Scan',
+           p_gender => 'M',
+           p_age => 40,
+           p_address => null,
+           p_phone => null,
+           p_email => null,
+           p_aadhaar_last4 => '1234',
+           p_user_id => null,
+           p_created_by => $3,
+           p_camp_day_id => $4,
+           p_aadhaar_duplicate_override => false,
+           p_likely_duplicate_override => false,
+           p_self_service => false,
+           p_provenance => 'card_verified',
+           p_duplicate_key => 'attacker-chosen-key',
+           p_date_of_birth => '1986-01-01'::date
+         )`,
+        [randomUUID(), campId, volunteerId, dayId],
+      ),
+      /scanned registration requires trusted server/i,
+    );
+  } finally {
+    await client.query("rollback");
+  }
+});
+
 test("Scanning an unseen card creates one Person and one Registration", async () => {
   if (!dbAvailable || !client) return;
 
   const volunteerId = await seedProfile("volunteer");
   const campId = randomUUID();
   const dayId = randomUUID();
-  const dupKey = `key-unseen-${randomUUID()}`;
+  const dupKey = personKey(`key-unseen-${randomUUID()}`);
 
   await client.query("begin");
   await client.query("update public.camps set is_active = false where is_active = true");
@@ -116,10 +176,10 @@ test("Scanning an unseen card creates one Person and one Registration", async ()
     [dayId, campId],
   );
 
-  await client.query("set role authenticated");
+  await client.query("set role service_role");
   await client.query(
     `select set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
   );
 
   const reqId = randomUUID();
@@ -140,9 +200,6 @@ test("Scanning an unseen card creates one Person and one Registration", async ()
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1976-05-15'::date
@@ -165,13 +222,73 @@ test("Scanning an unseen card creates one Person and one Registration", async ()
   await client.query("rollback");
 });
 
+test("trusted scanned registration preserves the Team Lead creator", async () => {
+  if (!dbAvailable || !client) return;
+
+  const teamLeadId = await seedProfile("team_lead");
+  const campId = randomUUID();
+  const dayId = randomUUID();
+  const duplicateKey = personKey(`key-team-lead-${randomUUID()}`);
+
+  await client.query("begin");
+  try {
+    await client.query("update public.camps set is_active = false where is_active = true");
+    await client.query(
+      `insert into public.camps (id, name, venue, camp_date, is_active)
+       values ($1, 'Team Lead Registration Camp', 'Venue TL', '2026-08-12', true)`,
+      [campId],
+    );
+    await client.query(
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
+       values ($1, $2, '2026-08-12', 50)`,
+      [dayId, campId],
+    );
+
+    await client.query("set local role service_role");
+    await client.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: teamLeadId, role: "service_role" })],
+    );
+
+    const { rows } = await client.query(
+      `select *
+       from public.register_patient_idempotent(
+         p_request_id => $1,
+         p_camp_id => $2,
+         p_full_name => 'Team Lead Patient',
+         p_gender => 'F',
+         p_age => 36,
+         p_address => 'Sikar',
+         p_phone => '9876543210',
+         p_email => null,
+         p_aadhaar_last4 => '5555',
+         p_user_id => null,
+         p_created_by => $3,
+         p_camp_day_id => $4,
+         p_aadhaar_duplicate_override => false,
+         p_likely_duplicate_override => false,
+         p_self_service => false,
+         p_provenance => 'card_verified',
+         p_duplicate_key => $5,
+         p_date_of_birth => '1990-04-05'::date
+       )`,
+      [randomUUID(), campId, teamLeadId, dayId, duplicateKey],
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].queue_status, "registered");
+  } finally {
+    await client.query("rollback");
+  }
+});
+
 test("Scanning a card already registered in active Camp returns existing Registration", async () => {
   if (!dbAvailable || !client) return;
 
   const volunteerId = await seedProfile("volunteer");
   const campId = randomUUID();
   const dayId = randomUUID();
-  const dupKey = `key-samecamp-${randomUUID()}`;
+  const dupKey = personKey(`key-samecamp-${randomUUID()}`);
 
   await client.query("begin");
   await client.query("update public.camps set is_active = false where is_active = true");
@@ -186,10 +303,10 @@ test("Scanning a card already registered in active Camp returns existing Registr
     [dayId, campId],
   );
 
-  await client.query("set role authenticated");
+  await client.query("set role service_role");
   await client.query(
     `select set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
   );
 
   // First scan
@@ -211,9 +328,6 @@ test("Scanning a card already registered in active Camp returns existing Registr
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1984-03-20'::date
@@ -243,9 +357,6 @@ test("Scanning a card already registered in active Camp returns existing Registr
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1984-03-20'::date
@@ -272,7 +383,7 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
   if (!dbAvailable || !client) return;
 
   const volunteerId = await seedProfile("volunteer");
-  const dupKey = `key-prevcamp-${randomUUID()}`;
+  const dupKey = personKey(`key-prevcamp-${randomUUID()}`);
 
   const camp1 = randomUUID();
   const day1 = randomUUID();
@@ -294,10 +405,10 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
     [day1, camp1],
   );
 
-  await client.query("set role authenticated");
+  await client.query("set role service_role");
   await client.query(
     `select set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
   );
 
   const req1 = randomUUID();
@@ -318,9 +429,6 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1966-11-05'::date
@@ -348,10 +456,10 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
     [day2, camp2],
   );
 
-  await client.query("set role authenticated");
+  await client.query("set role service_role");
   await client.query(
     `select set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
   );
 
   // Scan same card in Camp 2
@@ -373,9 +481,6 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1966-11-05'::date
@@ -384,6 +489,11 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
   );
 
   assert.notEqual(reg2[0].id, reg1[0].id, "New Registration created for Camp 2");
+  assert.equal(
+    reg2[0].reg_no,
+    reg1[0].reg_no,
+    "Returning Person keeps the permanent registration number",
+  );
 
   await client.query("reset role");
 
@@ -401,6 +511,39 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
   );
   assert.equal(personRows[0].cnt, 1, "Exactly 1 Person entity exists in persons table");
 
+  await client.query("set role service_role");
+  await client.query(
+    `select set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
+  );
+  const { rows: activeLookup } = await client.query(
+    `select id
+     from public.lookup_patient_scan(
+       p_patient_id => null,
+       p_reg_no => $1
+     )`,
+    [reg1[0].reg_no],
+  );
+  assert.equal(
+    activeLookup[0]?.id,
+    reg2[0].id,
+    "permanent number resolves to the active Camp Registration",
+  );
+  const { rows: checkedIn } = await client.query(
+    `select id
+     from public.check_in_patient(
+       p_patient_id => null,
+       p_reg_no => $1
+     )`,
+    [reg1[0].reg_no],
+  );
+  assert.equal(
+    checkedIn[0]?.id,
+    reg2[0].id,
+    "check-in by permanent number affects the active Camp Registration",
+  );
+  await client.query("reset role");
+
   await client.query("rollback");
 });
 
@@ -408,7 +551,7 @@ test("Two concurrent scans of the same card produce exactly one Person", async (
   if (!dbAvailable || !client) return;
 
   const volunteerId = await seedProfile("volunteer");
-  const dupKey = `key-concurrent-${randomUUID()}`;
+  const dupKey = personKey(`key-concurrent-${randomUUID()}`);
   const campId = randomUUID();
   const dayId = randomUUID();
 
@@ -434,10 +577,10 @@ test("Two concurrent scans of the same card produce exactly one Person", async (
   await c2.connect();
 
   const runScan = async (c, reqId) => {
-    await c.query("set role authenticated");
+    await c.query("set role service_role");
     await c.query(
       `select set_config('request.jwt.claims', $1, false)`,
-      [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+      [JSON.stringify({ sub: volunteerId, role: "service_role" })],
     );
     const res = await c.query(
       `select * from public.register_patient_idempotent(
@@ -456,9 +599,6 @@ test("Two concurrent scans of the same card produce exactly one Person", async (
          p_aadhaar_duplicate_override => false,
          p_likely_duplicate_override => false,
          p_self_service => false,
-         p_aadhaar_hash => null,
-         p_aadhaar_verified_at => null,
-         p_aadhaar_kyc_ref => null,
          p_provenance => 'card_verified',
          p_duplicate_key => $5,
          p_date_of_birth => '1996-01-01'::date

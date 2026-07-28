@@ -17,6 +17,7 @@ const port = appUrl.port || "3100";
 // #71: optional-island network asserts need production chunks, not the
 // development bundler. Default to `next start` after verify/build.
 const useProductionServer = process.env.E2E_PRODUCTION !== "0";
+const fakeCameraPath = process.env.E2E_FAKE_CAMERA_PATH;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -36,11 +37,23 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "off",
     serviceWorkers: "block",
+    permissions: ["camera"],
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: fakeCameraPath
+          ? {
+              args: [
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                `--use-file-for-fake-video-capture=${fakeCameraPath}`,
+              ],
+            }
+          : undefined,
+      },
     },
   ],
   webServer: {

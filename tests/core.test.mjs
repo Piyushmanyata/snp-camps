@@ -22,7 +22,6 @@ import {
 } from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
-import { sensitiveProviderUrl } from "../src/lib/provider-url.ts";
 import { isSuccessfulAssignment } from "../src/lib/queue-assignment.ts";
 import { queueLabel, queueTone } from "../src/lib/types.ts";
 import {
@@ -213,16 +212,6 @@ test("patient URLs are staff-scan canonical and staff passwords avoid ambiguous 
     generateStaffPassword(),
     /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{14}$/,
   );
-});
-
-test("sensitive provider URLs require a secure transport", () => {
-  assert.equal(
-    sensitiveProviderUrl("https://identity.example/verify"),
-    "https://identity.example/verify",
-  );
-  assert.equal(sensitiveProviderUrl("http://identity.example/verify"), null);
-  assert.equal(sensitiveProviderUrl("file:///etc/passwd"), null);
-  assert.equal(sensitiveProviderUrl("not a URL"), null);
 });
 
 test("admin bootstrap sends its service key only to the exact Supabase project", () => {

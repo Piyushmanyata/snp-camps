@@ -1,14 +1,28 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { isNonLatinText } from "@/lib/aadhaar-text";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
-import { patientScanUrl } from "@/lib/qr";
-import { formatCampDay, type CampDayStats } from "@/lib/types";
-import { QrCode } from "@/components/qr-code";
+import { formatCampDay } from "@/lib/format-camp-day";
+import type { CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select, WarningBox } from "@/components/ui";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
+import type { SelfRegistrationReceiptData } from "@/components/self-registration-receipt";
+
+const SelfRegistrationReceipt = lazy(
+  () =>
+    import("@/components/self-registration-receipt").then(
+      (module) => ({ default: module.SelfRegistrationReceipt }),
+    ),
+);
 
 type Props = { campId: string; venue: string | null; days: CampDayStats[] };
 
@@ -19,13 +33,6 @@ type ScannedCard = {
   address: string;
   aadhaarLast4: string;
   dateOfBirth: string;
-};
-
-type Success = {
-  patientId: string;
-  registrationNumber: number;
-  dayDate: string | null;
-  statusUrl: string;
 };
 
 /**
@@ -41,10 +48,13 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [dayId, setDayId] = useState(openDays[0]?.id ?? "");
-  const [result, setResult] = useState<Success | null>(null);
+  const [result, setResult] = useState<SelfRegistrationReceiptData | null>(
+    null,
+  );
   const [deskReferral, setDeskReferral] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const stepHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const onParsed = useCallback((parsed: ParsedAadhaarQr): boolean => {
     // Every key field is required: without all four the Person key cannot be
@@ -74,6 +84,10 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   const scanner = useAadhaarScanner(onParsed);
   const { clearError: clearScanError } = scanner;
   const needsLatinName = Boolean(card && isNonLatinText(card.fullName));
+
+  useEffect(() => {
+    if (card) stepHeadingRef.current?.focus();
+  }, [card]);
 
   async function register() {
     if (!card) return;
@@ -129,61 +143,20 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
   if (result) {
     return (
-      <section aria-labelledby="registration-success" className="space-y-5">
-        <h2 id="registration-success" className="text-xl font-bold">
-          Registration ho gaya
-        </h2>
-        <p className="rounded-2xl bg-brand-soft p-6 text-center">
-          <span className="block text-xs font-bold uppercase text-brand">
-            Registration number
-          </span>
-          <strong className="text-5xl tracking-tight">#{result.registrationNumber}</strong>
-        </p>
-
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border p-5">
-          <QrCode value={patientScanUrl(result.patientId)} size={180} />
-          <p className="text-center text-sm text-muted">
-            Yeh QR camp desk par dikhayein. Screenshot le lein.
-          </p>
-        </div>
-
-        <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
-          <div>
-            <dt className="text-muted">Camp Day</dt>
-            <dd className="font-semibold">
-              {result.dayDate ? formatCampDay(result.dayDate) : "Desk par confirm karein"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted">Venue</dt>
-            <dd className="font-semibold">{venue || "Desk par confirm karein"}</dd>
-          </div>
-        </dl>
-
-        <p className="text-sm text-muted">
-          Aap <strong>registered</strong> hain, abhi queue mein nahi. Camp par pahunchkar
-          desk par check-in karein.
-        </p>
-
-        <div>
-          <p className="mb-1.5 text-sm font-semibold">Status link</p>
-          <a
-            className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline"
-            href={result.statusUrl}
-          >
-            {result.statusUrl}
-          </a>
-          <p className="mt-1.5 text-sm text-muted">
-            Yeh link save kar lein — SMS nahi bheja jaata.
-          </p>
-        </div>
-      </section>
+      <Suspense fallback={<p role="status">Receipt taiyaar ho rahi hai…</p>}>
+        <SelfRegistrationReceipt result={result} venue={venue} />
+      </Suspense>
     );
   }
 
   return (
     <section aria-labelledby="self-registration-form" className="space-y-5">
-      <h2 id="self-registration-form" className="text-lg font-bold">
+      <h2
+        ref={stepHeadingRef}
+        id="self-registration-form"
+        tabIndex={-1}
+        className="text-lg font-bold outline-none"
+      >
         {card ? "Details confirm karein" : "Aadhaar card scan karein"}
       </h2>
 
@@ -201,16 +174,13 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       {!card ? (
         <>
           <p className="text-sm text-muted">
-            Aadhaar QR camera ke saamne rakhein. Ya phir card ki photo,
-            mAadhaar ka screenshot, ya e-Aadhaar PDF upload karein — details
-            apne aap bhar jaayengi.
+            Aadhaar card ka QR camera ke saamne rakhein — details apne aap bhar
+            jaayengi. Agar card paas nahin hai, registration desk se madad lein.
           </p>
           <WarningBox>
             Mobile number Aadhaar QR mein nahi hota — wo aapko khud type karna hoga.
           </WarningBox>
 
-          {/* Upload matters most here: a patient cannot point this phone's
-              camera at a QR that is showing on this same phone. */}
           <AadhaarCapture scanner={scanner} tone="patient" />
 
           <p className="rounded-xl border border-border p-4 text-sm text-muted">

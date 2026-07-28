@@ -18,6 +18,7 @@ export type StaffPerson = {
   role: string;
   created_at?: string;
   disabled_at?: string | null;
+  team_lead_id?: string | null;
 };
 
 type PatientRow = {

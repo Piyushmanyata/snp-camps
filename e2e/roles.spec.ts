@@ -13,14 +13,18 @@ async function gotoHydrated(page: Page, path: string) {
   await page.waitForLoadState("networkidle");
 }
 
-async function loginStaff(page: Page, role: "admin" | "volunteer" | "doctor") {
+async function loginStaff(
+  page: Page,
+  role: "admin" | "team_lead" | "volunteer" | "doctor",
+) {
   await gotoHydrated(page, "/login");
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
     .getByLabel("Password")
     .fill(env(`E2E_${role.toUpperCase()}_PASSWORD`));
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(new RegExp(`/${role}$`));
+  const landing = role === "team_lead" ? "volunteer" : role;
+  await expect(page).toHaveURL(new RegExp(`/${landing}$`));
 }
 
 async function blockRemoteRequests(page: Page) {
@@ -143,6 +147,24 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("Team Lead receives the full volunteer desk and own-team overview", async ({
+  page,
+}) => {
+  await loginStaff(page, "team_lead");
+  await expect(
+    page.getByRole("heading", { name: "Volunteer desk" }),
+  ).toBeVisible();
+  await expect(page.getByText("Team Lead Overview", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("My team's volunteers", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Codex E2E volunteer", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /Register/ }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Counter/ }).first()).toBeVisible();
 });
 
 test("volunteer doctor picker is populated (not silently empty)", async ({

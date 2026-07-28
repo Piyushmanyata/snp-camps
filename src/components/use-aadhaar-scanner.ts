@@ -71,8 +71,6 @@ export type OnParsed = (
 
 export type AadhaarScanner = {
   isScanning: boolean;
-  /** True while a still image (upload / PDF / crop) is being worked on. */
-  isBusy: boolean;
   /** Operator-facing failure. Always names manual entry as the way forward. */
   scanError: string | null;
   /** Structure-only fingerprint of a problem payload — never patient data. */
@@ -81,15 +79,6 @@ export type AadhaarScanner = {
   start: () => Promise<void>;
   stop: () => void;
   clearError: () => void;
-  /** Decode an uploaded photo, screenshot, HEIC, or e-Aadhaar PDF. */
-  scanFile: (file: File, pdfPassword?: string) => Promise<boolean>;
-  /** Decode a user-drawn crop after automatic localisation failed. */
-  scanCrop: (
-    source: ImageBitmap | HTMLImageElement | HTMLCanvasElement,
-    rect: { x: number; y: number; width: number; height: number },
-  ) => Promise<boolean>;
-  /** True when the last PDF needed a password. */
-  needsPdfPassword: boolean;
 };
 
 const MANUAL_HINT = "Please type the details manually.";
@@ -110,10 +99,8 @@ const MANUAL_HINT = "Please type the details manually.";
  */
 export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const [isScanning, setIsScanning] = useState(false);
-  const [isBusy, setIsBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanDiagnostic, setScanDiagnostic] = useState<string | null>(null);
-  const [needsPdfPassword, setNeedsPdfPassword] = useState(false);
   const sessionRef = useRef(new QrCameraSession());
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -140,7 +127,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const clearError = useCallback(() => {
     setScanError(null);
     setScanDiagnostic(null);
-    setNeedsPdfPassword(false);
   }, []);
 
   useEffect(() => {
@@ -182,7 +168,13 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       );
       if (accepted) {
         setScanError(null);
+        setScanDiagnostic(null);
         stop();
+      } else {
+        setScanDiagnostic(outcome.diagnostic);
+        setScanError(
+          `Card read was incomplete. Hold the QR steady and try again, or ${MANUAL_HINT.toLowerCase()}`,
+        );
       }
       return accepted;
     },
@@ -191,53 +183,58 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
 
   const start = useCallback(async () => {
     setScanError(null);
-    setNeedsPdfPassword(false);
+    setScanDiagnostic(null);
     setIsScanning(true);
     const token = sessionRef.current.begin();
 
-    // Load the client and warm the engines while the operator lines up the card.
-    const client = await loadDecodeClient();
-    client.warmUpDecoder();
-
-    const stream = await sessionRef.current.acquire(
-      token,
-      (c) => navigator.mediaDevices.getUserMedia(c),
-      {
-        video: {
-          facingMode: { ideal: "environment" },
-          // Dense Secure QR and tiny legacy QR are both pixel-starved; ask for
-          // the most the device will give and let it fall back on its own.
-          width: { ideal: 2560 },
-          height: { ideal: 1440 },
+    try {
+      // Camera permission and decoder loading are independent. Starting both
+      // together removes a full network/worker round trip from time-to-preview.
+      const clientPromise = loadDecodeClient();
+      const streamPromise = sessionRef.current.acquire(
+        token,
+        (c) => navigator.mediaDevices.getUserMedia(c),
+        {
+          video: {
+            facingMode: { ideal: "environment" },
+            // Dense Secure QR and tiny legacy QR are both pixel-starved; ask for
+            // the most the device will give and let it fall back on its own.
+            width: { ideal: 2560 },
+            height: { ideal: 1440 },
+          },
+          audio: false,
         },
-        audio: false,
-      },
-    );
+      );
+      const [client, stream] = await Promise.all([
+        clientPromise,
+        streamPromise,
+      ]);
+      client.warmUpDecoder();
 
-    if (!stream || !sessionRef.current.isCurrent(token)) {
-      setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
-      setIsScanning(false);
-      return;
-    }
+      if (!stream || !sessionRef.current.isCurrent(token)) {
+        setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
+        setIsScanning(false);
+        return;
+      }
 
-    // Continuous autofocus is the single biggest factor in whether a dense
-    // Aadhaar QR resolves at all.
-    await applyBestEffortCameraConstraints(stream);
+      // Continuous autofocus is the single biggest factor in whether a dense
+      // Aadhaar QR resolves at all.
+      await applyBestEffortCameraConstraints(stream);
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play().catch(() => {});
-    }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    let frameTick = 0;
-    let lastFrameAt = 0;
-    let busy = false;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      let frameTick = 0;
+      let lastFrameAt = 0;
+      let busy = false;
 
-    function video(): HTMLVideoElement | null {
-      return videoRef.current;
-    }
+      function video(): HTMLVideoElement | null {
+        return videoRef.current;
+      }
 
     /**
      * Grab one probe geometry as a bounded ImageData.
@@ -248,35 +245,35 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
      * `probeSurface` owns the bound and is asserted by
      * tests/qr-decode-surface.test.mjs.
      */
-    const probeImage = (probe: Probe): ImageData | null => {
-      if (!ctx || !video()) return null;
-      const v = video()!;
-      const surface = probeSurface(v.videoWidth, v.videoHeight, probe);
-      if (!surface) return null;
-      const { sx, sy, cw, ch, dw, dh } = surface;
+      const probeImage = (probe: Probe): ImageData | null => {
+        if (!ctx || !video()) return null;
+        const v = video()!;
+        const surface = probeSurface(v.videoWidth, v.videoHeight, probe);
+        if (!surface) return null;
+        const { sx, sy, cw, ch, dw, dh } = surface;
 
-      canvas.width = dw;
-      canvas.height = dh;
-      // Hard module edges when magnifying; smooth when shrinking, which
-      // averages sensor noise away instead of aliasing it into the modules.
-      ctx.imageSmoothingEnabled = dw < cw;
-      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
-      return ctx.getImageData(0, 0, dw, dh);
-    };
+        canvas.width = dw;
+        canvas.height = dh;
+        // Hard module edges when magnifying; smooth when shrinking, which
+        // averages sensor noise away instead of aliasing it into the modules.
+        ctx.imageSmoothingEnabled = dw < cw;
+        ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
+        return ctx.getImageData(0, 0, dw, dh);
+      };
 
-    const processFrame = async () => {
-      if (!sessionRef.current.isCurrent(token) || !video()) return;
+      const processFrame = async () => {
+        if (!sessionRef.current.isCurrent(token) || !video()) return;
 
-      const now = performance.now();
-      // Throttle: an unthrottled rAF loop ran full-resolution decodes at 60fps,
-      // starving the camera and making scanning slower, not faster.
-      if (!busy && now - lastFrameAt >= SCAN_FRAME_INTERVAL_MS) {
-        lastFrameAt = now;
-        busy = true;
-        try {
-          const v = video()!;
-          if (v.readyState >= 2 && v.videoWidth > 0) {
-            frameTick += 1;
+        const now = performance.now();
+        // Throttle: an unthrottled rAF loop ran full-resolution decodes at 60fps,
+        // starving the camera and making scanning slower, not faster.
+        if (!busy && now - lastFrameAt >= SCAN_FRAME_INTERVAL_MS) {
+          lastFrameAt = now;
+          busy = true;
+          try {
+            const v = video()!;
+            if (v.readyState >= 2 && v.videoWidth > 0) {
+              frameTick += 1;
 
             // Cycle the probe geometries so every card size gets covered within
             // a few frames, while each individual frame stays cheap. Once the
@@ -284,106 +281,49 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
             // the full preprocessing cascade — but only on some frames. Making
             // every frame thorough pins the loop at the cascade's miss cost and
             // stalls the geometry sweep, so the operator waits seconds per probe.
-            const thorough =
-              frameTick > ESCALATE_AFTER_FRAMES &&
-              frameTick % THOROUGH_EVERY_N_FRAMES === 0;
+              const thorough =
+                frameTick > ESCALATE_AFTER_FRAMES &&
+                frameTick % THOROUGH_EVERY_N_FRAMES === 0;
 
-            const image = probeImage(LIVE_PROBES[frameTick % LIVE_PROBES.length]);
-            if (image) {
-              const outcome = await client.decodeFrame(image, thorough);
-              if (!sessionRef.current.isCurrent(token)) return;
-              if (await handleOutcome(outcome)) return;
+              const image =
+                probeImage(LIVE_PROBES[frameTick % LIVE_PROBES.length]);
+              if (image) {
+                const outcome = await client.decodeFrame(image, thorough);
+                if (!sessionRef.current.isCurrent(token)) return;
+                if (await handleOutcome(outcome)) return;
+              }
             }
+          } catch {
+            /* keep scanning */
+          } finally {
+            busy = false;
           }
-        } catch {
-          /* keep scanning */
-        } finally {
-          busy = false;
         }
-      }
 
-      if (sessionRef.current.isCurrent(token)) {
-        animFrameRef.current = requestAnimationFrame(() => {
-          void processFrame();
-        });
-      }
-    };
+        if (sessionRef.current.isCurrent(token)) {
+          animFrameRef.current = requestAnimationFrame(() => {
+            void processFrame();
+          });
+        }
+      };
 
-    animFrameRef.current = requestAnimationFrame(() => {
-      void processFrame();
-    });
+      animFrameRef.current = requestAnimationFrame(() => {
+        void processFrame();
+      });
+    } catch {
+      sessionRef.current.invalidate();
+      setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
+      setIsScanning(false);
+    }
   }, [handleOutcome]);
-
-  const scanFile = useCallback(
-    async (file: File, pdfPassword?: string): Promise<boolean> => {
-      setIsBusy(true);
-      setScanError(null);
-      setNeedsPdfPassword(false);
-      try {
-        const { decodeFile } = await loadDecodeClient();
-        const outcome = await decodeFile(file, { pdfPassword });
-        if (outcome.status === "none") {
-          setScanError(
-            `No Aadhaar QR could be read from that file. Try a sharper photo, crop to the QR, or ${MANUAL_HINT.toLowerCase()}`,
-          );
-          return false;
-        }
-        return await handleOutcome(outcome);
-      } catch (error: unknown) {
-        if ((error as { name?: string })?.name === "PdfPasswordRequired") {
-          setNeedsPdfPassword(true);
-          setScanError((error as Error).message);
-          return false;
-        }
-        setScanError(
-          error instanceof Error ? error.message : `Could not read that file. ${MANUAL_HINT}`,
-        );
-        return false;
-      } finally {
-        setIsBusy(false);
-      }
-    },
-    [handleOutcome],
-  );
-
-  const scanCrop = useCallback(
-    async (
-      source: ImageBitmap | HTMLImageElement | HTMLCanvasElement,
-      rect: { x: number; y: number; width: number; height: number },
-    ): Promise<boolean> => {
-      setIsBusy(true);
-      setScanError(null);
-      try {
-        const { decodeCrop } = await loadDecodeClient();
-        const outcome = await decodeCrop(source, rect);
-        if (outcome.status === "none") {
-          setScanError(
-            `That crop still did not read. Try selecting just the QR square, or ${MANUAL_HINT.toLowerCase()}`,
-          );
-          return false;
-        }
-        return await handleOutcome(outcome);
-      } catch {
-        setScanError(`Could not read that crop. ${MANUAL_HINT}`);
-        return false;
-      } finally {
-        setIsBusy(false);
-      }
-    },
-    [handleOutcome],
-  );
 
   return {
     isScanning,
-    isBusy,
     scanError,
     scanDiagnostic,
     videoRef,
     start,
     stop,
     clearError,
-    scanFile,
-    scanCrop,
-    needsPdfPassword,
   };
 }

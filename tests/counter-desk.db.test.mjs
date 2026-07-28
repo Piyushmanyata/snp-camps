@@ -395,3 +395,85 @@ test("resolve_treatment_order RPC: prevents double fulfillment", async (t) => {
     (err) => err.message.includes("Treatment order is already closed"),
   );
 });
+
+test("doctor and counter orders retain origin, creator, and retry safety", async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const doctorId = await asServiceRole(() =>
+    createTestUser(`doc_${randomUUID()}@counter.test`, "doctor"),
+  );
+  const staffId = await asServiceRole(() =>
+    createTestUser(`vol_${randomUUID()}@counter.test`, "volunteer"),
+  );
+  const { campId, dayId } = await asServiceRole(() => createTestCamp());
+
+  const digitalPatientId = await asServiceRole(() =>
+    createTestPatient(campId, dayId, "waiting"),
+  );
+  await asAuthenticated(doctorId, () =>
+    client.query(
+      `select * from public.doctor_submit_prescription(
+         $1, null, null, null, null, null, $2
+       )`,
+      [digitalPatientId, ["pharmacy"]],
+    ),
+  );
+
+  const digital = await asServiceRole(async () => {
+    const { rows } = await client.query(
+      `select source, created_by
+       from public.treatment_orders
+       where patient_id = $1`,
+      [digitalPatientId],
+    );
+    return rows[0];
+  });
+  assert.equal(digital.source, "doctor");
+  assert.equal(digital.created_by, doctorId);
+
+  const paperPatientId = await asServiceRole(() =>
+    createTestPatient(campId, dayId, "seen"),
+  );
+  const first = await asAuthenticated(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.counter_create_and_fulfill_order($1, $2)`,
+      [paperPatientId, ["spectacles", "spectacles"]],
+    );
+    return rows[0];
+  });
+  assert.equal(first.created_count, 1, "duplicate input kind is applied once");
+
+  const retry = await asAuthenticated(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.counter_create_and_fulfill_order($1, $2)`,
+      [paperPatientId, ["spectacles"]],
+    );
+    return rows[0];
+  });
+  assert.equal(retry.created_count, 0, "repeat request is an idempotent no-op");
+
+  const paper = await asServiceRole(async () => {
+    const { rows } = await client.query(
+      `select source, created_by, closed_by
+       from public.treatment_orders
+       where patient_id = $1 and kind = 'spectacles'`,
+      [paperPatientId],
+    );
+    return rows;
+  });
+  assert.equal(paper.length, 1);
+  assert.equal(paper[0].source, "counter");
+  assert.equal(paper[0].created_by, staffId);
+  assert.equal(paper[0].closed_by, staffId);
+
+  await assert.rejects(
+    () =>
+      asAuthenticated(staffId, () =>
+        client.query(
+          `select * from public.counter_create_and_fulfill_order($1, $2)`,
+          [paperPatientId, ["invalid"]],
+        ),
+      ),
+    /invalid treatment kind/i,
+  );
+});

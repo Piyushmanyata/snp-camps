@@ -147,6 +147,35 @@ async function asAuthenticated(userId, fn) {
   }
 }
 
+/**
+ * @param {"anon" | "authenticated"} role
+ * @param {(c: pg.Client) => Promise<unknown>} fn
+ */
+async function asDatabaseRole(role, fn) {
+  await admin.query("begin");
+  try {
+    await admin.query(
+      `select set_config('request.jwt.claim.role', $1, true)`,
+      [role],
+    );
+    await admin.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ role })],
+    );
+    await admin.query(`set local role ${role}`);
+    const result = await fn(admin);
+    await admin.query("rollback");
+    return result;
+  } catch (err) {
+    try {
+      await admin.query("rollback");
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
+}
+
 async function seedCampDay(suffix = "") {
   const campId = randomUUID();
   const dayId = randomUUID();
@@ -611,6 +640,119 @@ test("authenticated cannot execute patient_status_by_token", async (t) => {
     await admin.query(`delete from public.camps where id = $1`, [campId]);
     await admin.query(`delete from public.profiles where id = $1`, [userId]);
     await admin.query(`delete from auth.users where id = $1`, [userId]);
+  }
+});
+
+test("patient lookup token is service-role only and never accepts registration date as DOB", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { campId, dayId } = await seedCampDay("lookup-security");
+  try {
+    const p = await seedPatient({
+      campId,
+      dayId,
+      regNo: 7002,
+      queuedAt: "2099-10-15T08:00:00Z",
+    });
+    await admin.query(
+      `update public.persons pe
+       set date_of_birth = '1980-01-02'::date
+       from public.patients p
+       where p.id = $1 and pe.id = p.person_id`,
+      [p.id],
+    );
+
+    const matched = await asServiceRole(async (c) => {
+      const { rows } = await c.query(
+        `select * from public.lookup_patient_status_token($1, $2::date)`,
+        [7002, "1980-01-02"],
+      );
+      return rows;
+    });
+    assert.deepEqual(matched, [{ status_token: p.token }]);
+
+    const registrationDate = await admin.query(
+      `select created_at::date::text as created_date
+       from public.patients
+       where id = $1`,
+      [p.id],
+    );
+    const guessed = await asServiceRole(async (c) => {
+      const { rows } = await c.query(
+        `select * from public.lookup_patient_status_token($1, $2::date)`,
+        [7002, registrationDate.rows[0].created_date],
+      );
+      return rows;
+    });
+    assert.deepEqual(
+      guessed,
+      [],
+      "registration date must never substitute for a person's DOB",
+    );
+
+    for (const role of ["anon", "authenticated"]) {
+      await assert.rejects(
+        () =>
+          asDatabaseRole(role, async (c) => {
+            await c.query(
+              `select * from public.lookup_patient_status_token($1, $2::date)`,
+              [7002, "1980-01-02"],
+            );
+          }),
+        /permission denied|not granted|42501/i,
+        `${role} must not execute the token lookup RPC directly`,
+      );
+    }
+  } finally {
+    await admin.query(`delete from public.patients where camp_id = $1`, [
+      campId,
+    ]);
+    await admin.query(`delete from public.camp_days where camp_id = $1`, [
+      campId,
+    ]);
+    await admin.query(`delete from public.camps where id = $1`, [campId]);
+  }
+});
+
+test("distributed public rate limits are durable and unavailable to browser roles", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const scope = "lookup-test";
+  const keyHash = hexToken();
+  try {
+    const consume = () =>
+      asServiceRole(async (c) => {
+        const { rows } = await c.query(
+          `select *
+           from public.consume_public_rate_limit($1, $2::text[], $3, $4)`,
+          [scope, [keyHash], 2, 60],
+        );
+        return rows[0];
+      });
+
+    assert.equal((await consume()).allowed, true);
+    assert.equal((await consume()).allowed, true);
+    const denied = await consume();
+    assert.equal(denied.allowed, false);
+    assert.ok(denied.retry_after_seconds >= 1);
+
+    for (const role of ["anon", "authenticated"]) {
+      await assert.rejects(
+        () =>
+          asDatabaseRole(role, async (c) => {
+            await c.query(
+              `select *
+               from public.consume_public_rate_limit($1, $2::text[], $3, $4)`,
+              [scope, [keyHash], 2, 60],
+            );
+          }),
+        /permission denied|not granted|42501/i,
+        `${role} must not consume durable rate limits directly`,
+      );
+    }
+  } finally {
+    await admin.query(
+      `delete from public.public_rate_limit_buckets where scope = $1`,
+      [scope],
+    ).catch(() => {});
   }
 });
 

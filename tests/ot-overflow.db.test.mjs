@@ -212,7 +212,7 @@ describe("Theatre overflow to next camp day DB tests", () => {
   test("two simultaneous RPC calls rolling over into 1 remaining slot on a future day yield 1 success and 1 refusal", async (t) => {
     if (skipIfNoDb(t)) return;
 
-    const { campId, doctorId, day1Id, day2Id, day2Date } = await seedTestCampWithDays();
+    const { campId, doctorId, day1Id, day2Id } = await seedTestCampWithDays();
     const patient1Id = await createWaitingPatient(campId, day1Id, Math.floor(Math.random() * 800000) + 100000, "Patient One");
     const patient2Id = await createWaitingPatient(campId, day1Id, Math.floor(Math.random() * 800000) + 100000, "Patient Two");
 
@@ -285,7 +285,7 @@ describe("Theatre overflow to next camp day DB tests", () => {
   test("returning patient stays seen and scans at counter with scheduled order", async (t) => {
     if (skipIfNoDb(t)) return;
 
-    const { campId, doctorId, day1Id, day2Id, day2Date } = await seedTestCampWithDays();
+    const { campId, doctorId, day1Id, day2Id } = await seedTestCampWithDays();
     const patientId = await createWaitingPatient(campId, day1Id, Math.floor(Math.random() * 800000) + 100000, "Returning Patient");
 
     const c = newClient();

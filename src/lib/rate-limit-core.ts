@@ -54,6 +54,13 @@ function hashValue(value: string) {
     .slice(0, 20);
 }
 
+export function rateLimitIdentifiers(request: Request, identifier?: string) {
+  const keys = [`ip:${hashValue(clientAddress(request))}`];
+  const subject = identifier?.trim();
+  if (subject) keys.push(`subject:${hashValue(subject)}`);
+  return keys;
+}
+
 function recordLimit(
   key: string,
   windowMs: number,
@@ -78,12 +85,9 @@ export function checkRateLimit(request: Request, options: Options) {
   const now = Date.now();
   sweepExpired(now);
 
-  const address = clientAddress(request);
-  const keys = [options.scope + ":ip:" + hashValue(address)];
-  const identifier = options.identifier?.trim();
-  if (identifier) {
-    keys.push(options.scope + ":subject:" + hashValue(identifier));
-  }
+  const keys = rateLimitIdentifiers(request, options.identifier).map(
+    (key) => `${options.scope}:${key}`,
+  );
 
   // Keep both protections: an attacker cannot rotate identifiers from one IP,
   // and one patient/token cannot bypass the limit by rotating IPs.

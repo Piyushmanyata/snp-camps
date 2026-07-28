@@ -234,9 +234,6 @@ test("New patient registration automatically creates and links a Person", async 
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'self_declared',
        p_duplicate_key => null,
        p_date_of_birth => null

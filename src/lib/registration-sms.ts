@@ -11,6 +11,7 @@ import { normalizePhoneE164 } from "@/lib/phone";
 import {
   claimSmsDelivery,
   completeSmsDelivery,
+  markSmsDispatchStarted,
   phoneLast4FromRaw,
   type SmsDeliveryClient,
 } from "@/lib/sms-deliveries";
@@ -248,6 +249,24 @@ export async function sendRegistrationSms(
   }
 
   const send = options.send ?? sendMsg91TemplateSms;
+  if (claim && options.ledger) {
+    let dispatchMarked = false;
+    try {
+      dispatchMarked = await markSmsDispatchStarted(options.ledger, claim);
+    } catch {
+      dispatchMarked = false;
+    }
+    if (!dispatchMarked) {
+      await completeSmsDelivery(options.ledger, {
+        deliveryId: claim.deliveryId,
+        claimToken: claim.claimToken,
+        outcome: "release",
+      }).catch(() => false);
+      const detail = "SMS dispatch could not be started safely.";
+      recordSmsFailure({ template, detail, phoneLast4 });
+      return { status: "failed", detail };
+    }
+  }
   try {
     const result = await send({
       mobiles,
@@ -275,12 +294,18 @@ export async function sendRegistrationSms(
         : { status: "failed", detail: result.detail };
     }
     if (claim && options.ledger) {
-      await completeSmsDelivery(options.ledger, {
+      const completed = await completeSmsDelivery(options.ledger, {
         deliveryId: claim.deliveryId,
         claimToken: claim.claimToken,
         outcome: "sent",
         providerRequestId: result.requestId ?? null,
-      }).catch(() => {});
+      }).catch(() => false);
+      if (!completed) {
+        const detail =
+          "Provider accepted the SMS but ledger confirmation is pending.";
+        recordSmsFailure({ template, detail, phoneLast4 });
+        return { status: "ambiguous", detail };
+      }
     }
     return { status: "sent", requestId: result.requestId };
   } catch (err) {

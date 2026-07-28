@@ -152,11 +152,12 @@ export async function loadSeatsSection(
 export async function loadVolunteerKpisSection(
   campId: string,
   userId: string,
+  role: "volunteer" | "team_lead" = "volunteer",
 ): Promise<SectionResult<KpisSectionData>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("staff_person_kpis", {
     p_user_id: userId,
-    p_role: "volunteer",
+    p_role: role,
     p_camp_id: campId,
     p_since: kolkataStartOfDayIso(),
   });
@@ -193,15 +194,13 @@ export type StaffKpiRow = {
 };
 
 /**
- * Whole-camp staff rollup for the Team Lead panel (#119/#121).
- * Note the two `staff_person_kpis` overloads: this is the (camp, staff) one,
- * not the per-volunteer (user, role, camp, since) one above.
+ * Whole-camp staff rollup for both leaderboards (#119/#121).
  */
 export async function loadStaffLeaderboardSection(
   campId: string,
 ): Promise<SectionResult<StaffKpiRow[]>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("staff_person_kpis", {
+  const { data, error } = await supabase.rpc("staff_leaderboard", {
     p_camp_id: campId,
     p_target_staff_id: null,
   });

@@ -30,19 +30,23 @@ const VALID_CARD = {
 
 /** The route derives the Person key itself, so the pepper must be present. */
 process.env.AADHAAR_HASH_PEPPER ||= "test-pepper";
+process.env.SUPABASE_SERVICE_ROLE_KEY ||= "self-registration-route-test-secret";
 
 /**
  * Minimal service-role fake. `rpcResult` decides what
  * register_patient_idempotent returns; every call is recorded so the arguments
  * the route sends can be asserted.
  */
-function fakeSupabase(rpcResult) {
+function fakeSupabase(rpcResult, rateResult = { allowed: true, retry_after_seconds: 30 }) {
   const calls = [];
   return {
     calls,
     client: {
       rpc(fn, args) {
         calls.push({ fn, args });
+        if (fn === "consume_public_rate_limit") {
+          return Promise.resolve({ data: [rateResult], error: null });
+        }
         return Promise.resolve(rpcResult);
       },
       from() {
@@ -116,7 +120,9 @@ test("self-service registration is flagged and carries a Person key, never an eK
 
   await post({ campId: CAMP_ID, campDayId: DAY_ID, phone: "9876543210", card: VALID_CARD });
 
-  const { args } = fake.calls[0];
+  const { args } = fake.calls.find(
+    (call) => call.fn === "register_patient_idempotent",
+  );
   assert.equal(args.p_self_service, true);
   assert.equal(args.p_provenance, "card_verified");
   assert.equal(typeof args.p_duplicate_key, "string");
@@ -126,9 +132,9 @@ test("self-service registration is flagged and carries a Person key, never an eK
   assert.equal(args.p_user_id, null);
   assert.equal(args.p_created_by, null);
   // The eKYC columns are retired; a scan must never claim OTP verification.
-  assert.equal(args.p_aadhaar_hash, null);
-  assert.equal(args.p_aadhaar_verified_at, null);
-  assert.equal(args.p_aadhaar_kyc_ref, null);
+  assert.equal("p_aadhaar_hash" in args, false);
+  assert.equal("p_aadhaar_verified_at" in args, false);
+  assert.equal("p_aadhaar_kyc_ref" in args, false);
 });
 
 test("the same card twice derives the same Person key", async () => {
@@ -141,8 +147,10 @@ test("the same card twice derives the same Person key", async () => {
   await post({ campId: CAMP_ID, campDayId: DAY_ID, phone: "9000000000", card: VALID_CARD });
 
   assert.equal(
-    first.calls[0].args.p_duplicate_key,
-    second.calls[0].args.p_duplicate_key,
+    first.calls.find((call) => call.fn === "register_patient_idempotent").args
+      .p_duplicate_key,
+    second.calls.find((call) => call.fn === "register_patient_idempotent").args
+      .p_duplicate_key,
     "a different typed phone must not change the card's identity",
   );
 });
@@ -202,8 +210,11 @@ test("a non-Latin card name is blocked until a Latin spelling is supplied", asyn
   assert.equal((await accepted.json()).ok, true);
   // The key must come from the verbatim card name, never the transliteration,
   // so two different spellings cannot mint two Persons.
-  assert.equal(allowed.calls[0].args.p_full_name, "रमेश कुमार");
-  assert.equal(allowed.calls[0].args.p_display_name, "Ramesh Kumar");
+  const registration = allowed.calls.find(
+    (call) => call.fn === "register_patient_idempotent",
+  );
+  assert.equal(registration.args.p_full_name, "रमेश कुमार");
+  assert.equal(registration.args.p_display_name, "Ramesh Kumar");
 });
 
 test("an existing registration sends the patient to the desk with their number", async () => {
@@ -252,4 +263,42 @@ test("an unconfigured service role degrades instead of throwing", async () => {
 
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
+});
+
+test("a durable rate-limit denial prevents the registration RPC", async () => {
+  const fake = fakeSupabase(okRpc, {
+    allowed: false,
+    retry_after_seconds: 45,
+  });
+  __setServiceRoleClient(fake.client);
+
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+  });
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "45");
+  assert.deepEqual(
+    fake.calls.map((call) => call.fn),
+    ["consume_public_rate_limit"],
+  );
+});
+
+test("an oversized public JSON body is rejected before any RPC", async () => {
+  const fake = fakeSupabase(okRpc);
+  __setServiceRoleClient(fake.client);
+
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+    padding: "x".repeat(20_000),
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(fake.calls.length, 0);
 });

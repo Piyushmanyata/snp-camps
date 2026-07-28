@@ -6,12 +6,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+
+const personKey = (value) =>
+  createHash("sha256").update(value).digest("hex");
 
 /** @type {pg.Client | null} */
 let client = null;
@@ -101,7 +104,7 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
   const volunteerId = await seedProfile("volunteer");
   const campId = randomUUID();
   const dayId = randomUUID();
-  const dupKey = `key-lock-${randomUUID()}`;
+  const dupKey = personKey(`key-lock-${randomUUID()}`);
 
   await client.query("begin");
   await client.query("update public.camps set is_active = false where is_active = true");
@@ -116,10 +119,12 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
     [dayId, campId],
   );
 
-  await client.query("set role authenticated");
+  // Scanned-card writes cross the trusted server boundary and run as
+  // service_role; authenticated browsers are forbidden from choosing a key.
+  await client.query("set role service_role");
   await client.query(
     `select set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: volunteerId, role: "authenticated" })],
+    [JSON.stringify({ sub: volunteerId, role: "service_role" })],
   );
 
   const reqId = randomUUID();
@@ -140,9 +145,6 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_aadhaar_hash => null,
-       p_aadhaar_verified_at => null,
-       p_aadhaar_kyc_ref => null,
        p_provenance => 'card_verified',
        p_duplicate_key => $5,
        p_date_of_birth => '1981-04-12'::date
@@ -200,6 +202,24 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
   );
   await client.query("rollback to savepoint before_name_update");
   await client.query("release savepoint before_name_update");
+
+  for (const [column, value, message] of [
+    ["date_of_birth", "'1982-04-12'::date", "Date of birth field is locked"],
+    ["gender", "'F'::text", "Gender field is locked"],
+  ]) {
+    const savepoint = `before_${column}_update`;
+    await client.query(`savepoint ${savepoint}`);
+    await assert.rejects(
+      () =>
+        client.query(
+          `update public.persons set ${column} = ${value} where id = $1`,
+          [personId],
+        ),
+      (err) => err.message.includes(message),
+    );
+    await client.query(`rollback to savepoint ${savepoint}`);
+    await client.query(`release savepoint ${savepoint}`);
+  }
 
   await client.query("rollback");
 });

@@ -29,7 +29,7 @@ export function TeamLeadPanel({
 }) {
   const leaderboard = initialLeaderboard;
 
-  const teamLeads = leaderboard.filter((r) => r.role === "team_lead" || r.role === "admin");
+  const teamLeads = leaderboard.filter((r) => r.role === "team_lead");
   const volunteers = leaderboard.filter((r) => r.role === "volunteer");
 
   const myTeamLeadRow = leaderboard.find((r) => r.staff_id === currentUserId);
@@ -42,8 +42,8 @@ export function TeamLeadPanel({
 
   return (
     <div className="space-y-4">
-      {/* Team Summary Card */}
-      <Card className="bg-brand-soft border-2 border-brand/20 !p-4 sm:!p-5">
+      {myTeamLeadRow?.role === "team_lead" ? (
+        <Card className="bg-brand-soft border-2 border-brand/20 !p-4 sm:!p-5">
         <SectionTitle hint="Your team's live rollup">
           Team Lead Overview
         </SectionTitle>
@@ -61,7 +61,8 @@ export function TeamLeadPanel({
             </p>
           </div>
         </div>
-      </Card>
+        </Card>
+      ) : null}
 
       {teamVolunteers ? (
         /* Add and manage the volunteers on this team. Same component the admin
@@ -86,7 +87,7 @@ export function TeamLeadPanel({
         {/* 1. Team Lead Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            🏆 Team Lead Leaderboard
+            Team Lead leaderboard · distinct patients
           </h3>
           {teamLeads.length === 0 ? (
             <p className="text-xs text-muted">No team leads recorded.</p>
@@ -120,7 +121,7 @@ export function TeamLeadPanel({
         {/* 2. Volunteer Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            ⭐ Volunteer Leaderboard
+            Volunteer leaderboard · distinct patients
           </h3>
           {volunteers.length === 0 ? (
             <p className="text-xs text-muted">No volunteers recorded.</p>

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isDoctor, isAdmin, roleHome } from "@/lib/auth";
 import {
   Card,
+  ErrorBox,
   NavLink,
   SectionTitle,
   Shell,
@@ -17,10 +18,12 @@ import {
 import {
   loadDoctorSeenSection,
   loadDoctorStatsSection,
+  loadStaffLeaderboardSection,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
 import { QrScannerLazy } from "@/components/qr-scanner-lazy";
 import { AdminStaff } from "@/components/admin-staff";
+import { TeamLeadPanel } from "@/components/team-lead-panel";
 
 export default async function DoctorPage() {
   const { userId, profile } = await getSessionProfile();
@@ -101,12 +104,13 @@ export default async function DoctorPage() {
   }
 
   // Independent section reads — stats failure must not blank scanner/seen (#63).
-  const [statsInitial, seenInitial] = camp
+  const [statsInitial, seenInitial, leaderboardInitial] = camp
     ? await Promise.all([
         loadDoctorStatsSection(camp.id),
         loadDoctorSeenSection(camp.id),
+        loadStaffLeaderboardSection(camp.id),
       ])
-    : [null, null];
+    : [null, null, null];
 
   return (
     <Shell
@@ -154,6 +158,17 @@ export default async function DoctorPage() {
             </NavLink>
           </div>
         </Card>
+
+        {camp && leaderboardInitial ? (
+          leaderboardInitial.ok ? (
+            <TeamLeadPanel
+              currentUserId={userId}
+              initialLeaderboard={leaderboardInitial.data}
+            />
+          ) : (
+            <ErrorBox message={leaderboardInitial.error} />
+          )
+        ) : null}
 
         <Card id="scan" className="!p-4 sm:!p-5">
           <SectionTitle hint="QR or reg number · one button">

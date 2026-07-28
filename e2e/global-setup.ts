@@ -164,7 +164,9 @@ export default async function globalSetup() {
   try {
     await removeStaleFixtures(admin);
 
-    const createStaff = async (role: "admin" | "volunteer" | "doctor") => {
+    const createStaff = async (
+      role: "admin" | "team_lead" | "volunteer" | "doctor",
+    ) => {
       const email = `${USER_PREFIX}${role}@snp.local`;
       const secret = password();
       const meta = {
@@ -219,8 +221,18 @@ export default async function globalSetup() {
     };
 
     await createStaff("admin");
-    await createStaff("volunteer");
+    const volunteerId = await createStaff("volunteer");
     await createStaff("doctor");
+    const teamLeadId = await createStaff("team_lead");
+    const assignment = await admin
+      .from("profiles")
+      .update({ team_lead_id: teamLeadId })
+      .eq("id", volunteerId);
+    if (assignment.error) {
+      throw new Error(
+        `E2E Team Lead assignment failed: ${assignment.error.message}`,
+      );
+    }
 
     let camp = null;
     try {

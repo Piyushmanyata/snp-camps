@@ -1,12 +1,9 @@
 /**
  * Person duplicate key (#109 prefactor).
  *
- * Pure derivation only — nothing in the app calls this yet. Later tickets
- * wire it into registration / self-registration.
- *
  * Key material matches CONTEXT.md:
  *   HMAC-SHA256(last4 + normalised_name + dob + gender)
- * using the existing Aadhaar pepper env vars.
+ * using the required Aadhaar pepper.
  */
 
 import { createHmac } from "node:crypto";
@@ -19,12 +16,7 @@ import { parseDateOfBirth } from "@/lib/aadhaar-text";
 export function getAadhaarPepper(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  return (
-    env.AADHAAR_HASH_PEPPER?.trim() ||
-    env.AADHAAR_KYC_PEPPER?.trim() ||
-    env.AADHAAR_PEPPER?.trim() ||
-    null
-  );
+  return env.AADHAAR_HASH_PEPPER?.trim() || null;
 }
 
 /** Same rule as `patients.full_name_normalized`: case-fold + collapse whitespace. */
@@ -60,7 +52,7 @@ export function derivePersonDuplicateKey(
   const pepper = getAadhaarPepper(env);
   if (!pepper) {
     throw new Error(
-      "AADHAAR_HASH_PEPPER (or AADHAAR_KYC_PEPPER) is required to derive a Person key.",
+      "AADHAAR_HASH_PEPPER is required to derive a Person key.",
     );
   }
 

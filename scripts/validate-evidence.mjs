@@ -11,6 +11,14 @@ export function computeSha256(content) {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+export function computeManifestPayloadSha256(manifest) {
+  const payload = structuredClone(manifest);
+  if (payload.artifacts) {
+    delete payload.artifacts.manifest_payload_sha256;
+  }
+  return computeSha256(JSON.stringify(payload, null, 2));
+}
+
 export function detectUnredactedSecrets(text) {
   const leaks = [];
   
@@ -84,6 +92,20 @@ export function validateManifest(manifest, evidenceDir, options = {}) {
   if (!manifest.tool_versions || !manifest.tool_versions.node) {
     errors.push("Manifest missing tool_versions metadata");
   }
+  if (manifest.overall_status !== "PASS") {
+    errors.push(`Manifest overall_status must be PASS, got '${manifest.overall_status}'`);
+  }
+  const expectedManifestHash = manifest.artifacts?.manifest_payload_sha256;
+  if (!expectedManifestHash) {
+    errors.push("Manifest missing artifacts.manifest_payload_sha256");
+  } else {
+    const actualManifestHash = computeManifestPayloadSha256(manifest);
+    if (expectedManifestHash !== actualManifestHash) {
+      errors.push(
+        `Manifest payload sha256 mismatch! Expected: ${expectedManifestHash}, Actual: ${actualManifestHash}`,
+      );
+    }
+  }
 
   // 2. Stage Coverage
   const stages = manifest.stages || {};
@@ -99,8 +121,10 @@ export function validateManifest(manifest, evidenceDir, options = {}) {
 
   // 3. Stage Integrity & Log Artifacts
   for (const [stageName, stageData] of Object.entries(stages)) {
-    if (stageData.exit_code !== 0 && stageData.status !== "PASS") {
-      errors.push(`Stage '${stageName}' failed with exit code ${stageData.exit_code}`);
+    if (stageData.exit_code !== 0 || stageData.status !== "PASS") {
+      errors.push(
+        `Stage '${stageName}' is not a clean PASS (status=${stageData.status}, exit=${stageData.exit_code})`,
+      );
     }
 
     if (!stageData.log_file) {
@@ -136,8 +160,16 @@ export function validateManifest(manifest, evidenceDir, options = {}) {
     // Check counts
     if (!stageData.counts || typeof stageData.counts !== "object") {
       errors.push(`Stage '${stageName}' missing structured item counts`);
-    } else if (stageData.counts.skipped > 0 && !options.allowSkippedTests) {
-      warnings.push(`Stage '${stageName}' reported ${stageData.counts.skipped} skipped test(s)`);
+    } else {
+      if (Number(stageData.counts.failed ?? 0) > 0) {
+        errors.push(`Stage '${stageName}' reported ${stageData.counts.failed} failed item(s)`);
+      }
+      if (Number(stageData.counts.skipped ?? 0) > 0 && !options.allowSkippedTests) {
+        errors.push(`Stage '${stageName}' reported ${stageData.counts.skipped} skipped test(s)`);
+      }
+      if (Number(stageData.counts.todo ?? 0) > 0) {
+        errors.push(`Stage '${stageName}' reported ${stageData.counts.todo} todo item(s)`);
+      }
     }
   }
 
@@ -205,15 +237,17 @@ export async function main() {
 
   // Validate closure report if exists
   const reportPath = path.join(evidenceDir, "evidence-report.md");
-  if (fs.existsSync(reportPath)) {
-    const reportContent = fs.readFileSync(reportPath, "utf8");
-    const docResult = validateClosureDocument(reportContent);
-    if (!docResult.valid) {
-      console.warn(`[VALIDATOR] Note: Closure report document has structural notes:\n${docResult.errors.map((e) => `  - ${e}`).join("\n")}`);
-    } else {
-      console.log("[VALIDATOR] Closure report structure verified!");
-    }
+  if (!fs.existsSync(reportPath)) {
+    console.error(`[VALIDATOR] Closure report missing: ${reportPath}`);
+    process.exit(1);
   }
+  const reportContent = fs.readFileSync(reportPath, "utf8");
+  const docResult = validateClosureDocument(reportContent);
+  if (!docResult.valid) {
+    console.error(`[VALIDATOR] Closure report validation FAILED:\n${docResult.errors.map((e) => `  - ${e}`).join("\n")}`);
+    process.exit(1);
+  }
+  console.log("[VALIDATOR] Closure report structure verified!");
 
   process.exit(0);
 }
