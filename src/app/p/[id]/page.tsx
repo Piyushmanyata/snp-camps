@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionProfile, isCampCrew } from "@/lib/auth";
+import { getSessionProfile, isCampCrew, roleHome } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 
 /**
@@ -32,18 +32,13 @@ export default async function PatientScanPage({
       <main className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-lg font-semibold">Camp desk scan only</h1>
         <p className="mt-2 text-sm text-muted">
-          This QR is for camp staff. Show it at the volunteer or doctor desk.
+          This QR is for camp staff. Show it at the volunteer desk.
         </p>
       </main>
     );
   }
 
-  const deskBase =
-    profile?.role === "admin"
-      ? "/admin"
-      : profile?.role === "doctor"
-        ? "/doctor"
-        : "/volunteer";
+  const deskBase = roleHome(profile?.role) || "/volunteer";
 
   redirect(`${deskBase}?scan=${id}`);
 }

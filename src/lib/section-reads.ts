@@ -40,17 +40,6 @@ export type KpisSectionData = {
   seen: number;
 };
 
-export type DoctorStatsData = {
-  seenToday: number;
-  seenTotal: number;
-};
-
-export type DoctorSeenRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  seen_at: string | null;
-};
 
 export type AdminQueueCountsData = {
   registered: number;
@@ -59,22 +48,12 @@ export type AdminQueueCountsData = {
   avgWaitMinutes: number | null;
 };
 
-/** Pending counter work for patients already seen by a doctor (#106). */
-export type AwaitingTreatmentData = {
-  ot: number;
-  pharmacy: number;
-  spectacles: number;
-};
 
 export const SECTION_KEYS = [
   "queue",
   "seats",
   "volunteer-kpis",
-  "doctors",
-  "doctor-stats",
-  "doctor-seen",
   "admin-queue-counts",
-  "awaiting-treatment",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -233,75 +212,8 @@ export async function loadStaffLeaderboardSection(
   };
 }
 
-export async function loadDoctorsSection(): Promise<
-  SectionResult<DoctorOption[]>
-> {
-  try {
-    const list = await getDoctorsList();
-    return { ok: true, data: list };
-  } catch (err) {
-    return {
-      ok: false,
-      error: mapDbError(err, {
-        context: "section.doctors",
-        fallback: DOCTOR_LIST_UNAVAILABLE,
-      }),
-    };
-  }
-}
 
-export async function loadDoctorStatsSection(
-  campId: string,
-): Promise<SectionResult<DoctorStatsData>> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("doctor_my_counts", {
-    p_camp_id: campId,
-    p_since: kolkataStartOfDayIso(),
-  });
 
-  if (error) {
-    return {
-      ok: false,
-      error: mapDbError(error, {
-        context: "section.doctor-stats",
-        fallback: "Your stats could not be loaded — retry.",
-      }),
-    };
-  }
-
-  return {
-    ok: true,
-    data: {
-      seenToday: Number(data?.[0]?.seen_today ?? 0),
-      seenTotal: Number(data?.[0]?.seen_total ?? 0),
-    },
-  };
-}
-
-export async function loadDoctorSeenSection(
-  campId: string,
-): Promise<SectionResult<DoctorSeenRow[]>> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("doctor_recent_patients", {
-    p_camp_id: campId,
-    p_limit: 50,
-  });
-
-  if (error) {
-    return {
-      ok: false,
-      error: mapDbError(error, {
-        context: "section.doctor-seen",
-        fallback: "Patients you saw could not be loaded — retry.",
-      }),
-    };
-  }
-
-  return {
-    ok: true,
-    data: (data || []) as DoctorSeenRow[],
-  };
-}
 
 export async function loadAdminQueueCountsSection(
   campId: string,
@@ -344,62 +256,6 @@ export async function loadAdminQueueCountsSection(
  * Count distinct seen patients with at least one pending order per station
  * in the active camp. Derived only — no fourth queue_status (#106 / ADR 0007).
  */
-export async function loadAwaitingTreatmentSection(
-  campId: string,
-): Promise<SectionResult<AwaitingTreatmentData>> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("treatment_orders")
-    .select(
-      `
-      kind,
-      patient_id,
-      patient:patients!treatment_orders_patient_id_fkey!inner (
-        id,
-        queue_status,
-        camp_id
-      )
-    `,
-    )
-    .eq("camp_id", campId)
-    .eq("status", "pending")
-    .eq("patient.queue_status", "seen")
-    .eq("patient.camp_id", campId);
-
-  if (error) {
-    return {
-      ok: false,
-      error: mapDbError(error, {
-        context: "section.awaiting-treatment",
-        fallback: "Awaiting treatment counts could not be loaded — retry.",
-      }),
-    };
-  }
-
-  const sets = {
-    ot: new Set<string>(),
-    pharmacy: new Set<string>(),
-    spectacles: new Set<string>(),
-  };
-
-  for (const row of data || []) {
-    const kind = (row as { kind?: string }).kind;
-    const patientId = (row as { patient_id?: string }).patient_id;
-    if (!patientId) continue;
-    if (kind === "ot" || kind === "pharmacy" || kind === "spectacles") {
-      sets[kind].add(patientId);
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      ot: sets.ot.size,
-      pharmacy: sets.pharmacy.size,
-      spectacles: sets.spectacles.size,
-    },
-  };
-}
 
 /** Dispatch one narrow section read — used by the section API and tests. */
 export async function loadSection(
@@ -421,20 +277,9 @@ export async function loadSection(
         return { ok: false, error: "Camp and user required." };
       }
       return loadVolunteerKpisSection(campId, userId);
-    case "doctors":
-      return loadDoctorsSection();
-    case "doctor-stats":
-      if (!campId) return { ok: false, error: "Camp required." };
-      return loadDoctorStatsSection(campId);
-    case "doctor-seen":
-      if (!campId) return { ok: false, error: "Camp required." };
-      return loadDoctorSeenSection(campId);
     case "admin-queue-counts":
       if (!campId) return { ok: false, error: "Camp required." };
       return loadAdminQueueCountsSection(campId);
-    case "awaiting-treatment":
-      if (!campId) return { ok: false, error: "Camp required." };
-      return loadAwaitingTreatmentSection(campId);
     default: {
       const _exhaustive: never = section;
       return { ok: false, error: `Unknown section: ${_exhaustive}` };

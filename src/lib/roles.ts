@@ -1,22 +1,25 @@
 import type { UserRole } from "@/lib/types";
 
 /**
- * Staff — admin, team_lead, or volunteer.
- * Desk ops, registration, patient management. Matches SQL `is_staff()`.
- * Does NOT include doctor.
+ * Camp roles: admin, team_lead, volunteer.
+ *
+ * The doctor station was retired — the doctor writes on the printed
+ * prescription and a volunteer or team lead scans it to mark the patient seen.
+ * `is_staff()` and `is_camp_crew()` therefore describe the same set;
+ * `isCampCrew` survives only as a name for "anyone who works a camp".
  */
+
+/** Staff — admin, team lead, or volunteer. Matches SQL `is_staff()`. */
 export function isStaff(role?: UserRole | string | null) {
   return role === "admin" || role === "team_lead" || role === "volunteer";
 }
 
 /**
- * Camp crew — admin, team_lead, volunteer, or doctor.
- * Any non-patient operational role at a camp (QR scan handoff, desks).
+ * Camp crew — every non-patient operational role at a camp.
+ * Identical to {@link isStaff} now that doctors hold no login role.
  * Matches SQL `is_camp_crew()`.
  */
-export function isCampCrew(role?: UserRole | string | null) {
-  return role === "admin" || role === "team_lead" || role === "volunteer" || role === "doctor";
-}
+export const isCampCrew = isStaff;
 
 export function isAdmin(role?: UserRole | string | null) {
   return role === "admin";
@@ -26,28 +29,23 @@ export function isTeamLead(role?: UserRole | string | null) {
   return role === "team_lead";
 }
 
-export function isDoctor(role?: UserRole | string | null) {
-  return role === "doctor";
-}
-
-/** Who may register patients at the desk (same set as Staff). */
+/** Who may register patients and print prescriptions (same set as Staff). */
 export function canRegisterPatients(role?: UserRole | string | null) {
   return isStaff(role);
 }
 
 export function roleHome(role?: UserRole | string | null) {
   if (role === "admin") return "/admin";
-  // A team lead works the same desk as a volunteer — register, check-in, scan,
-  // queue — and /volunteer already adds their team panel on top. /team-lead is
-  // the admin's roster view, not a lead's home.
+  // A team lead works the same desk as a volunteer — scan, print, mark seen —
+  // and /volunteer already adds their team panel on top. /team-lead is the
+  // admin's roster view, not a lead's home.
   if (role === "team_lead") return "/volunteer";
   if (role === "volunteer") return "/volunteer";
-  if (role === "doctor") return "/doctor";
   // Patients do not authenticate (#59). Passwordless status is /s/<token>.
   return null;
 }
 
-/** True only for staff/doctor login roles; residual patient profiles are denied. */
+/** True only for camp login roles; residual patient/doctor profiles are denied. */
 export function isLoginRole(role?: UserRole | string | null): role is UserRole {
-  return role === "admin" || role === "team_lead" || role === "volunteer" || role === "doctor";
+  return isStaff(role);
 }

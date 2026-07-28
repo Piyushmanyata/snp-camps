@@ -1,12 +1,27 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
+import { canRegisterPatients, getSessionProfile, roleHome } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 import { loadPrintSlips } from "@/lib/print-slip-load";
-import { DeskSlipPrint } from "@/components/desk-slip-print";
-import { RegistrationPrescriptionSheet } from "@/components/registration-prescription-sheet";
+import { PrescriptionSheet } from "@/components/prescription-sheet";
+import { resolvePrescriptionTemplate } from "@/lib/prescription-template";
 import { PrintActions } from "@/components/print-actions";
+import { Card } from "@/components/ui";
+
+export const metadata: Metadata = { title: "Print prescription" };
+
+function NotPrintable({ title, detail }: { title: string; detail: string }) {
+  return (
+    <main id="main" className="mx-auto max-w-lg px-4 py-10">
+      <Card className="text-center">
+        <p className="text-lg font-semibold">{title}</p>
+        <p className="mt-1 text-sm text-muted">{detail}</p>
+      </Card>
+    </main>
+  );
+}
 
 export default async function PrintPage({
   params,
@@ -21,19 +36,15 @@ export default async function PrintPage({
   const { profile } = await getSessionProfile();
   if (!profile) redirect("/login");
   if (!canRegisterPatients(profile.role)) {
-    redirect(profile.role === "doctor" ? "/doctor" : "/");
+    redirect(roleHome(profile.role) || "/");
   }
 
   if (!isPatientUuid(id)) {
     return (
-      <main id="main" className="mx-auto max-w-lg px-4 py-10">
-        <div className="rounded-2xl border border-border bg-card p-6 text-center">
-          <p className="text-lg font-semibold">Invalid patient link</p>
-          <p className="mt-1 text-sm text-muted">
-            Check the QR or registration number and try again.
-          </p>
-        </div>
-      </main>
+      <NotPrintable
+        title="Invalid patient link"
+        detail="Check the QR or registration number and try again."
+      />
     );
   }
 
@@ -44,80 +55,48 @@ export default async function PrintPage({
   const origin = process.env.NEXT_PUBLIC_SITE_URL || `${proto}://${host}`;
 
   const loaded = await loadPrintSlips(supabase, [id], origin);
-  const slip = loaded[0];
+  const record = loaded[0];
 
-  if (!slip) {
+  if (!record) {
     return (
-      <main id="main" className="mx-auto max-w-lg px-4 py-10">
-        <div className="rounded-2xl border border-border bg-card p-6 text-center">
-          <p className="text-lg font-semibold">Patient not found</p>
-          <p className="mt-1 text-sm text-muted">
-            Check the QR or registration number and try again.
-          </p>
-        </div>
-      </main>
+      <NotPrintable
+        title="Patient not found"
+        detail="Check the QR or registration number and try again."
+      />
     );
   }
 
-  const deskHref = profile.role === "admin" ? "/admin" : "/volunteer";
+  const deskHref = roleHome(profile.role) || "/volunteer";
   const deskLabel =
     profile.role === "admin" ? "Admin dashboard" : "Volunteer desk";
 
-  // #108 — camp paper_fallback_mode prints the blank Prescription Sheet
-  // instead of the desk slip. One or the other, never both.
-  if (slip.paperFallbackMode) {
-    return (
-      <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
-        <PrintActions
-          className="no-print mb-4"
-          patients={[
-            {
-              id: slip.patient.id,
-              regNo: slip.patient.reg_no,
-              name: slip.patient.full_name,
-              queueStatus: slip.queueStatus ?? "waiting",
-            },
-          ]}
-          deskHref={deskHref}
-          deskLabel={deskLabel}
-          autoPrint={autoPrint}
-        />
-        <RegistrationPrescriptionSheet
-          patient={{
-            id: slip.patient.id,
-            reg_no: slip.patient.reg_no,
-            full_name: slip.patient.full_name,
-            age: slip.age,
-            gender: slip.gender,
-          }}
-          camp={slip.camp}
-          campDayDate={slip.campDayDate}
-          qrValue={slip.qrValue}
-        />
-        <p className="no-print mt-3 text-center text-xs text-muted">
-          Prescription Sheet · blank form for handwritten notes · Patient QR is
-          for <strong>staff scan only</strong>.
-        </p>
-      </main>
-    );
-  }
-
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
-      <DeskSlipPrint
-        slips={[
+      <PrintActions
+        className="no-print mb-4"
+        patients={[
           {
-            patient: slip.patient,
-            camp: slip.camp,
-            campDayDate: slip.campDayDate,
-            qrValue: slip.qrValue,
-            queueStatus: slip.queueStatus,
+            id: record.patient.id,
+            regNo: record.patient.reg_no,
+            name: record.patient.full_name,
+            queueStatus: record.queueStatus ?? "waiting",
           },
         ]}
         deskHref={deskHref}
         deskLabel={deskLabel}
         autoPrint={autoPrint}
       />
+      <PrescriptionSheet
+        patient={record.patient}
+        camp={record.camp}
+        campDayDate={record.campDayDate}
+        qrValue={record.qrValue}
+        template={resolvePrescriptionTemplate(record.prescriptionTemplate)}
+      />
+      <p className="no-print mt-3 text-center text-xs text-muted">
+        Prescription · clinical fields are written by hand · the Patient QR is
+        for <strong>staff scan only</strong>.
+      </p>
     </main>
   );
 }

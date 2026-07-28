@@ -1,19 +1,24 @@
 /**
- * Server-side load of desk-slip slots for print routes (#64).
+ * Server-side load of the patient data the printed prescription needs.
  * Auth + RLS applied by the caller's supabase client.
+ *
+ * Desk slips were retired — a camp day prints prescriptions and nothing else —
+ * so this loads the identity block of the prescription sheet.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
-import type { DeskSlipSlot } from "@/components/print-sheet";
+import type { PrescriptionSheetPatient } from "@/components/prescription-sheet";
 import type { QueueStatus } from "@/lib/types";
 
-export type LoadedPrintPatient = DeskSlipSlot & {
+export type LoadedPrintPatient = {
+  patient: PrescriptionSheetPatient;
+  camp: { name: string; venue: string | null } | null;
+  campDayDate: string | null;
+  qrValue: string;
   queueStatus: QueueStatus;
-  age: number | null;
-  gender: string | null;
-  /** Camp registration print mode: true → Prescription Sheet (#108). */
-  paperFallbackMode: boolean;
+  /** Per-camp prescription template overrides, or null for the default. */
+  prescriptionTemplate: unknown;
 };
 
 type PatientRow = {
@@ -22,20 +27,12 @@ type PatientRow = {
   full_name: string;
   age: number | null;
   gender: string | null;
+  address: string | null;
+  phone: string | null;
   queue_status: QueueStatus;
   camps:
-    | {
-        name: string;
-        venue: string | null;
-        camp_date: string | null;
-        paper_fallback_mode?: boolean | null;
-      }
-    | {
-        name: string;
-        venue: string | null;
-        camp_date: string | null;
-        paper_fallback_mode?: boolean | null;
-      }[]
+    | { name: string; venue: string | null; prescription_template?: unknown }
+    | { name: string; venue: string | null; prescription_template?: unknown }[]
     | null;
   camp_days: { day_date: string } | { day_date: string }[] | null;
 };
@@ -51,27 +48,23 @@ function campDayFromRow(row: PatientRow): string | null {
   return dayRel?.day_date ?? null;
 }
 
-function toSlot(row: PatientRow, origin: string): LoadedPrintPatient {
+function toLoaded(row: PatientRow, origin: string): LoadedPrintPatient {
   const camp = campFromRow(row);
   return {
     patient: {
       id: row.id,
       reg_no: row.reg_no,
       full_name: row.full_name,
+      age: row.age,
+      gender: row.gender,
+      address: row.address,
+      phone: row.phone,
     },
-    camp: camp
-      ? {
-          name: camp.name,
-          venue: camp.venue,
-          camp_date: camp.camp_date,
-        }
-      : null,
+    camp: camp ? { name: camp.name, venue: camp.venue } : null,
     campDayDate: campDayFromRow(row),
     qrValue: patientScanUrl(row.id, origin),
     queueStatus: row.queue_status,
-    age: row.age,
-    gender: row.gender,
-    paperFallbackMode: Boolean(camp?.paper_fallback_mode),
+    prescriptionTemplate: camp?.prescription_template ?? null,
   };
 }
 
@@ -97,7 +90,7 @@ export async function loadPrintSlips(
   const { data, error } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, age, gender, queue_status, camps(name, venue, camp_date, paper_fallback_mode), camp_days(day_date)",
+      "id, reg_no, full_name, age, gender, address, phone, queue_status, camps(name, venue, prescription_template), camp_days(day_date)",
     )
     .in("id", clean);
 
@@ -112,7 +105,7 @@ export async function loadPrintSlips(
   for (const id of clean) {
     const row = byId.get(id);
     if (!row) continue;
-    out.push(toSlot(row, origin));
+    out.push(toLoaded(row, origin));
   }
   return out;
 }

@@ -9,7 +9,6 @@ export {
   isCampCrew,
   isAdmin,
   isTeamLead,
-  isDoctor,
   canRegisterPatients,
   roleHome,
 } from "@/lib/roles";

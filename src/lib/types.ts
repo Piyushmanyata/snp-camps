@@ -1,5 +1,9 @@
-/** Login roles only. Legacy DB enum may still list `patient`; app treats it as non-login. */
-export type UserRole = "admin" | "team_lead" | "volunteer" | "doctor";
+/**
+ * Login roles only. The legacy DB enum may still list `patient` and `doctor`;
+ * the app treats both as non-login. The doctor station was retired — a
+ * volunteer or team lead marks a patient seen by scanning their prescription.
+ */
+export type UserRole = "admin" | "team_lead" | "volunteer";
 export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {
@@ -24,12 +28,6 @@ export type Camp = {
   post_camp_surgery_date?: string | null;
   post_camp_surgery_venue?: string | null;
   paper_fallback_mode?: boolean;
-};
-
-/** Doctor picker option shared by desk RSC loaders and client scanners. */
-export type DoctorOption = {
-  id: string;
-  full_name: string | null;
 };
 
 export type CampDayStats = {
