@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Card, SectionTitle, Button, Input, ErrorBox, SuccessBox } from "@/components/ui";
+import { Card, SectionTitle } from "@/components/ui";
+import { AdminStaff } from "@/components/admin-staff";
+import type { StaffPerson } from "@/components/staff-detail";
 
 type StaffKpiRow = {
   staff_id: string;
@@ -15,52 +16,29 @@ type StaffKpiRow = {
 export function TeamLeadPanel({
   currentUserId,
   initialLeaderboard,
+  teamVolunteers,
 }: {
   currentUserId: string;
   initialLeaderboard: StaffKpiRow[];
+  /**
+   * The caller's own team, for the add/manage roster. Omitted by the admin
+   * dashboard, which manages every volunteer on the volunteer desk instead —
+   * the roster card is then not rendered at all.
+   */
+  teamVolunteers?: StaffPerson[];
 }) {
   const leaderboard = initialLeaderboard;
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   const teamLeads = leaderboard.filter((r) => r.role === "team_lead" || r.role === "admin");
   const volunteers = leaderboard.filter((r) => r.role === "volunteer");
 
   const myTeamLeadRow = leaderboard.find((r) => r.staff_id === currentUserId);
-  const myTeamVolunteers = volunteers.filter((v) => v.team_lead_id === currentUserId);
-
-  async function handleCreateVolunteer(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/team-lead/create-volunteer", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, fullName, teamLeadId: currentUserId }),
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          // Shown once and never stored — without it the new volunteer has no
-          // way to sign in.
-          setSuccess(
-            `Volunteer "${fullName}" added to your team. Temporary password: ${data.temporaryPassword} — share it now, it is not shown again.`,
-          );
-          setEmail("");
-          setFullName("");
-        } else {
-          setError(data.error || "Failed to create volunteer.");
-        }
-      } catch {
-        setError("Network error creating volunteer.");
-      }
-    });
-  }
+  // Headcount comes from the roster, not the leaderboard: the leaderboard only
+  // carries staff who have handled a patient at this camp, so counting it hid
+  // every volunteer who had not registered anyone yet.
+  const activeTeamSize = teamVolunteers
+    ? teamVolunteers.filter((v) => !v.disabled_at).length
+    : volunteers.filter((v) => v.team_lead_id === currentUserId).length;
 
   return (
     <div className="space-y-4">
@@ -79,44 +57,29 @@ export function TeamLeadPanel({
           <div className="rounded-xl border border-brand/20 bg-card p-3">
             <p className="text-xs font-semibold text-muted uppercase">Team Headcount</p>
             <p className="text-2xl font-extrabold text-foreground tabular mt-1">
-              {myTeamVolunteers.length}
+              {activeTeamSize}
             </p>
           </div>
         </div>
       </Card>
 
-      {/* Add Volunteer to Team */}
-      <Card className="!p-4 sm:!p-5">
-        <SectionTitle hint="Add a new volunteer to your team">
-          Create Team Volunteer
-        </SectionTitle>
-        <form onSubmit={handleCreateVolunteer} className="space-y-3 mt-2">
-          <ErrorBox message={error} />
-          <SuccessBox message={success} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              id="new-vol-name"
-              label="Volunteer Full Name *"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Rahul Sharma"
-            />
-            <Input
-              id="new-vol-email"
-              label="Email Address *"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. rahul@example.com"
+      {teamVolunteers ? (
+        /* Add and manage the volunteers on this team. Same component the admin
+           uses; the staff API scopes every read and write to the caller's team. */
+        <Card className="!p-4 sm:!p-5">
+          <SectionTitle hint="Add · reset password · deactivate">
+            My team&apos;s volunteers
+          </SectionTitle>
+          <div className="mt-2">
+            <AdminStaff
+              role="volunteer"
+              initial={teamVolunteers}
+              canManage
+              canViewDetail={false}
             />
           </div>
-          <Button type="submit" variant="primary" loading={isPending} className="w-full sm:w-auto">
-            + Add Volunteer to My Team
-          </Button>
-        </form>
-      </Card>
+        </Card>
+      ) : null}
 
       {/* Two Leaderboards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

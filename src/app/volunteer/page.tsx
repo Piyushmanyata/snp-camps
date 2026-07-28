@@ -40,6 +40,7 @@ import { SeatBoard } from "@/components/seat-board";
 import { CheckIn } from "@/components/check-in";
 import { AdminStaff } from "@/components/admin-staff";
 import { TeamLeadPanel } from "@/components/team-lead-panel";
+import type { StaffPerson } from "@/components/staff-detail";
 
 export default async function VolunteerPage() {
   const { userId, profile } = await getSessionProfile();
@@ -149,6 +150,25 @@ export default async function VolunteerPage() {
     | null = null;
   let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
   let leaderboard: StaffKpiRow[] = [];
+  let teamVolunteers: StaffPerson[] = [];
+
+  // A team lead manages their own roster from the desk. Read it before the camp
+  // gate below: the roster exists whether or not a camp is active.
+  if (teamLead && userId) {
+    const { data: roster, error: rosterError } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at, disabled_at")
+      .eq("role", "volunteer")
+      .eq("team_lead_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (rosterError) {
+      // Soft failure — the desk must still open. The panel shows an empty roster.
+      mapDbError(rosterError, { context: "volunteer-page.team-roster" });
+    } else {
+      teamVolunteers = roster ?? [];
+    }
+  }
 
   if (camp && userId) {
     // Independent loads — one failure must not blank the rest of the desk.
@@ -205,6 +225,7 @@ export default async function VolunteerPage() {
           <TeamLeadPanel
             currentUserId={userId ?? ""}
             initialLeaderboard={leaderboard}
+            teamVolunteers={teamVolunteers}
           />
         ) : null}
         <Card className="bg-brand-soft !p-4 sm:!p-5">

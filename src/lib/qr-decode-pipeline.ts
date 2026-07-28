@@ -48,18 +48,71 @@ export const THOROUGH_VARIANTS: Variant[] = [
  * biggest win available (measured at 2560x1440 vs 1280x720: 180ms vs 39ms for
  * one cheap pass, 1222ms vs 288ms for the full cascade).
  *
- * 1600 rather than a tighter 1280: it leaves the 0.6-scale crop probe (1536px
- * off a 2560 capture) untouched, so only the whole-frame probe — which is for
- * cards filling the frame, where pixels are abundant — loses any detail. A QR
- * needs a few pixels per module and synthetic frames decode at 2px/module, but
- * real frames carry sensor noise and motion blur, so the margin is deliberate.
+ * 1200 is measured, not guessed. Against a synthetic 2560x1440 frame holding a
+ * faint tiny legacy QR, tightening 1600 -> 1200 *raised* the hit rate (4/8 ->
+ * 5/8 probe-variant combinations) while halving cost (1082 -> 549ms): shrinking
+ * averages sensor noise away instead of aliasing it into the modules. The floor
+ * is set by the densest modern Secure QR, which still reads at 1200 but fails
+ * outright at 800 — so do not lower this without re-running that check
+ * (tests/qr-decode-surface.test.mjs).
+ *
  * Capture stays high-resolution; only the decode surface is bounded.
  */
-export const MAX_DECODE_EDGE = 1600;
+export const MAX_DECODE_EDGE = 1200;
 
 /** Scale factor that brings `width`x`height` under `MAX_DECODE_EDGE`. */
 export function decodeScale(width: number, height: number, cap = MAX_DECODE_EDGE): number {
   return Math.min(1, cap / Math.max(width, height));
+}
+
+/** One probe geometry: a centre-ish crop of the frame, magnified by `zoom`. */
+export type Probe = {
+  scale: number;
+  zoom: number;
+  offsetX?: number;
+  offsetY?: number;
+};
+
+/**
+ * Source rect and bounded destination size for one probe against a frame.
+ *
+ * Pure and exported so the destination bound is testable: twice now a refactor
+ * of the live loop dropped the cap and decoded crops at native camera
+ * resolution, which costs seconds per frame and reads as a frozen scanner.
+ * Returns null when the crop is too small to hold a QR.
+ */
+export function probeSurface(
+  frameWidth: number,
+  frameHeight: number,
+  probe: Probe,
+): { sx: number; sy: number; cw: number; ch: number; dw: number; dh: number } | null {
+  const cw = Math.floor(frameWidth * probe.scale);
+  const ch = Math.floor(frameHeight * probe.scale);
+  if (cw < 100 || ch < 100) return null;
+
+  const sx = Math.max(
+    0,
+    Math.min(frameWidth - cw, Math.floor((frameWidth - cw) / 2 + (probe.offsetX || 0) * frameWidth)),
+  );
+  const sy = Math.max(
+    0,
+    Math.min(
+      frameHeight - ch,
+      Math.floor((frameHeight - ch) / 2 + (probe.offsetY || 0) * frameHeight),
+    ),
+  );
+
+  // Zoom raises pixels-per-module for the physically tiny legacy QR; the cap
+  // then bounds the cost, so the zoom intent survives without the pixel bill.
+  const shrink = decodeScale(cw * probe.zoom, ch * probe.zoom);
+  return {
+    sx,
+    sy,
+    cw,
+    ch,
+    dw: Math.max(1, Math.floor(cw * probe.zoom * shrink)),
+    dh: Math.max(1, Math.floor(ch * probe.zoom * shrink)),
+  };
 }
 
 type ZxingModule = typeof import("@zxing/library");
@@ -354,70 +407,4 @@ export function decodeImageMultiPass(
   }
 
   return null;
-}
-
-/**
- * Crop/scale windows to try, widest first. A card held close reads from the
- * full frame; a card lying on a desk reads from a centre crop, which also
- * raises effective resolution on the dense Secure QR.
- */
-export function cropRegions(
-  source: CanvasImageSource,
-  width: number,
-  height: number,
-  scales: number[],
-): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D }[] {
-  const regions: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D }[] = [];
-  for (const scale of scales) {
-    const cw = Math.floor(width * scale);
-    const ch = Math.floor(height * scale);
-    if (cw < 80 || ch < 80) continue;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) continue;
-    ctx.drawImage(
-      source,
-      Math.floor((width - cw) / 2),
-      Math.floor((height - ch) / 2),
-      cw,
-      ch,
-      0,
-      0,
-      cw,
-      ch,
-    );
-    regions.push({ canvas, ctx });
-  }
-  return regions;
-}
-
-/**
- * Upscale a small/dense code so its modules span enough pixels for the
- * decoders' grid detection. Smoothing off keeps module edges hard. The cap
- * ensures we stay responsive even on high-res devices.
- */
-export function upscale(
-  source: CanvasImageSource,
-  width: number,
-  height: number,
-  factor = 2,
-  cap = MAX_DECODE_EDGE,
-): ImageData | null {
-  const targetWidth = width * factor;
-  const targetHeight = height * factor;
-  const scale = decodeScale(targetWidth, targetHeight, cap);
-  const finalWidth = Math.floor(targetWidth * scale);
-  const finalHeight = Math.floor(targetHeight * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = finalWidth;
-  canvas.height = finalHeight;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(source, 0, 0, finalWidth, finalHeight);
-  return ctx.getImageData(0, 0, finalWidth, finalHeight);
 }

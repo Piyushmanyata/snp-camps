@@ -36,7 +36,6 @@ import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
 import { createClient } from "@/lib/supabase/server";
-import { AdminStaff } from "@/components/admin-staff";
 import {
   AdminTestSmsLazySection,
   ChangePasswordLazySection,
@@ -49,11 +48,6 @@ export default async function AdminPage() {
   }
 
   const supabase = await createClient();
-  const { data: teamLeads } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, phone, role, created_at, disabled_at")
-    .eq("role", "team_lead")
-    .order("created_at", { ascending: false });
 
   let camps: Camp[] = [];
   let campsError: string | null = null;

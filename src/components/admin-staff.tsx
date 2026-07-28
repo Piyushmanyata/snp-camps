@@ -100,11 +100,19 @@ export function AdminStaff({
   role,
   initial,
   canManage = true,
+  canViewDetail = true,
 }: {
   role: ManageableStaffRole;
   initial: StaffPerson[];
-  /** Create, reset, deactivate, and reactivate accounts — admin only */
+  /** Create, reset, deactivate, and reactivate accounts */
   canManage?: boolean;
+  /**
+   * Expand a row for per-patient KPIs. The staff-detail route and the
+   * `staff_person_kpis` RPC both allow this only for an admin, or for someone
+   * reading their own numbers — so a team lead managing their team passes false
+   * rather than being offered a control that returns 403.
+   */
+  canViewDetail?: boolean;
 }) {
   const copy = roleCopy(role);
   const apiBase = `/api/admin/staff/${role}`;
@@ -337,7 +345,11 @@ export function AdminStaff({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">{copy.intro}</p>
+      <p className="text-sm text-muted">
+        {canViewDetail
+          ? copy.intro
+          : copy.intro.replace(/\s*Tap a [a-z ]+ for KPIs\.?/i, "")}
+      </p>
       <p
         className="sr-only"
         role="status"
@@ -363,26 +375,38 @@ export function AdminStaff({
           return (
             <li key={person.id}>
               <div className="flex flex-col items-stretch gap-2 px-3 py-2.5 sm:flex-row sm:items-center">
-                <button
-                  id={`staff-detail-trigger-${person.id}`}
-                  type="button"
-                  onClick={() => setSelectedId(open ? null : person.id)}
-                  aria-expanded={open}
-                  aria-controls={detailId}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <p className="truncate font-medium text-foreground">
-                    {person.full_name || "—"}
-                  </p>
-                  <p className="truncate text-xs text-muted">
-                    {person.email || "no email"}
-                    {person.disabled_at
-                      ? " · disabled"
-                      : open
-                        ? " · viewing KPIs"
-                        : " · tap for KPIs"}
-                  </p>
-                </button>
+                {canViewDetail ? (
+                  <button
+                    id={`staff-detail-trigger-${person.id}`}
+                    type="button"
+                    onClick={() => setSelectedId(open ? null : person.id)}
+                    aria-expanded={open}
+                    aria-controls={detailId}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="truncate font-medium text-foreground">
+                      {person.full_name || "—"}
+                    </p>
+                    <p className="truncate text-xs text-muted">
+                      {person.email || "no email"}
+                      {person.disabled_at
+                        ? " · disabled"
+                        : open
+                          ? " · viewing KPIs"
+                          : " · tap for KPIs"}
+                    </p>
+                  </button>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-foreground">
+                      {person.full_name || "—"}
+                    </p>
+                    <p className="truncate text-xs text-muted">
+                      {person.email || "no email"}
+                      {person.disabled_at ? " · disabled" : ""}
+                    </p>
+                  </div>
+                )}
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
                   <Badge tone="ok">{role}</Badge>
                   {person.disabled_at ? (

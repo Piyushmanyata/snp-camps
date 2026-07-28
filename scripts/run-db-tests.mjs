@@ -22,6 +22,7 @@ const dbTestFiles = [
   "tests/person-expand.db.test.mjs",
   "tests/person-migrate.db.test.mjs",
   "tests/person-lock.db.test.mjs",
+  "tests/team-lead-team-read.db.test.mjs",
   "tests/ops-readiness.test.mjs",
 ];
 

@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { readJsonBody, requireAdmin } from "@/lib/auth";
+import { getSessionProfile, readJsonBody, requireAdmin } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
 export type StaffRole = "doctor" | "volunteer" | "team_lead";
@@ -34,6 +34,36 @@ async function parseRole(
   return raw as StaffRole;
 }
 
+/**
+ * Who may act on this staff role: an admin always, plus a team lead confined to
+ * volunteers. `scopeTeamLeadId` is non-null only for the team-lead case and is
+ * the caller's own id — every query below filters on it, so a lead can never
+ * read or change a volunteer outside their team, or any doctor or other lead.
+ *
+ * A separate team-lead route would duplicate the deactivate/reactivate/reset
+ * flows and drift from them; one guard here keeps a single implementation.
+ */
+async function requireStaffManager(
+  role: StaffRole,
+): Promise<{ userId: string; scopeTeamLeadId: string | null } | { error: NextResponse }> {
+  const { userId, profile } = await getSessionProfile();
+  if (!userId) {
+    return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
+  }
+  if (profile?.role === "admin") {
+    return { userId, scopeTeamLeadId: null };
+  }
+  if (profile?.role === "team_lead" && role === "volunteer") {
+    return { userId, scopeTeamLeadId: userId };
+  }
+  return {
+    error: NextResponse.json(
+      { error: "You can only manage volunteers on your own team" },
+      { status: 403 },
+    ),
+  };
+}
+
 /** Invalidate desk caches that depend on staff lists (over-invalidate is cheap). */
 function invalidateStaffCaches() {
   revalidateTag("doctors-list", { expire: 0 });
@@ -45,16 +75,25 @@ export async function GET(_req: Request, { params }: RouteCtx) {
   const roleOrErr = await parseRole(params);
   if (roleOrErr instanceof NextResponse) return roleOrErr;
 
-  const auth = await requireAdmin();
-  if ("error" in auth && auth.error) return auth.error;
-
   const role = roleOrErr;
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const auth = await requireStaffManager(role);
+  if ("error" in auth) return auth.error;
+
+  // A scoped caller reads through the service role with an explicit team filter:
+  // their own RLS grant does not cover other people's profile rows.
+  const scoped = auth.scopeTeamLeadId;
+  const supabase = scoped ? createServiceRoleClient() : await createClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Account service is unavailable" }, { status: 500 });
+  }
+
+  let query = supabase
     .from("profiles")
     .select("id, full_name, email, phone, role, created_at, disabled_at")
-    .eq("role", role)
-    .order("created_at", { ascending: false });
+    .eq("role", role);
+  if (scoped) query = query.eq("team_lead_id", scoped);
+
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json(
@@ -75,10 +114,10 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const roleOrErr = await parseRole(params);
   if (roleOrErr instanceof NextResponse) return roleOrErr;
 
-  const auth = await requireAdmin();
-  if ("error" in auth && auth.error) return auth.error;
-
   const role = roleOrErr;
+  const auth = await requireStaffManager(role);
+  if ("error" in auth) return auth.error;
+
   const label = roleLabel(role);
 
   const body = await readJsonBody<{
@@ -142,6 +181,8 @@ export async function POST(req: Request, { params }: RouteCtx) {
     role,
     full_name: fullName,
     email,
+    // A team lead can only staff their own team; an admin leaves it unassigned.
+    team_lead_id: auth.scopeTeamLeadId,
   });
 
   if (profileErr) {
@@ -175,10 +216,10 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
   const roleOrErr = await parseRole(params);
   if (roleOrErr instanceof NextResponse) return roleOrErr;
 
-  const auth = await requireAdmin();
-  if ("error" in auth && auth.error) return auth.error;
-
   const role = roleOrErr;
+  const auth = await requireStaffManager(role);
+  if ("error" in auth) return auth.error;
+
   const label = roleLabel(role);
 
   const body = await readJsonBody<{
@@ -213,11 +254,13 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
     );
   }
 
-  const { data: profile, error: profileError } = await admin
+  let profileQuery = admin
     .from("profiles")
     .select("id, full_name, email, role, disabled_at")
-    .eq("id", id)
-    .maybeSingle();
+    .eq("id", id);
+  // Scoped caller: the target must be on their team, or it does not exist to them.
+  if (auth.scopeTeamLeadId) profileQuery = profileQuery.eq("team_lead_id", auth.scopeTeamLeadId);
+  const { data: profile, error: profileError } = await profileQuery.maybeSingle();
 
   if (profileError) {
     return NextResponse.json(
@@ -313,10 +356,10 @@ export async function DELETE(req: Request, { params }: RouteCtx) {
   const roleOrErr = await parseRole(params);
   if (roleOrErr instanceof NextResponse) return roleOrErr;
 
-  const auth = await requireAdmin();
-  if ("error" in auth && auth.error) return auth.error;
-
   const role = roleOrErr;
+  const auth = await requireStaffManager(role);
+  if ("error" in auth) return auth.error;
+
   const label = roleLabel(role);
 
   const url = new URL(req.url);
@@ -353,11 +396,10 @@ export async function DELETE(req: Request, { params }: RouteCtx) {
     );
   }
 
-  const { data: profile, error: pErr } = await admin
-    .from("profiles")
-    .select("id, role, disabled_at")
-    .eq("id", id)
-    .maybeSingle();
+  let loadQuery = admin.from("profiles").select("id, role, disabled_at").eq("id", id);
+  // Scoped caller: the target must be on their team, or it does not exist to them.
+  if (auth.scopeTeamLeadId) loadQuery = loadQuery.eq("team_lead_id", auth.scopeTeamLeadId);
+  const { data: profile, error: pErr } = await loadQuery.maybeSingle();
 
   if (pErr) {
     return NextResponse.json(

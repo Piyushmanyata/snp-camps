@@ -14,7 +14,7 @@ import {
   type JsQrFn,
   type JsQrOptions,
 } from "@/lib/qr-detector";
-import type { QrPayload } from "@/lib/qr-decode-pipeline";
+import type { Probe, QrPayload } from "@/lib/qr-decode-pipeline";
 import { QrCameraSession } from "@/lib/qr-camera-session";
 
 /** Dense Aadhaar QR needs pixels; cap decode work to keep the loop responsive. */
@@ -43,7 +43,7 @@ const THOROUGH_EVERY_N_FRAMES = 4;
  * to resolve from the whole frame. Cropping in and upscaling is what makes
  * those cards readable at all.
  */
-const LIVE_PROBES: { scale: number; zoom: number; offsetX?: number; offsetY?: number }[] = [
+const LIVE_PROBES: Probe[] = [
   { scale: 1, zoom: 1 },
   { scale: 0.6, zoom: 1 },
   { scale: 0.4, zoom: 2 },
@@ -255,59 +255,54 @@ export function useAadhaarScanner(
      * Decode one probe geometry.
      *
      * Crops straight out of the video element in a single scaled drawImage, at a
-     * size bounded by the pipeline's decode scale. Drawing the whole frame at
-     * native camera resolution into intermediate canvases per probe costs three
-     * full-resolution surfaces for a decode that gains nothing above ~8px per
-     * QR module.
+     * size bounded by MAX_DECODE_EDGE. Two things here are load-bearing and were
+     * each regressed once already:
+     *
+     * - ONE bounded surface per probe. Decoding the crop at native camera
+     *   resolution costs 13s for a single thorough whole-frame probe on a
+     *   desktop CPU (a mid-range phone is several times worse), which reads to
+     *   the operator as a frozen scanner. Legacy cards feel this and modern ones
+     *   do not, because a modern Secure QR is large enough for the platform
+     *   detector to read off the raw video before any probe runs.
+     * - The platform detector gets the probe surface too, not just the raw
+     *   video. It is the fastest reader available and hardware-backed, but a
+     *   legacy card's QR is printed so small that it is unreadable at
+     *   whole-frame scale — cropping and magnifying first is what lets the tiny
+     *   legacy code use the same fast path a modern card gets for free.
      */
-    const decodeProbe = (
-      probe: { scale: number; zoom: number; offsetX?: number; offsetY?: number },
+    const decodeProbe = async (
+      probe: Probe,
       thorough: boolean,
-    ): QrPayload | null => {
+    ): Promise<QrPayload | null> => {
       if (!ctx || !video()) return null;
       const v = video()!;
-      const cw = Math.floor(v.videoWidth * probe.scale);
-      const ch = Math.floor(v.videoHeight * probe.scale);
-      if (cw < 100 || ch < 100) return null;
+      const surface = pipeline.probeSurface(v.videoWidth, v.videoHeight, probe);
+      if (!surface) return null;
+      const { sx, sy, cw, ch, dw, dh } = surface;
 
-      const sx = Math.max(
-        0,
-        Math.min(
-          v.videoWidth - cw,
-          Math.floor((v.videoWidth - cw) / 2 + (probe.offsetX || 0) * v.videoWidth),
-        ),
-      );
-      const sy = Math.max(
-        0,
-        Math.min(
-          v.videoHeight - ch,
-          Math.floor((v.videoHeight - ch) / 2 + (probe.offsetY || 0) * v.videoHeight),
-        ),
-      );
+      canvas.width = dw;
+      canvas.height = dh;
+      // Hard module edges when magnifying; smooth when shrinking, which
+      // averages sensor noise away instead of aliasing it into the modules.
+      ctx.imageSmoothingEnabled = dw < cw;
+      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
 
-      canvas.width = cw;
-      canvas.height = ch;
-      ctx.drawImage(v, sx, sy, cw, ch, 0, 0, cw, ch);
+      if (detector) {
+        try {
+          const hits = await detector.detect(canvas);
+          const raw = hits[0]?.rawValue;
+          if (raw) return raw;
+        } catch {
+          /* detector cannot read this surface — fall through to the decoders */
+        }
+      }
 
-      const options = {
+      return pipeline.decodeImageMultiPass(ctx.getImageData(0, 0, dw, dh), {
         jsQR,
         zxing,
         variants: thorough ? pipeline.THOROUGH_VARIANTS : pipeline.FAST_VARIANTS,
         jsQrOptions: LIVE_JSQR_OPTIONS,
-      };
-
-      // Upscale first when this probe is aimed at a small code. The cap ensures
-      // we stay responsive even on high-res devices.
-      if (probe.zoom > 1) {
-        const bigger = pipeline.upscale(canvas, cw, ch, probe.zoom, pipeline.MAX_DECODE_EDGE);
-        if (bigger) {
-          const hit = pipeline.decodeImageMultiPass(bigger, options);
-          if (hit) return hit;
-        }
-      }
-
-      const data = ctx.getImageData(0, 0, cw, ch);
-      return pipeline.decodeImageMultiPass(data, options);
+      });
     };
 
     const processFrame = async () => {
@@ -344,7 +339,7 @@ export function useAadhaarScanner(
             const thorough =
               frameTick > ESCALATE_AFTER_FRAMES &&
               frameTick % THOROUGH_EVERY_N_FRAMES === 0;
-            const payload = decodeProbe(
+            const payload = await decodeProbe(
               LIVE_PROBES[frameTick % LIVE_PROBES.length],
               thorough,
             );
