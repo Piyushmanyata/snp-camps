@@ -52,9 +52,30 @@ test("retired eKYC storage and RPC inputs are absent", async () => {
          and conname = 'patients_provenance_check'`,
     );
     assert.equal(constraints.length, 1);
-    assert.match(constraints[0].definition, /card_verified/);
+    assert.match(constraints[0].definition, /card_scanned/);
     assert.match(constraints[0].definition, /self_declared/);
+    assert.doesNotMatch(constraints[0].definition, /card_verified/);
     assert.doesNotMatch(constraints[0].definition, /ekyc_verified/);
+
+    const { rows: phoneColumns } = await client.query(
+      `select is_nullable, column_default
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'patients'
+         and column_name = 'phone_provenance'`,
+    );
+    assert.equal(phoneColumns.length, 1);
+    assert.equal(phoneColumns[0].is_nullable, "NO");
+    assert.match(phoneColumns[0].column_default, /self_declared/);
+
+    const { rows: phoneConstraints } = await client.query(
+      `select pg_get_constraintdef(oid) as definition
+       from pg_constraint
+       where conrelid = 'public.patients'::regclass
+         and conname = 'patients_phone_provenance_check'`,
+    );
+    assert.equal(phoneConstraints.length, 1);
+    assert.match(phoneConstraints[0].definition, /self_declared/);
   } finally {
     await client.end();
   }

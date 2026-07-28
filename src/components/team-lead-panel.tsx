@@ -17,6 +17,7 @@ export function TeamLeadPanel({
   currentUserId,
   initialLeaderboard,
   teamVolunteers,
+  hasActiveCamp,
 }: {
   currentUserId: string;
   initialLeaderboard: StaffKpiRow[];
@@ -26,6 +27,7 @@ export function TeamLeadPanel({
    * the roster card is then not rendered at all.
    */
   teamVolunteers?: StaffPerson[];
+  hasActiveCamp: boolean;
 }) {
   const leaderboard = initialLeaderboard;
 
@@ -39,17 +41,23 @@ export function TeamLeadPanel({
   const activeTeamSize = teamVolunteers
     ? teamVolunteers.filter((v) => !v.disabled_at).length
     : volunteers.filter((v) => v.team_lead_id === currentUserId).length;
+  const teamMetricById = Object.fromEntries(
+    volunteers
+      .filter((volunteer) => volunteer.team_lead_id === currentUserId)
+      .map((volunteer) => [volunteer.staff_id, volunteer.distinct_patients]),
+  );
+  const isTeamLeadView = teamVolunteers !== undefined;
 
   return (
     <div className="space-y-4">
-      {myTeamLeadRow?.role === "team_lead" ? (
+      {isTeamLeadView ? (
         <Card className="bg-brand-soft border-2 border-brand/20 !p-4 sm:!p-5">
         <SectionTitle hint="Your team's live rollup">
           Team Lead Overview
         </SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-xs font-semibold text-muted uppercase">Team Patients Handled</p>
+            <p className="text-xs font-semibold text-muted uppercase">Team distinct patients</p>
             <p className="text-2xl font-extrabold text-brand tabular mt-1">
               {myTeamLeadRow?.distinct_patients ?? 0}
             </p>
@@ -61,6 +69,11 @@ export function TeamLeadPanel({
             </p>
           </div>
         </div>
+        {!hasActiveCamp ? (
+          <p className="mt-3 text-sm text-muted" role="status">
+            No active camp — patient counts stay at zero. They are not career totals.
+          </p>
+        ) : null}
         </Card>
       ) : null}
 
@@ -77,13 +90,15 @@ export function TeamLeadPanel({
               initial={teamVolunteers}
               canManage
               canViewDetail={false}
+              metricById={teamMetricById}
             />
           </div>
         </Card>
       ) : null}
 
       {/* Two Leaderboards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {hasActiveCamp ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 1. Team Lead Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
@@ -96,22 +111,25 @@ export function TeamLeadPanel({
               {teamLeads.map((tl, rank) => (
                 <div
                   key={tl.staff_id}
-                  className={`flex items-center justify-between p-3 rounded-xl border ${
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 p-3 rounded-xl border ${
                     tl.staff_id === currentUserId
                       ? "border-brand bg-brand-soft font-bold text-brand"
                       : "border-border bg-card text-foreground"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className="w-6 text-center text-xs font-bold text-muted">
                       #{rank + 1}
                     </span>
-                    <div>
-                      <p className="text-sm font-bold">{tl.full_name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{tl.full_name}</p>
                       <p className="text-[11px] text-muted">{tl.team_headcount} volunteers</p>
                     </div>
                   </div>
-                  <span className="text-base font-extrabold tabular">{tl.distinct_patients} patients</span>
+                  <span className="text-right font-extrabold leading-tight tabular">
+                    <span className="block text-base">{tl.distinct_patients}</span>
+                    <span className="block text-[11px]">patients</span>
+                  </span>
                 </div>
               ))}
             </div>
@@ -130,23 +148,27 @@ export function TeamLeadPanel({
               {volunteers.map((vol, rank) => (
                 <div
                   key={vol.staff_id}
-                  className="flex items-center justify-between p-3 rounded-xl border border-border bg-card text-foreground"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-border bg-card p-3 text-foreground"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className="w-6 text-center text-xs font-bold text-muted">
                       #{rank + 1}
                     </span>
-                    <div>
-                      <p className="text-sm font-bold">{vol.full_name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{vol.full_name}</p>
                     </div>
                   </div>
-                  <span className="text-base font-extrabold tabular text-brand">{vol.distinct_patients} patients</span>
+                  <span className="text-right font-extrabold leading-tight tabular text-brand">
+                    <span className="block text-base">{vol.distinct_patients}</span>
+                    <span className="block text-[11px]">patients</span>
+                  </span>
                 </div>
               ))}
             </div>
           )}
         </Card>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

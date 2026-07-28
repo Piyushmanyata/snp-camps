@@ -158,13 +158,40 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
   ).toBeVisible();
   await expect(page.getByText("Team Lead Overview", { exact: true })).toBeVisible();
   await expect(
+    page.getByText("Team distinct patients", { exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByText("My team's volunteers", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Codex E2E volunteer", { exact: true }),
+    page.getByText("Codex E2E volunteer", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "Codex E2E volunteer" })
+      .getByText(/\d+ distinct patients/),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /Register/ }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Counter/ }).first()).toBeVisible();
+});
+
+test("admin volunteer creation offers optional Team Lead assignment", async ({
+  page,
+}) => {
+  await loginStaff(page, "admin");
+  await page.goto("/volunteer");
+  await page.getByRole("button", { name: "Register new volunteer" }).click();
+  const picker = page.getByLabel("Team Lead");
+  await expect(picker).toBeVisible();
+  await expect(
+    picker.getByRole("option", { name: "Unassigned" }),
+  ).toHaveCount(1);
+  await expect(
+    picker.getByRole("option", { name: "Codex E2E team_lead" }),
+  ).toHaveCount(1);
+  await picker.selectOption({ label: "Codex E2E team_lead" });
+  await expect(picker).not.toHaveValue("");
 });
 
 test("volunteer doctor picker is populated (not silently empty)", async ({

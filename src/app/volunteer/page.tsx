@@ -57,14 +57,26 @@ export default async function VolunteerPage() {
 
   if (admin) {
     // No narrower-query fallback — column failures (incl. RLS) surface as errors.
-    const { data: volunteers, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at, disabled_at")
-      .eq("role", "volunteer")
-      .order("created_at", { ascending: false });
+    const [
+      { data: volunteers, error },
+      { data: teamLeads, error: teamLeadsError },
+    ] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, role, created_at, disabled_at, team_lead_id")
+        .eq("role", "volunteer")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("profiles")
+        .select("id, full_name, disabled_at")
+        .eq("role", "team_lead")
+        .order("full_name"),
+    ]);
 
-    if (error) {
-      mapDbError(error, { context: "volunteer-page.admin-list" });
+    if (error || teamLeadsError) {
+      mapDbError(error || teamLeadsError, {
+        context: "volunteer-page.admin-list",
+      });
       throw new Error("Volunteer desk data could not be loaded");
     }
     const activeVolunteers =
@@ -107,7 +119,14 @@ export default async function VolunteerPage() {
           </Card>
           <Card>
             <Suspense fallback={<p role="status" className="py-4 text-xs text-muted">Loading volunteers…</p>}>
-              <AdminStaff role="volunteer" initial={volunteers || []} canManage />
+              <AdminStaff
+                role="volunteer"
+                initial={volunteers || []}
+                canManage
+                teamLeadOptions={(teamLeads ?? []).filter(
+                  (lead) => !lead.disabled_at,
+                )}
+              />
             </Suspense>
           </Card>
         </div>
@@ -230,7 +249,7 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
-        {camp ? (
+        {camp || teamLead ? (
           <>
             {leaderboardError ? <ErrorBox message={leaderboardError} /> : null}
             {rosterError ? <ErrorBox message={rosterError} /> : null}
@@ -238,6 +257,7 @@ export default async function VolunteerPage() {
               currentUserId={userId ?? ""}
               initialLeaderboard={leaderboard}
               teamVolunteers={teamLead ? teamVolunteers : undefined}
+              hasActiveCamp={Boolean(camp)}
             />
           </>
         ) : null}

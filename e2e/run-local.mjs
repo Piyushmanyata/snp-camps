@@ -136,6 +136,8 @@ const finalServiceKey =
     ? envLocal.SUPABASE_SERVICE_ROLE_KEY
     : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IjEyNy4wLjAuMSIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE2NDA5OTUyMDAsImV4cCI6MTk1NjU3MTIwMH0.v0vP9yX8kL1mN2oP3qR4sT5uV6wX7yZ8aB9c0d1e2f3");
 
+requireLoopback(finalSupabaseURL, "E2E_SUPABASE_URL");
+
 // Prefer a clean production server for #71 island network asserts. Reuse only
 // when the operator explicitly opts in — a leftover `next dev` or a build that
 // baked remote NEXT_PUBLIC_* from .env.local will break local E2E auth.
@@ -148,6 +150,15 @@ const e2ePublicEnv = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: finalAnonKey,
   SUPABASE_SERVICE_ROLE_KEY: finalServiceKey,
   NEXT_PUBLIC_SITE_URL: baseURL,
+  AADHAAR_HASH_PEPPER: "local-e2e-only-stable-person-key-pepper",
+  // Browser tests use synthetic phone numbers. Never inherit a developer or CI
+  // provider credential and accidentally dispatch a real SMS.
+  MSG91_AUTH_KEY: "",
+  MSG91_SENDER_ID: "",
+  MSG91_TEMPLATE_REGISTRATION: "",
+  MSG91_DLT_TE_ID_REGISTRATION: "",
+  MSG91_TEMPLATE_REMINDER: "",
+  MSG91_DLT_TE_ID_REMINDER: "",
 };
 
 // Production client bundles inline NEXT_PUBLIC_* at build time. Always rebuild

@@ -56,17 +56,94 @@ async function removeStaleFixtures(admin: SupabaseClient) {
     }
   }
 
-  try {
-    const { data: camps } = await admin
-      .from("camps")
-      .select("id")
-      .like("name", `${CAMP_PREFIX}%`);
-    for (const camp of camps || []) {
-      await admin.from("camp_days").delete().eq("camp_id", camp.id);
-      await admin.from("camps").delete().eq("id", camp.id);
+  const staleCamps = await admin
+    .from("camps")
+    .select("id")
+    .like("name", `${CAMP_PREFIX}%`);
+  if (staleCamps.error) {
+    throw new Error(`E2E stale Camp lookup failed: ${staleCamps.error.message}`);
+  }
+  for (const camp of staleCamps.data ?? []) {
+    const patientRows = await admin
+      .from("patients")
+      .select("id, person_id")
+      .eq("camp_id", camp.id);
+    if (patientRows.error) {
+      throw new Error(
+        `E2E stale patient lookup failed: ${patientRows.error.message}`,
+      );
     }
-  } catch {
-    // Ignore cleanup error if database is offline
+    const patientIds = (patientRows.data ?? []).map((row) => row.id);
+    const personIds = [
+      ...new Set(
+        (patientRows.data ?? [])
+          .map((row) => row.person_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const treatmentOrders = await admin
+      .from("treatment_orders")
+      .delete()
+      .eq("camp_id", camp.id);
+    if (treatmentOrders.error) {
+      throw new Error(
+        `E2E stale treatment cleanup failed: ${treatmentOrders.error.message}`,
+      );
+    }
+    if (patientIds.length > 0) {
+      const amendments = await admin
+        .from("prescription_amendments")
+        .delete()
+        .in("patient_id", patientIds);
+      if (amendments.error) {
+        throw new Error(
+          `E2E stale amendment cleanup failed: ${amendments.error.message}`,
+        );
+      }
+      const prescriptions = await admin
+        .from("prescriptions")
+        .delete()
+        .in("patient_id", patientIds);
+      if (prescriptions.error) {
+        throw new Error(
+          `E2E stale prescription cleanup failed: ${prescriptions.error.message}`,
+        );
+      }
+    }
+    const patients = await admin
+      .from("patients")
+      .delete()
+      .eq("camp_id", camp.id);
+    if (patients.error) {
+      throw new Error(`E2E stale patient cleanup failed: ${patients.error.message}`);
+    }
+    const days = await admin.from("camp_days").delete().eq("camp_id", camp.id);
+    if (days.error) {
+      throw new Error(`E2E stale day cleanup failed: ${days.error.message}`);
+    }
+    const campDelete = await admin.from("camps").delete().eq("id", camp.id);
+    if (campDelete.error) {
+      throw new Error(`E2E stale Camp cleanup failed: ${campDelete.error.message}`);
+    }
+    for (const personId of personIds) {
+      const registrations = await admin
+        .from("patients")
+        .select("id", { count: "exact", head: true })
+        .eq("person_id", personId);
+      if (registrations.error) {
+        throw new Error(
+          `E2E stale Person check failed: ${registrations.error.message}`,
+        );
+      }
+      if ((registrations.count ?? 0) === 0) {
+        const person = await admin.from("persons").delete().eq("id", personId);
+        if (person.error) {
+          throw new Error(
+            `E2E stale Person cleanup failed: ${person.error.message}`,
+          );
+        }
+      }
+    }
   }
 }
 
@@ -82,6 +159,7 @@ export default async function globalSetup() {
   let doctorPatientId: string | null = null;
   let createdDayId: string | null = null;
   let createdCampId: string | null = null;
+  let previousActiveCampId: string | null = null;
 
   async function cleanup() {
     const errors: string[] = [];
@@ -152,6 +230,13 @@ export default async function globalSetup() {
     if (createdCampId) {
       const { error } = await admin.from("camps").delete().eq("id", createdCampId);
       if (error) errors.push(`camp: ${error.message}`);
+    }
+    if (previousActiveCampId) {
+      const { error } = await admin
+        .from("camps")
+        .update({ is_active: true })
+        .eq("id", previousActiveCampId);
+      if (error) errors.push(`restore active camp: ${error.message}`);
     }
     if (errors.length) {
       // Disposable fixtures only — JWT/keyfunc flakes on delete must not fail a green suite.
@@ -234,52 +319,66 @@ export default async function globalSetup() {
       );
     }
 
-    let camp = null;
-    try {
-      const { data: activeCamp } = await admin
+    const activeCamp = await admin
+      .from("camps")
+      .select("id")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (activeCamp.error) {
+      throw new Error(`E2E active Camp lookup failed: ${activeCamp.error.message}`);
+    }
+    previousActiveCampId = activeCamp.data?.id ?? null;
+    if (previousActiveCampId) {
+      const deactivated = await admin
         .from("camps")
-        .select("id")
-        .eq("is_active", true)
-        .maybeSingle();
-      camp = activeCamp;
-      if (!camp) {
-        const created = await admin
-          .from("camps")
-          .insert({ name: `${CAMP_PREFIX} ${Date.now()}`, is_active: true })
-          .select("id")
-          .single();
-        camp = created.data;
-        if (created.data) createdCampId = created.data.id;
+        .update({ is_active: false })
+        .eq("id", previousActiveCampId);
+      if (deactivated.error) {
+        throw new Error(
+          `E2E active Camp isolation failed: ${deactivated.error.message}`,
+        );
       }
-    } catch {
-      // Ignore database connection error in mock setup
     }
 
-    let day = null;
-    if (camp) {
-      try {
-        const { data: firstDay } = await admin
-          .from("camp_days")
-          .select("id")
-          .eq("camp_id", camp.id)
-          .order("day_date")
-          .limit(1)
-          .maybeSingle();
-        day = firstDay;
-        if (!day) {
-          const dayDate = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-          const created = await admin
-            .from("camp_days")
-            .insert({ camp_id: camp.id, day_date: dayDate, seat_limit: 100 })
-            .select("id")
-            .single();
-          day = created.data;
-          if (created.data) createdDayId = created.data.id;
-        }
-      } catch {
-        // Ignore database connection error in mock setup
-      }
+    const createdCamp = await admin
+      .from("camps")
+      .insert({
+        name: `${CAMP_PREFIX} ${Date.now()}`,
+        venue: "Local E2E",
+        is_active: true,
+      })
+      .select("id")
+      .single();
+    if (createdCamp.error || !createdCamp.data) {
+      throw new Error(
+        `E2E Camp creation failed: ${createdCamp.error?.message || "no row"}`,
+      );
     }
+    const camp = createdCamp.data;
+    createdCampId = camp.id;
+    process.env.E2E_CAMP_ID = camp.id;
+
+    const dayDate = new Date(Date.now() + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const createdDay = await admin
+      .from("camp_days")
+      .insert({
+        camp_id: camp.id,
+        day_date: dayDate,
+        seat_limit: 100,
+        theatre_capacity: 20,
+      })
+      .select("id")
+      .single();
+    if (createdDay.error || !createdDay.data) {
+      throw new Error(
+        `E2E Camp day creation failed: ${createdDay.error?.message || "no row"}`,
+      );
+    }
+    const day = createdDay.data;
+    createdDayId = day.id;
+    process.env.E2E_CAMP_DAY_ID = day.id;
 
     const phone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
     const doctorPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
@@ -287,14 +386,18 @@ export default async function globalSetup() {
     let patientName = `${PATIENT_PREFIX} ${Date.now()}`;
     let doctorRegNo = regNo + 1;
     let doctorPatientName = `${PATIENT_PREFIX} Doctor ${Date.now()}`;
-    if (camp && day) {
-      try {
-        const latestPatient = await admin
+    {
+      const latestPatient = await admin
           .from("patients")
           .select("reg_no")
           .order("reg_no", { ascending: false })
           .limit(1)
           .maybeSingle();
+        if (latestPatient.error) {
+          throw new Error(
+            `E2E registration number lookup failed: ${latestPatient.error.message}`,
+          );
+        }
         regNo = Number(latestPatient.data?.reg_no ?? 999) + 1;
         const insertedPatient = await admin
           .from("patients")
@@ -311,10 +414,13 @@ export default async function globalSetup() {
           })
           .select("id, reg_no, full_name")
           .single();
-        if (insertedPatient.data) {
-          patientId = insertedPatient.data.id;
-          patientName = insertedPatient.data.full_name;
+        if (insertedPatient.error || !insertedPatient.data) {
+          throw new Error(
+            `E2E patient creation failed: ${insertedPatient.error?.message || "no row"}`,
+          );
         }
+        patientId = insertedPatient.data.id;
+        patientName = insertedPatient.data.full_name;
 
         // Second patient for Doctor Station mark-seen mutation (#50).
         doctorRegNo = regNo + 1;
@@ -335,14 +441,14 @@ export default async function globalSetup() {
           })
           .select("id, reg_no, full_name")
           .single();
-        if (doctorPatient.data) {
-          doctorPatientId = doctorPatient.data.id;
-          doctorRegNo = doctorPatient.data.reg_no;
-          doctorPatientName = doctorPatient.data.full_name;
+        if (doctorPatient.error || !doctorPatient.data) {
+          throw new Error(
+            `E2E doctor patient creation failed: ${doctorPatient.error?.message || "no row"}`,
+          );
         }
-      } catch {
-        // Ignore database connection error in mock setup
-      }
+        doctorPatientId = doctorPatient.data.id;
+        doctorRegNo = doctorPatient.data.reg_no;
+        doctorPatientName = doctorPatient.data.full_name;
     }
 
     // #59 — patients do not authenticate; no patient Auth/profile/user_id link.

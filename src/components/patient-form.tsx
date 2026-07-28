@@ -83,9 +83,9 @@ export function PatientForm({
     number | null
   >(null);
   const [provenance, setProvenance] = useState<
-    "self_declared" | "card_verified"
+    "self_declared" | "card_scanned"
   >("self_declared");
-  const [verifiedIdentity, setVerifiedIdentity] = useState<{
+  const [scannedIdentity, setScannedIdentity] = useState<{
     fullName: string;
     aadhaarLast4: string;
     /** Card DOB — the trusted server route needs the full date. */
@@ -109,11 +109,11 @@ export function PatientForm({
     aadhaarLast4: false,
   });
 
-  const isCardVerified = provenance === "card_verified" || Boolean(verifiedIdentity);
-  const isNameLocked = isCardVerified && cardProvided.fullName;
-  const isAgeLocked = isCardVerified && cardProvided.age;
-  const isGenderLocked = isCardVerified && cardProvided.gender;
-  const isAadhaarLocked = isCardVerified && cardProvided.aadhaarLast4;
+  const isCardScanned = provenance === "card_scanned" || Boolean(scannedIdentity);
+  const isNameLocked = isCardScanned && cardProvided.fullName;
+  const isAgeLocked = isCardScanned && cardProvided.age;
+  const isGenderLocked = isCardScanned && cardProvided.gender;
+  const isAadhaarLocked = isCardScanned && cardProvided.aadhaarLast4;
   const aadhaarOverrideOnceRef = useRef(false);
   const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -171,7 +171,7 @@ export function PatientForm({
 
       if (!completeIdentity) {
         setProvenance("self_declared");
-        setVerifiedIdentity(null);
+        setScannedIdentity(null);
         setCardProvided({
           fullName: false,
           age: false,
@@ -185,14 +185,14 @@ export function PatientForm({
         return false;
       }
 
-      setProvenance("card_verified");
+      setProvenance("card_scanned");
       setCardProvided({
         fullName: true,
         age: true,
         gender: true,
         aadhaarLast4: true,
       });
-      setVerifiedIdentity({
+      setScannedIdentity({
         fullName: parsed.fullName!,
         aadhaarLast4: parsed.aadhaarLast4!,
         dateOfBirth: parsed.dateOfBirth!,
@@ -232,7 +232,7 @@ export function PatientForm({
    * duplicate-detection Person key is built from.
    */
   const [manualEntry, setManualEntry] = useState(false);
-  const identityVisible = isCardVerified || manualEntry;
+  const identityVisible = isCardScanned || manualEntry;
 
 
   const focusName = useCallback(() => {
@@ -251,12 +251,12 @@ export function PatientForm({
     const d = digitsOnly(formatted);
     // Only a card that actually asserted a last 4 can be contradicted by typing.
     // Old XML cards often carry no uid, and treating the operator filling that
-    // empty field as tampering downgraded a genuine card-verified scan.
+    // empty field as tampering downgraded a genuine card-scanned record.
     if (
-      provenance === "card_verified" &&
-      verifiedIdentity &&
+      provenance === "card_scanned" &&
+      scannedIdentity &&
       cardProvided.aadhaarLast4 &&
-      d !== verifiedIdentity.aadhaarLast4
+      d !== scannedIdentity.aadhaarLast4
     ) {
       setProvenance("self_declared");
     }
@@ -340,7 +340,7 @@ export function PatientForm({
       setEmail("");
       setAadhaar("");
       setProvenance("self_declared");
-      setVerifiedIdentity(null);
+      setScannedIdentity(null);
     setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
       setScannedBanner(null);
       setManualEntry(false);
@@ -372,7 +372,7 @@ export function PatientForm({
         aadhaarLast4: validated.values.aadhaarLast4,
         // The Person key is derived only by the trusted server route.
         duplicateKey: null,
-        dateOfBirth: verifiedIdentity?.dateOfBirth ?? null,
+        dateOfBirth: scannedIdentity?.dateOfBirth ?? null,
         createdBy,
         campDayId: validated.values.campDayId,
         aadhaarDuplicateOverride,
@@ -380,7 +380,7 @@ export function PatientForm({
         provenance,
       },
       rpc: async (fn, args) => {
-        if (provenance === "card_verified") {
+        if (provenance === "card_scanned") {
           try {
             const response = await fetch("/api/desk/register-scanned", {
               method: "POST",
@@ -580,7 +580,7 @@ export function PatientForm({
     setEmail("");
     setAadhaar("");
     setProvenance("self_declared");
-    setVerifiedIdentity(null);
+    setScannedIdentity(null);
     setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
     setLookupState("idle");
     setLookupMsg(null);

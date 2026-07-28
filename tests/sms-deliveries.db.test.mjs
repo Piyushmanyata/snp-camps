@@ -256,7 +256,7 @@ test("self-registration with a typed phone never creates a registration delivery
            p_aadhaar_duplicate_override => false,
            p_likely_duplicate_override => false,
            p_self_service => true,
-           p_provenance => 'card_verified',
+           p_provenance => 'card_scanned',
            p_duplicate_key => $4,
            p_date_of_birth => '1991-02-03'::date
          )`,

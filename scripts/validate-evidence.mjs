@@ -34,6 +34,13 @@ export function detectUnredactedSecrets(text) {
   if (/sbp_[A-Za-z0-9_-]{10,}/.test(text)) {
     leaks.push("Unredacted Supabase token");
   }
+  if (
+    /\b(?:[A-Z][A-Z0-9_]*_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|PEPPER|INVITE_CODE)|PASSWORD|PASSWD|PWD|SECRET)\s*[:=]\s*(?!\*{3})(?:["'](?!\*{3})[^"'\r\n]+["']|[^\s"',;]+)/i.test(
+      text,
+    )
+  ) {
+    leaks.push("Unredacted secret environment assignment");
+  }
   // Check for 12-digit Aadhaar patterns that aren't redacted
   if (/\b\d{4}\s\d{4}\s\d{4}\b/.test(text) || /\b\d{12}\b/.test(text)) {
     // Exclude common 12-digit non-Aadhaar strings if any, but flag potential PHI
@@ -141,7 +148,9 @@ export function validateManifest(manifest, evidenceDir, options = {}) {
     const logContent = fs.readFileSync(logPath, "utf8");
     const actualSha = computeSha256(logContent);
 
-    if (stageData.sha256 && stageData.sha256 !== actualSha) {
+    if (!stageData.sha256) {
+      errors.push(`Stage '${stageName}' missing sha256`);
+    } else if (stageData.sha256 !== actualSha) {
       errors.push(`Stage '${stageName}' sha256 mismatch! Expected: ${stageData.sha256}, Actual: ${actualSha}`);
     }
 
@@ -173,6 +182,69 @@ export function validateManifest(manifest, evidenceDir, options = {}) {
     }
   }
 
+  const proof = manifest.artifacts?.red_green;
+  if (!proof?.red || !proof?.green) {
+    errors.push("Manifest missing hashed red/green regression artifacts");
+  } else {
+    for (const [label, artifact] of Object.entries({
+      red: proof.red,
+      green: proof.green,
+    })) {
+      if (!artifact.log_file || !artifact.sha256) {
+        errors.push(`${label} regression artifact is missing its file or sha256`);
+        continue;
+      }
+      const artifactPath = path.join(evidenceDir, artifact.log_file);
+      if (!fs.existsSync(artifactPath)) {
+        errors.push(`${label} regression artifact is missing: ${artifactPath}`);
+        continue;
+      }
+      const artifactContent = fs.readFileSync(artifactPath, "utf8");
+      const actualSha = computeSha256(artifactContent);
+      if (actualSha !== artifact.sha256) {
+        errors.push(
+          `${label} regression artifact sha256 mismatch! Expected: ${artifact.sha256}, Actual: ${actualSha}`,
+        );
+      }
+      const leaks = detectUnredactedSecrets(artifactContent);
+      if (leaks.length > 0) {
+        errors.push(
+          `${label} regression artifact contains unredacted secrets: ${leaks.join(", ")}`,
+        );
+      }
+      if (detectEllipsesOrTruncation(artifactContent).length > 0) {
+        errors.push(`${label} regression artifact contains truncated output`);
+      }
+      const normalized = artifactContent.trimEnd();
+      const marker = normalized.match(
+        /(?:^|\r?\n)EVIDENCE_EXIT_CODE=(\d+)$/,
+      );
+      if (!marker) {
+        errors.push(
+          `${label} regression artifact must end with EVIDENCE_EXIT_CODE`,
+        );
+      } else {
+        const substantiveOutput = normalized.slice(0, marker.index).trim();
+        if (substantiveOutput.length < 20) {
+          errors.push(
+            `${label} regression artifact lacks substantive command output`,
+          );
+        }
+        if (Number(marker[1]) !== Number(artifact.exit_code)) {
+          errors.push(
+            `${label} regression artifact exit marker disagrees with manifest`,
+          );
+        }
+      }
+    }
+    if (proof.red.exit_code === 0) {
+      errors.push("Red regression artifact must record a nonzero exit code");
+    }
+    if (proof.green.exit_code !== 0) {
+      errors.push("Green regression artifact must record exit code 0");
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -196,6 +268,17 @@ export function validateClosureDocument(docContent) {
     if (!sec.regex.test(docContent)) {
       errors.push(`Closure document missing required section: '${sec.title}'`);
     }
+  }
+
+  const redProof =
+    /Red artifact:\s*`[^`]+`\s*\(exit\s+([1-9]\d*),\s*sha256\s*`[a-f0-9]{64}`\)/i;
+  const greenProof =
+    /Green artifact:\s*`[^`]+`\s*\(exit\s+0,\s*sha256\s*`[a-f0-9]{64}`\)/i;
+  if (!redProof.test(docContent)) {
+    errors.push("Closure document lacks a hashed nonzero-exit red artifact");
+  }
+  if (!greenProof.test(docContent)) {
+    errors.push("Closure document lacks a hashed zero-exit green artifact");
   }
 
   if (detectEllipsesOrTruncation(docContent).length > 0) {

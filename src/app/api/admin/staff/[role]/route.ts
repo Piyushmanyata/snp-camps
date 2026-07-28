@@ -9,6 +9,8 @@ import { mapDbError } from "@/lib/public-error";
 export type StaffRole = "doctor" | "volunteer" | "team_lead";
 
 const STAFF_ROLES = new Set<string>(["doctor", "volunteer", "team_lead"]);
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Shareable temporary password: 14 chars, no ambiguous glyphs. */
 function generateTemporaryPassword(length = 14): string {
@@ -123,6 +125,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const body = await readJsonBody<{
     fullName?: string;
     email?: string;
+    teamLeadId?: string | null;
   }>(req);
   if (!body) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -140,6 +143,31 @@ export async function POST(req: Request, { params }: RouteCtx) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
+  if (role !== "volunteer" && body.teamLeadId !== undefined) {
+    return NextResponse.json(
+      { error: "Team assignment is only valid for volunteers" },
+      { status: 400 },
+    );
+  }
+
+  const requestedTeamLeadId =
+    body.teamLeadId == null ? null : String(body.teamLeadId).trim();
+  if (
+    auth.scopeTeamLeadId &&
+    requestedTeamLeadId &&
+    requestedTeamLeadId !== auth.scopeTeamLeadId
+  ) {
+    return NextResponse.json(
+      { error: "You can only add volunteers to your own team" },
+      { status: 403 },
+    );
+  }
+  const assignedTeamLeadId =
+    auth.scopeTeamLeadId || requestedTeamLeadId || null;
+  if (assignedTeamLeadId && !UUID_RE.test(assignedTeamLeadId)) {
+    return NextResponse.json({ error: "Invalid Team Lead" }, { status: 400 });
+  }
+
   const password = generateTemporaryPassword();
 
   const admin = createServiceRoleClient();
@@ -148,6 +176,21 @@ export async function POST(req: Request, { params }: RouteCtx) {
       { error: "Account service is unavailable" },
       { status: 500 },
     );
+  }
+  if (assignedTeamLeadId && !auth.scopeTeamLeadId) {
+    const { data: lead, error: leadError } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("id", assignedTeamLeadId)
+      .eq("role", "team_lead")
+      .is("disabled_at", null)
+      .maybeSingle();
+    if (leadError || !lead) {
+      return NextResponse.json(
+        { error: "Choose an active Team Lead" },
+        { status: 400 },
+      );
+    }
   }
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
@@ -181,8 +224,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
     role,
     full_name: fullName,
     email,
-    // A team lead can only staff their own team; an admin leaves it unassigned.
-    team_lead_id: auth.scopeTeamLeadId,
+    team_lead_id: assignedTeamLeadId,
   });
 
   if (profileErr) {
@@ -204,6 +246,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
         full_name: fullName,
         email,
         role,
+        team_lead_id: assignedTeamLeadId,
       },
     },
     {

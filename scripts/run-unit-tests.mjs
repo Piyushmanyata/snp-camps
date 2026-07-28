@@ -4,11 +4,7 @@ import { spawnSync } from "node:child_process";
 const files = fs
   .readdirSync("tests")
   .filter(
-    (name) =>
-      name.endsWith(".test.mjs") &&
-      !/\bfrom\s+["']pg["']/.test(
-        fs.readFileSync(`tests/${name}`, "utf8"),
-      ),
+    (name) => name.endsWith(".test.mjs") && !name.endsWith(".db.test.mjs"),
   )
   .sort()
   .map((name) => `tests/${name}`);

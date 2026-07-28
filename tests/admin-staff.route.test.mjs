@@ -28,6 +28,7 @@ import { __resetCookies } from "./stubs/next-headers.mjs";
 const ADMIN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DOCTOR_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const VOLUNTEER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const TEAM_LEAD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 function sessionAsAdmin(userId = ADMIN_ID) {
   __resetCookies([{ name: "sb-test-auth-token", value: "1" }]);
@@ -39,6 +40,21 @@ function sessionAsAdmin(userId = ADMIN_ID) {
       full_name: "Admin",
       phone: null,
       email: "admin@test.local",
+      disabled_at: null,
+    },
+  });
+}
+
+function sessionAsTeamLead(userId = TEAM_LEAD_ID) {
+  __resetCookies([{ name: "sb-test-auth-token", value: "1" }]);
+  __setAuthMock({
+    userId,
+    profile: {
+      id: userId,
+      role: "team_lead",
+      full_name: "Team Lead",
+      phone: null,
+      email: "lead@test.local",
       disabled_at: null,
     },
   });
@@ -357,6 +373,112 @@ for (const role of ["doctor", "volunteer"]) {
     assert.deepEqual(__revalidateTagCalls, ["doctors-list"]);
   });
 }
+
+test("admin can create a volunteer directly onto an active Team Lead", async () => {
+  sessionAsAdmin();
+  const fake = createStaffFake([
+    {
+      id: TEAM_LEAD_ID,
+      role: "team_lead",
+      full_name: "Lead One",
+      email: "lead@example.com",
+      disabled_at: null,
+    },
+  ]);
+  __setServiceRoleClient(fake);
+
+  const res = await POST(
+    jsonReq("http://127.0.0.1/api/admin/staff/volunteer", "POST", {
+      fullName: "Assigned Volunteer",
+      email: "assigned@example.com",
+      teamLeadId: TEAM_LEAD_ID,
+    }),
+    ctx("volunteer"),
+  );
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.staff.team_lead_id, TEAM_LEAD_ID);
+  assert.equal(fake.profiles.get(body.staff.id).team_lead_id, TEAM_LEAD_ID);
+});
+
+test("admin cannot create a volunteer against a disabled or non-lead profile", async () => {
+  sessionAsAdmin();
+  const fake = createStaffFake([
+    {
+      id: TEAM_LEAD_ID,
+      role: "team_lead",
+      full_name: "Disabled Lead",
+      email: "disabled-lead@example.com",
+      disabled_at: "2026-07-01T00:00:00.000Z",
+    },
+  ]);
+  __setServiceRoleClient(fake);
+
+  const res = await POST(
+    jsonReq("http://127.0.0.1/api/admin/staff/volunteer", "POST", {
+      fullName: "Unsafe Assignment",
+      email: "unsafe@example.com",
+      teamLeadId: TEAM_LEAD_ID,
+    }),
+    ctx("volunteer"),
+  );
+
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /active Team Lead/i);
+  assert.equal(fake.users.has("unsafe@example.com"), false);
+});
+
+test("Team Lead creates only a volunteer on their own team", async () => {
+  sessionAsTeamLead();
+  const fake = createStaffFake();
+  __setServiceRoleClient(fake);
+
+  const res = await POST(
+    jsonReq("http://127.0.0.1/api/admin/staff/volunteer", "POST", {
+      fullName: "Own Volunteer",
+      email: "own@example.com",
+    }),
+    ctx("volunteer"),
+  );
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.staff.team_lead_id, TEAM_LEAD_ID);
+  assert.equal(fake.profiles.get(body.staff.id).team_lead_id, TEAM_LEAD_ID);
+});
+
+for (const forbiddenRole of ["admin", "team_lead", "doctor"]) {
+  test(`forged Team Lead request cannot create ${forbiddenRole}`, async () => {
+    sessionAsTeamLead();
+    const res = await POST(
+      jsonReq(
+        `http://127.0.0.1/api/admin/staff/${forbiddenRole}`,
+        "POST",
+        {
+          fullName: "Forged Staff",
+          email: `${forbiddenRole}@forged.example`,
+        },
+      ),
+      ctx(forbiddenRole),
+    );
+    assert.ok(res.status === 400 || res.status === 403);
+  });
+}
+
+test("forged Team Lead request cannot assign a volunteer to another lead", async () => {
+  sessionAsTeamLead();
+  const res = await POST(
+    jsonReq("http://127.0.0.1/api/admin/staff/volunteer", "POST", {
+      fullName: "Poached Volunteer",
+      email: "poached@example.com",
+      teamLeadId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    }),
+    ctx("volunteer"),
+  );
+  assert.equal(res.status, 403);
+  assert.match((await res.json()).error, /own team/i);
+});
 
 test("admin cannot deactivate their own account", async () => {
   sessionAsAdmin(ADMIN_ID);

@@ -161,14 +161,20 @@ test("every active camp-crew role sees only the two distinct-patient leaderboard
         [JSON.stringify({ sub: caller, role: "authenticated" })],
       );
       const { rows } = await client.query(
-        `select staff_id, role::text, distinct_patients, team_headcount
-         from public.staff_leaderboard($1, null)`,
+        `select staff_id, staff_role::text, distinct_patients, team_headcount
+         from public.staff_person_kpis(
+           null, null, $1, null, 'leaderboard'
+         )`,
         [campId],
       );
       assert.ok(rows.some((row) => row.staff_id === lead));
       assert.ok(rows.some((row) => row.staff_id === volunteer));
       assert.equal(
-        rows.every((row) => row.role === "team_lead" || row.role === "volunteer"),
+        rows.every(
+          (row) =>
+            row.staff_role === "team_lead" ||
+            row.staff_role === "volunteer",
+        ),
         true,
       );
       assert.equal(

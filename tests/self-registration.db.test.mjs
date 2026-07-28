@@ -173,6 +173,7 @@ async function callSelf({
   likelyOverride = false,
   createdBy = null,
   phone = "9876501234",
+  provenance = "card_scanned",
 }) {
   const duplicateKey = createHash("sha256").update(hash).digest("hex");
   await client.query("begin");
@@ -185,7 +186,7 @@ async function callSelf({
        from public.register_patient_idempotent(
          $1::uuid, $2::uuid, $3::text, 'M', $4::integer, 'Test address',
          $5::text, null, $6::text, null, $7::uuid, $8::uuid,
-         $9::boolean, $10::boolean, $11::boolean, 'card_verified'::text,
+         $9::boolean, $10::boolean, $11::boolean, $13::text,
          $12::text, '1986-01-01'::date, null::text
        )`,
       [
@@ -201,6 +202,7 @@ async function callSelf({
         likelyOverride,
         selfService,
         duplicateKey,
+        provenance,
       ],
     );
     await client.query("commit");
@@ -221,7 +223,8 @@ test("today self-registration stays registered with provenance and no queue fiel
 
     const { rows } = await client.query(
       `select p.queue_status, p.queued_at, p.checked_in_by, p.created_by,
-              p.aadhaar_last4, p.provenance, pe.duplicate_key
+              p.aadhaar_last4, p.provenance, p.phone_provenance,
+              pe.duplicate_key
        from public.patients p
        join public.persons pe on pe.id = p.person_id
        where p.id = $1`,
@@ -232,7 +235,8 @@ test("today self-registration stays registered with provenance and no queue fiel
     assert.equal(rows[0].checked_in_by, null);
     assert.equal(rows[0].created_by, null);
     assert.equal(rows[0].aadhaar_last4, "9012");
-    assert.equal(rows[0].provenance, "card_verified");
+    assert.equal(rows[0].provenance, "card_scanned");
+    assert.equal(rows[0].phone_provenance, "self_declared");
     assert.equal(
       rows[0].duplicate_key,
       createHash("sha256").update("hmac-self-a").digest("hex"),
@@ -427,6 +431,67 @@ test("patient storage has no full Aadhaar field or twelve-digit value", async (t
       [result.row.id],
     );
     assert.doesNotMatch(rows[0].row_json, /123456789012/);
+  } finally {
+    await cleanupCamp(campId);
+  }
+});
+
+test("rollout alias stored card_scanned and final public RPC rejects card_verified", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { campId, dayId } = await seedCampWithDay("2099-12-21");
+  const duplicateKey = createHash("sha256")
+    .update("rollout-compatibility")
+    .digest("hex");
+  try {
+    const { rows: definitions } = await client.query(
+      `select pg_get_functiondef($1::regprocedure) as definition`,
+      [RPC],
+    );
+    const strict = `v_provenance text := lower(
+    btrim(coalesce(p_provenance, 'self_declared'))
+  );`;
+    const compatibility = `v_provenance text := CASE
+    WHEN lower(btrim(coalesce(p_provenance, 'self_declared'))) = 'card_verified'
+      THEN 'card_scanned'
+    ELSE lower(btrim(coalesce(p_provenance, 'self_declared')))
+  END;`;
+    assert.match(definitions[0].definition, /requires card_scanned provenance/);
+    assert.ok(definitions[0].definition.includes(strict));
+
+    await client.query("begin");
+    try {
+      await client.query(
+        definitions[0].definition.replace(strict, compatibility),
+      );
+      await client.query(
+        `select set_config('request.jwt.claim.role', 'service_role', true)`,
+      );
+      const { rows } = await client.query(
+        `select id
+         from public.register_patient_idempotent(
+           $1, $2, 'Rollout Patient', 'M', 40, null, '9876501234',
+           null, '4321', null, null, $3, false, false, true,
+           'card_verified', $4, '1986-01-01', null
+         )`,
+        [randomUUID(), campId, dayId, duplicateKey],
+      );
+      const stored = await client.query(
+        `select provenance from public.patients where id = $1`,
+        [rows[0].id],
+      );
+      assert.equal(stored.rows[0].provenance, "card_scanned");
+    } finally {
+      await client.query("rollback");
+    }
+
+    const rejected = await callSelf({
+      campId,
+      dayId,
+      hash: "final-rejects-retired-input",
+      provenance: "card_verified",
+    });
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.message, /requires card_scanned provenance/i);
   } finally {
     await cleanupCamp(campId);
   }

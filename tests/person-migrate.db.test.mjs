@@ -142,7 +142,7 @@ test("authenticated browsers cannot submit a chosen scanned Person key", async (
            p_aadhaar_duplicate_override => false,
            p_likely_duplicate_override => false,
            p_self_service => false,
-           p_provenance => 'card_verified',
+           p_provenance => 'card_scanned',
            p_duplicate_key => 'attacker-chosen-key',
            p_date_of_birth => '1986-01-01'::date
          )`,
@@ -200,7 +200,7 @@ test("Scanning an unseen card creates one Person and one Registration", async ()
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1976-05-15'::date
      )`,
@@ -268,7 +268,7 @@ test("trusted scanned registration preserves the Team Lead creator", async () =>
          p_aadhaar_duplicate_override => false,
          p_likely_duplicate_override => false,
          p_self_service => false,
-         p_provenance => 'card_verified',
+         p_provenance => 'card_scanned',
          p_duplicate_key => $5,
          p_date_of_birth => '1990-04-05'::date
        )`,
@@ -328,7 +328,7 @@ test("Scanning a card already registered in active Camp returns existing Registr
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1984-03-20'::date
      )`,
@@ -357,7 +357,7 @@ test("Scanning a card already registered in active Camp returns existing Registr
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1984-03-20'::date
      )`,
@@ -429,7 +429,7 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1966-11-05'::date
      )`,
@@ -481,7 +481,7 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1966-11-05'::date
      )`,
@@ -599,7 +599,7 @@ test("Two concurrent scans of the same card produce exactly one Person", async (
          p_aadhaar_duplicate_override => false,
          p_likely_duplicate_override => false,
          p_self_service => false,
-         p_provenance => 'card_verified',
+         p_provenance => 'card_scanned',
          p_duplicate_key => $5,
          p_date_of_birth => '1996-01-01'::date
        )`,

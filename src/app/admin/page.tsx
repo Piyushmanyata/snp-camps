@@ -272,6 +272,7 @@ export default async function AdminPage() {
               <TeamLeadPanel
                 currentUserId={userId ?? ""}
                 initialLeaderboard={leaderboard}
+                hasActiveCamp
               />
             </CollapsibleSection>
             <AdminSettingsPanel camp={active} />

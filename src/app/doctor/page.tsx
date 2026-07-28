@@ -164,6 +164,7 @@ export default async function DoctorPage() {
             <TeamLeadPanel
               currentUserId={userId}
               initialLeaderboard={leaderboardInitial.data}
+              hasActiveCamp
             />
           ) : (
             <ErrorBox message={leaderboardInitial.error} />

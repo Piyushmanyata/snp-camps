@@ -145,7 +145,7 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
        p_aadhaar_duplicate_override => false,
        p_likely_duplicate_override => false,
        p_self_service => false,
-       p_provenance => 'card_verified',
+       p_provenance => 'card_scanned',
        p_duplicate_key => $5,
        p_date_of_birth => '1981-04-12'::date
      )`,

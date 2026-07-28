@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 2;
+export const READINESS_CONTRACT_VERSION = 3;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260728114000";
+export const EXPECTED_MIGRATION_HEAD = "20260728118000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -64,6 +64,7 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "display_name",
     "person_id",
     "provenance",
+    "phone_provenance",
   ],
   persons: [
     "id",
@@ -128,7 +129,6 @@ export const REQUIRED_FUNCTIONS = [
   "resolve_treatment_order",
   "counter_create_and_fulfill_order",
   "staff_person_kpis",
-  "staff_leaderboard",
   "claim_sms_delivery",
   "mark_sms_dispatch_started",
   "complete_sms_delivery",
@@ -141,8 +141,12 @@ export const REQUIRED_INVARIANTS = [
   "patients_person_camp_unique",
   "patients_person_id_not_null",
   "patients_provenance_current",
+  "patients_phone_provenance_current",
   "retired_ekyc_storage_absent",
   "register_rpc_supported_signatures_only",
+  "staff_kpi_single_contract",
+  "staff_leaderboard_absent",
+  "migration_head_current",
   "profiles_team_lead_fk",
   "team_membership_guards",
   "prescription_patient_scope_fk",
@@ -191,7 +195,9 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   resolve_treatment_order_authenticated_execute: true,
   counter_create_and_fulfill_order_authenticated_execute: true,
   staff_person_kpis_authenticated_execute: true,
-  staff_leaderboard_authenticated_execute: true,
+  staff_person_kpis_anon_execute: false,
+  staff_person_kpis_service_role_execute: true,
+  staff_leaderboard_authenticated_execute: false,
   mark_sms_dispatch_started_authenticated_execute: true,
   mark_sms_dispatch_started_service_role_execute: true,
   patient_registration_notify_fields_authenticated_execute: true,

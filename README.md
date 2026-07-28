@@ -165,7 +165,7 @@ npm run dev
 1. Sign in at `/login` with the bootstrapped admin.
 2. Create a camp and set it active.
 3. Add doctors and volunteers from the admin desk.
-4. Register walk-ins from the volunteer/admin desk; Aadhaar auto-fill is optional when a lookup provider is configured.
+4. Register walk-ins from the volunteer/admin desk; scan the physical Aadhaar QR for offline auto-fill, or enter details manually.
 
 ### 5. Deploy Vercel
 
@@ -193,6 +193,14 @@ A ticket is closed only when its closing comment contains:
 4. For a bug fix: proof the new test can fail — remove the fix, record the red output, restore it, record the green output. Both go in the comment.
 
 `npm test` alone or `npx tsc --noEmit` alone are diagnostics, not substitutes for the full gate.
+
+Machine-validated closure capture also requires both command logs to end with
+`EVIDENCE_EXIT_CODE=<number>`:
+
+```bash
+npm run capture:evidence -- --ticket=<id> --red-log=<red.log> --green-log=<green.log> --defect="<summary>"
+npm run validate:evidence
+```
 
 Run load tests only against a production-like staging deployment:
 

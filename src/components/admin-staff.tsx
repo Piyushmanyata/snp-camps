@@ -8,6 +8,7 @@ import {
   EmptyState,
   ErrorBox,
   Input,
+  Select,
   SuccessBox,
 } from "@/components/ui";
 import {
@@ -101,6 +102,8 @@ export function AdminStaff({
   initial,
   canManage = true,
   canViewDetail = true,
+  teamLeadOptions,
+  metricById,
 }: {
   role: ManageableStaffRole;
   initial: StaffPerson[];
@@ -113,6 +116,10 @@ export function AdminStaff({
    * rather than being offered a control that returns 403.
    */
   canViewDetail?: boolean;
+  /** Admin-only optional team assignment when creating a volunteer. */
+  teamLeadOptions?: Array<{ id: string; full_name: string | null }>;
+  /** Optional aggregate shown beside each staff row. */
+  metricById?: Record<string, number>;
 }) {
   const copy = roleCopy(role);
   const apiBase = `/api/admin/staff/${role}`;
@@ -126,6 +133,7 @@ export function AdminStaff({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [teamLeadId, setTeamLeadId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [credential, setCredential] = useState<CredentialShare | null>(null);
@@ -158,7 +166,11 @@ export function AdminStaff({
       const res = await fetch(apiBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, email }),
+        body: JSON.stringify({
+          fullName,
+          email,
+          ...(teamLeadOptions ? { teamLeadId: teamLeadId || null } : {}),
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -183,6 +195,7 @@ export function AdminStaff({
       setOk(copy.createOk);
       setFullName("");
       setEmail("");
+      setTeamLeadId("");
       setShowForm(false);
       router.refresh();
     } catch {
@@ -408,6 +421,11 @@ export function AdminStaff({
                   </div>
                 )}
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
+                  {metricById ? (
+                    <Badge>
+                      {metricById[person.id] ?? 0} distinct patients
+                    </Badge>
+                  ) : null}
                   <Badge tone="ok">{role}</Badge>
                   {person.disabled_at ? (
                     <Badge tone="danger">disabled</Badge>
@@ -577,6 +595,22 @@ export function AdminStaff({
                 placeholder={copy.emailPlaceholder}
                 hint={copy.emailHint}
               />
+              {teamLeadOptions ? (
+                <Select
+                  label="Team Lead"
+                  value={teamLeadId}
+                  disabled={busy}
+                  onChange={(event) => setTeamLeadId(event.target.value)}
+                  hint="Optional — leave unassigned if this volunteer has no team yet."
+                >
+                  <option value="">Unassigned</option>
+                  {teamLeadOptions.map((lead) => (
+                    <option key={lead.id} value={lead.id}>
+                      {lead.full_name || "Team Lead"}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   type="submit"

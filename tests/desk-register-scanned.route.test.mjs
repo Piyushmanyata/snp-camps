@@ -84,7 +84,7 @@ test("derives a Person key server-side and forces trusted staff semantics", asyn
   assert.equal(calls.length, 1);
   const { args } = calls[0];
   assert.equal(args.p_created_by, USER_ID);
-  assert.equal(args.p_provenance, "card_verified");
+  assert.equal(args.p_provenance, "card_scanned");
   assert.equal(args.p_self_service, false);
   assert.equal(args.p_aadhaar_duplicate_override, false);
   assert.equal(args.p_likely_duplicate_override, false);

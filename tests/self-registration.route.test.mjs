@@ -124,7 +124,7 @@ test("self-service registration is flagged and carries a Person key, never an eK
     (call) => call.fn === "register_patient_idempotent",
   );
   assert.equal(args.p_self_service, true);
-  assert.equal(args.p_provenance, "card_verified");
+  assert.equal(args.p_provenance, "card_scanned");
   assert.equal(typeof args.p_duplicate_key, "string");
   assert.ok(args.p_duplicate_key.length > 0, "scan must carry a Person key");
   assert.equal(args.p_date_of_birth, "1976-05-15");

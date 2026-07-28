@@ -14,6 +14,7 @@ import {
   validateManifest,
   validateClosureDocument,
   computeManifestPayloadSha256,
+  detectUnredactedSecrets,
 } from "../scripts/validate-evidence.mjs";
 
 const tempDirBase = path.join(os.tmpdir(), "snp-evidence-tests");
@@ -26,6 +27,9 @@ describe("Evidence Capture & Validator Tooling (#74)", () => {
       SUPABASE_KEY="sb_secret_998877665544332211"
       AADHAAR="1234 5678 9012"
       AUTHORIZATION="Bearer my_secret_bearer_token_123"
+      AADHAAR_HASH_PEPPER="pepper-with-arbitrary-shape"
+      MSG91_AUTH_KEY=provider-key-value
+      ADMIN_INVITE_CODE=invite-me
     `;
 
     const redacted = redactSecretsAndPhi(raw);
@@ -34,9 +38,15 @@ describe("Evidence Capture & Validator Tooling (#74)", () => {
     assert.ok(!redacted.includes("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT must be redacted");
     assert.ok(!redacted.includes("sb_secret_998877665544332211"), "Supabase secret key must be redacted");
     assert.ok(!redacted.includes("1234 5678 9012"), "Aadhaar number must be redacted");
+    assert.ok(!redacted.includes("pepper-with-arbitrary-shape"));
+    assert.ok(!redacted.includes("provider-key-value"));
+    assert.ok(!redacted.includes("invite-me"));
     assert.ok(redacted.includes("postgres://***"), "Redacted DB URL present");
     assert.ok(redacted.includes("jwt:***"), "Redacted JWT token present");
-    assert.ok(redacted.includes("sb_secret_***"), "Redacted Supabase secret key present");
+    assert.ok(
+      redacted.includes("SUPABASE_KEY=***"),
+      "Supabase key assignment is redacted",
+    );
     assert.ok(redacted.includes("AADHAAR:***"), "Redacted Aadhaar present");
   });
 
@@ -120,6 +130,25 @@ describe("Evidence Capture & Validator Tooling (#74)", () => {
     assert.ok(
       falseGreen.errors.some((e) => e.includes("status=PASS, exit=1")),
       "A PASS label must never hide a nonzero exit",
+    );
+  });
+
+  test("detectUnredactedSecrets catches generic key, token, pepper, and invite assignments", () => {
+    const leaks = detectUnredactedSecrets(`
+      AADHAAR_HASH_PEPPER=plain-value
+      MSG91_AUTH_KEY="provider-value"
+      ADMIN_INVITE_CODE: invite-value
+      ANY_API_TOKEN=token-value
+    `);
+    assert.ok(
+      leaks.includes("Unredacted secret environment assignment"),
+      "arbitrary secret assignment values must be rejected",
+    );
+    assert.deepEqual(
+      detectUnredactedSecrets(
+        "AADHAAR_HASH_PEPPER=***\nMSG91_AUTH_KEY=***",
+      ),
+      [],
     );
   });
 
@@ -215,5 +244,104 @@ describe("Evidence Capture & Validator Tooling (#74)", () => {
     const result = validateClosureDocument(incompleteDoc);
     assert.equal(result.valid, false);
     assert.ok(result.errors.length >= 4, "Must enforce missing sections in closure report");
+  });
+
+  test("validateManifest requires every stage log to have a sha256", () => {
+    const mockDir = path.join(tempDirBase, "sha-missing-test");
+    fs.mkdirSync(path.join(mockDir, "logs"), { recursive: true });
+    fs.writeFileSync(path.join(mockDir, "logs", "lint.log"), "lint passed", "utf8");
+    const manifest = {
+      schema_version: "1.0.0",
+      ticket_id: "74",
+      commit_sha: "abc12345",
+      dirty: false,
+      timestamp: new Date().toISOString(),
+      tool_versions: { node: "v22.0.0" },
+      stages: {
+        lint: {
+          status: "PASS",
+          exit_code: 0,
+          log_file: "logs/lint.log",
+          counts: {},
+        },
+      },
+    };
+    const result = validateManifest(manifest, mockDir);
+    assert.ok(result.errors.some((error) => error.includes("missing sha256")));
+  });
+
+  test("red/green artifacts require an EOF marker matching the manifest", () => {
+    const mockDir = path.join(tempDirBase, "red-green-marker-test");
+    fs.mkdirSync(path.join(mockDir, "logs"), { recursive: true });
+    const red = "real failing command output with details\nEVIDENCE_EXIT_CODE=1\nappended";
+    const green = "real passing command output with details\nEVIDENCE_EXIT_CODE=0\n";
+    fs.writeFileSync(path.join(mockDir, "logs", "red.log"), red);
+    fs.writeFileSync(path.join(mockDir, "logs", "green.log"), green);
+    const manifest = {
+      schema_version: "1.0.0",
+      ticket_id: "74",
+      commit_sha: "abc12345",
+      dirty: false,
+      timestamp: new Date().toISOString(),
+      tool_versions: { node: "v22.0.0" },
+      overall_status: "PASS",
+      stages: {},
+      artifacts: {
+        red_green: {
+          red: {
+            log_file: "logs/red.log",
+            sha256: computeSha256(red),
+            exit_code: 1,
+          },
+          green: {
+            log_file: "logs/green.log",
+            sha256: computeSha256(green),
+            exit_code: 9,
+          },
+        },
+      },
+    };
+    manifest.artifacts.manifest_payload_sha256 =
+      computeManifestPayloadSha256(manifest);
+    const result = validateManifest(manifest, mockDir);
+    assert.ok(
+      result.errors.some((error) => error.includes("must end")),
+      "appended red output must fail",
+    );
+    assert.ok(
+      result.errors.some((error) => error.includes("disagrees")),
+      "green marker must match manifest",
+    );
+  });
+
+  test("validateClosureDocument rejects a heading without literal red/green proof", () => {
+    const hollow = `
+## Criterion-to-Evidence Mapping
+## Red/Green Reproduction
+Regression tests cover this.
+## Browser & Database Verification
+## Explicit Skips, Blocks, Waivers
+## Rollback Procedure
+## Risk Analysis
+`;
+    const result = validateClosureDocument(hollow);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.includes("red artifact")));
+    assert.ok(result.errors.some((error) => error.includes("green artifact")));
+  });
+
+  test("validateClosureDocument accepts hashed red and green artifacts", () => {
+    const hash = "a".repeat(64);
+    const complete = `
+## Criterion-to-Evidence Mapping
+## Red/Green Reproduction
+- Red artifact: \`logs/red.log\` (exit 1, sha256 \`${hash}\`)
+- Green artifact: \`logs/green.log\` (exit 0, sha256 \`${hash}\`)
+## Browser & Database Verification
+## Explicit Skips, Blocks, Waivers
+## Rollback Procedure
+## Risk Analysis
+`;
+    assert.equal(validateClosureDocument(complete).valid, true);
   });
 });

@@ -14,7 +14,7 @@ export function redactSecretsAndPhi(text) {
   return text
     .replace(/postgres(?:ql)?:\/\/[^\s:@]+:[^\s:@]+@/gi, "postgres://***:***@")
     .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgres://***")
-    .replace(/(?:password|passwd|pwd|secret|auth_token)\s*[:=]\s*["']?[^"'\s,;]+["']?/gi, (m) => {
+    .replace(/\b(?:[A-Z][A-Z0-9_]*_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|PEPPER|INVITE_CODE)|PASSWORD|PASSWD|PWD|SECRET)\s*[:=]\s*["']?[^"'\s,;]+["']?/gi, (m) => {
       const parts = m.split(/[:=]/);
       return `${parts[0]}=***`;
     })
@@ -67,6 +67,33 @@ export function parseCounts(output) {
 
 export function computeSha256(content) {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+function captureRedGreenArtifact(sourcePath, outputDir, label) {
+  const absolutePath = path.resolve(root, sourcePath);
+  const raw = fs.readFileSync(absolutePath, "utf8");
+  const normalized = raw.trimEnd();
+  const exitMatch = normalized.match(
+    /(?:^|\r?\n)EVIDENCE_EXIT_CODE=(\d+)$/,
+  );
+  if (!exitMatch) {
+    throw new Error(
+      `${label} proof must end with a literal EVIDENCE_EXIT_CODE=<number> line`,
+    );
+  }
+  const substantiveOutput = normalized.slice(0, exitMatch.index).trim();
+  if (substantiveOutput.length < 20) {
+    throw new Error(`${label} proof must contain substantive command output`);
+  }
+
+  const content = `${redactSecretsAndPhi(normalized)}\n`;
+  const logFile = `logs/red-green-${label}.log`;
+  fs.writeFileSync(path.join(outputDir, logFile), content, "utf8");
+  return {
+    exit_code: Number(exitMatch[1]),
+    log_file: logFile,
+    sha256: computeSha256(content),
+  };
 }
 
 export function getGitMetadata() {
@@ -144,6 +171,21 @@ export async function runCapture(options = {}) {
   };
 
   let anyFailed = false;
+  if (options.redLogPath && options.greenLogPath) {
+    manifest.artifacts.red_green = {
+      defect: String(options.defect || "Regression under review").slice(0, 300),
+      red: captureRedGreenArtifact(options.redLogPath, outputDir, "red"),
+      green: captureRedGreenArtifact(options.greenLogPath, outputDir, "green"),
+    };
+    if (
+      manifest.artifacts.red_green.red.exit_code === 0 ||
+      manifest.artifacts.red_green.green.exit_code !== 0
+    ) {
+      anyFailed = true;
+    }
+  } else {
+    anyFailed = true;
+  }
 
   for (const stageKey of selectedStages) {
     const stageDef = STAGE_DEFINITIONS[stageKey];
@@ -216,6 +258,14 @@ function generateMarkdownReport(manifest) {
     })
     .join("\n");
 
+  const proof = manifest.artifacts.red_green;
+  const redGreenSection = proof
+    ? `Defect: ${String(proof.defect).replaceAll("|", "\\|")}
+
+- Red artifact: \`${proof.red.log_file}\` (exit ${proof.red.exit_code}, sha256 \`${proof.red.sha256}\`)
+- Green artifact: \`${proof.green.log_file}\` (exit ${proof.green.exit_code}, sha256 \`${proof.green.sha256}\`)`
+    : "No red/green artifacts were supplied. This report cannot close a bug or remediation ticket.";
+
   return `# Ticket #${manifest.ticket_id} Closure Evidence Report
 
 - **Overall Status**: **${manifest.overall_status}**
@@ -242,8 +292,7 @@ Each required stage maps to its complete, hashed log in the Stage Execution Matr
 
 ## Red/Green Reproduction
 
-Regression tests in the unit, database, and end-to-end stages record the failing
-condition and the passing corrected behavior in executable form.
+${redGreenSection}
 
 ## Browser & Database Verification
 
@@ -270,9 +319,22 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToP
   const args = process.argv.slice(2);
   const ticketArg = args.find((a) => a.startsWith("--ticket="))?.split("=")[1] || "74";
   const stagesArg = args.find((a) => a.startsWith("--stages="))?.split("=")[1]?.split(",");
+  const redLogPath = args.find((a) => a.startsWith("--red-log="))?.slice("--red-log=".length);
+  const greenLogPath = args.find((a) => a.startsWith("--green-log="))?.slice("--green-log=".length);
+  const defect = args.find((a) => a.startsWith("--defect="))?.slice("--defect=".length);
 
-  runCapture({ ticketId: ticketArg, stages: stagesArg }).catch((err) => {
-    console.error("[EVIDENCE] Fatal capture error:", err);
-    process.exit(1);
-  });
+  runCapture({
+    ticketId: ticketArg,
+    stages: stagesArg,
+    redLogPath,
+    greenLogPath,
+    defect,
+  })
+    .then((manifest) => {
+      if (manifest.overall_status !== "PASS") process.exitCode = 1;
+    })
+    .catch((err) => {
+      console.error("[EVIDENCE] Fatal capture error:", err);
+      process.exit(1);
+    });
 }

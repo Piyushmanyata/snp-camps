@@ -8,12 +8,6 @@ import {
   statusUrlForToken,
 } from "@/lib/registration-sms";
 import { isPatientUuid } from "@/lib/qr";
-import {
-  claimSmsDelivery,
-  completeSmsDelivery,
-  markSmsDispatchStarted,
-  phoneLast4FromRaw,
-} from "@/lib/sms-deliveries";
 
 /**
  * Fire-and-forget registration SMS after a successful desk register.
@@ -68,53 +62,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // If claim fails (already sent), still return non-error for the desk nudge.
-  const phoneLast4 = phoneLast4FromRaw(String(row.phone));
-  let claim;
-  try {
-    claim = await claimSmsDelivery(supabase, {
-      patientId: body.patientId,
-      kind: "registration",
-      phoneLast4,
-    });
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : "claim failed";
-    return NextResponse.json(
-      { ok: false, status: "failed", detail: detail.slice(0, 300) },
-      { status: 502 },
-    );
-  }
-
-  if (!claim) {
-    return NextResponse.json({
-      ok: true,
-      status: "skipped",
-      reason: "not_claimed",
-    });
-  }
-
-  let dispatchMarked = false;
-  try {
-    dispatchMarked = await markSmsDispatchStarted(supabase, claim);
-  } catch {
-    dispatchMarked = false;
-  }
-  if (!dispatchMarked) {
-    await completeSmsDelivery(supabase, {
-      deliveryId: claim.deliveryId,
-      claimToken: claim.claimToken,
-      outcome: "release",
-    }).catch(() => false);
-    return NextResponse.json(
-      {
-        ok: false,
-        status: "failed",
-        detail: "SMS dispatch could not be started safely.",
-      },
-      { status: 502 },
-    );
-  }
-
   const result = await sendRegistrationSms(
     {
       phone: row.phone,
@@ -122,77 +69,28 @@ export async function POST(req: Request) {
       dayDate: String(dayDate),
       venue: row.venue ?? null,
       statusUrl: statusUrlForToken(String(statusToken)),
-      // Ledger already claimed above — send without double-claim.
-      patientId: null,
+      patientId: body.patientId,
     },
-    { template: "registration" },
+    { template: "registration", ledger: supabase },
   );
 
   if (result.status === "sent") {
-    const completed = await completeSmsDelivery(supabase, {
-      deliveryId: claim.deliveryId,
-      claimToken: claim.claimToken,
-      outcome: "sent",
-      providerRequestId: result.requestId ?? null,
-    }).catch(() => false);
-    if (!completed) {
-      return NextResponse.json(
-        {
-          ok: false,
-          status: "ambiguous",
-          detail: "Provider accepted the SMS but ledger confirmation is pending.",
-        },
-        { status: 502 },
-      );
-    }
     return NextResponse.json({ ok: true, status: "sent", requestId: result.requestId });
   }
 
   if (result.status === "skipped") {
-    // Unconfigured mid-flight or no phone — release claim to pending.
-    const completed = await completeSmsDelivery(supabase, {
-      deliveryId: claim.deliveryId,
-      claimToken: claim.claimToken,
-      outcome: "release",
-    }).catch(() => false);
-    if (!completed) {
-      return NextResponse.json(
-        {
-          ok: false,
-          status: "ambiguous",
-          detail: "SMS claim release could not be confirmed.",
-        },
-        { status: 502 },
-      );
-    }
     return NextResponse.json({ ok: true, ...result });
   }
 
   if (result.status === "ambiguous") {
-    await completeSmsDelivery(supabase, {
-      deliveryId: claim.deliveryId,
-      claimToken: claim.claimToken,
-      outcome: "ambiguous",
-      lastError: result.detail,
-    }).catch(() => false);
-    return NextResponse.json({ ok: false, status: "ambiguous", detail: result.detail });
-  }
-
-  const failedRecorded = await completeSmsDelivery(supabase, {
-    deliveryId: claim.deliveryId,
-    claimToken: claim.claimToken,
-    outcome: "failed",
-    lastError: result.detail,
-  }).catch(() => false);
-  if (!failedRecorded) {
     return NextResponse.json(
-      {
-        ok: false,
-        status: "ambiguous",
-        detail: "Provider rejected the SMS but ledger confirmation failed.",
-      },
+      { ok: false, status: "ambiguous", detail: result.detail },
       { status: 502 },
     );
   }
-  return NextResponse.json({ ok: false, status: "failed", detail: result.detail });
+
+  return NextResponse.json(
+    { ok: false, status: "failed", detail: result.detail },
+    { status: 502 },
+  );
 }

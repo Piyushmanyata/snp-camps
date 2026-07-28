@@ -3,11 +3,7 @@ import fs from "node:fs";
 
 const dbTestFiles = fs
   .readdirSync("tests")
-  .filter(
-    (name) =>
-      name.endsWith(".test.mjs") &&
-      /\bfrom\s+["']pg["']/.test(fs.readFileSync(`tests/${name}`, "utf8")),
-  )
+  .filter((name) => name.endsWith(".db.test.mjs"))
   .sort()
   .map((name) => `tests/${name}`);
 

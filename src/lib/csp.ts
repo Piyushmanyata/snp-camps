@@ -28,7 +28,7 @@ export function buildContentSecurityPolicy(
       : "wss://*.supabase.co");
 
   // 'wasm-unsafe-eval' is required to instantiate WebAssembly at all, and the
-  // Aadhaar scanner is entirely WASM (ZXing, ZBar, OpenCV). It is the narrow
+  // Aadhaar scanner is entirely WASM (ZXing and ZBar). It is the narrow
   // grant: it permits WebAssembly compilation and nothing else — unlike
   // 'unsafe-eval' it does NOT re-enable eval() or new Function() for JS.
   // Without it the scanner works in dev (which has 'unsafe-eval') and fails in

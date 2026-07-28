@@ -159,7 +159,7 @@ export async function POST(request: Request) {
     p_aadhaar_duplicate_override: false,
     p_likely_duplicate_override: false,
     p_self_service: true,
-    p_provenance: "card_verified",
+    p_provenance: "card_scanned",
     p_duplicate_key: duplicateKey,
     p_date_of_birth: dateOfBirth,
     p_display_name: displayName || null,

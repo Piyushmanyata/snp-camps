@@ -44,14 +44,22 @@ async function fetchCachedSnapshot() {
   return parseSnapshot(data);
 }
 
+async function fetchSnapshot() {
+  const supabase = createServiceRoleClient() ?? (await createClient());
+
+  const { data, error } = await supabase.rpc("active_camp_snapshot");
+  if (error) throw new Error("Active camp data could not be loaded");
+  return parseSnapshot(data);
+}
+
 /** Public-only camp data; registration capacity is still enforced in Postgres. */
 export const getActiveCampSnapshot = cache(async () => {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return fetchCachedSnapshot();
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("active_camp_snapshot");
-  if (error) throw new Error("Active camp data could not be loaded");
-  return parseSnapshot(data);
+  return fetchSnapshot();
 });
+
+/** Request-fresh operational snapshot so staff never register into a stale camp. */
+export const getActiveCampSnapshotFresh = cache(fetchSnapshot);

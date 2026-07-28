@@ -197,12 +197,15 @@ export type StaffKpiRow = {
  * Whole-camp staff rollup for both leaderboards (#119/#121).
  */
 export async function loadStaffLeaderboardSection(
-  campId: string,
+  campId: string | null,
 ): Promise<SectionResult<StaffKpiRow[]>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("staff_leaderboard", {
+  const { data, error } = await supabase.rpc("staff_person_kpis", {
+    p_user_id: null,
+    p_role: null,
     p_camp_id: campId,
-    p_target_staff_id: null,
+    p_since: null,
+    p_scope: "leaderboard",
   });
 
   if (error) {
@@ -217,10 +220,12 @@ export async function loadStaffLeaderboardSection(
 
   return {
     ok: true,
-    data: ((data ?? []) as StaffKpiRow[]).map((row) => ({
+    data: (
+      (data ?? []) as Array<StaffKpiRow & { staff_role?: string }>
+    ).map((row) => ({
       staff_id: row.staff_id,
       full_name: row.full_name,
-      role: row.role,
+      role: row.staff_role ?? row.role,
       distinct_patients: Number(row.distinct_patients ?? 0),
       team_lead_id: row.team_lead_id ?? null,
       team_headcount: Number(row.team_headcount ?? 0),
@@ -349,7 +354,7 @@ export async function loadAwaitingTreatmentSection(
       `
       kind,
       patient_id,
-      patients!inner (
+      patient:patients!treatment_orders_patient_id_fkey!inner (
         id,
         queue_status,
         camp_id
@@ -358,8 +363,8 @@ export async function loadAwaitingTreatmentSection(
     )
     .eq("camp_id", campId)
     .eq("status", "pending")
-    .eq("patients.queue_status", "seen")
-    .eq("patients.camp_id", campId);
+    .eq("patient.queue_status", "seen")
+    .eq("patient.camp_id", campId);
 
   if (error) {
     return {

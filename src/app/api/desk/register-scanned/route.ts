@@ -38,7 +38,7 @@ function failure(message: string, status: number, code?: string) {
  *
  * The Aadhaar Person key is derived only on the server and is never returned to
  * the browser. The service-role RPC is deliberately constrained to the signed-in
- * staff member, card-verified provenance, and no duplicate overrides.
+ * staff member, card-scanned provenance, and no duplicate overrides.
  */
 export async function POST(request: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     p_aadhaar_duplicate_override: false,
     p_likely_duplicate_override: false,
     p_self_service: false,
-    p_provenance: "card_verified",
+    p_provenance: "card_scanned",
     p_duplicate_key: duplicateKey,
     p_date_of_birth: dateOfBirth,
     p_display_name: displayName || null,
