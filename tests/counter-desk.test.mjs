@@ -50,3 +50,18 @@ test("isPatientCompletedDerived: computes derived completion correctly", () => {
     "registered status → not completed"
   );
 });
+
+test("CounterDeskPanel uses explicit foreign key relationship for treatment_orders -> patients join to prevent PGRST201 error", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const panelSource = fs.readFileSync(
+    path.join(process.cwd(), "src/components/counter-desk-panel.tsx"),
+    "utf8"
+  );
+  assert.match(
+    panelSource,
+    /patients!treatment_orders_patient_id_fkey!inner/,
+    "counter-desk-panel must specify treatment_orders_patient_id_fkey constraint hint to prevent ambiguous PostgREST embedding (PGRST201)"
+  );
+});
+

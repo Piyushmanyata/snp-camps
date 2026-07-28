@@ -70,7 +70,7 @@ export function CounterDeskPanel({
             kind,
             created_at,
             patient_id,
-            patients!inner (
+            patients!treatment_orders_patient_id_fkey!inner (
               id,
               reg_no,
               full_name,
