@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretest": "npm run wasm:copy",
     "test": "node scripts/run-unit-tests.mjs",
     "test:db": "node scripts/run-db-tests.mjs",
     "test:db:replay": "npx supabase db reset --yes && npm run test:db",
