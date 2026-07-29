@@ -1,6 +1,6 @@
 /**
  * Empirical Stress Test Harness for #58 (QR Camera Session & Orchestrator)
- * and #57 (doctor_assign_patient state machine).
+ * and D22/D25 (mark_seen state machine).
  * 
  * Written by Challenger M1-1 for empirical verification.
  */
@@ -188,7 +188,7 @@ test("STRESS: Synchronous decode under invalidation and freeze", () => {
 
 
 // --------------------------------------------------------------------------
-// SECTION 2: EMPIRICAL STRESS TESTS FOR doctor_assign_patient RPC (#57)
+// SECTION 2: EMPIRICAL STRESS TESTS FOR the mark_seen RPC (D22/D25)
 // --------------------------------------------------------------------------
 
 /** @type {pg.Client | null} */
@@ -200,7 +200,7 @@ async function connectDb() {
   try {
     await c.connect();
     const { rows } = await c.query(
-      `select to_regprocedure('public.assign_patient_doctor(uuid,integer,uuid)') is not null as ok`,
+      `select to_regprocedure('public.mark_seen(uuid,integer)') is not null as ok`,
     );
     if (!rows[0]?.ok) {
       await c.end();
@@ -366,9 +366,9 @@ async function registerPatient(campId, dayId, name) {
 test("STRESS: High-concurrency assignment burst across registered vs waiting patients", async (t) => {
   if (skipIfNoDb(t)) return;
 
-  const doc1 = await seedProfile("doctor");
-  const doc2 = await seedProfile("doctor");
-  const doc3 = await seedProfile("doctor");
+  const marker1 = await seedProfile("volunteer");
+  const marker2 = await seedProfile("volunteer");
+  const marker3 = await seedProfile("volunteer");
   const vol1 = await seedProfile("volunteer");
 
   const { campId, dayId } = await seedCampFutureDay();
@@ -398,8 +398,8 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
     await client.query("commit");
   }
 
-  // Now, fire 30 concurrent doctor assignment calls (3 doctors x 10 patients)
-  async function callAssign(doctorId, patientId) {
+  // Fire 30 concurrent mark-seen calls (3 volunteers x 10 patients)
+  async function callMarkSeen(staffId, patientId) {
     const c = new pg.Client({ connectionString: DATABASE_URL });
     await c.connect();
     try {
@@ -408,32 +408,32 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
         `select set_config('request.jwt.claim.role', 'authenticated', true)`,
       );
       await c.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
-        doctorId,
+        staffId,
       ]);
       await c.query(`select set_config('request.jwt.claims', $1, true)`, [
-        JSON.stringify({ role: "authenticated", sub: doctorId }),
+        JSON.stringify({ role: "authenticated", sub: staffId }),
       ]);
       await c.query(`set local role authenticated`);
       const { rows } = await c.query(
-        `select * from public.assign_patient_doctor($1, null, null)`,
+        `select * from public.mark_seen($1, null)`,
         [patientId],
       );
       await c.query("commit");
-      return { patientId, doctorId, result: rows[0] };
+      return { patientId, staffId, result: rows[0] };
     } catch (err) {
       await c.query("rollback").catch(() => {});
-      return { patientId, doctorId, error: err };
+      return { patientId, staffId, error: err };
     } finally {
       await c.end().catch(() => {});
     }
   }
 
-  const doctors = [doc1, doc2, doc3];
+  const markers = [marker1, marker2, marker3];
   const promises = [];
 
   for (const p of patients) {
-    for (const d of doctors) {
-      promises.push(callAssign(d, p.id));
+    for (const d of markers) {
+      promises.push(callMarkSeen(d, p.id));
     }
   }
 
@@ -458,7 +458,7 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
       assert.equal(
         successes.length,
         1,
-        `Patient ${i} (waiting) should have exactly 1 successful assignment, got ${successes.length}`,
+        `Patient ${i} (waiting) should have exactly 1 first-time transition, got ${successes.length}`,
       );
       assert.equal(
         alreadySeens.length,
@@ -466,22 +466,24 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
         `Patient ${i} (waiting) should have 2 already_seen responses, got ${alreadySeens.length}`,
       );
 
-      const winningDoctor = successes[0].result.doctor_id;
+      // Every terminal response must echo the same seen_at as the winner —
+      // proof no concurrent caller re-stamped the row (D25).
+      const winningSeenAt = String(successes[0].result.seen_at);
       for (const als of alreadySeens) {
         assert.equal(
-          als.result.doctor_id,
-          winningDoctor,
-          `Patient ${i} already_seen returned doctor_id ${als.result.doctor_id} instead of winner ${winningDoctor}`,
+          String(als.result.seen_at),
+          winningSeenAt,
+          `Patient ${i} already_seen returned a different seen_at than the winner`,
         );
       }
     } else {
-      // Patients 5..9 were 'registered' (not checked in).
-      // ALL 3 requests MUST return error_code check_in_required!
+      // Patients 5..9 were 'registered' — never printed for, so never queued.
+      // ALL 3 requests MUST refuse with not_in_queue.
       for (const r of pResults) {
         assert.equal(
           r.result?.error_code,
-          "check_in_required",
-          `Patient ${i} (registered) should return check_in_required`,
+          "not_in_queue",
+          `Patient ${i} (registered) should return not_in_queue`,
         );
         assert.equal(r.result?.queue_status, "registered");
         assert.equal(r.result?.already_seen, false);
@@ -505,88 +507,99 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
   }
 });
 
-test("STRESS: Invalid roles, disabled doctor, and inactive camp exception checks", async (t) => {
+
+test("STRESS: non-staff callers and inactive camps are refused by mark_seen", async (t) => {
   if (skipIfNoDb(t)) return;
 
-  const docId = await seedProfile("doctor");
   const volId = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Error Check Patient");
 
-  // Check in patient so queue_status is 'waiting'
-  await client.query("begin");
-  await client.query(`select set_config('request.jwt.claim.role', 'authenticated', true)`);
-  await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [volId]);
-  await client.query(`select set_config('request.jwt.claims', $1, true)`, [
-    JSON.stringify({ role: "authenticated", sub: volId }),
-  ]);
-  await client.query(`set local role authenticated`);
-  await client.query(`select * from public.check_in_patient($1, null)`, [patient.id]);
-  await client.query("commit");
+  /** Run one statement under a given user's authenticated JWT claims. */
+  async function asUser(userId, sql, params) {
+    try {
+      await client.query("begin");
+      await client.query(
+        `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+      );
+      await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+        userId,
+      ]);
+      await client.query(`select set_config('request.jwt.claims', $1, true)`, [
+        JSON.stringify({ role: "authenticated", sub: userId }),
+      ]);
+      await client.query(`set local role authenticated`);
+      const { rows } = await client.query(sql, params);
+      await client.query("commit");
+      return rows[0];
+    } catch (err) {
+      await client.query("rollback").catch(() => {});
+      throw err;
+    }
+  }
 
-  // Test 1: Volunteer calling assign without p_doctor_id -> returns doctor_required error_code
-  await client.query("begin");
-  await client.query(`select set_config('request.jwt.claim.role', 'authenticated', true)`);
-  await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [volId]);
-  await client.query(`select set_config('request.jwt.claims', $1, true)`, [
-    JSON.stringify({ role: "authenticated", sub: volId }),
+  // Queue the patient so mark_seen has a valid target.
+  await asUser(volId, `select * from public.check_in_patient($1, null)`, [
+    patient.id,
   ]);
-  await client.query(`set local role authenticated`);
-  const { rows: reqDocRows } = await client.query(
-    `select * from public.assign_patient_doctor($1, null, null)`,
-    [patient.id],
+
+  // A residual patient-role profile is not staff and must be refused outright.
+  const patientRoleId = randomUUID();
+  await client.query(
+    `insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+     values ($1, '00000000-0000-0000-0000-000000000000', 'authenticated',
+             'authenticated', $2, now(), now())`,
+    [patientRoleId, `patient-${patientRoleId.slice(0, 8)}@empirical.test`],
   );
-  await client.query("commit");
-  assert.equal(reqDocRows[0].error_code, "doctor_required");
-
-  // Test 2: Volunteer passing a non-existent or disabled doctor ID -> raises exception
-  const fakeDocId = randomUUID();
-  await assert.rejects(
-    async () => {
-      try {
-        await client.query("begin");
-        await client.query(`select set_config('request.jwt.claim.role', 'authenticated', true)`);
-        await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [volId]);
-        await client.query(`select set_config('request.jwt.claims', $1, true)`, [
-          JSON.stringify({ role: "authenticated", sub: volId }),
-        ]);
-        await client.query(`set local role authenticated`);
-        await client.query(
-          `select * from public.assign_patient_doctor($1, null, $2)`,
-          [patient.id, fakeDocId],
-        );
-        await client.query("commit");
-      } catch (err) {
-        await client.query("rollback").catch(() => {});
-        throw err;
-      }
-    },
-    /Invalid or disabled doctor/,
+  await client.query(
+    `insert into public.profiles (id, role, full_name)
+     values ($1, 'patient', 'Residual Patient')`,
+    [patientRoleId],
   );
 
-  // Test 3: Inactive camp exception
-  await client.query(`update public.camps set is_active = false where id = $1`, [campId]);
-
   await assert.rejects(
-    async () => {
-      try {
-        await client.query("begin");
-        await client.query(`select set_config('request.jwt.claim.role', 'authenticated', true)`);
-        await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [docId]);
-        await client.query(`select set_config('request.jwt.claims', $1, true)`, [
-          JSON.stringify({ role: "authenticated", sub: docId }),
-        ]);
-        await client.query(`set local role authenticated`);
-        await client.query(
-          `select * from public.assign_patient_doctor($1, null, null)`,
-          [patient.id],
-        );
-        await client.query("commit");
-      } catch (err) {
-        await client.query("rollback").catch(() => {});
-        throw err;
-      }
-    },
+    async () =>
+      asUser(patientRoleId, `select * from public.mark_seen($1, null)`, [
+        patient.id,
+      ]),
+    /staff only/,
+    "a non-staff role must never mark a patient seen",
+  );
+
+  // A disabled volunteer loses the desk too.
+  await client.query(
+    `update public.profiles set disabled_at = now() where id = $1`,
+    [volId],
+  );
+  await assert.rejects(
+    async () =>
+      asUser(volId, `select * from public.mark_seen($1, null)`, [patient.id]),
+    /staff only/,
+    "a disabled volunteer must never mark a patient seen",
+  );
+  await client.query(
+    `update public.profiles set disabled_at = null where id = $1`,
+    [volId],
+  );
+
+  // Inactive camp is refused regardless of caller.
+  await client.query(`update public.camps set is_active = false where id = $1`, [
+    campId,
+  ]);
+  await assert.rejects(
+    async () =>
+      asUser(volId, `select * from public.mark_seen($1, null)`, [patient.id]),
     /Patient belongs to an inactive camp/,
   );
+
+  // The patient is untouched by every refusal above.
+  const { rows } = await client.query(
+    `select queue_status, seen_at, seen_by from public.patients where id = $1`,
+    [patient.id],
+  );
+  assert.equal(rows[0].queue_status, "waiting");
+  assert.equal(rows[0].seen_at, null);
+  assert.equal(rows[0].seen_by, null);
 });
+
+

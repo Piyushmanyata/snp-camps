@@ -1,8 +1,17 @@
 # Awaiting treatment is derived from pending orders, not a queue state
 
 ---
-Status: accepted
+Status: superseded
 ---
+
+> **Superseded (2026-07-28) by [ADR 0008](0008-printing-queues-the-patient.md).**
+>
+> `treatment_orders` and the counter stations that consumed them were removed
+> outright, so there is nothing left to derive "awaiting treatment" from. The
+> principle below still stands and is worth preserving: **do not add a fourth
+> `queue_status`.** The lifecycle is exactly `registered → waiting → seen`.
+> Anything that looks like a new patient state should be derived from data the
+> system already holds, or should not be modelled in the app at all.
 
 Patients must be tracked after the doctor has seen them, split into OT, Medicines and
 Spectacles queues. The `treatment_orders` table with its `kind` and `status` columns

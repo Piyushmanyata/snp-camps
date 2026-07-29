@@ -1,41 +1,24 @@
 /**
- * Route-scoped desk-slip print styles (#64).
+ * Route-scoped prescription print styles.
  * Imported only under /print/* so interactive desk routes do not pay the cost.
+ *
+ * The whole form prints on every sheet, on plain A4 (D16). Physical size comes
+ * from `@page` — under print media the sheet is deliberately width:100% and the
+ * page box does the sizing, so measuring its CSS width in an emulated print
+ * viewport tells you nothing about the paper.
  */
 
-/* Screen preview chrome */
+/* Screen preview chrome only — removed in print. */
 .print-preview {
   border: 1px solid var(--border, #e2e8f0);
 }
 
-.desk-slip-thermal {
-  width: 58mm;
-  max-width: 58mm;
-  /* Content-safe: no hard clip; roll grows with content */
-  min-height: 90mm;
-  height: auto;
-  border: 1px solid var(--border, #e2e8f0);
-  overflow: visible;
-}
-
 /* Long names / venues wrap — never clip silently */
-.desk-slip-name,
-.desk-slip-venue {
+.prescription-name,
+.prescription-venue {
   overflow-wrap: anywhere;
   word-break: break-word;
   hyphens: auto;
-}
-
-/* Thermal roll: fixed width, auto height */
-@page desk-thermal58 {
-  size: 58mm auto;
-  margin: 2mm;
-}
-
-/* A4 Prescription layout */
-@page prescription-a4 {
-  size: A4;
-  margin: 15mm;
 }
 
 @page {
@@ -81,28 +64,7 @@
     break-inside: avoid;
   }
 
-  .desk-slip-thermal {
-    page: desk-thermal58;
-    width: 54mm;
-    max-width: 54mm;
-    min-height: 0;
-    height: auto !important;
-    border: none !important;
-    overflow: visible !important;
-  }
-
-  .prescription-a4 {
-    page: prescription-a4;
-    width: 100% !important;
-    max-width: none !important;
-    min-height: 0 !important;
-    height: auto !important;
-    border: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-  }
-
+  /* Ruled writing areas must keep their lines on paper. */
   .ruled-lines {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -122,4 +84,3 @@
     display: none !important;
   }
 }
-

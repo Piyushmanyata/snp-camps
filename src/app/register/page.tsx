@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSessionProfile, isStaff, isDoctor, roleHome } from "@/lib/auth";
+import { getSessionProfile, isStaff, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshotFresh } from "@/lib/camp";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
@@ -16,25 +15,16 @@ export default async function RegisterPage() {
   const days = camp?.days || [];
   const role = profile?.role;
 
-  // Doctors are camp crew, not staff — send them to their desk before any
-  // public registration UI. Guard is role-specific, not order-dependent on isStaff.
-  if (isDoctor(role)) redirect(roleHome(role) || "/doctor");
-
   const staff = isStaff(role);
 
-  const deskHref =
-    role === "volunteer" || role === "team_lead"
-      ? "/volunteer"
-      : role === "admin"
-        ? "/admin"
-        : "/";
+  // One routing table, not two (D5) — roleHome() is the single source.
+  const deskHref = roleHome(role) || "/";
 
   const staffDock =
     role === "volunteer" || role === "team_lead"
       ? [
           { href: "/register", label: "Register", primary: true as const },
           { href: "/volunteer", label: "Desk" },
-          { href: "/counter", label: "Counter" },
           { href: "/volunteer#scan", label: "Scan" },
         ]
       : role === "admin"

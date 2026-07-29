@@ -1,4 +1,4 @@
-# Operations: Readiness and clean replay (#68)
+# Operations: Readiness and clean replay
 
 ## Liveness vs readiness
 
@@ -28,8 +28,8 @@ Every response includes machine-readable `checks` and optional `failedCheck`:
 | `required_configuration` | Required Person HMAC pepper is configured |
 | `migration_head_discovery` | `latest_applied_migration()` returned a non-empty version string |
 | `applied_head_agreement` | Applied head equals `expectedMigrationHead` from the app contract |
-| `schema_contract` | Runtime-critical tables, columns, and functions exist |
-| `rpc_grants` | Least-privilege expectations (status token, status RPC, SMS, staff RPCs) |
+| `schema_contract` | Runtime-critical tables, columns, and functions exist — and the retired ones stay retired (`prescription_records_absent`, `doctor_station_retired`, `mark_seen_contract`) |
+| `rpc_grants` | Least-privilege expectations (status token, status RPC, SMS, desk RPCs) |
 | `patients_realtime_absent` | `patients` is **not** in `supabase_realtime` publication |
 | `sms_ledger` | Durable SMS ledger table, enums, claim/complete RPCs present |
 
@@ -44,9 +44,9 @@ Response shape (safe — no secrets, SQL text, PHI, or connection strings):
 ```json
 {
   "ok": false,
-  "contractVersion": 1,
-  "expectedMigrationHead": "20260726220000",
-  "appliedMigrationHead": "20260726210000",
+  "contractVersion": 4,
+  "expectedMigrationHead": "20260728119000",
+  "appliedMigrationHead": "20260728118000",
   "failedCheck": "applied_head_agreement",
   "checks": {
     "applied_head_agreement": {
@@ -62,11 +62,11 @@ Response shape (safe — no secrets, SQL text, PHI, or connection strings):
 |---|---|
 | `database_reachability` | Check Supabase status, network, and `SUPABASE_SERVICE_ROLE_KEY` / URL env |
 | `migration_head_discovery` | Ledger RPC missing or unreadable — do **not** treat as ready; restore service role + migrations |
-| `applied_head_agreement` / `head_mismatch` | Repo/app expects a newer head than the DB. Plan a controlled migration apply (see #34 for production). **Never** auto-apply from readiness |
+| `applied_head_agreement` / `head_mismatch` | Repo/app expects a newer head than the DB. Plan a controlled migration apply. **Never** auto-apply from readiness |
 | `schema_contract` | Critical object missing — run clean replay on disposable DB; compare heads |
 | `rpc_grants` | Privilege drift — review least-privilege migrations; do not casually `GRANT` status tokens |
 | `patients_realtime_absent` | Drop `patients` from `supabase_realtime` (poll-only product) |
-| `sms_ledger` | Apply migrations through the SMS ledger (#65) and later heads |
+| `sms_ledger` | Apply migrations through the SMS ledger and later heads |
 | `timeout` | DB too slow or stuck — investigate load; readiness budget is bounded |
 
 ## Clean replay (mandatory proof)
@@ -99,20 +99,28 @@ Compares repository files, `EXPECTED_MIGRATION_HEAD`, optional local applied led
 
 ## Bumping the contract after a new migration
 
+Both halves of the contract must move together, or readiness fails closed:
+
 1. Add append-only SQL under `supabase/migrations/`.
-2. Set `EXPECTED_MIGRATION_HEAD` in `src/lib/readiness-contract.ts` to the new version prefix.
-3. If new runtime-critical objects/grants are required, extend the contract **and** `readiness_catalog_probe` in a new migration (do not edit old migrations).
-4. `npm run test:db:replay` and `npm run compare:migrations -- --require-local`.
+2. Set `EXPECTED_MIGRATION_HEAD` in `src/lib/readiness-contract.ts` to the new version prefix, and bump `READINESS_CONTRACT_VERSION` when the set of required facts changes.
+3. Update the `migration_head_current` invariant **inside** `readiness_catalog_probe()` in the same migration. The probe hard-codes the head it expects.
+4. If objects are added or removed, update the probe's table/column/function/grant lists **and** the matching arrays in `readiness-contract.ts`.
+5. `npm run test:db:replay` and `npm run compare:migrations -- --require-local`.
+
+> A probe that references a dropped object does not return `false` — it raises. Casts
+> like `'public.foo'::regclass` and `has_table_privilege(...)` on a missing table take
+> readiness down entirely. When a migration drops something, rewrite the probe in the
+> same transaction.
 
 ## Out of scope for readiness
 
-- Browser/client proof that no Realtime subscription remains → **#56 / #72**
-- Production migration apply / Auth dashboard cleanup → **#34**
+- Browser/client proof that no Realtime subscription remains
+- Production migration apply and Auth dashboard cleanup
 - Auto-repair of linked ledgers
 
-## Governance, Authority & Evidence (#73, #74)
+## Governance
 
-- **Document Authority Precedence**: Resolved per `CONTEXT.md` § Document Authority Precedence. Remediation contracts (#56, #68, #72, #74) override historical specs.
-- **Production Safety**: Production contains active camp operational data; **production is NEVER assumed to be empty**. `db reset` against production is prohibited.
-- **Closure Evidence**: All readiness and migration verification output MUST satisfy the **[Issue #74](#74)** evidence contract.
+- **Document Authority Precedence**: resolved per `CONTEXT.md`.
+- **Production Safety**: **production is NEVER assumed to be empty**. `db reset` against production is prohibited.
+- Report readiness and migration output literally, including skip counts. A green summary line is not proof.
 

@@ -1,15 +1,16 @@
 /**
- * Desk scan / assign / change-day retry + idempotency behaviour (#32, #60).
+ * Desk scan / mark-seen / change-day retry + idempotency behaviour (#32, #60).
  * Transient failures use structured SQLSTATE / transport shapes — not English regex alone.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  assignPatientDoctorWithRetries,
+  markSeenWithRetries,
   changeCampDayWithRetries,
   checkInPatientWithRetries,
   lookupPatientScanWithRetries,
   searchRegisteredPatientsWithRetries,
+  undoMarkSeenWithRetries,
 } from "../src/lib/desk-ops.ts";
 import { RETRY_EXHAUSTED_COPY } from "../src/lib/with-retries.ts";
 
@@ -121,11 +122,10 @@ test("lookup permission denial 42501 is not retried", async () => {
   assert.doesNotMatch(result.error, /patients|42501|internet/i);
 });
 
-test("assign retries twice on timeout then surfaces exhausted copy", async () => {
+test("mark seen retries twice on timeout then surfaces exhausted copy", async () => {
   let calls = 0;
-  const result = await assignPatientDoctorWithRetries({
+  const result = await markSeenWithRetries({
     patientId: "p1",
-    doctorId: "doc-a",
     rpc: async () => {
       calls += 1;
       return { data: null, error: { ...TRANSIENT_TIMEOUT } };
@@ -138,36 +138,15 @@ test("assign retries twice on timeout then surfaces exhausted copy", async () =>
   assert.equal(result.error, RETRY_EXHAUSTED_COPY.assign);
 });
 
-test("assign keeps the same doctor id on every retry (no double-assign params)", async () => {
-  /** @type {unknown[]} */
-  const doctorArgs = [];
+test("mark seen already_seen after a flaky first call is terminal success", async () => {
+  // The first call landed server-side; the retry must report the ORIGINAL
+  // seen_at/seen_by rather than re-stamping the row (D25 double-scan safety).
   let calls = 0;
-  await assignPatientDoctorWithRetries({
+  const result = await markSeenWithRetries({
     patientId: "p1",
-    doctorId: "doc-fixed",
-    rpc: async (_fn, args) => {
+    rpc: async () => {
       calls += 1;
-      doctorArgs.push(args.p_doctor_id);
-      return { data: null, error: { ...TRANSIENT_CONN } };
-    },
-    sleep,
-  });
-  assert.equal(calls, 3);
-  assert.deepEqual(doctorArgs, ["doc-fixed", "doc-fixed", "doc-fixed"]);
-});
-
-test("assign already_seen after flaky first call is terminal success (no re-assign)", async () => {
-  let calls = 0;
-  /** @type {string[]} */
-  const doctors = [];
-  const result = await assignPatientDoctorWithRetries({
-    patientId: "p1",
-    doctorId: "doc-b",
-    rpc: async (_fn, args) => {
-      calls += 1;
-      doctors.push(/** @type {string} */ (args.p_doctor_id));
       if (calls === 1) return { data: null, error: { ...TRANSIENT_TIMEOUT } };
-      // Server: first call actually landed; second returns already_seen with original doctor.
       return {
         data: [
           {
@@ -175,8 +154,8 @@ test("assign already_seen after flaky first call is terminal success (no re-assi
             reg_no: 7,
             full_name: "Pat",
             queue_status: "seen",
-            doctor_id: "doc-original",
-            doctor_name: "Dr Original",
+            seen_at: "2026-07-28T10:00:00Z",
+            seen_by_name: "Original Volunteer",
             already_seen: true,
             error_code: "already_seen",
           },
@@ -187,49 +166,17 @@ test("assign already_seen after flaky first call is terminal success (no re-assi
     sleep,
   });
   assert.equal(calls, 2);
-  assert.deepEqual(doctors, ["doc-b", "doc-b"]);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.row.already_seen, true);
-  assert.equal(result.row.doctor_id, "doc-original");
+  assert.equal(result.row.seen_by_name, "Original Volunteer");
+  assert.equal(result.row.seen_at, "2026-07-28T10:00:00Z");
 });
 
-test("assign doctor_required is not retried", async () => {
+test("mark seen not_in_queue is not retried and names the reason", async () => {
   let calls = 0;
-  const result = await assignPatientDoctorWithRetries({
+  const result = await markSeenWithRetries({
     patientId: "p1",
-    doctorId: null,
-    rpc: async () => {
-      calls += 1;
-      return {
-        data: [
-          {
-            id: "p1",
-            reg_no: 1,
-            full_name: "A",
-            queue_status: "waiting",
-            doctor_id: null,
-            doctor_name: null,
-            already_seen: false,
-            error_code: "doctor_required",
-          },
-        ],
-        error: null,
-      };
-    },
-    sleep,
-  });
-  assert.equal(calls, 1);
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.doctorRequired, true);
-});
-
-test("assign check_in_required is not retried and uses worker copy", async () => {
-  let calls = 0;
-  const result = await assignPatientDoctorWithRetries({
-    patientId: "p1",
-    doctorId: "doc-a",
     rpc: async () => {
       calls += 1;
       return {
@@ -239,10 +186,10 @@ test("assign check_in_required is not retried and uses worker copy", async () =>
             reg_no: 1,
             full_name: "A",
             queue_status: "registered",
-            doctor_id: null,
-            doctor_name: null,
+            seen_at: null,
+            seen_by_name: null,
             already_seen: false,
-            error_code: "check_in_required",
+            error_code: "not_in_queue",
           },
         ],
         error: null,
@@ -253,8 +200,36 @@ test("assign check_in_required is not retried and uses worker copy", async () =>
   assert.equal(calls, 1);
   assert.equal(result.ok, false);
   if (result.ok) return;
-  assert.equal(result.checkInRequired, true);
-  assert.match(result.error, /check.+in first/i);
+  assert.equal(result.notInQueue, true);
+  assert.match(result.error, /print/i);
+  assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
+});
+
+test("undo mark seen surfaces an expired window as a terminal, plain message", async () => {
+  let calls = 0;
+  const result = await undoMarkSeenWithRetries({
+    patientId: "p1",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: [
+          {
+            id: "p1",
+            reg_no: 1,
+            full_name: "A",
+            queue_status: "seen",
+            error_code: "undo_window_expired",
+          },
+        ],
+        error: null,
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /too late/i);
   assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
 });
 
@@ -447,7 +422,7 @@ test("check-in already_seen is terminal and uses safe copy", async () => {
             full_name: "Seen Pat",
             queue_status: "seen",
             already_waiting: false,
-            doctor_name: "Dr Mehta",
+            seen_by_name: "Asha Rao",
             error_code: "already_seen",
           },
         ],
@@ -460,7 +435,7 @@ test("check-in already_seen is terminal and uses safe copy", async () => {
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.alreadySeen, true);
-  assert.match(result.error, /Already seen by Dr Mehta/);
+  assert.match(result.error, /Already seen by Asha Rao/);
   assert.doesNotMatch(result.error, /postgres|PGRST|relation/i);
 });
 
@@ -625,3 +600,4 @@ test("search unknown XX000 is terminal error not empty", async () => {
   if (result.ok) return;
   assert.doesNotMatch(result.error, /exploded|relation patients/i);
 });
+

@@ -173,7 +173,7 @@ test.describe("throttled primary desk action", () => {
       await popup.waitForURL(/\/print\/[0-9a-f-]+\?auto=1$/, {
         timeout: DESK_ACTION_BUDGET_MS,
       });
-      await expect(popup.getByTestId("desk-slip-thermal")).toBeVisible({
+      await expect(popup.getByTestId("prescription-sheet")).toBeVisible({
         timeout: DESK_ACTION_BUDGET_MS,
       });
       const printResponse = await printResponsePromise;
@@ -218,3 +218,4 @@ test.describe("throttled primary desk action", () => {
     ).toBeLessThan(DESK_ACTION_BUDGET_MS);
   });
 });
+

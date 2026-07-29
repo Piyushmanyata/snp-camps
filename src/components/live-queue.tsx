@@ -13,8 +13,10 @@ import {
 } from "@/components/ui";
 import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
 import { Toast } from "@/components/toast";
-import type { DoctorOption } from "@/lib/types";
-import { assignPatientDoctorWithRetries } from "@/lib/desk-ops";
+import {
+  markSeenWithRetries,
+  undoMarkSeenWithRetries,
+} from "@/lib/desk-ops";
 
 export type LiveQueuePatient = {
   id: string;
@@ -23,28 +25,24 @@ export type LiveQueuePatient = {
   phone: string | null;
 };
 
-/** Waiting queue. Assign doctor marks seen and removes from list. */
+/** Waiting queue. Mark seen removes the patient from the list (D22). */
 export function LiveQueue({
   initial,
   initialTotal,
   campId,
-  doctors = [],
-  mode = "volunteer",
   /** False when SSR queue failed — do not treat empty as success (#63). */
   initialLoadKnown = true,
 }: {
   initial: LiveQueuePatient[];
   initialTotal?: number;
   campId: string | null;
-  doctors?: DoctorOption[];
-  mode?: "volunteer" | "doctor" | "admin";
   initialLoadKnown?: boolean;
 }) {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [pickId, setPickId] = useState<string | null>(null);
-  const [doctorId, setDoctorId] = useState("");
+  // Last patient marked seen from this list — the undo target (D25).
+  const [undoable, setUndoable] = useState<LiveQueuePatient | null>(null);
 
   const {
     waiting: rows,
@@ -69,46 +67,49 @@ export function LiveQueue({
     refresh();
   }
 
-  async function assign(patientId: string, chosen: string | null) {
+  function deskRpc(supabase: ReturnType<typeof createClient>) {
+    return async (fn: string, args: Record<string, unknown>) => {
+      const result = await supabase.rpc(fn, args);
+      return {
+        data: result.data,
+        error: result.error
+          ? {
+              message: result.error.message,
+              code: result.error.code,
+              details: result.error.details,
+              hint: result.error.hint,
+            }
+          : null,
+      };
+    };
+  }
+
+  async function markSeen(patient: LiveQueuePatient) {
     if (busyId) return;
     setError(null);
-    setBusyId(patientId);
-    // doctorId / pickId stay set on failure so Try Again reuses them (#32).
-    const supabase = createClient();
-    const outcome = await assignPatientDoctorWithRetries({
-      patientId,
-      doctorId: chosen,
-      rpc: async (fn, args) => {
-        const result = await supabase.rpc(fn, args);
-        return {
-          data: result.data,
-          error: result.error
-            ? {
-                message: result.error.message,
-                code: result.error.code,
-                details: result.error.details,
-                hint: result.error.hint,
-              }
-            : null,
-        };
-      },
-      errorContext: "live-queue.assign",
-      errorFallback: "Could not assign this patient. Try again.",
+    setBusyId(patient.id);
+
+    const outcome = await markSeenWithRetries({
+      patientId: patient.id,
+      rpc: deskRpc(createClient()),
+      errorContext: "live-queue.mark-seen",
+      errorFallback: "Could not mark this patient seen. Try again.",
     });
 
     if (!outcome.ok) {
       setError(outcome.error);
-      clearRemoved(patientId);
+      clearRemoved(patient.id);
       setBusyId(null);
       return;
     }
 
     const row = outcome.row;
-    markRemoved(patientId);
-    if (row.already_seen || row.error_code === "already_seen") {
+    markRemoved(patient.id);
+
+    if (row.already_seen) {
       setError(
-        row.doctor_name
-          ? `Already seen by ${row.doctor_name}`
+        row.seen_by_name
+          ? `Already seen by ${row.seen_by_name}`
           : "Already seen",
       );
       refresh();
@@ -124,9 +125,32 @@ export function LiveQueue({
       /* ignore */
     }
 
-    setToastMsg("Patient assignment complete");
-    setPickId(null);
-    setDoctorId("");
+    setToastMsg(`#${patient.reg_no} ${patient.full_name} marked seen`);
+    setUndoable(patient);
+    refresh();
+    setBusyId(null);
+  }
+
+  async function undoSeen(patient: LiveQueuePatient) {
+    if (busyId) return;
+    setError(null);
+    setBusyId(patient.id);
+
+    const outcome = await undoMarkSeenWithRetries({
+      patientId: patient.id,
+      rpc: deskRpc(createClient()),
+      errorContext: "live-queue.undo-mark-seen",
+    });
+
+    if (!outcome.ok) {
+      setError(outcome.error);
+      setBusyId(null);
+      return;
+    }
+
+    setUndoable(null);
+    setToastMsg(`#${patient.reg_no} back in the queue`);
+    clearRemoved(patient.id);
     refresh();
     setBusyId(null);
   }
@@ -160,6 +184,40 @@ export function LiveQueue({
       />
       {toastMsg ? (
         <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
+      ) : null}
+      {undoable ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2"
+          role="status"
+        >
+          <p className="text-sm">
+            <span className="tabular font-semibold text-brand">
+              #{undoable.reg_no}
+            </span>{" "}
+            {undoable.full_name} marked seen.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="w-auto"
+              disabled={busyId !== null}
+              onClick={() => void undoSeen(undoable)}
+            >
+              Undo
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="w-auto"
+              onClick={() => setUndoable(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
         <span aria-live="polite">
@@ -217,88 +275,17 @@ export function LiveQueue({
                 >
                   Reprint
                 </Link>
-                {mode === "doctor" ? (
-                  <button
-                    type="button"
-                    disabled={busyId !== null}
-                    onClick={() => void assign(p.id, null)}
-                    className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
-                  >
-                    {busyId === p.id ? "…" : "See now"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busyId !== null}
-                    aria-expanded={pickId === p.id}
-                    onClick={() => {
-                      setPickId(pickId === p.id ? null : p.id);
-                      setDoctorId("");
-                      setError(null);
-                    }}
-                    className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white"
-                  >
-                    Assign
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={busyId !== null}
+                  onClick={() => void markSeen(p)}
+                  data-testid="mark-seen"
+                  className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
+                >
+                  {busyId === p.id ? "…" : "Mark seen"}
+                </button>
               </div>
             </div>
-
-            {pickId === p.id && mode !== "doctor" ? (
-              <div className="mt-2 space-y-2 rounded-xl border border-border bg-background p-3">
-                <p className="text-xs font-semibold text-muted">
-                  Which doctor is seeing them?
-                </p>
-                {doctors.length === 0 ? (
-                  <p className="text-xs text-amber-800">
-                    No doctors added yet.
-                  </p>
-                ) : (
-                  <div
-                    className="flex flex-wrap gap-1.5"
-                    role="group"
-                    aria-label="Select doctor"
-                  >
-                    {doctors.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        aria-pressed={doctorId === d.id}
-                        onClick={() => setDoctorId(d.id)}
-                        className={`pressable min-h-12 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                          doctorId === d.id
-                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
-                            : "border-border bg-white hover:bg-brand-soft/50"
-                        }`}
-                      >
-                        {d.full_name || "Doctor"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="w-auto"
-                    disabled={!doctorId || busyId === p.id}
-                    loading={busyId === p.id}
-                    onClick={() => void assign(p.id, doctorId)}
-                  >
-                    {busyId === p.id ? "…" : "Confirm seen"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="w-auto"
-                    onClick={() => setPickId(null)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </li>
         ))
           : null}
@@ -313,8 +300,8 @@ export function LiveQueue({
         {showEmpty ? (
           <li className="px-1 py-2">
             <EmptyState>
-              Queue is empty. Check-in puts patients here in arrival order. Doctors can
-              also scan registered patients directly (no print).
+              Queue is empty. Printing a patient&apos;s prescription puts them
+              here, in arrival order.
             </EmptyState>
           </li>
         ) : null}

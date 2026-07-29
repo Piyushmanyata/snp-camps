@@ -53,4 +53,9 @@ next-env.d.ts
 # Scratch directory
 .scratch/
 
+# Evidence run artifacts (logs, manifest, report) written by npm run capture:evidence.
+# Generated per verification run — committing them lets a stale "green" log outlive
+# the code it described, which is exactly how a passing summary stops meaning anything.
+/docs/evidence/
+
 

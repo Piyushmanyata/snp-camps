@@ -37,8 +37,11 @@ function supabaseRpc() {
 }
 
 /**
- * Desk check-in: reg number, name search, or paste QR.
- * All paths call check_in_patient via the shared #61 seam.
+ * Find a pre-registered patient by reg number, name, or pasted QR, then print
+ * their prescription — which is what puts them in the queue (ADR 0008).
+ *
+ * Name search exists for the patient who lost their paper and forgot their
+ * number; it is a way of reaching Print, never a separate check-in action.
  */
 export function CheckIn({
   campId,
@@ -101,7 +104,7 @@ export function CheckIn({
         regNo: opts.regNo ?? null,
         rpc: supabaseRpc(),
         errorContext: "check-in",
-        errorFallback: "Could not check in this patient. Try again.",
+        errorFallback: "Could not queue this patient. Try again.",
       });
 
       if (!outcome.ok) {
@@ -111,17 +114,15 @@ export function CheckIn({
       }
 
       const row = outcome.row;
-      setSuccess(
-        row.already_waiting
-          ? `#${row.reg_no} ${row.full_name} is already in the queue.`
-          : `#${row.reg_no} ${row.full_name} checked in — ab line mein hain.`,
-      );
       setRegInput("");
       setNameQuery("");
       setSearchState({ status: "idle" });
       setSelectedId(null);
       setBusy(false);
-      router.refresh();
+      // The desk has exactly one way to queue someone, and it ends in paper
+      // (ADR 0008). Finding a patient by name is a way of *reaching* Print,
+      // never a separate check-in, so hand straight off to the print sheet.
+      router.push(`/print/${row.id}?auto=1`);
     },
     [busy, campId, router],
   );
@@ -217,7 +218,8 @@ export function CheckIn({
     <div className="space-y-3">
       <p className="prose-help text-sm text-muted">
         Pre-registered patients are <strong className="text-foreground">not</strong>{" "}
-        in the queue until check-in. Use reg number, name, or scan their desk slip.
+        in the queue until their prescription is printed. Find them by reg
+        number, name, or paste their patient QR.
       </p>
 
       <form onSubmit={onRegSubmit} className="space-y-2">
@@ -240,7 +242,7 @@ export function CheckIn({
             loading={busy}
             className="sm:w-auto sm:shrink-0"
           >
-            Check in
+            Print prescription
           </Button>
         </div>
       </form>
@@ -325,3 +327,5 @@ export function CheckIn({
     </div>
   );
 }
+
+

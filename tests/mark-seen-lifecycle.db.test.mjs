@@ -1,6 +1,6 @@
 /**
- * #57 — assign_patient_doctor must enforce waiting → seen only.
- * Real authenticated doctor/volunteer JWTs; FOR UPDATE state machine.
+ * D22/D25 — mark_seen must enforce waiting → seen only, and stay idempotent.
+ * Real authenticated staff JWTs; FOR UPDATE state machine.
  * Venue: assign-lifecycle-test (cleaned in test.after).
  */
 import assert from "node:assert/strict";
@@ -23,13 +23,10 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select to_regprocedure('public.assign_patient_doctor(uuid,integer,uuid)') is not null as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await c.end();
-      return null;
-    }
+    // Only a genuinely unreachable database may skip these tests. A missing
+    // RPC is a real failure and must surface as one — the previous version of
+    // this guard reported it as "Postgres unavailable" and silently skipped.
+    await c.query("select 1");
     return c;
   } catch {
     try {
@@ -46,7 +43,7 @@ test.before(async () => {
   dbAvailable = Boolean(client);
   if (!dbAvailable) {
     console.warn(
-      "[assign-waiting-before-seen.db] local Postgres unavailable — DB tests skipped",
+      "[mark-seen-lifecycle.db] local Postgres unavailable — DB tests skipped",
     );
   }
 });
@@ -134,7 +131,7 @@ async function asAuthenticated(userId, fn) {
   }
 }
 
-/** @param {"admin"|"team_lead"|"volunteer"|"doctor"} role */
+/** @param {"admin"|"team_lead"|"volunteer"} role */
 async function seedProfile(role) {
   const userId = randomUUID();
   const email = `${role}-${userId.slice(0, 8)}@assign-lifecycle.test`;
@@ -228,26 +225,26 @@ async function snapshotPatient(id) {
   return rows[0];
 }
 
-test("doctor assign of registered returns check_in_required and leaves row unchanged", async (t) => {
+
+test("mark_seen on a registered patient refuses and leaves the row untouched", async (t) => {
   if (skipIfNoDb(t)) return;
-  const doctorId = await seedProfile("doctor");
+  const volunteerId = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Registered Only");
   assert.equal(patient.queue_status, "registered");
   const before = await snapshotPatient(patient.id);
 
-  const result = await asAuthenticated(doctorId, async (c) => {
+  const result = await asAuthenticated(volunteerId, async (c) => {
     const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, null)`,
+      `select * from public.mark_seen($1, null)`,
       [patient.id],
     );
     return rows[0];
   });
 
-  assert.equal(result.error_code, "check_in_required");
+  assert.equal(result.error_code, "not_in_queue");
   assert.equal(result.queue_status, "registered");
   assert.equal(result.already_seen, false);
-  assert.equal(result.doctor_id, null);
 
   const after = await snapshotPatient(patient.id);
   assert.equal(after.queue_status, "registered");
@@ -257,60 +254,10 @@ test("doctor assign of registered returns check_in_required and leaves row uncha
   assert.equal(after.checked_in_by, before.checked_in_by);
 });
 
-test("volunteer assign of registered returns check_in_required", async (t) => {
+test("printing queues the patient and mark_seen records the staff member who scanned", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
-  const doctorId = await seedProfile("doctor");
-  const { campId, dayId } = await seedCampFutureDay();
-  const patient = await registerPatient(campId, dayId, "Vol Registered");
-
-  const result = await asAuthenticated(volunteerId, async (c) => {
-    const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, $2)`,
-      [patient.id, doctorId],
-    );
-    return rows[0];
-  });
-
-  assert.equal(result.error_code, "check_in_required");
-  assert.equal(result.queue_status, "registered");
-  const after = await snapshotPatient(patient.id);
-  assert.equal(after.queue_status, "registered");
-  assert.equal(after.seen_at, null);
-  assert.equal(after.seen_by, null);
-});
-
-test("Team Lead can perform the same doctor assignment as a volunteer", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const teamLeadId = await seedProfile("team_lead");
-  const volunteerId = await seedProfile("volunteer");
-  const doctorId = await seedProfile("doctor");
-  const { campId, dayId } = await seedCampFutureDay();
-  const patient = await registerPatient(campId, dayId, "Team Lead Assignment");
-
-  await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
-      patient.id,
-    ]);
-  });
-
-  const result = await asAuthenticated(teamLeadId, async (c) => {
-    const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, $2)`,
-      [patient.id, doctorId],
-    );
-    return rows[0];
-  });
-
-  assert.equal(result.error_code, null);
-  assert.equal(result.queue_status, "seen");
-  assert.equal(result.doctor_id, doctorId);
-});
-
-test("waiting patient transitions to seen once and preserves check-in fields", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const volunteerId = await seedProfile("volunteer");
-  const doctorId = await seedProfile("doctor");
+  const markerId = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Waiting Patient");
 
@@ -326,32 +273,58 @@ test("waiting patient transitions to seen once and preserves check-in fields", a
   assert.equal(waiting.checked_in_by, volunteerId);
   const queuedAt = String(waiting.queued_at);
 
-  const assigned = await asAuthenticated(doctorId, async (c) => {
-    const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, null)`,
-      [patient.id],
-    );
+  const seen = await asAuthenticated(markerId, async (c) => {
+    const { rows } = await c.query(`select * from public.mark_seen($1, null)`, [
+      patient.id,
+    ]);
     return rows[0];
   });
 
-  assert.equal(assigned.error_code, null);
-  assert.equal(assigned.queue_status, "seen");
-  assert.equal(assigned.already_seen, false);
-  assert.equal(assigned.doctor_id, doctorId);
+  assert.equal(seen.error_code, null);
+  assert.equal(seen.queue_status, "seen");
+  assert.equal(seen.already_seen, false);
 
   const after = await snapshotPatient(patient.id);
   assert.equal(after.queue_status, "seen");
-  assert.equal(after.seen_by, doctorId);
+  // seen_by is the volunteer who scanned, not a doctor (D22).
+  assert.equal(after.seen_by, markerId);
   assert.ok(after.seen_at);
+  // Check-in attribution and queue position survive being marked seen.
   assert.equal(String(after.queued_at), queuedAt);
   assert.equal(after.checked_in_by, volunteerId);
 });
 
-test("repeat assign on seen is terminal and never reassigns doctor", async (t) => {
+test("a team lead may mark seen exactly as a volunteer does", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const teamLeadId = await seedProfile("team_lead");
+  const volunteerId = await seedProfile("volunteer");
+  const { campId, dayId } = await seedCampFutureDay();
+  const patient = await registerPatient(campId, dayId, "Team Lead Marks Seen");
+
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.check_in_patient($1, null)`, [
+      patient.id,
+    ]);
+  });
+
+  const result = await asAuthenticated(teamLeadId, async (c) => {
+    const { rows } = await c.query(`select * from public.mark_seen($1, null)`, [
+      patient.id,
+    ]);
+    return rows[0];
+  });
+
+  assert.equal(result.error_code, null);
+  assert.equal(result.queue_status, "seen");
+  const after = await snapshotPatient(patient.id);
+  assert.equal(after.seen_by, teamLeadId);
+});
+
+test("a second scan is terminal and never re-stamps seen_at or seen_by", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
-  const doctorA = await seedProfile("doctor");
-  const doctorB = await seedProfile("doctor");
+  const firstMarker = await seedProfile("volunteer");
+  const secondMarker = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Seen Patient");
 
@@ -360,34 +333,76 @@ test("repeat assign on seen is terminal and never reassigns doctor", async (t) =
       patient.id,
     ]);
   });
-  await asAuthenticated(doctorA, async (c) => {
-    await c.query(`select * from public.assign_patient_doctor($1, null, null)`, [
+  await asAuthenticated(firstMarker, async (c) => {
+    await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
+  });
+  const firstState = await snapshotPatient(patient.id);
+
+  const second = await asAuthenticated(secondMarker, async (c) => {
+    const { rows } = await c.query(`select * from public.mark_seen($1, null)`, [
       patient.id,
     ]);
-  });
-
-  const second = await asAuthenticated(doctorB, async (c) => {
-    const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, null)`,
-      [patient.id],
-    );
     return rows[0];
   });
 
   assert.equal(second.error_code, "already_seen");
   assert.equal(second.already_seen, true);
-  assert.equal(second.doctor_id, doctorA);
   assert.equal(second.queue_status, "seen");
 
   const after = await snapshotPatient(patient.id);
-  assert.equal(after.seen_by, doctorA);
+  assert.equal(after.seen_by, firstMarker);
+  assert.equal(String(after.seen_at), String(firstState.seen_at));
 });
 
-test("concurrent assign cannot produce different doctors or skip waiting rule", async (t) => {
+test("undo returns the patient to the queue on their original position", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
-  const doctorA = await seedProfile("doctor");
-  const doctorB = await seedProfile("doctor");
+  const { campId, dayId } = await seedCampFutureDay();
+  const patient = await registerPatient(campId, dayId, "Undo Patient");
+
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.check_in_patient($1, null)`, [
+      patient.id,
+    ]);
+  });
+  const queued = await snapshotPatient(patient.id);
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
+  });
+
+  const undone = await asAuthenticated(volunteerId, async (c) => {
+    const { rows } = await c.query(
+      `select * from public.undo_mark_seen($1)`,
+      [patient.id],
+    );
+    return rows[0];
+  });
+
+  assert.equal(undone.error_code, null);
+  assert.equal(undone.queue_status, "waiting");
+
+  const after = await snapshotPatient(patient.id);
+  assert.equal(after.queue_status, "waiting");
+  assert.equal(after.seen_at, null);
+  assert.equal(after.seen_by, null);
+  // Undo must not send them to the back of the line.
+  assert.equal(String(after.queued_at), String(queued.queued_at));
+
+  // Undo is only valid against a seen row.
+  const again = await asAuthenticated(volunteerId, async (c) => {
+    const { rows } = await c.query(`select * from public.undo_mark_seen($1)`, [
+      patient.id,
+    ]);
+    return rows[0];
+  });
+  assert.equal(again.error_code, "not_seen");
+});
+
+test("concurrent mark_seen produces exactly one first-time transition", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const volunteerId = await seedProfile("volunteer");
+  const markerA = await seedProfile("volunteer");
+  const markerB = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Race Patient");
 
@@ -402,30 +417,29 @@ test("concurrent assign cannot produce different doctors or skip waiting rule", 
   await c1.connect();
   await c2.connect();
 
-  async function assignAs(c, doctorId) {
+  async function markSeenAs(c, staffId) {
     await c.query("begin");
     await c.query(
       `select set_config('request.jwt.claim.role', 'authenticated', true)`,
     );
     await c.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
-      doctorId,
+      staffId,
     ]);
     await c.query(`select set_config('request.jwt.claims', $1, true)`, [
-      JSON.stringify({ role: "authenticated", sub: doctorId }),
+      JSON.stringify({ role: "authenticated", sub: staffId }),
     ]);
     await c.query(`set local role authenticated`);
-    const { rows } = await c.query(
-      `select * from public.assign_patient_doctor($1, null, null)`,
-      [patient.id],
-    );
+    const { rows } = await c.query(`select * from public.mark_seen($1, null)`, [
+      patient.id,
+    ]);
     await c.query("commit");
     return rows[0];
   }
 
   try {
     const [r1, r2] = await Promise.all([
-      assignAs(c1, doctorA),
-      assignAs(c2, doctorB),
+      markSeenAs(c1, markerA),
+      markSeenAs(c2, markerB),
     ]);
 
     const outcomes = [r1, r2];
@@ -436,16 +450,13 @@ test("concurrent assign cannot produce different doctors or skip waiting rule", 
       (r) => r.error_code === "already_seen" || r.already_seen,
     );
 
-    assert.equal(successes.length, 1, "exactly one first-time assignment");
+    assert.equal(successes.length, 1, "exactly one first-time transition");
     assert.equal(terminals.length, 1, "other call is terminal already_seen");
 
-    const winner = successes[0].doctor_id;
-    assert.ok(winner === doctorA || winner === doctorB);
-    assert.equal(terminals[0].doctor_id, winner);
-
     const after = await snapshotPatient(patient.id);
-    assert.equal(after.seen_by, winner);
     assert.equal(after.queue_status, "seen");
+    // Whoever won, the row records exactly one of them — never a blend.
+    assert.ok(after.seen_by === markerA || after.seen_by === markerB);
   } finally {
     await c1.end().catch(() => {});
     await c2.end().catch(() => {});

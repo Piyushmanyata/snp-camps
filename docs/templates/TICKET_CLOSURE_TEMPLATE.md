@@ -45,7 +45,12 @@
 
 | Stage / Seam | Classification (Skip / Block / Waiver) | Authoritative Reason | Risk Level | Risk Mitigation |
 |--------------|-----------------------------------------|----------------------|------------|-----------------|
-| Live SMS OTP | Deferred Skip | Unconfigured third-party OTP provider in dev | Low | Mocked SMS provider contract verified in unit tests |
+| Live MSG91 send | Deferred Skip | No provider credentials in dev | Low | Provider contract verified in unit tests; unconfigured state fails loudly, not silently |
+
+> **A skipped database test is never a valid row here.** `npm run test:db` fails the
+> run on any skip. If a DB test skipped, the ticket is not closeable — fix the guard
+> or the environment. A guard that reports a *missing RPC* as "Postgres unavailable"
+> is a coverage hole, not a skip.
 
 ---
 

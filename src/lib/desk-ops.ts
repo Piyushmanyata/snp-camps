@@ -3,13 +3,15 @@
  *
  * Idempotency guarantees (safe to auto-retry):
  * - lookup_patient_scan — read-only; COMMENT ON FUNCTION: "No side effects."
- * - assign_patient_doctor — SELECT … FOR UPDATE; if queue_status is already
- *   `seen`, returns original doctor with already_seen / error_code (does not
- *   re-assign or change seen_by). Success-after-timeout surfaces as already_seen.
+ * - mark_seen — SELECT … FOR UPDATE; if queue_status is already `seen`, returns
+ *   the original seen_at / seen_by with already_seen (never re-stamps), so a
+ *   success-after-timeout surfaces as already_seen rather than a rewrite.
+ * - undo_mark_seen — seen → waiting on the original queued_at; a second call
+ *   returns not_seen rather than moving the patient again.
  * - change_camp_day — patient + target day FOR UPDATE; same-day early return;
  *   seat count checked under the day lock before UPDATE.
- * - check_in_patient — registered → waiting; waiting is idempotent (same queued_at);
- *   seen is a terminal business result (error_code already_seen).
+ * - check_in_patient — registered → waiting; waiting is idempotent (same queued_at,
+ *   so a reprint never reorders the queue); seen is terminal (already_seen).
  * - search_registered_patients — read-only; empty rows ≠ error.
  *
  * Retry uses classifyOperationError allow-list only (transient transport / DB).
@@ -20,7 +22,6 @@ import {
   classifyOperationError,
   type DbErrorLike,
 } from "@/lib/public-error";
-import { isSuccessfulAssignment } from "@/lib/queue-assignment";
 import { RETRY_EXHAUSTED_COPY, withRetries } from "@/lib/with-retries";
 
 export type DeskRpcError = NonNullable<DbErrorLike> & {
@@ -32,47 +33,33 @@ export type DeskRpc = (
   args: Record<string, unknown>,
 ) => Promise<{ data: unknown; error: DeskRpcError | null }>;
 
-export type PrescriptionAmendmentItem = {
-  id: string;
-  author_id: string;
-  author_name: string;
-  content: string;
-  created_at: string;
-};
-
 export type LookupRow = {
   id: string;
   reg_no: number;
   full_name: string;
   queue_status: string;
   phone: string | null;
-  doctor_id: string | null;
-  doctor_name: string | null;
-  prescription_id?: string | null;
-  diagnosis?: string | null;
-  examination?: string | null;
-  medicines?: string | null;
-  advice?: string | null;
-  spectacles_type?: string | null;
-  destinations?: string[] | null;
-  is_locked?: boolean | null;
-  amendments?: PrescriptionAmendmentItem[] | null;
-  theatre_capacity?: number | null;
-  theatre_reserved?: number | null;
-  theatre_remaining?: number | null;
-  ot_scheduled_day_id?: string | null;
-  ot_scheduled_day_date?: string | null;
-  next_available_ot_day_date?: string | null;
+  seen_at: string | null;
+  seen_by_name: string | null;
+  printed_at: string | null;
 };
 
-export type AssignRow = {
+export type MarkSeenRow = {
   id: string;
   reg_no: number;
   full_name: string;
   queue_status: string;
-  doctor_id: string | null;
-  doctor_name: string | null;
+  seen_at: string | null;
+  seen_by_name: string | null;
   already_seen: boolean;
+  error_code: string | null;
+};
+
+export type UndoSeenRow = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+  queue_status: string;
   error_code: string | null;
 };
 
@@ -90,7 +77,7 @@ export type CheckInRow = {
   full_name: string;
   queue_status: string;
   already_waiting: boolean;
-  doctor_name: string | null;
+  seen_by_name: string | null;
   error_code: string | null;
 };
 
@@ -209,115 +196,147 @@ export async function lookupPatientScanWithRetries(options: {
   );
 }
 
-/** Worker-facing copy for #57 registered → seen rejection. */
-export const CHECK_IN_REQUIRED_COPY =
-  "Check the patient in first, then mark them seen.";
+/** Worker-facing copy when Mark seen is used on someone never printed for (D25). */
+export const NOT_IN_QUEUE_COPY =
+  "Print their prescription first — that puts them in the queue.";
 
 /**
- * Assign doctor / mark seen.
- * already_seen is a successful terminal outcome (idempotent re-call).
- * check_in_required is a terminal business rejection (no auto-retry).
+ * Mark seen — the second of the two desk actions (D22).
+ * already_seen is a successful terminal outcome (idempotent re-call), which is
+ * what makes this safe to auto-retry and safe to double-scan.
+ * not_in_queue is a terminal business rejection (no auto-retry).
  */
-export async function assignPatientDoctorWithRetries(options: {
+export async function markSeenWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
-  /** Fixed for all retries — never rotate doctor mid-retry. */
-  doctorId: string | null;
   rpc: DeskRpc;
-  mapRpcError?: (message: string) => string;
   errorContext?: string;
   errorFallback?: string;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
-  | { ok: true; row: AssignRow }
-  | {
-      ok: false;
-      error: string;
-      doctorRequired?: boolean;
-      checkInRequired?: boolean;
-    }
+  | { ok: true; row: MarkSeenRow }
+  | { ok: false; error: string; notInQueue?: boolean }
 > {
   type Out =
-    | { ok: true; row: AssignRow }
-    | {
-        ok: false;
-        error: string;
-        doctorRequired?: boolean;
-        checkInRequired?: boolean;
-      };
+    | { ok: true; row: MarkSeenRow }
+    | { ok: false; error: string; notInQueue?: boolean };
 
-  const doctorId = options.doctorId;
-  const context = options.errorContext ?? "desk-ops.assign";
+  const context = options.errorContext ?? "desk-ops.mark-seen";
   const fallback =
-    options.errorFallback ?? "Could not assign this patient. Try again.";
+    options.errorFallback ?? "Could not mark this patient seen. Try again.";
 
   return withTransientSteps<Out>(
     async () => {
       try {
-        const { data, error } = await options.rpc("assign_patient_doctor", {
+        const { data, error } = await options.rpc("mark_seen", {
           p_patient_id: options.patientId ?? null,
           p_reg_no: options.regNo ?? null,
-          p_doctor_id: doctorId,
         });
         if (error) {
           const classified = classifyRpcFailure(error, context, fallback);
-          if (classified.retryable) {
-            return { done: false };
-          }
+          if (classified.retryable) return { done: false };
           return {
             done: true,
             value: { ok: false, error: classified.publicMessage },
           };
         }
-        const row = firstRow<AssignRow>(data);
+        const row = firstRow<MarkSeenRow>(data);
         if (!row) {
-          // Empty success body is ambiguous — treat as transient only if no row
-          // at all after a completed RPC is rare; do not burn retries on null
-          // business outcomes. Prefer terminal safe copy.
+          // A completed RPC with no row is a business ambiguity, not a
+          // transport fault — do not burn retries on it.
           return {
             done: true,
             value: {
               ok: false,
-              error: "Could not assign this patient. Refresh and try again.",
+              error: "Could not mark this patient seen. Refresh and try again.",
             },
           };
         }
-        if (row.error_code === "doctor_required") {
+        if (row.error_code === "not_in_queue") {
           return {
             done: true,
-            value: {
-              ok: false,
-              error: "Select a doctor.",
-              doctorRequired: true,
-            },
+            value: { ok: false, error: NOT_IN_QUEUE_COPY, notInQueue: true },
           };
         }
-        if (row.error_code === "check_in_required") {
-          return {
-            done: true,
-            value: {
-              ok: false,
-              error: CHECK_IN_REQUIRED_COPY,
-              checkInRequired: true,
-            },
-          };
-        }
-        if (
-          row.error_code === "already_seen" ||
-          row.already_seen ||
-          isSuccessfulAssignment(row)
-        ) {
+        if (row.already_seen || row.queue_status === "seen") {
           return { done: true, value: { ok: true, row } };
         }
         return {
           done: true,
           value: {
             ok: false,
-            error: row.error_code
-              ? "Could not assign this patient. Refresh and try again."
-              : "Doctor assignment did not complete. No success was recorded.",
+            error: "Mark seen did not complete. No success was recorded.",
           },
         };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.assign },
+    options.sleep,
+  );
+}
+
+/** Undo a mis-scan (D25). Time-limited server-side; expiry is a terminal result. */
+export async function undoMarkSeenWithRetries(options: {
+  patientId: string;
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<{ ok: true; row: UndoSeenRow } | { ok: false; error: string }> {
+  type Out = { ok: true; row: UndoSeenRow } | { ok: false; error: string };
+
+  const context = options.errorContext ?? "desk-ops.undo-mark-seen";
+  const fallback = options.errorFallback ?? "Could not undo. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc("undo_mark_seen", {
+          p_patient_id: options.patientId,
+        });
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const row = firstRow<UndoSeenRow>(data);
+        if (!row) {
+          return {
+            done: true,
+            value: { ok: false, error: "Could not undo. Refresh and try again." },
+          };
+        }
+        if (row.error_code === "undo_window_expired") {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "Too late to undo — ask an admin to correct this.",
+            },
+          };
+        }
+        if (row.error_code === "not_seen") {
+          return {
+            done: true,
+            value: { ok: false, error: "This patient is not marked seen." },
+          };
+        }
+        return { done: true, value: { ok: true, row } };
       } catch (thrown) {
         const classified = classifyOperationError(thrown, {
           context,
@@ -421,7 +440,7 @@ export async function checkInPatientWithRetries(options: {
       ok: false;
       error: string;
       alreadySeen?: boolean;
-      doctorName?: string | null;
+      seenByName?: string | null;
     }
 > {
   type Out =
@@ -430,7 +449,7 @@ export async function checkInPatientWithRetries(options: {
         ok: false;
         error: string;
         alreadySeen?: boolean;
-        doctorName?: string | null;
+        seenByName?: string | null;
       };
 
   const context = options.errorContext ?? "desk-ops.check-in";
@@ -467,11 +486,11 @@ export async function checkInPatientWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: row.doctor_name
-                ? `Already seen by ${row.doctor_name}`
+              error: row.seen_by_name
+                ? `Already seen by ${row.seen_by_name}`
                 : "Already seen",
               alreadySeen: true,
-              doctorName: row.doctor_name ?? null,
+              seenByName: row.seen_by_name ?? null,
             },
           };
         }
@@ -557,167 +576,4 @@ export async function searchRegisteredPatientsWithRetries(options: {
     options.sleep,
   );
 }
-
-export type SubmitPrescriptionRow = {
-  prescription_id: string;
-  patient_id: string;
-  reg_no: number;
-  queue_status: string;
-  created_orders_count: number;
-  scheduled_camp_day_id?: string | null;
-  scheduled_day_date?: string | null;
-};
-
-export async function doctorSubmitPrescriptionWithRetries(options: {
-  patientId: string;
-  diagnosis?: string | null;
-  examination?: string | null;
-  medicines?: string | null;
-  advice?: string | null;
-  spectaclesType?: "fixed" | "bifocal" | null;
-  destinations?: string[];
-  rpc: DeskRpc;
-  errorContext?: string;
-  errorFallback?: string;
-  sleep?: (ms: number) => Promise<void>;
-}): Promise<
-  | { ok: true; row: SubmitPrescriptionRow }
-  | { ok: false; error: string }
-> {
-  type Out =
-    | { ok: true; row: SubmitPrescriptionRow }
-    | { ok: false; error: string };
-
-  const context = options.errorContext ?? "desk-ops.submit-prescription";
-  const fallback =
-    options.errorFallback ?? "Could not submit prescription. Try again.";
-
-  return withTransientSteps<Out>(
-    async () => {
-      try {
-        const { data, error } = await options.rpc(
-          "doctor_submit_prescription",
-          {
-            p_patient_id: options.patientId,
-            p_diagnosis: options.diagnosis ?? null,
-            p_examination: options.examination ?? null,
-            p_medicines: options.medicines ?? null,
-            p_advice: options.advice ?? null,
-            p_spectacles_type: options.spectaclesType ?? null,
-            p_destinations: options.destinations ?? [],
-          },
-        );
-        if (error) {
-          const classified = classifyRpcFailure(error, context, fallback);
-          if (classified.retryable) return { done: false };
-          return {
-            done: true,
-            value: { ok: false, error: classified.publicMessage },
-          };
-        }
-        const row = firstRow<SubmitPrescriptionRow>(data);
-        if (!row) {
-          return {
-            done: true,
-            value: {
-              ok: false,
-              error: "Prescription submission did not complete. Try again.",
-            },
-          };
-        }
-        return { done: true, value: { ok: true, row } };
-      } catch (thrown) {
-        const classified = classifyOperationError(thrown, {
-          context,
-          transportFailure: true,
-          log: true,
-          fallback,
-        });
-        if (classified.retryable) return { done: false };
-        return {
-          done: true,
-          value: { ok: false, error: classified.publicMessage },
-        };
-      }
-    },
-    { ok: false, error: RETRY_EXHAUSTED_COPY.prescription },
-    options.sleep,
-  );
-}
-
-export type AmendmentRow = {
-  id: string;
-  prescription_id: string;
-  author_id: string;
-  content: string;
-  created_at: string;
-};
-
-export async function addPrescriptionAmendmentWithRetries(options: {
-  prescriptionId: string;
-  content: string;
-  rpc: DeskRpc;
-  errorContext?: string;
-  errorFallback?: string;
-  sleep?: (ms: number) => Promise<void>;
-}): Promise<
-  | { ok: true; row: AmendmentRow }
-  | { ok: false; error: string }
-> {
-  type Out =
-    | { ok: true; row: AmendmentRow }
-    | { ok: false; error: string };
-
-  const context = options.errorContext ?? "desk-ops.add-amendment";
-  const fallback =
-    options.errorFallback ?? "Could not add amendment. Try again.";
-
-  return withTransientSteps<Out>(
-    async () => {
-      try {
-        const { data, error } = await options.rpc(
-          "add_prescription_amendment",
-          {
-            p_prescription_id: options.prescriptionId,
-            p_content: options.content,
-          },
-        );
-        if (error) {
-          const classified = classifyRpcFailure(error, context, fallback);
-          if (classified.retryable) return { done: false };
-          return {
-            done: true,
-            value: { ok: false, error: classified.publicMessage },
-          };
-        }
-        const row = firstRow<AmendmentRow>(data);
-        if (!row) {
-          return {
-            done: true,
-            value: {
-              ok: false,
-              error: "Adding amendment did not complete. Try again.",
-            },
-          };
-        }
-        return { done: true, value: { ok: true, row } };
-      } catch (thrown) {
-        const classified = classifyOperationError(thrown, {
-          context,
-          transportFailure: true,
-          log: true,
-          fallback,
-        });
-        if (classified.retryable) return { done: false };
-        return {
-          done: true,
-          value: { ok: false, error: classified.publicMessage },
-        };
-      }
-    },
-    { ok: false, error: RETRY_EXHAUSTED_COPY.prescription },
-    options.sleep,
-  );
-}
-
 

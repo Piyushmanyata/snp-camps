@@ -288,14 +288,7 @@ test("volunteer page always mounts LiveQueue/SeatBoard for camp (no SectionLoadE
   // Queue/seats no longer gated solely behind SectionLoadError
   assert.match(volunteer, /DeskScanQueue|initialLoadKnown/);
   assert.match(volunteer, /VolunteerKpisSection|DeskScanQueue/);
-  assert.match(volunteer, /loadQueueSection|loadSeatsSection|loadDoctorsSection/);
-});
-
-test("doctor page uses isolated stats/seen islands (no Suspense throw loaders)", () => {
-  const doctor = read("src/app/doctor/page.tsx");
-  assert.match(doctor, /DoctorStatsPanel|DoctorSeenPanel/);
-  assert.match(doctor, /loadDoctorStatsSection|loadDoctorSeenSection/);
-  assert.doesNotMatch(doctor, /async function DoctorStatsSection/);
+  assert.match(volunteer, /loadQueueSection|loadSeatsSection/);
 });
 
 test("login and change-password use mapAuthError", () => {

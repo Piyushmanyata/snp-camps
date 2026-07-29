@@ -17,17 +17,15 @@ import {
 import { QrCameraSession } from "@/lib/qr-camera-session";
 import { QrDecodeOrchestrator } from "@/lib/qr-decode-orchestrator";
 import {
-  assignPatientDoctorWithRetries,
   checkInPatientWithRetries,
-  doctorSubmitPrescriptionWithRetries,
-  addPrescriptionAmendmentWithRetries,
   lookupPatientScanWithRetries,
-  type AssignRow,
+  markSeenWithRetries,
+  undoMarkSeenWithRetries,
   type LookupRow,
+  type MarkSeenRow,
 } from "@/lib/desk-ops";
-import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
+import { Button, ErrorBox, Input } from "@/components/ui";
 import { Toast } from "@/components/toast";
-import type { DoctorOption } from "@/lib/types";
 
 type LookupOrigin = "camera" | "manual";
 
@@ -64,16 +62,11 @@ function loadJsQr(): Promise<JsQrFn> {
   return jsQrPromise;
 }
 
-export function QrScanner({
-  mode = "volunteer",
-  doctors = [],
-  disabledReason,
-}: {
-  /** doctor = auto self-assign on waiting; volunteer/admin = pick doctor */
-  mode?: "volunteer" | "doctor" | "admin";
-  doctors?: DoctorOption[];
-  disabledReason?: string;
-}) {
+/**
+ * Camp-day scan surface. Admin and volunteer desks behave identically now that
+ * the doctor station is retired — there is no per-role branch left to make.
+ */
+export function QrScanner({ disabledReason }: { disabledReason?: string }) {
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const reviewHeadingId = `qr-review-heading-${uid}`;
@@ -84,17 +77,8 @@ export function QrScanner({
   const [manual, setManual] = useState("");
   const [looking, setLooking] = useState(false);
   const [lookup, setLookup] = useState<LookupRow | null>(null);
-  const [assigned, setAssigned] = useState<AssignRow | null>(null);
-  const [doctorId, setDoctorId] = useState("");
+  const [seen, setSeen] = useState<MarkSeenRow | null>(null);
   const [assigning, setAssigning] = useState(false);
-
-  const [diagnosis, setDiagnosis] = useState("");
-  const [examination, setExamination] = useState("");
-  const [medicines, setMedicines] = useState("");
-  const [advice, setAdvice] = useState("");
-  const [destinations, setDestinations] = useState<string[]>([]);
-  const [spectaclesType, setSpectaclesType] = useState<"fixed" | "bifocal">("fixed");
-  const [amendmentContent, setAmendmentContent] = useState("");
 
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
@@ -143,32 +127,6 @@ export function QrScanner({
     }
   }, [cancelAnimation]);
 
-  /** Doctor camera review: pause decode, keep stream + session token. */
-  const pauseDecodeKeepStream = useCallback(() => {
-    decodeOrchRef.current?.pause();
-    cancelAnimation();
-  }, [cancelAnimation]);
-
-  /** Resume same stream after Mark seen without getUserMedia. */
-  const resumeDecodeSameSession = useCallback(
-    (opts?: { debounceRaw?: string | null }) => {
-      const orch = decodeOrchRef.current;
-      const token = sessionTokenRef.current;
-      const session = cameraSessionRef.current;
-      if (!orch || !session.isCurrent(token) || !session.mediaStream) {
-        return false;
-      }
-      if (opts?.debounceRaw) {
-        orch.debounceRawValue(opts.debounceRaw);
-      }
-      orch.resume();
-      handledRef.current = false;
-      // Loop is restarted by caller via startDecodeLoop when stream still active.
-      return true;
-    },
-    [],
-  );
-
   useEffect(() => {
     isMounted.current = true;
     const session = cameraSessionRef.current;
@@ -183,262 +141,55 @@ export function QrScanner({
 
   const readyForNext = useCallback(() => {
     setLookup(null);
-    setAssigned(null);
+    setSeen(null);
     setManual("");
-    setDoctorId("");
-    setDiagnosis("");
-    setExamination("");
-    setMedicines("");
-    setAdvice("");
-    setDestinations([]);
-    setSpectaclesType("fixed");
-    setAmendmentContent("");
     handledRef.current = false;
   }, []);
 
-  const submitPrescription = useCallback(
-    async (patientId: string) => {
+  const deskRpc = useCallback(
+    (supabase: ReturnType<typeof createClient>) =>
+      async (fn: string, args: Record<string, unknown>) => {
+        const result = await supabase.rpc(fn, args);
+        return {
+          data: result.data,
+          error: result.error
+            ? {
+                message: result.error.message,
+                code: result.error.code,
+                details: result.error.details,
+                hint: result.error.hint,
+              }
+            : null,
+        };
+      },
+    [],
+  );
+
+  /** Mark seen — the desk's second action (D22). */
+  const markSeen = useCallback(
+    async (opts: { id?: string; regNo?: number }) => {
       if (assigningRef.current) return null;
       assigningRef.current = true;
       setAssigning(true);
       setError(null);
 
-      const supabase = createClient();
-      const outcome = await doctorSubmitPrescriptionWithRetries({
-        patientId,
-        diagnosis: diagnosis.trim() || null,
-        examination: examination.trim() || null,
-        medicines: medicines.trim() || null,
-        advice: advice.trim() || null,
-        spectaclesType: destinations.includes("spectacles") ? spectaclesType : null,
-        destinations,
-        rpc: async (fn, args) => {
-          const result = await supabase.rpc(fn, args);
-          return {
-            data: result.data,
-            error: result.error
-              ? {
-                  message: result.error.message,
-                  code: result.error.code,
-                  details: result.error.details,
-                  hint: result.error.hint,
-                }
-              : null,
-          };
-        },
-        errorContext: "qr-scanner.submit-prescription",
-        errorFallback: "Could not submit prescription. Try again.",
-      });
-
-      if (!outcome.ok) {
-        setError(outcome.error);
-        assigningRef.current = false;
-        setAssigning(false);
-        return null;
-      }
-
-      const row = outcome.row;
-      const fromCamera =
-        lookupOriginRef.current === "camera" && mode === "doctor";
-      const cameraRaw = lastCameraRawRef.current;
-
-      try {
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate(80);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      const orderCountText =
-        row.created_orders_count > 0
-          ? ` (${row.created_orders_count} order${row.created_orders_count === 1 ? "" : "s"})`
-          : "";
-      const otNotice = row.scheduled_day_date ? ` · OT Scheduled for ${row.scheduled_day_date}` : "";
-      setToastMsg(`#${row.reg_no} marked seen${orderCountText}${otNotice}`);
-      readyForNext();
-
-      if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
-        restartDecodeLoopRef.current?.();
-      } else {
-        await stopScanner();
-      }
-
-      router.refresh();
-      assigningRef.current = false;
-      setAssigning(false);
-      return row;
-    },
-    [
-      mode,
-      diagnosis,
-      examination,
-      medicines,
-      advice,
-      destinations,
-      spectaclesType,
-      readyForNext,
-      resumeDecodeSameSession,
-      router,
-      stopScanner,
-    ],
-  );
-
-  const submitAmendment = useCallback(
-    async (prescriptionId: string) => {
-      if (assigningRef.current || !amendmentContent.trim()) return null;
-      assigningRef.current = true;
-      setAssigning(true);
-      setError(null);
-
-      const supabase = createClient();
-      const outcome = await addPrescriptionAmendmentWithRetries({
-        prescriptionId,
-        content: amendmentContent.trim(),
-        rpc: async (fn, args) => {
-          const result = await supabase.rpc(fn, args);
-          return {
-            data: result.data,
-            error: result.error
-              ? {
-                  message: result.error.message,
-                  code: result.error.code,
-                  details: result.error.details,
-                  hint: result.error.hint,
-                }
-              : null,
-          };
-        },
-        errorContext: "qr-scanner.add-amendment",
-        errorFallback: "Could not add amendment. Try again.",
-      });
-
-      if (!outcome.ok) {
-        setError(outcome.error);
-        assigningRef.current = false;
-        setAssigning(false);
-        return null;
-      }
-
-      try {
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate(80);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      setToastMsg("Amendment appended to prescription");
-      setAmendmentContent("");
-      if (lookup) {
-        setLookup({
-          ...lookup,
-          amendments: [
-            ...(lookup.amendments || []),
-            {
-              id: outcome.row.id,
-              author_id: outcome.row.author_id,
-              author_name: "Doctor",
-              content: outcome.row.content,
-              created_at: outcome.row.created_at,
-            },
-          ],
-        });
-      }
-
-      router.refresh();
-      assigningRef.current = false;
-      setAssigning(false);
-      return outcome.row;
-    },
-    [amendmentContent, lookup, router],
-  );
-
-  useEffect(() => {
-    if (!lookup) return;
-    if (lookup.queue_status === "seen" || lookup.queue_status === "waiting") {
-      queueMicrotask(() => {
-        setDiagnosis(lookup.diagnosis || "");
-        setExamination(lookup.examination || "");
-        setMedicines(lookup.medicines || "");
-        setAdvice(lookup.advice || "");
-        setSpectaclesType((lookup.spectacles_type as "fixed" | "bifocal") || "fixed");
-        setDestinations(lookup.destinations || []);
-      });
-    }
-  }, [lookup]);
-
-  const assignDoctor = useCallback(
-    async (opts: { id?: string; regNo?: number }, chosenDoctorId: string | null) => {
-      if (assigningRef.current) return null;
-      assigningRef.current = true;
-      setAssigning(true);
-      setError(null);
-      // doctorId / lookup stay set on failure so Try Again reuses them (#32).
-      const supabase = createClient();
-      const outcome = await assignPatientDoctorWithRetries({
+      const outcome = await markSeenWithRetries({
         patientId: opts.id ?? null,
         regNo: opts.regNo ?? null,
-        doctorId: chosenDoctorId,
-        rpc: async (fn, args) => {
-          const result = await supabase.rpc(fn, args);
-          return {
-            data: result.data,
-            error: result.error
-              ? {
-                  message: result.error.message,
-                  code: result.error.code,
-                  details: result.error.details,
-                  hint: result.error.hint,
-                }
-              : null,
-          };
-        },
-        errorContext: "qr-scanner.assign",
-        errorFallback: "Could not assign doctor. Try again.",
+        rpc: deskRpc(createClient()),
+        errorContext: "qr-scanner.mark-seen",
+        errorFallback: "Could not mark this patient seen. Try again.",
       });
 
       if (!outcome.ok) {
-        // Keep review open; decode stays paused until Scan next / Wrong patient.
-        setError(
-          outcome.doctorRequired
-            ? "Select which doctor is seeing this patient."
-            : outcome.error,
-        );
+        // Keep the review card open so the worker can read the reason.
+        setError(outcome.error);
         assigningRef.current = false;
         setAssigning(false);
         return null;
       }
 
       const row = outcome.row;
-      const fromCamera =
-        lookupOriginRef.current === "camera" && mode === "doctor";
-      const cameraRaw = lastCameraRawRef.current;
-
-      if (row.error_code === "already_seen" || row.already_seen) {
-        const msg = row.doctor_name
-          ? `Already seen by ${row.doctor_name}`
-          : "Already seen";
-        setError(msg);
-        if (mode === "doctor") {
-          // Doctor Station: refuse and stay ready — no dismiss screen (#50).
-          readyForNext();
-          if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
-            restartDecodeLoopRef.current?.();
-          } else {
-            await stopScanner();
-          }
-        } else {
-          setAssigned(row);
-          setLookup(null);
-          handledRef.current = true;
-          await stopScanner();
-        }
-        router.refresh();
-        assigningRef.current = false;
-        setAssigning(false);
-        return row;
-      }
 
       try {
         if (typeof window !== "undefined" && "vibrate" in navigator) {
@@ -448,28 +199,95 @@ export function QrScanner({
         /* ignore */
       }
 
-      if (mode === "doctor") {
-        // Brief toast only — no success card to dismiss (#50).
-        setToastMsg(`#${row.reg_no} marked seen`);
-        readyForNext();
-        if (fromCamera && resumeDecodeSameSession({ debounceRaw: cameraRaw })) {
-          restartDecodeLoopRef.current?.();
-        } else {
-          await stopScanner();
-        }
-      } else {
-        setAssigned(row);
-        setLookup(null);
-        setToastMsg(`Patient #${row.reg_no} assigned/seen successfully`);
-        handledRef.current = true;
-        await stopScanner();
-      }
+      setSeen(row);
+      setLookup(null);
+      // Clear the input so the next patient can be typed straight away; the
+      // result card above keeps the Undo affordance for the one just done.
+      setManual("");
+      setToastMsg(
+        row.already_seen
+          ? `#${row.reg_no} was already seen`
+          : `#${row.reg_no} marked seen`,
+      );
+      handledRef.current = true;
+      await stopScanner();
       router.refresh();
       assigningRef.current = false;
       setAssigning(false);
       return row;
     },
-    [mode, readyForNext, resumeDecodeSameSession, router, stopScanner],
+    [deskRpc, router, stopScanner],
+  );
+
+  /**
+   * Print prescription — the desk's first action, and the thing that puts a
+   * patient in the queue (D24). Queueing is bound to this action, not to the
+   * print dialog succeeding: if the printer jams the patient is already in
+   * line and simply reprints, never losing their place.
+   *
+   * A lookup on its own must never mutate queue state, so the check-in call
+   * lives here rather than in resolvePatient.
+   */
+  const printAndQueue = useCallback(
+    async (row: LookupRow) => {
+      if (assigningRef.current) return;
+      assigningRef.current = true;
+      setAssigning(true);
+      setError(null);
+
+      // Only a not-yet-queued patient is checked in. A reprint for someone
+      // already `waiting` or `seen` must not re-queue or reorder them.
+      if (row.queue_status === "registered") {
+        const outcome = await checkInPatientWithRetries({
+          patientId: row.id,
+          regNo: null,
+          rpc: deskRpc(createClient()),
+          errorContext: "qr-scanner.print-queue",
+          errorFallback: "Could not add this patient to the queue. Try again.",
+        });
+
+        if (!outcome.ok && !outcome.alreadySeen) {
+          setError(outcome.error);
+          assigningRef.current = false;
+          setAssigning(false);
+          return;
+        }
+      }
+
+      assigningRef.current = false;
+      setAssigning(false);
+      await stopScanner();
+      router.push(`/print/${row.id}?auto=1`);
+    },
+    [deskRpc, router, stopScanner],
+  );
+
+  /** Undo a mis-scan within the server-side window (D25). */
+  const undoSeen = useCallback(
+    async (patientId: string) => {
+      if (assigningRef.current) return;
+      assigningRef.current = true;
+      setAssigning(true);
+      setError(null);
+
+      const outcome = await undoMarkSeenWithRetries({
+        patientId,
+        rpc: deskRpc(createClient()),
+        errorContext: "qr-scanner.undo-mark-seen",
+      });
+
+      if (!outcome.ok) {
+        setError(outcome.error);
+      } else {
+        setToastMsg("Undone — back in the queue");
+        readyForNext();
+        router.refresh();
+      }
+
+      assigningRef.current = false;
+      setAssigning(false);
+    },
+    [deskRpc, readyForNext, router],
   );
 
   const resolvePatient = useCallback(
@@ -481,17 +299,8 @@ export function QrScanner({
       lookupOriginRef.current = origin;
       setError(null);
       setLookup(null);
-      setAssigned(null);
+      setSeen(null);
       // `manual` reg input is not cleared here — survives failure (#32).
-
-      const keepCamera =
-        origin === "camera" &&
-        mode === "doctor" &&
-        Boolean(cameraSessionRef.current.mediaStream);
-
-      if (keepCamera) {
-        pauseDecodeKeepStream();
-      }
 
       const supabase = createClient();
       const outcome = await lookupPatientScanWithRetries({
@@ -527,11 +336,9 @@ export function QrScanner({
         return null;
       }
 
-      let row = outcome.row;
+      const row = outcome.row;
 
-      if (!keepCamera) {
-        await stopScanner();
-      }
+      await stopScanner();
 
       try {
         if (typeof window !== "undefined" && "vibrate" in navigator) {
@@ -541,65 +348,13 @@ export function QrScanner({
         /* ignore */
       }
 
-      // Desk: scanning a pre-registered patient checks them into the queue (#46/#61).
-      if (row.queue_status === "registered" && mode !== "doctor") {
-        const checkOutcome = await checkInPatientWithRetries({
-          patientId: row.id,
-          regNo: null,
-          rpc: async (fn, args) => {
-            const result = await supabase.rpc(fn, args);
-            return {
-              data: result.data,
-              error: result.error
-                ? {
-                    message: result.error.message,
-                    code: result.error.code,
-                    details: result.error.details,
-                    hint: result.error.hint,
-                  }
-                : null,
-            };
-          },
-          errorContext: "qr-scanner.check-in",
-          errorFallback: "Could not check in this patient. Try again.",
-        });
-        if (!checkOutcome.ok) {
-          // Terminal check-in (exhausted or business): freeze same QR re-arm (#61).
-          if (origin === "camera") {
-            decodeOrchRef.current?.freeze();
-            handledRef.current = true;
-          } else {
-            handledRef.current = false;
-          }
-          setError(checkOutcome.error);
-          if (checkOutcome.alreadySeen) {
-            setLookup({
-              ...row,
-              queue_status: "seen",
-              doctor_name: checkOutcome.doctorName ?? row.doctor_name,
-            });
-          } else {
-            setLookup(row);
-          }
-          return row;
-        }
-        const checked = checkOutcome.row;
-        if (checked.queue_status === "waiting") {
-          row = { ...row, queue_status: "waiting" };
-          setToastMsg(
-            checked.already_waiting
-              ? `#${row.reg_no} already in queue`
-              : `#${row.reg_no} checked in`,
-          );
-          router.refresh();
-        }
-      }
-
+      // A lookup is read-only. Nothing about scanning or typing a reg number
+      // changes queue state — only Print prescription does (D24).
       setLookup(row);
       handledRef.current = true;
       return row;
     },
-    [mode, pauseDecodeKeepStream, router, stopScanner],
+    [stopScanner],
   );
 
   useEffect(() => {
@@ -880,7 +635,7 @@ export function QrScanner({
     sessionTokenRef.current = token;
     setError(null);
     setLookup(null);
-    setAssigned(null);
+    setSeen(null);
     handledRef.current = false;
     badScanAt.current = 0;
     lastCameraRawRef.current = null;
@@ -966,7 +721,7 @@ export function QrScanner({
     setLooking(true);
     setError(null);
     setLookup(null);
-    setAssigned(null);
+    setSeen(null);
     handledRef.current = false;
     lookupOriginRef.current = "manual";
     // Manual path is independent; freeze recovery is cleared on explicit submit.
@@ -1003,19 +758,7 @@ export function QrScanner({
     readyForNext();
     // Explicit recovery: unfreeze camera decode or leave manual field ready.
     const orch = decodeOrchRef.current;
-    const session = cameraSessionRef.current;
-    const token = sessionTokenRef.current;
-    if (
-      orch &&
-      session.isCurrent(token) &&
-      session.mediaStream &&
-      mode === "doctor"
-    ) {
-      orch.unfreeze();
-      orch.resume();
-      handledRef.current = false;
-      restartDecodeLoopRef.current?.();
-    } else if (orch?.isFrozen) {
+    if (orch?.isFrozen) {
       orch.unfreeze();
       handledRef.current = false;
     }
@@ -1032,20 +775,12 @@ export function QrScanner({
         </div>
       ) : null}
       <p className="prose-help text-sm text-muted">
-        {mode === "doctor" ? (
-          <>
-            <strong className="text-foreground">Scan</strong> or type the reg
-            number, check the name, then{" "}
-            <strong className="text-foreground">Mark seen</strong>. You return
-            straight to the next patient. Re-scan of seen is blocked.
-          </>
-        ) : (
-          <>
-            <strong className="text-foreground">Scan</strong> paper or phone QR:
-            pre-registered patients are checked in, then you can assign a
-            doctor (marks seen). Re-scan of seen is blocked.
-          </>
-        )}
+        <strong className="text-foreground">Scan</strong> the paper or phone QR,
+        or type the reg number. Then{" "}
+        <strong className="text-foreground">Print prescription</strong> — that
+        puts them in the queue — or{" "}
+        <strong className="text-foreground">Mark seen</strong> once the doctor
+        is done. A patient already seen is refused.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
@@ -1135,36 +870,51 @@ export function QrScanner({
 
       <ErrorBox message={error} />
 
-      {assigned ? (
+      {seen ? (
         <div
           className="rounded-xl border border-brand/20 bg-brand-soft px-4 py-3"
           role="status"
           aria-live="polite"
+          data-testid="seen-result"
         >
           <p className="text-sm font-semibold text-brand">
-            {assigned.already_seen ? "Already seen" : "Seen · doctor assigned"}
+            {seen.already_seen ? "Already seen" : "Marked seen"}
           </p>
           <p className="mt-0.5 font-bold text-foreground">
-            <span className="tabular">#{assigned.reg_no}</span> ·{" "}
-            {assigned.full_name}
+            <span className="tabular">#{seen.reg_no}</span> · {seen.full_name}
           </p>
-          <p className="mt-1 text-sm font-medium text-brand">
-            {assigned.doctor_name
-              ? `Doctor: ${assigned.doctor_name}`
-              : "Doctor recorded"}
-          </p>
+          {seen.seen_at ? (
+            <p className="mt-1 text-sm text-brand">
+              {seen.already_seen ? "Seen at " : "At "}
+              {new Date(seen.seen_at).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              {seen.seen_by_name ? ` · by ${seen.seen_by_name}` : ""}
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            {mode !== "doctor" ? (
-              <Link
-                href={`/print/${assigned.id}`}
-                className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
+            <Link
+              href={`/print/${seen.id}`}
+              className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
+            >
+              Reprint prescription
+            </Link>
+            {!seen.already_seen ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-auto"
+                disabled={assigning}
+                onClick={() => void undoSeen(seen.id)}
               >
-                Reprint form
-              </Link>
+                Undo
+              </Button>
             ) : null}
             <Button
               type="button"
-              variant="secondary"
+              variant="ghost"
               size="sm"
               className="w-auto"
               onClick={resetResult}
@@ -1175,510 +925,93 @@ export function QrScanner({
         </div>
       ) : null}
 
-      {lookup && !assigned ? (
+      {lookup && !seen ? (
         <div
           ref={reviewRef}
           tabIndex={-1}
           role="region"
           aria-live="polite"
-          aria-atomic="true"
           aria-labelledby={reviewHeadingId}
-          className="rounded-xl border border-border bg-card px-4 py-3 outline-none focus:ring-2 focus:ring-brand/30"
+          className="rounded-xl border border-border bg-card px-4 py-3"
+          data-testid="scan-review"
         >
-          <p id={reviewHeadingId} className="font-bold text-foreground">
-            <span className="tabular text-brand">#{lookup.reg_no}</span> ·{" "}
+          <p className="text-sm font-semibold text-muted">
+            Check this is the right patient
+          </p>
+          {/* The region is named after the patient, so a screen reader announces
+              who is on screen rather than a generic instruction. */}
+          <p
+            id={reviewHeadingId}
+            className="mt-0.5 text-lg font-bold text-foreground"
+          >
+            <span className="tabular text-brand">#{lookup.reg_no}</span>{" "}
             {lookup.full_name}
           </p>
-          {lookup.queue_status === "registered" && mode !== "doctor" ? (
-            <>
-              <p className="mt-1 text-sm text-muted">
-                Still pre-registered (check-in may have failed). Use Check-in on
-                the desk, or print the slip to check in.
+          {lookup.phone ? (
+            <p className="text-sm text-muted">{lookup.phone}</p>
+          ) : null}
+
+          {/* Already seen is terminal — refuse and say when (D25). */}
+          {lookup.queue_status === "seen" ? (
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <p className="text-sm font-semibold text-amber-950">
+                Already seen
+                {lookup.seen_at
+                  ? ` at ${new Date(lookup.seen_at).toLocaleTimeString("en-IN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  : ""}
+                {lookup.seen_by_name ? ` by ${lookup.seen_by_name}` : ""}
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={`/print/${lookup.id}`}
-                  aria-disabled={assigning}
-                  tabIndex={assigning ? -1 : undefined}
-                  onClick={(event) => {
-                    if (assigning) event.preventDefault();
-                  }}
-                  className={`pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-brand-soft ${
- assigning ? "pointer-events-none opacity-50" : ""
- }`}
-                >
-                  Print (check-in)
-                </Link>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="w-auto"
-                  disabled={assigning || looking}
-                  onClick={resetResult}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </>
-          ) : null}
-
-          {lookup.queue_status === "seen" && mode !== "doctor" ? (
-            <>
-              <WarningBox>
-                <div className="flex items-start gap-2.5">
-                  <svg className="mt-0.5 h-5 w-5 shrink-0 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <div>
-                    <p className="font-bold text-amber-950">
-                      Already Seen{lookup.doctor_name ? ` by ${lookup.doctor_name}` : ""}
-                    </p>
-                    <p className="mt-0.5 text-sm text-amber-950">
-                      Duplicate examination prevented. Multiple scans for the same patient are blocked.
-                    </p>
-                  </div>
-                </div>
-              </WarningBox>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={`/print/${lookup.id}`}
-                  className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand"
-                >
-                  Reprint form
-                </Link>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="w-auto"
-                  onClick={resetResult}
-                >
-                  Scan next
-                </Button>
-              </div>
-            </>
-          ) : null}
-
-          {lookup.queue_status === "seen" && mode === "doctor" ? (
-            <div className="mt-3 space-y-4">
-              <div className="rounded-xl border border-brand/20 bg-brand-soft p-3.5 sm:p-4 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-brand" data-testid="doctor-seen-header">
-                      Already seen{lookup.doctor_name ? ` by Dr. ${lookup.doctor_name}` : ""}
-                    </p>
-                    <p className="text-sm font-semibold text-foreground">
-                      #{lookup.reg_no} · {lookup.full_name}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {lookup.prescription_id ? (
-                      <Link
-                        href={`/print/prescription/${lookup.id}`}
-                        className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-brand/25 bg-white px-3 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
-                        data-testid="print-prescription"
-                      >
-                        Print prescription
-                      </Link>
-                    ) : null}
-                    {lookup.is_locked ? (
-                      <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-950 border border-amber-300">
-                        Prescription Locked (Acted Upon)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-950 border border-emerald-300">
-                        Unlocked Edit (Orders Pending)
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {lookup.is_locked ? (
-                <div className="space-y-4">
-                  {/* Read-only original prescription body */}
-                  <div className="rounded-xl border border-border bg-slate-50 p-3.5 space-y-2 text-xs">
-                    <p className="font-bold text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">
-                      Original Prescription (Locked)
-                    </p>
-                    {lookup.diagnosis ? <p><strong className="text-slate-700">Diagnosis:</strong> {lookup.diagnosis}</p> : null}
-                    {lookup.examination ? <p><strong className="text-slate-700">Examination:</strong> {lookup.examination}</p> : null}
-                    {lookup.medicines ? <p><strong className="text-slate-700">Medicines:</strong> {lookup.medicines}</p> : null}
-                    {lookup.advice ? <p><strong className="text-slate-700">Advice:</strong> {lookup.advice}</p> : null}
-                    {lookup.spectacles_type ? <p><strong className="text-slate-700">Spectacles:</strong> {lookup.spectacles_type}</p> : null}
-                    {lookup.destinations && lookup.destinations.length > 0 ? (
-                      <p><strong className="text-slate-700">Destinations:</strong> {lookup.destinations.join(", ").toUpperCase()}</p>
-                    ) : null}
-                  </div>
-
-                  {/* Existing amendments list */}
-                  {lookup.amendments && lookup.amendments.length > 0 ? (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3.5 space-y-2 text-xs" data-testid="amendments-list">
-                      <p className="font-bold text-amber-950 uppercase tracking-wide border-b border-amber-200 pb-1">
-                        Prescription Amendments ({lookup.amendments.length})
-                      </p>
-                      <div className="space-y-2">
-                        {lookup.amendments.map((a) => (
-                          <div key={a.id} className="rounded border border-amber-200 bg-white p-2.5 space-y-1">
-                            <div className="flex justify-between text-[11px] font-semibold text-amber-950">
-                              <span>Dr. {a.author_name}</span>
-                              <time className="text-slate-500">{new Date(a.created_at).toLocaleString()}</time>
-                            </div>
-                            <p className="text-sm font-medium text-slate-900 whitespace-pre-wrap">{a.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Form to add new amendment */}
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (lookup.prescription_id) {
-                        void submitAmendment(lookup.prescription_id);
-                      }
-                    }}
-                    className="space-y-3 pt-1"
-                    data-testid="add-amendment-form"
-                  >
-                    <div>
-                      <label htmlFor={`amend-${uid}`} className="block text-xs font-bold text-foreground">
-                        Add Prescription Amendment
-                      </label>
-                      <textarea
-                        id={`amend-${uid}`}
-                        rows={3}
-                        placeholder="Type amendment content (e.g. Prescribed antibiotic eye drop 4x daily)..."
-                        value={amendmentContent}
-                        onChange={(e) => setAmendmentContent(e.target.value)}
-                        disabled={assigning}
-                        className="mt-1 flex w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="submit"
-                        disabled={assigning || !amendmentContent.trim()}
-                        loading={assigning}
-                      >
-                        {assigning ? "Appending amendment…" : "Add Amendment"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="w-auto"
-                        onClick={resetResult}
-                      >
-                        Scan next
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-              ) : null}
+              <p className="mt-0.5 text-xs text-amber-900">
+                Nothing more to do here. Reprint if they need another form.
+              </p>
             </div>
           ) : null}
 
-          {lookup.queue_status === "waiting" && mode !== "doctor" ? (
-            <>
-              <p className="mt-1 text-sm text-muted">
-                In queue — choose the doctor seeing this patient.
-              </p>
-              {doctors.length === 0 ? (
-                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                  No doctors added yet.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Doctor
-                  </p>
-                  <div
-                    className="grid gap-2 sm:grid-cols-2"
-                    role="group"
-                    aria-label="Select doctor"
-                  >
-                    {doctors.map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        disabled={assigning || looking}
-                        aria-pressed={doctorId === d.id}
-                        onClick={() => setDoctorId(d.id)}
-                        className={`pressable min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors ${
- doctorId === d.id
- ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
- : "border-border bg-white text-foreground hover:border-brand/40"
- }`}
-                      >
-                        {d.full_name || "Doctor"}
-                      </button>
-                    ))}
-                  </div>
-                  <Button
-                    type="button"
-                    disabled={!doctorId || assigning}
-                    loading={assigning}
-                    onClick={() => void assignDoctor({ id: lookup.id }, doctorId)}
-                  >
-                    {assigning ? "Assigning…" : "Assign doctor · mark seen"}
-                  </Button>
-                </div>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2 w-auto"
-                disabled={assigning || looking}
-                onClick={resetResult}
-              >
-                Cancel
-              </Button>
-            </>
-          ) : null}
-
-          {lookup.queue_status === "registered" && mode === "doctor" ? (
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-muted">
-                Read-only — this patient is not checked in yet.
-              </p>
-              {lookup.phone ? (
-                <p className="text-sm text-foreground">
-                  <span className="text-muted">Phone </span>
-                  <span className="tabular">{lookup.phone}</span>
-                </p>
-              ) : null}
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                Check the patient in at the desk first, then mark them seen.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-auto"
-                disabled={assigning || looking}
-                onClick={resetResult}
-              >
-                Scan next
-              </Button>
-            </div>
-          ) : null}
-
-          {(lookup.queue_status === "waiting" && mode === "doctor") || (lookup.queue_status === "seen" && mode === "doctor" && !lookup.is_locked) ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void submitPrescription(lookup.id);
-              }}
-              className="mt-4 space-y-4"
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/* Action 1 — printing is what puts them in the queue (D22/D24). */}
+            <Button
+              type="button"
+              size="lg"
+              className="w-auto flex-1 sm:flex-none"
+              disabled={assigning}
+              loading={assigning}
+              data-testid="print-prescription"
+              onClick={() => void printAndQueue(lookup)}
             >
-              <div className="rounded-xl border border-border bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Prescription Details
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor={`diag-${uid}`} className="block text-xs font-bold text-foreground">
-                      Diagnosis (Nidan)
-                    </label>
-                    <input
-                      id={`diag-${uid}`}
-                      type="text"
-                      placeholder="e.g. Cataract, Refractive error"
-                      value={diagnosis}
-                      onChange={(e) => setDiagnosis(e.target.value)}
-                      disabled={assigning}
-                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor={`exam-${uid}`} className="block text-xs font-bold text-foreground">
-                      Examination (Jaanch)
-                    </label>
-                    <input
-                      id={`exam-${uid}`}
-                      type="text"
-                      placeholder="e.g. RE 6/12 LE 6/18"
-                      value={examination}
-                      onChange={(e) => setExamination(e.target.value)}
-                      disabled={assigning}
-                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor={`meds-${uid}`} className="block text-xs font-bold text-foreground">
-                      Medicines (Dawaai)
-                    </label>
-                    <input
-                      id={`meds-${uid}`}
-                      type="text"
-                      placeholder="e.g. Eye drops 3x daily"
-                      value={medicines}
-                      onChange={(e) => setMedicines(e.target.value)}
-                      disabled={assigning}
-                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor={`adv-${uid}`} className="block text-xs font-bold text-foreground">
-                      Advice (Salah)
-                    </label>
-                    <input
-                      id={`adv-${uid}`}
-                      type="text"
-                      placeholder="e.g. Follow up in 1 month"
-                      value={advice}
-                      onChange={(e) => setAdvice(e.target.value)}
-                      disabled={assigning}
-                      className="mt-1 flex min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                    />
-                  </div>
-                </div>
-              </div>
+              {lookup.queue_status === "registered"
+                ? "Print prescription"
+                : "Reprint prescription"}
+            </Button>
 
-              <div className="rounded-xl border border-border bg-slate-50 p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Treatment Destinations
-                </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {[
-                    { id: "ot", label: "OT (Surgery)" },
-                    { id: "pharmacy", label: "Pharmacy" },
-                    { id: "spectacles", label: "Spectacles" },
-                  ].map((dest) => {
-                    const checked = destinations.includes(dest.id);
-                    let sublabel: string | null = null;
-                    if (dest.id === "ot" && lookup) {
-                      if (lookup.ot_scheduled_day_date) {
-                        sublabel = `Scheduled for ${lookup.ot_scheduled_day_date}`;
-                      } else if (lookup.next_available_ot_day_date) {
-                        sublabel = `Scheduled for ${lookup.next_available_ot_day_date}`;
-                      } else if (lookup.theatre_capacity != null) {
-                        const rem = lookup.theatre_remaining ?? 0;
-                        sublabel = rem === 0 ? "No theatre capacity remaining" : `${rem}/${lookup.theatre_capacity} slots left`;
-                      } else {
-                        sublabel = "Unlimited slots";
-                      }
-                    }
-                    return (
-                      <label
-                        key={dest.id}
-                        className={`flex min-h-[44px] cursor-pointer items-center justify-between gap-2.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                          checked
-                            ? "border-brand bg-brand-soft text-brand ring-1 ring-brand/20"
-                            : "border-border bg-white text-foreground hover:border-brand/40"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={assigning}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setDestinations([...destinations, dest.id]);
-                              } else {
-                                setDestinations(destinations.filter((d) => d !== dest.id));
-                              }
-                            }}
-                            className="h-6 w-6 min-h-[44px] min-w-[44px] rounded border-border text-brand focus:ring-brand accent-brand cursor-pointer shrink-0"
-                          />
-                          <span>{dest.label}</span>
-                        </div>
-                        {sublabel ? (
-                          <span
-                            className={`text-xs font-medium ${
-                              dest.id === "ot" && (sublabel.includes("No theatre capacity") || sublabel.includes("Full"))
-                                ? "text-danger font-semibold"
-                                : "text-brand font-semibold"
-                            }`}
-                          >
-                            {sublabel}
-                          </span>
-                        ) : null}
-                      </label>
-                    );
-                  })}
-                </div>
+            {/* Action 2 — only meaningful once they are actually in the line. */}
+            {lookup.queue_status === "waiting" ? (
+              <Button
+                type="button"
+                size="lg"
+                className="w-auto flex-1 sm:flex-none"
+                disabled={assigning}
+                loading={assigning}
+                data-testid="mark-seen"
+                onClick={() => void markSeen({ id: lookup.id })}
+              >
+                {assigning ? "Marking seen…" : "Mark seen"}
+              </Button>
+            ) : null}
 
-                {destinations.includes("ot") && lookup ? (
-                  <div
-                    className={`mt-3 rounded-xl border p-3 text-xs font-bold ${
-                      lookup.ot_scheduled_day_date || lookup.next_available_ot_day_date
-                        ? "border-brand/30 bg-brand-soft/60 text-brand"
-                        : "border-danger/30 bg-danger-soft text-danger"
-                    }`}
-                    data-testid="ot-scheduled-banner"
-                  >
-                    {lookup.ot_scheduled_day_date ? (
-                      <p>Scheduled for {lookup.ot_scheduled_day_date}</p>
-                    ) : lookup.next_available_ot_day_date ? (
-                      <p>Scheduled for {lookup.next_available_ot_day_date}</p>
-                    ) : (
-                      <p>Camp has no theatre capacity remaining</p>
-                    )}
-                  </div>
-                ) : null}
-
-                {destinations.includes("spectacles") ? (
-                  <div className="mt-3 rounded-xl border border-brand/30 bg-white p-3 space-y-2">
-                    <p className="text-xs font-bold text-foreground">Spectacles Power Type</p>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { id: "fixed", label: "Fixed Power" },
-                        { id: "bifocal", label: "Bifocal" },
-                      ].map((typeOption) => (
-                        <button
-                          key={typeOption.id}
-                          type="button"
-                          disabled={assigning}
-                          onClick={() => setSpectaclesType(typeOption.id as "fixed" | "bifocal")}
-                          className={`min-h-[44px] rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
-                            spectaclesType === typeOption.id
-                              ? "border-brand bg-brand text-white"
-                              : "border-border bg-white text-foreground hover:border-brand/40"
-                          }`}
-                        >
-                          {typeOption.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={assigning}
-                  loading={assigning}
-                >
-                  {assigning
-                    ? "Saving prescription…"
-                    : lookup.queue_status === "seen"
-                    ? destinations.length > 0
-                      ? `Update Prescription (${destinations.length} order${destinations.length === 1 ? "" : "s"})`
-                      : "Save Prescription"
-                    : destinations.length > 0
-                    ? `Submit Prescription (${destinations.length} order${destinations.length === 1 ? "" : "s"}) · Mark seen`
-                    : "Mark seen"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={assigning || looking}
-                  onClick={resetResult}
-                >
-                  Wrong patient
-                </Button>
-              </div>
-            </form>
-          ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-auto"
+              disabled={assigning || looking}
+              onClick={resetResult}
+            >
+              Wrong patient
+            </Button>
+          </div>
         </div>
       ) : null}
 

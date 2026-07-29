@@ -1,8 +1,19 @@
 # Registration and printing are separate actions; what prints is a camp setting
 
 ---
-Status: accepted
+Status: superseded
 ---
+
+> **Superseded (2026-07-28) by [ADR 0008](0008-printing-queues-the-patient.md).**
+>
+> The decision below — that printing is a side concern with no effect on queue
+> state — was reversed. Printing the prescription is now the act that puts a
+> patient in the queue, and there is no longer a choice of what prints: every
+> camp prints the prescription sheet. The reasoning below is kept because the
+> failure it fixed (one fused `runDeskRegisterAndPrint` action with no way to
+> pre-register without printing) is still a trap worth not re-entering:
+> registration and printing remain **separate actions**, and pre-registration
+> still never prints.
 
 The desk had exactly one action, `runDeskRegisterAndPrint`, which fused saving a patient
 with opening a print window — so there was no way to pre-register someone without

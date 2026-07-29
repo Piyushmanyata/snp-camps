@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 3;
+export const READINESS_CONTRACT_VERSION = 4;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260728118000";
+export const EXPECTED_MIGRATION_HEAD = "20260728119000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -45,8 +45,6 @@ export const REQUIRED_TABLES = [
   "camp_days",
   "profiles",
   "sms_deliveries",
-  "prescriptions",
-  "treatment_orders",
   "public_rate_limit_buckets",
 ] as const;
 
@@ -57,6 +55,9 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "status_token",
     "queue_status",
     "queued_at",
+    "printed_at",
+    "seen_at",
+    "seen_by",
     "reg_no",
     "camp_id",
     "camp_day_id",
@@ -78,8 +79,8 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "aadhaar_locked_at",
     "name_locked_at",
   ],
-  camps: ["id", "name", "is_active", "venue"],
-  camp_days: ["id", "camp_id", "day_date", "seat_limit", "theatre_capacity"],
+  camps: ["id", "name", "is_active", "venue", "prescription_template"],
+  camp_days: ["id", "camp_id", "day_date", "seat_limit"],
   profiles: ["id", "role", "disabled_at", "team_lead_id"],
   sms_deliveries: [
     "id",
@@ -91,18 +92,6 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "attempt_count",
     "dispatch_started_at",
     "updated_at",
-  ],
-  prescriptions: ["id", "patient_id", "camp_id", "doctor_id"],
-  treatment_orders: [
-    "id",
-    "patient_id",
-    "camp_id",
-    "prescription_id",
-    "kind",
-    "status",
-    "scheduled_camp_day_id",
-    "source",
-    "created_by",
   ],
   public_rate_limit_buckets: [
     "scope",
@@ -121,13 +110,12 @@ export const REQUIRED_FUNCTIONS = [
   "upsert_camp_day",
   "register_patient_idempotent",
   "check_in_patient",
+  "lookup_patient_scan",
+  "mark_seen",
+  "undo_mark_seen",
   "lookup_patient_status_token",
   "consume_public_rate_limit",
   "active_registration_id",
-  "assign_patient_doctor",
-  "doctor_submit_prescription",
-  "resolve_treatment_order",
-  "counter_create_and_fulfill_order",
   "staff_person_kpis",
   "claim_sms_delivery",
   "mark_sms_dispatch_started",
@@ -149,12 +137,9 @@ export const REQUIRED_INVARIANTS = [
   "migration_head_current",
   "profiles_team_lead_fk",
   "team_membership_guards",
-  "prescription_patient_scope_fk",
-  "treatment_order_patient_scope_fk",
-  "treatment_order_prescription_scope_fk",
-  "treatment_order_state_integrity",
-  "treatment_order_attribution_columns_required",
-  "treatment_order_attribution_guard",
+  "prescription_records_absent",
+  "doctor_station_retired",
+  "mark_seen_contract",
   "public_rate_limit_primary_key",
 ] as const;
 
@@ -177,6 +162,11 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   // Capacity + desk RPCs remain available to authenticated staff.
   upsert_camp_day_authenticated_execute: true,
   check_in_patient_authenticated_execute: true,
+  lookup_patient_scan_authenticated_execute: true,
+  // The two desk actions (D22). Never reachable without a signed-in staff session.
+  mark_seen_authenticated_execute: true,
+  mark_seen_anon_execute: false,
+  undo_mark_seen_authenticated_execute: true,
   register_patient_idempotent_authenticated_execute: true,
   lookup_patient_status_token_anon_execute: false,
   lookup_patient_status_token_authenticated_execute: false,
@@ -184,16 +174,6 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   consume_public_rate_limit_anon_execute: false,
   consume_public_rate_limit_authenticated_execute: false,
   consume_public_rate_limit_service_role_execute: true,
-  prescriptions_authenticated_insert: false,
-  prescriptions_authenticated_update: false,
-  prescriptions_authenticated_delete: false,
-  treatment_orders_authenticated_insert: false,
-  treatment_orders_authenticated_update: false,
-  treatment_orders_authenticated_delete: false,
-  assign_patient_doctor_authenticated_execute: true,
-  doctor_submit_prescription_authenticated_execute: true,
-  resolve_treatment_order_authenticated_execute: true,
-  counter_create_and_fulfill_order_authenticated_execute: true,
   staff_person_kpis_authenticated_execute: true,
   staff_person_kpis_anon_execute: false,
   staff_person_kpis_service_role_execute: true,
@@ -218,12 +198,12 @@ export const SMS_DELIVERY_STATES = [
   "ambiguous",
 ] as const;
 
-export const SMS_DELIVERY_KINDS = [
-  "registration",
-  "reminder",
-  "spectacles_deferral",
-  "surgery_deferral",
-] as const;
+/**
+ * Only the two kinds the app still sends (D28). The `spectacles_deferral` and
+ * `surgery_deferral` labels remain in the Postgres enum — a value cannot be
+ * dropped from an enum type — but nothing produces them any more.
+ */
+export const SMS_DELIVERY_KINDS = ["registration", "reminder"] as const;
 
 /** Safe operator explanations (no SQL, secrets, PHI, connection strings). */
 export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =

@@ -76,48 +76,34 @@ test("public/register SeatBoard call sites never pass live", () => {
   }
 });
 
-test("staff desks enable live seat board or live bridge", () => {
+test("staff desks enable live seat board", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
   const admin = read("src/app/admin/page.tsx");
-  const doctor = read("src/app/doctor/page.tsx");
 
   assert.match(volunteer, /live\b/);
   assert.match(admin, /live\b/);
-  assert.match(doctor, /CampDeskLiveBridge/);
 });
 
-test("#50 doctor station marks seen without confirm dialog copy", () => {
-  const scanner = read("src/components/qr-scanner.tsx");
-  const doctor = read("src/app/doctor/page.tsx");
-  // Patients-you-saw collapsible lives on the isolated section island (#63).
-  const seenPanel = read("src/components/section-data.tsx");
-
-  assert.match(scanner, /Mark seen/);
-  assert.doesNotMatch(scanner, /Confirm patient · mark seen/);
-  assert.match(scanner, /mode === "doctor"/);
-  assert.match(scanner, /readyForNext/);
-  assert.match(scanner, /#\$\{row\.reg_no\} marked seen/);
-  assert.match(doctor, /mode="doctor"/);
-  assert.match(doctor, /DoctorSeenPanel/);
-  assert.match(seenPanel, /defaultOpen=\{false\}/);
-});
-
-test("#57 doctor registered review has no Mark seen; check-in instruction present", () => {
+test("D22 desk offers exactly the two actions, and refuses an already-seen patient", () => {
   const scanner = read("src/components/qr-scanner.tsx");
   const deskOps = read("src/lib/desk-ops.ts");
-  assert.match(scanner, /Check the patient in at the desk first/);
-  assert.match(scanner, /queue_status === "registered" && mode === "doctor"/);
-  assert.match(scanner, /queue_status === "waiting" && mode === "doctor"/);
-  assert.match(deskOps, /check_in_required/);
-  assert.match(deskOps, /CHECK_IN_REQUIRED_COPY/);
+
+  // Print (which queues) and Mark seen — no doctor selection anywhere.
+  assert.match(scanner, /Print prescription/);
+  assert.match(scanner, /Mark seen/);
+  assert.doesNotMatch(scanner, /assign doctor/i);
+  assert.doesNotMatch(scanner, /doctors\b/);
+
+  // Already seen is terminal and says when (D25).
+  assert.match(scanner, /Already seen/);
+  assert.match(deskOps, /not_in_queue/);
+  assert.match(deskOps, /NOT_IN_QUEUE_COPY/);
 });
 
 test("#58 scanner uses camera session + decode orchestrator generation guards", () => {
   const scanner = read("src/components/qr-scanner.tsx");
   assert.match(scanner, /QrCameraSession/);
   assert.match(scanner, /QrDecodeOrchestrator/);
-  assert.match(scanner, /pauseDecodeKeepStream/);
-  assert.match(scanner, /resumeDecodeSameSession/);
   assert.match(scanner, /invalidate\(\)/);
   assert.doesNotMatch(scanner, /scannerGeneration/);
 });
@@ -148,13 +134,6 @@ test("#56 continuous ~20s poll is the staff freshness owner", () => {
   assert.doesNotMatch(owner, /subscribeCampDeskRealtime/);
 });
 
-test("doctor bridge polls continuously without Realtime", () => {
-  const bridge = read("src/components/camp-desk-live-bridge.tsx");
-  assert.match(bridge, /useFixedPoll\(\s*refresh\s*,\s*POLL_MS\s*,\s*Boolean\(campId\)\s*\)/);
-  assert.doesNotMatch(bridge, /useCampDeskRealtime/);
-  assert.doesNotMatch(bridge, /reconnecting/);
-});
-
 test("#56 no staff copy instructs manual-only refresh on live desks", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
   const admin = read("src/app/admin/page.tsx");
@@ -162,8 +141,7 @@ test("#56 no staff copy instructs manual-only refresh on live desks", () => {
   const scanQueue = read("src/components/desk-scan-queue.tsx");
   assert.doesNotMatch(volunteer, /refresh manually/i);
   assert.doesNotMatch(admin, /auto-refresh/i);
-  assert.match(scanQueue, /Line · live/);
-  assert.match(scanQueue, /FCFS · assign doctor · live/);
+  assert.match(scanQueue, /Arrival order · live/);
 });
 
 test("#26 no unstable_cache in src/", () => {
@@ -182,14 +160,6 @@ test("#26 no unstable_cache in src/", () => {
   }
   const hits = walk(path.join(root, "src"));
   assert.deepEqual(hits, [], `unstable_cache still present: ${hits.join(", ")}`);
-});
-
-test("#26 doctor list uses use cache + doctors-list tag", () => {
-  const src = read("src/lib/metadata.ts");
-  assert.match(src, /["']use cache["']/);
-  assert.match(src, /cacheTag\(\s*["']doctors-list["']\s*\)/);
-  assert.match(src, /cacheLife\(/);
-  assert.doesNotMatch(src, /unstable_cache/);
 });
 
 test("#26 active camp snapshot uses use cache + tag", () => {

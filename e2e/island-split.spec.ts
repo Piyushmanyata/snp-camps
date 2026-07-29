@@ -19,7 +19,7 @@ async function gotoHydrated(page: Page, p: string) {
   await page.waitForLoadState("networkidle");
 }
 
-async function loginStaff(page: Page, role: "admin" | "volunteer" | "doctor") {
+async function loginStaff(page: Page, role: "admin" | "volunteer") {
   await gotoHydrated(page, "/login");
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
@@ -111,8 +111,8 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
 
   const map = loadChunkMap();
   // Budget gate writes the artifact during verify; rebuild path may regenerate it.
-  if (!map?.routes?.["/doctor"] && !map?.routes?.["/volunteer"]) {
-    await loginStaff(page, "doctor");
+  if (!map?.routes?.["/volunteer"]) {
+    await loginStaff(page, "volunteer");
     await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Look up patient/i }),
@@ -120,16 +120,16 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
     return;
   }
 
-  const doctor = map.routes["/doctor"] || map.routes["/volunteer"];
-  const jsqrChunks = Object.entries(doctor.deferredMarkers || {})
+  const desk = map.routes["/volunteer"];
+  const jsqrChunks = Object.entries(desk.deferredMarkers || {})
     .filter(([, markers]) => markers.includes("jsqr_lib"))
     .map(([rel]) => rel);
-  const scannerChunks = Object.entries(doctor.deferredMarkers || {})
+  const scannerChunks = Object.entries(desk.deferredMarkers || {})
     .filter(([, markers]) => markers.includes("scanner_ui"))
     .map(([rel]) => rel);
 
   // jsqr must be deferred (not in initial) for desk routes.
-  for (const route of ["/doctor", "/volunteer", "/admin"] as const) {
+  for (const route of ["/volunteer", "/admin"] as const) {
     const r = map.routes[route];
     if (!r) continue;
     for (const [rel, markers] of Object.entries(r.initialMarkers || {})) {
@@ -149,7 +149,7 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
     if (isChunkRequest(req)) chunkPaths.push(new URL(req.url()).pathname);
   });
 
-  await loginStaff(page, "doctor");
+  await loginStaff(page, "volunteer");
   await page.waitForLoadState("networkidle");
 
   // Critical controls available without waiting for optional decoder.
@@ -182,8 +182,8 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
     ).toBeTruthy();
   } else {
     expect(
-      scannerChunks.length + doctor.deferredChunks.length,
-      "doctor route should list deferred scanner/jsqr chunks",
+      scannerChunks.length + desk.deferredChunks.length,
+      "desk route should list deferred scanner/jsqr chunks",
     ).toBeGreaterThan(0);
   }
 });
@@ -211,10 +211,16 @@ test("production: print route may load qrcode; volunteer initial must not", asyn
     }
   }
   if (printRoute) {
-    const printHasQr = Object.values(printRoute.initialMarkers || {})
+    // `QrCode` is a Server Component (no "use client"), so the patient QR ships
+    // as static SVG markup and the print route pays no qrcode.react JS at all.
+    // The QR is still rendered — print-prescription.spec.ts asserts it visually.
+    const printQrJs = Object.values(printRoute.initialMarkers || {})
       .concat(Object.values(printRoute.deferredMarkers || {}))
       .some((m) => m.includes("qrcode_react"));
-    expect(printHasQr, "print route should include qrcode.react").toBeTruthy();
+    expect(
+      printQrJs,
+      "print route should render the QR server-side, shipping no qrcode.react chunk",
+    ).toBeFalsy();
   }
 
   // Volunteer critical controls before optional admin tools.
@@ -227,3 +233,4 @@ test("production: print route may load qrcode; volunteer initial must not", asyn
   const health = await request.get("/api/health");
   expect(health.ok()).toBeTruthy();
 });
+

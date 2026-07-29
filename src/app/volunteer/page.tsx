@@ -19,23 +19,16 @@ import {
 } from "@/components/ui";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
-import type { CampDayStats, DoctorOption } from "@/lib/types";
+import type { CampDayStats } from "@/lib/types";
 import {
-  loadAwaitingTreatmentSection,
-  loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
   loadStaffLeaderboardSection,
   loadVolunteerKpisSection,
-  type AwaitingTreatmentData,
-  type SectionResult,
   type StaffKpiRow,
 } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import {
-  AwaitingTreatmentCard,
-  VolunteerKpisSection,
-} from "@/components/section-data";
+import { VolunteerKpisSection } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
 import { SeatBoard } from "@/components/seat-board";
 import { CheckIn } from "@/components/check-in";
@@ -45,8 +38,8 @@ import type { StaffPerson } from "@/components/staff-detail";
 
 export default async function VolunteerPage() {
   const { userId, profile } = await getSessionProfile();
-  // Staff only (admin | team_lead | volunteer). Doctors hit roleHome → /doctor; no
-  // second-order redirect that depends on check order.
+  // Staff only (admin | team_lead | volunteer). Anyone else goes to roleHome,
+  // or /login when they hold no login role at all.
   if (!isStaff(profile?.role)) {
     redirect(roleHome(profile?.role) || "/login");
   }
@@ -150,12 +143,6 @@ export default async function VolunteerPage() {
   let queueKnown = false;
   let days: CampDayStats[] = [];
   let seatsKnown = false;
-  let doctorsInitial:
-    | { ok: true; data: DoctorOption[] }
-    | { ok: false; error: string } = {
-    ok: true,
-    data: [],
-  };
   let kpisInitial:
     | {
         ok: true;
@@ -168,7 +155,6 @@ export default async function VolunteerPage() {
       }
     | { ok: false; error: string }
     | null = null;
-  let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
   let leaderboard: StaffKpiRow[] = [];
   let leaderboardError: string | null = null;
   let teamVolunteers: StaffPerson[] = [];
@@ -194,19 +180,16 @@ export default async function VolunteerPage() {
 
   if (camp && userId) {
     // Independent loads — one failure must not blank the rest of the desk.
-    const [queueRes, seatsRes, doctorsRes, kpisRes, awaitingRes, leaderboardRes] =
-      await Promise.all([
-        loadQueueSection(camp.id),
-        loadSeatsSection(camp.id),
-        loadDoctorsSection(),
-        loadVolunteerKpisSection(
-          camp.id,
-          userId,
-          teamLead ? "team_lead" : "volunteer",
-        ),
-        loadAwaitingTreatmentSection(camp.id),
-        loadStaffLeaderboardSection(camp.id),
-      ]);
+    const [queueRes, seatsRes, kpisRes, leaderboardRes] = await Promise.all([
+      loadQueueSection(camp.id),
+      loadSeatsSection(camp.id),
+      loadVolunteerKpisSection(
+        camp.id,
+        userId,
+        teamLead ? "team_lead" : "volunteer",
+      ),
+      loadStaffLeaderboardSection(camp.id),
+    ]);
 
     if (queueRes.ok) {
       waiting = queueRes.data.waiting as LiveQueuePatient[];
@@ -219,9 +202,7 @@ export default async function VolunteerPage() {
       seatsKnown = true;
     }
 
-    doctorsInitial = doctorsRes;
     kpisInitial = kpisRes;
-    awaitingInitial = awaitingRes;
     if (leaderboardRes.ok) {
       leaderboard = leaderboardRes.data;
     } else {
@@ -242,8 +223,7 @@ export default async function VolunteerPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
-        { href: "/counter", label: "Counter" },
-        { href: "#checkin", label: "Check-in" },
+        { href: "#checkin", label: "Find patient" },
         { href: "#scan", label: "Scan" },
         { href: "#queue", label: "Queue" },
       ]}
@@ -294,13 +274,6 @@ export default async function VolunteerPage() {
             ) : null}
           </div>
 
-          <div className="mt-3">
-            <AwaitingTreatmentCard
-              campId={camp?.id ?? null}
-              initial={awaitingInitial}
-            />
-          </div>
-
           {/* Always visible on phone — desk-inline-actions is desktop-only */}
           <div className="mt-3 space-y-2 lg:hidden">
             <ActionCard
@@ -317,7 +290,7 @@ export default async function VolunteerPage() {
             />
             <div className="jump-chip-row" aria-label="Jump to section">
               <a href="#checkin" className="jump-chip">
-                Check-in
+                Find patient
               </a>
               <a href="#scan" className="jump-chip">
                 Scan QR
@@ -331,9 +304,6 @@ export default async function VolunteerPage() {
           <div className="desk-inline-actions mt-4">
             <NavLink href="/register" variant="primary">
               Register walk-in patient
-            </NavLink>
-            <NavLink href="/counter" variant="soft">
-              Counter desk
             </NavLink>
           </div>
         </Card>
@@ -351,13 +321,13 @@ export default async function VolunteerPage() {
         ) : null}
 
         <Card id="checkin" className="!p-4 sm:!p-5">
-          <SectionTitle hint="Pre-registered only · reg # · name · QR paste">
-            Check-in
+          <SectionTitle hint="Pre-registered · reg # · name · QR paste">
+            Find patient
           </SectionTitle>
           <Suspense
             fallback={
               <p role="status" className="py-4 text-xs text-muted">
-                Loading check-in…
+                Loading patient search…
               </p>
             }
           >
@@ -373,9 +343,7 @@ export default async function VolunteerPage() {
         </Card>
 
         <DeskScanQueue
-          mode="volunteer"
           campId={camp?.id ?? null}
-          doctorsInitial={doctorsInitial}
           waiting={waiting}
           waitingTotal={waitingCount}
           queueKnown={queueKnown || !camp}
@@ -389,3 +357,4 @@ export default async function VolunteerPage() {
     </Shell>
   );
 }
+

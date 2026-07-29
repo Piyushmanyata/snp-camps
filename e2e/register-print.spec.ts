@@ -169,7 +169,7 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
     { timeout: 20_000 },
   );
   // Thermal station → one-up slip (format from localStorage).
-  await expect(popup.getByTestId("desk-slip-thermal")).toBeVisible({
+  await expect(popup.getByTestId("prescription-sheet")).toBeVisible({
     timeout: 15_000,
   });
 
@@ -298,7 +298,7 @@ test("blocked popup: one registration, recovery Print, never claims window opene
   // Deterministic reprint route without a second register RPC.
   const before = mock.getCalls();
   await page.goto(`/print/${patientId}?auto=1`);
-  await expect(page.getByTestId("desk-slip-thermal")).toBeVisible({
+  await expect(page.getByTestId("prescription-sheet")).toBeVisible({
     timeout: 15_000,
   });
   expect(mock.getCalls()).toBe(before);
@@ -463,3 +463,4 @@ function assertAllSame(values: (string | null | undefined)[]) {
     expect(v).toBe(first);
   }
 }
+

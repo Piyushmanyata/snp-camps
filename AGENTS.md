@@ -6,30 +6,50 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Agent Governance Rules — SNP Camps
 
+## What this app is
+
+A queue tracker for a free eye camp. It moves a patient through
+`registered → waiting → seen` and prints a prescription form. **The paper is the
+clinical record** — the app stores no diagnosis, medicine, or treatment data, and
+should never grow any. Read
+[`docs/adr/0008-printing-queues-the-patient.md`](docs/adr/0008-printing-queues-the-patient.md)
+before proposing any clinical feature.
+
+The desk has exactly two actions: **Print prescription** (which queues the patient)
+and **Mark seen**. If a change adds a third, question it hard.
+
 ## Document Authority Precedence
 
-When governing documentation or instructions conflict, agent decisions MUST resolve according to the following strict hierarchy:
+When governing documentation conflicts, resolve in this order:
 
-1. **Remediation & Specification Contracts**: Closed/accepted issue remediation specifications (#56 for auth/realtime/least-privilege boundaries, #68 for fail-closed readiness, #72 for test selection contract, #74 for evidence governance contract).
-2. **`CONTEXT.md`**: Ubiquitous language, domain context, lifecycle invariants, role boundaries, accepted design-system rules.
-3. **`README.md`**: Operations, deployment setup, build/verify gates, auth model reference, MSG91 configuration.
-4. **ADRs (`docs/adr/`)**: Architectural decision records (e.g. `0001-passcode-on-desk-slip.md` as superseded historical context).
-5. **Historical Spec Files (`docs/UI_UX_OVERHAUL_SPEC.md`, etc.)**: Retained for historical context only; superseded where conflicting with accepted remediation rules (#56, #69, #73).
+1. **`docs/adr/`** — architectural decision records. ADR 0008 defines the current architecture; ADRs 0001, 0006 and 0007 are superseded and retained for the reasoning, not the decision.
+2. **`CONTEXT.md`** — ubiquitous language, domain context, lifecycle invariants, role boundaries, accepted design-system rules.
+3. **`README.md`** — operations, deployment setup, build/verify gates, auth model reference, MSG91 configuration.
 
-## Production Safety & Realtime Boundaries (#56)
+## Production Safety
 
-* **Production Data Safety**: Production contains live medical camp operational data. **Production is NEVER assumed to be empty.** Running `db reset` or re-applying baseline SQL against production is strictly prohibited. Schema changes must use append-only incremental migrations validated via clean replay on disposable databases (#68).
-* **Realtime Boundary**: Public patient Realtime channels are retired (#56). The `patients` table is strictly absent from the `supabase_realtime` publication (`patients_realtime_absent` check).
+* **Production is NEVER assumed to be empty.** Running `db reset` or re-applying baseline SQL against production is strictly prohibited. Schema changes must use append-only incremental migrations validated via clean replay on a disposable database (`npm run test:db:replay`).
+* Migration `20260728119000` dropped the retired clinical tables irreversibly. That was a **one-time, explicitly authorised exception** taken while production held test data only and no real camp had run. It sets no precedent: once real camp data exists, removals must archive rather than drop, and any irreversible migration needs fresh explicit confirmation.
+* **Realtime Boundary**: Public patient Realtime channels are retired. The `patients` table is strictly absent from the `supabase_realtime` publication (`patients_realtime_absent` check).
 * **Polling**: Queue, seat board, and desk updates use manual Refresh or fixed polling — zero public WebSocket channels on patient rows.
-* **Least Privilege & Role Boundaries**: Desk operations operate under strict SQL role functions: `isStaff()` (admin, volunteer) for desk registration/management, `isCampCrew()` (admin, volunteer, doctor) for QR lookup and assignment. Patients do not sign in and hold no Supabase Auth sessions.
-* **Status Token Boundary**: Passwordless `/s/<token>` provides public status tracking via the `patient_status_by_token` RPC, returning only non-sensitive queue metrics (sensitive patient PII, phone, address, and Aadhaar details are stripped).
+* **Least Privilege**: `is_staff()` (admin, team_lead, volunteer) gates every desk RPC. `is_camp_crew()` is an **alias** of it, not a wider set — the doctor role was retired. Patients do not sign in and hold no Supabase Auth sessions.
+* **Status Token Boundary**: `/s/<token>` resolves via `patient_status_by_token`, which is **service-role only** and returns queue metrics with PII, phone, address and Aadhaar details stripped. Do not widen its grants.
 
-## Visual & Design System Guidance (#69, #73)
+## Postgres
 
-* Retired visual guidance (glow typography, glassmorphism, glowing status badges) is removed and superseded by accepted design-system rules in `CONTEXT.md`.
-* UI components must enforce high-contrast WCAG 2.2 AA compliance for field legibility under bright outdoor light, tactile press scaling (`scale(0.98)`), clear solid status badges, and `prefers-reduced-motion` compliance.
+* You cannot drop a value from an enum type. `user_role` still lists `doctor` and `patient`; both are non-login and the app treats them as such. Disable residual profiles rather than trying to remove the label.
+* Changing a function's **argument list** creates a new overload rather than replacing the old one, and `CREATE OR REPLACE` cannot change a return type at all. When either changes, `DROP` the exact old signature explicitly and re-grant — a dropped-and-recreated function loses its grants, and a forked overload leaves the old one live. Check `pg_proc` afterwards.
+* Preserve `FOR UPDATE` lock order and capacity guards when editing an existing RPC. `upsert_camp_day`'s row lock and `SEAT_LIMIT_BELOW_ASSIGNED` check exist to serialize capacity edits against concurrent registrations; rewriting the function without reading it first silently removes that protection.
 
-## Testing & Evidence Governance (#72, #74)
+## Visual & Design System
 
-* **Sole Test Selection Contract (#72)**: All test creation and selection must strictly link to **[Issue #72](#72)** as the sole test-level selection contract. Brittle source-text regex assertions are prohibited. Testing relies on empirical runtime behavior across defined seams (`node:test` unit/behavior suite, `tests/*.db.test.mjs`, Playwright role e2e suite, and `npm run verify` full gate).
-* **Closure Evidence Governance (#74)**: All ticket completion claims must strictly follow **[Issue #74](#74)** evidence contract. Never declare success without literal `npm run verify` terminal output, DB skip count declarations, e2e summary, coverage delta statement, and empirical red/green failure proof for bug fixes.
+* UI must meet WCAG 2.2 AA for field legibility under bright outdoor light: high contrast, 44×44 minimum touch targets, visible focus rings, text scaling, tactile press scaling (`scale(0.98)`), clear solid status badges, and `prefers-reduced-motion` compliance.
+* Retired visual guidance (glow typography, glassmorphism, glowing status badges) is removed and superseded by the design-system rules in `CONTEXT.md`.
+* Patients read Hinglish; staff read English. Leaks in either direction are bugs.
+
+## Testing & Evidence Governance
+
+* Tests assert empirical runtime behaviour across four seams: the `node:test` unit suite, `tests/*.db.test.mjs`, the Playwright role e2e suite, and the full `npm run verify` gate. Brittle source-text regex assertions are discouraged — they break on rename and pass on rot.
+* **A skipped database test is a failure, not a pass.** `npm run test:db` fails on any skip and names it a blocker. A test file may skip only when the database is genuinely unreachable. Guards that treat a *missing RPC* as "Postgres unavailable" silently delete coverage exactly when a migration breaks something — this has happened in this repo, and it hid three real failures.
+* **A green suite is not evidence the app works.** Every defect found in the July 2026 audit passed the full suite. Verify against a running app.
+* Do not claim a suite passed without the terminal output. Report skip counts explicitly. For a bug fix, show the test failing before the fix and passing after.

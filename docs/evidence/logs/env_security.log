@@ -1,6 +1,0 @@
-
-> snp-camps@0.1.0 check:env
-> node scripts/check-env.mjs
-
-check:env passed (23 static reads documented)
-

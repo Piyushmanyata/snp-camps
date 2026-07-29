@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { DoctorOption } from "@/lib/types";
 
 /**
  * Explicit client-loader boundary for the scan island (#71).
@@ -28,7 +27,5 @@ export const QrScannerLazy = dynamic(
 );
 
 export type QrScannerLazyProps = {
-  mode?: "volunteer" | "doctor" | "admin";
-  doctors?: DoctorOption[];
   disabledReason?: string;
 };

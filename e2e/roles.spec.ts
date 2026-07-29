@@ -15,7 +15,7 @@ async function gotoHydrated(page: Page, path: string) {
 
 async function loginStaff(
   page: Page,
-  role: "admin" | "team_lead" | "volunteer" | "doctor",
+  role: "admin" | "team_lead" | "volunteer",
 ) {
   await gotoHydrated(page, "/login");
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
@@ -75,8 +75,15 @@ test("public entry points and protected-route redirects", async ({
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/volunteer");
   await expect(page).toHaveURL(/\/login$/);
-  await page.goto("/doctor");
-  await expect(page).toHaveURL(/\/login$/);
+
+  // Retired desks must not serve an app shell to anyone (ADR 0008).
+  for (const retired of ["/doctor", "/counter"]) {
+    const res = await request.get(retired);
+    expect(
+      res.status(),
+      `${retired} should be gone, not rendering`,
+    ).toBe(404);
+  }
 
   // Retired patient portal routes should not serve an app shell.
   await page.goto("/patient");
@@ -138,12 +145,28 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
   await page.getByRole("button", { name: "Look up patient" }).click();
   const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+    name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
   await expect(review).toBeVisible();
-  await expect(
-    review.getByRole("button", { name: "Assign doctor · mark seen" }),
-  ).toBeDisabled();
+  await expect(review.getByTestId("print-prescription")).toBeVisible();
+
+  // A lookup must never change queue state — only Print does (ADR 0008).
+  // Asserted as an invariant rather than against an absolute status, because
+  // other specs share this fixture patient: whatever the desk offered the
+  // first time, it must offer exactly the same thing the second time. If a
+  // lookup silently queued the patient, "Print" would become "Reprint" here.
+  const firstLabel = await review.getByTestId("print-prescription").innerText();
+  const firstHadMarkSeen = await review.getByTestId("mark-seen").count();
+
+  await page.getByRole("button", { name: "Wrong patient" }).click();
+  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByRole("button", { name: "Look up patient" }).click();
+  await expect(review).toBeVisible();
+
+  expect(await review.getByTestId("print-prescription").innerText()).toBe(
+    firstLabel,
+  );
+  expect(await review.getByTestId("mark-seen").count()).toBe(firstHadMarkSeen);
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -173,7 +196,8 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
       .getByText(/\d+ distinct patients/),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /Register/ }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /Counter/ }).first()).toBeVisible();
+  // Every dock link must be reachable for this role — no link may bounce them.
+  await expect(page.getByRole("link", { name: /Counter/ })).toHaveCount(0);
 });
 
 test("admin volunteer creation offers optional Team Lead assignment", async ({
@@ -192,159 +216,6 @@ test("admin volunteer creation offers optional Team Lead assignment", async ({
   ).toHaveCount(1);
   await picker.selectOption({ label: "Codex E2E team_lead" });
   await expect(picker).not.toHaveValue("");
-});
-
-test("volunteer doctor picker is populated (not silently empty)", async ({
-  page,
-}) => {
-  await loginStaff(page, "volunteer");
-  await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
-  ).toBeVisible();
-
-  // Error path must not appear when service-role is configured.
-  await expect(
-    page.getByText("Doctor list unavailable. Tell an admin."),
-  ).toHaveCount(0);
-  await expect(page.getByText("No doctors added yet.")).toHaveCount(0);
-
-  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Look up patient" }).click();
-  const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
-  });
-  await expect(review).toBeVisible();
-
-  const doctorPicker = review.getByRole("group", { name: "Select doctor" });
-  await expect(doctorPicker).toBeVisible();
-  await expect(
-    doctorPicker.getByRole("button", { name: /Codex E2E doctor/i }),
-  ).toBeVisible();
-});
-
-/**
- * #26 — revalidateTag("doctors-list") after staff mutation must refresh the
- * volunteer picker without a hard browser reload (soft navigation is enough).
- *
- * Order matters: warm the volunteer desk first so the cross-request cache holds
- * a list without the new doctor, then mutate, then soft-navigate again.
- */
-test("admin doctor create invalidates volunteer picker without hard reload", async ({
-  browser,
-}) => {
-  const stamp = Date.now();
-  const doctorName = `E2E Cache Doc ${stamp}`;
-  const doctorEmail = `e2e-cache-doc-${stamp}@example.com`;
-
-  const volunteerContext = await browser.newContext();
-  const volunteerPage = await volunteerContext.newPage();
-  await blockRemoteRequests(volunteerPage);
-  await loginStaff(volunteerPage, "volunteer");
-  await volunteerPage.goto("/volunteer");
-  await volunteerPage.waitForLoadState("networkidle");
-  await volunteerPage
-    .getByLabel("Reg no")
-    .fill(env("E2E_PATIENT_REG_NO"));
-  await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
-  const reviewBefore = volunteerPage.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
-  });
-  await expect(reviewBefore).toBeVisible();
-  const pickerBefore = reviewBefore.getByRole("group", {
-    name: "Select doctor",
-  });
-  await expect(
-    pickerBefore.getByRole("button", { name: /Codex E2E doctor/i }),
-  ).toBeVisible();
-  await expect(
-    pickerBefore.getByRole("button", { name: doctorName }),
-  ).toHaveCount(0);
-
-  const adminContext = await browser.newContext();
-  const adminPage = await adminContext.newPage();
-  await blockRemoteRequests(adminPage);
-  await loginStaff(adminPage, "admin");
-
-  // Admin manages doctors on /doctor (not the main admin dashboard).
-  await adminPage.goto("/doctor");
-  await expect(
-    adminPage.getByRole("heading", { name: "Doctor desk" }),
-  ).toBeVisible();
-  await adminPage.getByRole("button", { name: "Add doctor" }).click();
-  await adminPage.getByLabel("Full name").fill(doctorName);
-  await adminPage.getByLabel("Email").fill(doctorEmail);
-  await adminPage
-    .getByRole("button", { name: "Create doctor & get password" })
-    .click();
-  await expect(
-    adminPage.getByText("Doctor created. Share the temporary password below", {
-      exact: false,
-    }),
-  ).toBeVisible();
-
-  // Soft navigation only — proves tag invalidation, not a full browser hard reload.
-  await volunteerPage.goto("/volunteer");
-  await volunteerPage.waitForLoadState("networkidle");
-  await volunteerPage
-    .getByLabel("Reg no")
-    .fill(env("E2E_PATIENT_REG_NO"));
-  await volunteerPage.getByRole("button", { name: "Look up patient" }).click();
-  const reviewAfter = volunteerPage.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
-  });
-  await expect(reviewAfter).toBeVisible();
-  const pickerAfter = reviewAfter.getByRole("group", { name: "Select doctor" });
-  await expect(
-    pickerAfter.getByRole("button", { name: doctorName }),
-  ).toBeVisible();
-
-  await adminContext.close();
-  await volunteerContext.close();
-});
-
-test("doctor can sign in and review without mutating patient status", async ({
-  page,
-}) => {
-  await loginStaff(page, "doctor");
-  await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible();
-
-  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Look up patient" }).click();
-  const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
-  });
-  await expect(review).toBeVisible();
-  // #50 — one full-width Mark seen; no confirmation dialog label
-  await expect(review.getByRole("button", { name: "Mark seen" })).toBeVisible();
-  await expect(
-    review.getByRole("button", { name: /Confirm patient/i }),
-  ).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/$/);
-});
-
-/** #105 — counter desk and prescription print page are reachable without typing a URL. */
-test("admin volunteer and doctor can reach counter from navigation", async ({
-  page,
-}) => {
-  for (const role of ["admin", "volunteer", "doctor"] as const) {
-    await loginStaff(page, role);
-    // Prefer the in-page link (desktop); fall back to the mobile dock label.
-    const counterLink = page.getByRole("link", { name: /Counter/ }).first();
-    await expect(counterLink).toBeVisible();
-    await counterLink.click();
-    await expect(page).toHaveURL(/\/counter$/);
-    await expect(
-      page.getByRole("heading", { name: "Counter desk" }),
-    ).toBeVisible();
-    // Prescription print route stays camp-crew gated; open by path after counter is live.
-    await page.goto(`/print/prescription/${env("E2E_PATIENT_ID")}`);
-    await expect(page).not.toHaveURL(/\/login$/);
-    await page.goto(`/${role}`);
-    await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page).toHaveURL(/\/$/);
-  }
 });
 
 test("staff-scan QR never logs a public visitor in", async ({ page }) => {
@@ -375,19 +246,19 @@ test("staff deep-link scan opens lookup-first desk", async ({ page }) => {
   );
 
   const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+    name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
   await expect(review).toBeVisible({ timeout: 15_000 });
-  // Lookup only — no doctor chosen yet, so assign stays disabled
-  await expect(
-    review.getByRole("button", { name: "Assign doctor · mark seen" }),
-  ).toBeDisabled();
+
+  // A deep-linked scan lands on lookup, not on a mutation — the desk still
+  // requires an explicit action before anything changes.
+  await expect(review.getByTestId("print-prescription")).toBeVisible();
 });
 
 test("garbage reg/QR text fails closed without crashing desk", async ({
   page,
 }) => {
-  await loginStaff(page, "doctor");
+  await loginStaff(page, "volunteer");
   await page
     .getByLabel("Reg no")
     .fill("not-a-patient!!!!!" + "x".repeat(200));
@@ -395,46 +266,52 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
   // Desk stays usable; review panel for the e2e patient must not appear
   await expect(
     page.getByRole("region", {
-      name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+      name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
     }),
   ).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Doctor" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Volunteer desk" }),
+  ).toBeVisible();
 });
 
 /**
- * #50 — Doctor Station: mark seen returns immediately to scanner.
- * Uses a dedicated fixture so earlier suite tests keep a registered patient.
- * Must run after shared-patient lookup tests.
+ * D22/D25 — the desk's second action. Uses a dedicated fixture patient so the
+ * shared-patient lookup tests above keep an un-seen row to work with.
+ * Must run after those tests.
  */
-test("doctor mark seen returns to scanner with no dismiss screen", async ({
+test("volunteer marks a waiting patient seen, and a re-scan is refused", async ({
   page,
 }) => {
-  const reg = env("E2E_DOCTOR_PATIENT_REG_NO");
-  const name = env("E2E_DOCTOR_PATIENT_NAME");
+  const reg = env("E2E_SECOND_PATIENT_REG_NO");
+  const name = env("E2E_SECOND_PATIENT_NAME");
 
-  await loginStaff(page, "doctor");
+  await loginStaff(page, "volunteer");
   await page.getByLabel("Reg no").fill(reg);
   await page.getByRole("button", { name: "Look up patient" }).click();
 
-  const review = page.getByRole("region", {
-    name: `#${reg} · ${name}`,
-  });
-  await expect(review).toBeVisible();
-  await review.getByRole("button", { name: "Mark seen" }).click();
+  const review = page.getByRole("region", { name: `#${reg} ${name}` });
+  await expect(review).toBeVisible({ timeout: 15_000 });
+  await review.getByTestId("mark-seen").click();
 
-  // No success card to dismiss — review region gone, reg field ready.
+  // Review closes, a result card names the patient, and the field is ready again.
   await expect(review).toHaveCount(0, { timeout: 15_000 });
+  const result = page.getByTestId("seen-result");
+  await expect(result).toBeVisible();
+  await expect(result.getByText(`#${reg}`)).toBeVisible();
   await expect(page.getByLabel("Reg no")).toBeEnabled();
   await expect(page.getByLabel("Reg no")).toHaveValue("");
-  await expect(page.getByText(`#${reg} marked seen`)).toBeVisible();
 
-  // Re-scan / re-type is refused with existing message shape.
+  // A mis-scan is recoverable within the server-side window (D25).
+  await expect(result.getByRole("button", { name: "Undo" })).toBeVisible();
+
+  // Re-scan is refused, says so, and offers no second Mark seen.
+  await page.getByRole("button", { name: "Scan next" }).click();
   await page.getByLabel("Reg no").fill(reg);
   await page.getByRole("button", { name: "Look up patient" }).click();
-  const again = page.getByRole("region", {
-    name: `#${reg} · ${name}`,
-  });
-  await expect(again).toBeVisible();
-  await expect(again.getByText(/Already [Ss]een/)).toBeVisible();
-  await expect(again.getByRole("button", { name: "Mark seen" })).toHaveCount(0);
+  const again = page.getByRole("region", { name: `#${reg} ${name}` });
+  await expect(again).toBeVisible({ timeout: 15_000 });
+  await expect(again.getByText(/Already seen/)).toBeVisible();
+  await expect(again.getByTestId("mark-seen")).toHaveCount(0);
+  // Paper is still reprintable for a seen patient — that must not be blocked.
+  await expect(again.getByTestId("print-prescription")).toBeVisible();
 });

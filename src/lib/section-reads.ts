@@ -4,13 +4,9 @@
  * Client retry hits one section only via /api/desk/section.
  */
 
-import {
-  DOCTOR_LIST_UNAVAILABLE,
-  getDoctorsList,
-} from "@/lib/metadata";
 import { mapDbError } from "@/lib/public-error";
 import { createClient } from "@/lib/supabase/server";
-import type { CampDayStats, DoctorOption } from "@/lib/types";
+import type { CampDayStats } from "@/lib/types";
 
 export type SectionResult<T> =
   | { ok: true; data: T }
@@ -251,11 +247,6 @@ export async function loadAdminQueueCountsSection(
     },
   };
 }
-
-/**
- * Count distinct seen patients with at least one pending order per station
- * in the active camp. Derived only — no fourth queue_status (#106 / ADR 0007).
- */
 
 /** Dispatch one narrow section read — used by the section API and tests. */
 export async function loadSection(

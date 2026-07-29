@@ -29,20 +29,16 @@
     "isLarge": false,
     "opacity": 1
   },
-  "doctorChip": {
+  "printPrescription": {
     "width": 294,
-    "height": 48
-  },
-  "assign": {
-    "width": 294,
-    "height": 52
+    "height": 64
   },
   "cancel": {
     "width": 294,
     "height": 48
   },
   "scan": {
-    "ok": 7,
+    "ok": 6,
     "failures": 0
   }
 }

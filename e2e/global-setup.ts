@@ -81,35 +81,9 @@ async function removeStaleFixtures(admin: SupabaseClient) {
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    const treatmentOrders = await admin
-      .from("treatment_orders")
-      .delete()
-      .eq("camp_id", camp.id);
-    if (treatmentOrders.error) {
-      throw new Error(
-        `E2E stale treatment cleanup failed: ${treatmentOrders.error.message}`,
-      );
-    }
-    if (patientIds.length > 0) {
-      const amendments = await admin
-        .from("prescription_amendments")
-        .delete()
-        .in("patient_id", patientIds);
-      if (amendments.error) {
-        throw new Error(
-          `E2E stale amendment cleanup failed: ${amendments.error.message}`,
-        );
-      }
-      const prescriptions = await admin
-        .from("prescriptions")
-        .delete()
-        .in("patient_id", patientIds);
-      if (prescriptions.error) {
-        throw new Error(
-          `E2E stale prescription cleanup failed: ${prescriptions.error.message}`,
-        );
-      }
-    }
+    // The prescriptions / treatment_orders tables were dropped with the doctor
+    // station (ADR 0008) — patients are the only per-camp child rows left.
+    void patientIds;
     const patients = await admin
       .from("patients")
       .delete()
@@ -156,39 +130,23 @@ export default async function globalSetup() {
   });
   const userIds: string[] = [];
   let patientId: string | null = null;
-  let doctorPatientId: string | null = null;
+  let secondPatientId: string | null = null;
   let createdDayId: string | null = null;
   let createdCampId: string | null = null;
   let previousActiveCampId: string | null = null;
 
   async function cleanup() {
     const errors: string[] = [];
-    if (createdCampId) {
-      try {
-        await admin.from("treatment_orders").delete().eq("camp_id", createdCampId);
-        const { data: pRows } = await admin.from("patients").select("id").eq("camp_id", createdCampId);
-        if (pRows && pRows.length > 0) {
-          const pIds = pRows.map((r) => r.id);
-          await admin.from("prescription_amendments").delete().in("patient_id", pIds);
-          await admin.from("prescriptions").delete().in("patient_id", pIds);
-        }
-      } catch {
-        // ignore if table/rows absent
-      }
-    }
     if (patientId) {
-      await admin.from("treatment_orders").delete().eq("patient_id", patientId);
-      await admin.from("prescription_amendments").delete().eq("patient_id", patientId);
-      await admin.from("prescriptions").delete().eq("patient_id", patientId);
       const { error } = await admin.from("patients").delete().eq("id", patientId);
       if (error) errors.push(`patient: ${error.message}`);
     }
-    if (doctorPatientId) {
-      await admin.from("treatment_orders").delete().eq("patient_id", doctorPatientId);
-      await admin.from("prescription_amendments").delete().eq("patient_id", doctorPatientId);
-      await admin.from("prescriptions").delete().eq("patient_id", doctorPatientId);
-      const { error } = await admin.from("patients").delete().eq("id", doctorPatientId);
-      if (error) errors.push(`doctor patient: ${error.message}`);
+    if (secondPatientId) {
+      const { error } = await admin
+        .from("patients")
+        .delete()
+        .eq("id", secondPatientId);
+      if (error) errors.push(`second patient: ${error.message}`);
     }
     // Desk register-print E2E may create extra patients on the fixture day/camp (#62).
     // Remove them (and any leftover prefix rows) before deleting day/camp FKs.
@@ -249,9 +207,7 @@ export default async function globalSetup() {
   try {
     await removeStaleFixtures(admin);
 
-    const createStaff = async (
-      role: "admin" | "team_lead" | "volunteer" | "doctor",
-    ) => {
+    const createStaff = async (role: "admin" | "team_lead" | "volunteer") => {
       const email = `${USER_PREFIX}${role}@snp.local`;
       const secret = password();
       const meta = {
@@ -307,7 +263,6 @@ export default async function globalSetup() {
 
     await createStaff("admin");
     const volunteerId = await createStaff("volunteer");
-    await createStaff("doctor");
     const teamLeadId = await createStaff("team_lead");
     const assignment = await admin
       .from("profiles")
@@ -367,7 +322,6 @@ export default async function globalSetup() {
         camp_id: camp.id,
         day_date: dayDate,
         seat_limit: 100,
-        theatre_capacity: 20,
       })
       .select("id")
       .single();
@@ -381,11 +335,11 @@ export default async function globalSetup() {
     process.env.E2E_CAMP_DAY_ID = day.id;
 
     const phone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
-    const doctorPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
+    const secondPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
     let regNo = 1001;
     let patientName = `${PATIENT_PREFIX} ${Date.now()}`;
-    let doctorRegNo = regNo + 1;
-    let doctorPatientName = `${PATIENT_PREFIX} Doctor ${Date.now()}`;
+    let secondRegNo = regNo + 1;
+    let secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
     {
       const latestPatient = await admin
           .from("patients")
@@ -422,33 +376,33 @@ export default async function globalSetup() {
         patientId = insertedPatient.data.id;
         patientName = insertedPatient.data.full_name;
 
-        // Second patient for Doctor Station mark-seen mutation (#50).
-        doctorRegNo = regNo + 1;
-        doctorPatientName = `${PATIENT_PREFIX} Doctor ${Date.now()}`;
-        const doctorPatient = await admin
+        // Second waiting patient, used by the Mark seen mutation specs.
+        secondRegNo = regNo + 1;
+        secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
+        const secondPatient = await admin
           .from("patients")
           .insert({
             camp_id: camp.id,
             camp_day_id: day.id,
-            reg_no: doctorRegNo,
-            full_name: doctorPatientName,
+            reg_no: secondRegNo,
+            full_name: secondPatientName,
             gender: "O",
             age: 40,
-            phone: `+91${doctorPatientPhone}`,
+            phone: `+91${secondPatientPhone}`,
             queue_status: "waiting",
             queued_at: new Date().toISOString(),
             created_by: null,
           })
           .select("id, reg_no, full_name")
           .single();
-        if (doctorPatient.error || !doctorPatient.data) {
+        if (secondPatient.error || !secondPatient.data) {
           throw new Error(
-            `E2E doctor patient creation failed: ${doctorPatient.error?.message || "no row"}`,
+            `E2E second patient creation failed: ${secondPatient.error?.message || "no row"}`,
           );
         }
-        doctorPatientId = doctorPatient.data.id;
-        doctorRegNo = doctorPatient.data.reg_no;
-        doctorPatientName = doctorPatient.data.full_name;
+        secondPatientId = secondPatient.data.id;
+        secondRegNo = secondPatient.data.reg_no;
+        secondPatientName = secondPatient.data.full_name;
     }
 
     // #59 — patients do not authenticate; no patient Auth/profile/user_id link.
@@ -456,9 +410,9 @@ export default async function globalSetup() {
     process.env.E2E_PATIENT_REG_NO = String(regNo);
     process.env.E2E_PATIENT_NAME = patientName;
     if (patientId) process.env.E2E_PATIENT_ID = patientId;
-    process.env.E2E_DOCTOR_PATIENT_REG_NO = String(doctorRegNo);
-    process.env.E2E_DOCTOR_PATIENT_NAME = doctorPatientName;
-    if (doctorPatientId) process.env.E2E_DOCTOR_PATIENT_ID = doctorPatientId;
+    process.env.E2E_SECOND_PATIENT_REG_NO = String(secondRegNo);
+    process.env.E2E_SECOND_PATIENT_NAME = secondPatientName;
+    if (secondPatientId) process.env.E2E_SECOND_PATIENT_ID = secondPatientId;
 
     return cleanup;
   } catch (error) {
@@ -466,3 +420,5 @@ export default async function globalSetup() {
     throw error;
   }
 }
+
+

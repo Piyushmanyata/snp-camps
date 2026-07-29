@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile, roleHome } from "@/lib/auth";
-import type { CampDayStats, Camp, DoctorOption } from "@/lib/types";
+import type { CampDayStats, Camp } from "@/lib/types";
 import {
   Card,
   CollapsibleSection,
@@ -13,20 +13,15 @@ import type { LiveQueuePatient } from "@/components/live-queue";
 import { getCampsList } from "@/lib/metadata";
 import {
   loadAdminQueueCountsSection,
-  loadAwaitingTreatmentSection,
-  loadDoctorsSection,
   loadQueueSection,
   loadSeatsSection,
   loadStaffLeaderboardSection,
-  type AwaitingTreatmentData,
-  type SectionResult,
   type StaffKpiRow,
 } from "@/lib/section-reads";
 import { TeamLeadPanel } from "@/components/team-lead-panel";
 import { mapDbError } from "@/lib/public-error";
 import {
   AdminHeaderStatsPanel,
-  AwaitingTreatmentCard,
   CampsLoadFailed,
 } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
@@ -77,22 +72,15 @@ export default async function AdminPage() {
   let waiting: LiveQueuePatient[] = [];
   let waitingCount = 0;
   let queueKnown = false;
-  let doctorsInitial:
-    | { ok: true; data: DoctorOption[] }
-    | { ok: false; error: string } = { ok: true, data: [] };
-  let awaitingInitial: SectionResult<AwaitingTreatmentData> | null = null;
   let leaderboard: StaffKpiRow[] = [];
 
   if (active) {
-    const [statsRes, seatsRes, queueRes, doctorsRes, awaitingRes, leaderboardRes] =
-      await Promise.all([
-        loadAdminQueueCountsSection(active.id),
-        loadSeatsSection(active.id),
-        loadQueueSection(active.id),
-        loadDoctorsSection(),
-        loadAwaitingTreatmentSection(active.id),
-        loadStaffLeaderboardSection(active.id),
-      ]);
+    const [statsRes, seatsRes, queueRes, leaderboardRes] = await Promise.all([
+      loadAdminQueueCountsSection(active.id),
+      loadSeatsSection(active.id),
+      loadQueueSection(active.id),
+      loadStaffLeaderboardSection(active.id),
+    ]);
     if (leaderboardRes.ok) leaderboard = leaderboardRes.data;
     statsInitial = statsRes;
     if (seatsRes.ok) {
@@ -104,11 +92,6 @@ export default async function AdminPage() {
       waitingCount = queueRes.data.waitingTotal;
       queueKnown = true;
     }
-    doctorsInitial = doctorsRes;
-    awaitingInitial = awaitingRes;
-  } else if (!campsError) {
-    // No active camp — still try doctors for empty scanner readiness is N/A
-    doctorsInitial = await loadDoctorsSection();
   }
 
   const leadCount = leaderboard.filter((r) => r.role === "team_lead").length;
@@ -124,29 +107,21 @@ export default async function AdminPage() {
       dock={
         active
           ? [
-              { href: "#checkin", label: "Check-in", primary: true },
+              { href: "#checkin", label: "Find patient", primary: true },
               { href: "/register", label: "Register" },
-              { href: "/counter", label: "Counter" },
               { href: "/team-lead", label: "Team Leads" },
               { href: "/admin/patients", label: "Patients" },
             ]
           : [
               { href: "/register", label: "Register", primary: true },
-              { href: "/counter", label: "Counter" },
               { href: "/team-lead", label: "Team Leads" },
               { href: "/admin/patients", label: "Patients" },
-              { href: "/volunteer", label: "Volunteers" },
-              { href: "/doctor", label: "Doctors" },
+              { href: "/volunteer", label: "Staff management" },
             ]
       }
     >
       <div className="space-y-3 sm:space-y-4 lg:space-y-5">
         <AdminHeaderStatsPanel campId={active?.id ?? null} initial={statsInitial} />
-
-        <AwaitingTreatmentCard
-          campId={active?.id ?? null}
-          initial={awaitingInitial}
-        />
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
@@ -182,9 +157,6 @@ export default async function AdminPage() {
           <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
             <NavLink href="/register" variant="primary">
               Register patient
-            </NavLink>
-            <NavLink href="/counter" variant="soft">
-              Counter desk
             </NavLink>
             <NavLink href="/team-lead" variant="soft">
               Team Lead desk
@@ -251,15 +223,13 @@ export default async function AdminPage() {
         {active ? (
           <div className="space-y-3 sm:space-y-4">
             <Card id="checkin" className="!p-4 sm:!p-5">
-              <SectionTitle hint="Pre-registered only · reg # · name · QR paste">
-                Check-in
+              <SectionTitle hint="Pre-registered · reg # · name · QR paste">
+                Find patient
               </SectionTitle>
               <CheckIn campId={active.id} />
             </Card>
             <DeskScanQueue
-              mode="admin"
               campId={active.id}
-              doctorsInitial={doctorsInitial}
               waiting={waiting}
               waitingTotal={waitingCount}
               queueKnown={queueKnown}
@@ -285,3 +255,4 @@ export default async function AdminPage() {
     </Shell>
   );
 }
+

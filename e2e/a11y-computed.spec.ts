@@ -23,7 +23,7 @@ async function gotoHydrated(page: Page, path: string) {
   await page.waitForLoadState("networkidle");
 }
 
-async function loginStaff(page: Page, role: "admin" | "volunteer" | "doctor") {
+async function loginStaff(page: Page, role: "admin" | "volunteer") {
   await gotoHydrated(page, "/login");
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
@@ -458,30 +458,28 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
   await lookUp.click();
   const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
+    name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
   await expect(review).toBeVisible();
 
-  const doctorBtn = review
-    .getByRole("group", { name: "Select doctor" })
-    .getByRole("button")
-    .first();
-  if (await doctorBtn.isVisible().catch(() => false)) {
-    measurements.doctorChip = await assertTouchTarget(
-      doctorBtn,
-      "doctor assign chip",
+  // The two desk actions (D22). Print is always offered; Mark seen only once
+  // the patient is actually in the queue, so it may legitimately be absent.
+  const printAction = review.getByTestId("print-prescription");
+  if (await printAction.isVisible().catch(() => false)) {
+    measurements.printPrescription = await assertTouchTarget(
+      printAction,
+      "print prescription",
     );
-    await assertFocusVisible(doctorBtn, "doctor assign chip");
+    await assertFocusVisible(printAction, "print prescription");
   }
 
-  const assign = review.getByRole("button", {
-    name: "Assign doctor · mark seen",
-  });
-  if (await assign.isVisible()) {
-    measurements.assign = await assertTouchTarget(assign, "assign doctor");
+  const markSeen = review.getByTestId("mark-seen");
+  if (await markSeen.isVisible().catch(() => false)) {
+    measurements.markSeen = await assertTouchTarget(markSeen, "mark seen");
+    await assertFocusVisible(markSeen, "mark seen");
   }
 
-  const cancel = review.getByRole("button", { name: "Cancel" });
+  const cancel = review.getByRole("button", { name: "Wrong patient" });
   if (await cancel.isVisible()) {
     measurements.cancel = await assertTouchTarget(cancel, "cancel review");
   }
@@ -517,37 +515,38 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   });
 });
 
-test("doctor desk: operational controls meet 48×48 and focus rings", async ({
+test("desk at desktop width: Mark seen path meets 48×48 and focus rings", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await loginStaff(page, "doctor");
-  // Doctor role title is "Doctor"; admin managing doctors uses "Doctor desk".
-  await expect(page.getByRole("heading", { name: /^Doctor/ })).toBeVisible();
+  await loginStaff(page, "volunteer");
+  await expect(
+    page.getByRole("heading", { name: "Volunteer desk" }),
+  ).toBeVisible();
 
   const openCamera = page.getByRole("button", { name: /Open camera/i });
   const lookUp = page.getByRole("button", { name: "Look up patient" });
-  await assertTouchTarget(openCamera, "doctor Open camera");
-  await assertTouchTarget(lookUp, "doctor Look up");
-  await assertFocusVisible(openCamera, "doctor Open camera");
+  await assertTouchTarget(openCamera, "desk Open camera");
+  await assertTouchTarget(lookUp, "desk Look up");
+  await assertFocusVisible(openCamera, "desk Open camera");
 
-  await page.getByLabel("Reg no").fill(env("E2E_DOCTOR_PATIENT_REG_NO"));
+  // The fixture second patient is already `waiting`, so this is the one place
+  // the Mark seen control is guaranteed to render.
+  await page.getByLabel("Reg no").fill(env("E2E_SECOND_PATIENT_REG_NO"));
   await lookUp.click();
   const review = page.getByRole("region", {
-    name: new RegExp(`#${env("E2E_DOCTOR_PATIENT_REG_NO")}`),
+    name: new RegExp(`#${env("E2E_SECOND_PATIENT_REG_NO")}`),
   });
   await expect(review).toBeVisible();
 
-  // Waiting patient: Mark seen path or guidance
-  const markSeen = review.getByRole("button", { name: /Mark seen/i });
-  if (await markSeen.isVisible().catch(() => false)) {
-    await assertTouchTarget(markSeen, "Mark seen");
-    await assertFocusVisible(markSeen, "Mark seen");
-  }
+  const markSeen = review.getByTestId("mark-seen");
+  await expect(markSeen).toBeVisible();
+  await assertTouchTarget(markSeen, "Mark seen");
+  await assertFocusVisible(markSeen, "Mark seen");
 
-  await scanInteractiveTargets(page, "doctor desk");
+  await scanInteractiveTargets(page, "desk desktop");
   await page.screenshot({
-    path: join(EVIDENCE_DIR, "doctor-desktop.png"),
+    path: join(EVIDENCE_DIR, "desk-desktop.png"),
     fullPage: true,
   });
 });
@@ -668,7 +667,7 @@ test("print slip chrome: actions meet touch floor (screen)", async ({
   await assertTouchTarget(printBtn, "Print action");
   await assertFocusVisible(printBtn, "Print action");
 
-  const deskLink = page.getByRole("link", { name: /Volunteer desk|Doctor desk|Admin/i }).first();
+  const deskLink = page.getByRole("link", { name: /Volunteer desk|Admin/i }).first();
   if (await deskLink.isVisible().catch(() => false)) {
     await assertTouchTarget(deskLink, "print desk link");
   }
@@ -684,20 +683,24 @@ test("print slip chrome: actions meet touch floor (screen)", async ({
   });
 });
 
-test("lost-slip recovery: keyboard path and touch targets", async ({ page }) => {
+test("lost-paper recovery: keyboard path and touch targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginStaff(page, "volunteer");
 
   const nameSearch = page.getByLabel("Name search");
-  const regCheckIn = page.getByLabel("Registration number").first();
-  const checkInBtn = page.getByRole("button", { name: "Check in" });
+  const regInput = page.getByLabel("Registration number").first();
+  // Scoped to the find-patient card: the scanner has its own Print button.
+  const findCard = page.locator("#checkin");
+  const printBtn = findCard
+    .getByRole("button", { name: "Print prescription" })
+    .first();
 
   await expect(nameSearch).toBeVisible();
-  await assertTouchTarget(nameSearch, "Name search (lost-slip)");
-  await assertTouchTarget(regCheckIn, "Check-in reg input");
-  await assertTouchTarget(checkInBtn, "Check in button");
+  await assertTouchTarget(nameSearch, "Name search (lost paper)");
+  await assertTouchTarget(regInput, "Find-patient reg input");
+  await assertTouchTarget(printBtn, "Print prescription button");
   await assertFocusVisible(nameSearch, "Name search");
-  await assertFocusVisible(checkInBtn, "Check in");
+  await assertFocusVisible(printBtn, "Print prescription");
 
   // Queue / seat refresh if present
   const queueRefresh = page.getByRole("button", { name: /^Refresh/i });
@@ -712,40 +715,7 @@ test("lost-slip recovery: keyboard path and touch targets", async ({ page }) => 
   await scanInteractiveTargets(page, "volunteer recovery surfaces");
 });
 
-test("disabled controls remain distinguishable with readable contrast", async ({
-  page,
-}) => {
-  await loginStaff(page, "volunteer");
-  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Look up patient" }).click();
-  const review = page.getByRole("region", {
-    name: `#${env("E2E_PATIENT_REG_NO")} · ${env("E2E_PATIENT_NAME")}`,
-  });
-  await expect(review).toBeVisible();
 
-  const assign = review.getByRole("button", {
-    name: "Assign doctor · mark seen",
-  });
-  await expect(assign).toBeDisabled();
-  // Disabled must still be visible (not display:none) and have reduced opacity OR distinct style
-  const state = await assign.evaluate((el) => {
-    const cs = getComputedStyle(el);
-    return {
-      opacity: Number(cs.opacity),
-      cursor: cs.cursor,
-      disabled: (el as HTMLButtonElement).disabled,
-      color: cs.color,
-      backgroundColor: cs.backgroundColor,
-    };
-  });
-  expect(state.disabled).toBeTruthy();
-  expect(state.opacity).toBeLessThan(1);
-  expect(state.opacity).toBeGreaterThan(0.3);
-  // Non-text UI contrast for disabled is softer; ensure still legible-ish ≥ 3:1 after blend
-  const contrast = await computedContrast(assign);
-  expect(
-    contrast.ratio,
-    `disabled assign contrast ${contrast.ratio.toFixed(2)}:1`,
-  ).toBeGreaterThanOrEqual(2.5);
-  saveEvidenceJson("disabled-assign-contrast.json", { state, contrast });
-});
+
+
+

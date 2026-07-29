@@ -22,13 +22,11 @@ import {
 } from "../src/lib/patient-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
-import { isSuccessfulAssignment } from "../src/lib/queue-assignment.ts";
 import { queueLabel, queueTone } from "../src/lib/types.ts";
 import {
   canRegisterPatients,
   isAdmin,
   isCampCrew,
-  isDoctor,
   isStaff,
   isTeamLead,
   roleHome,
@@ -120,29 +118,32 @@ test("isPatientUuid and resolveOrigin validate inputs", () => {
   assert.equal(resolveOrigin(null), "");
 });
 
-test("Staff excludes doctor; Camp crew includes all three desk roles", () => {
-  for (const role of ["admin", "volunteer"]) {
+test("staff and camp crew are the same set once the doctor role is retired (D21)", () => {
+  for (const role of ["admin", "team_lead", "volunteer"]) {
     assert.equal(isStaff(role), true, `isStaff(${role})`);
     assert.equal(isCampCrew(role), true, `isCampCrew(${role})`);
     assert.equal(canRegisterPatients(role), true);
   }
-  assert.equal(isStaff("doctor"), false);
-  assert.equal(canRegisterPatients("doctor"), false);
-  assert.equal(isCampCrew("doctor"), true);
-  assert.equal(isDoctor("doctor"), true);
   assert.equal(isAdmin("admin"), true);
   assert.equal(isAdmin("volunteer"), false);
 
-  // Residual/legacy role string must never grant staff homes (#59).
-  assert.equal(isStaff(/** @type {any} */ ("patient")), false);
-  assert.equal(isCampCrew(/** @type {any} */ ("patient")), false);
+  // Residual/legacy role strings must never grant a desk or a home (#59, D21).
+  for (const legacy of ["doctor", "patient"]) {
+    assert.equal(isStaff(/** @type {any} */ (legacy)), false, `isStaff(${legacy})`);
+    assert.equal(
+      isCampCrew(/** @type {any} */ (legacy)),
+      false,
+      `isCampCrew(${legacy})`,
+    );
+    assert.equal(canRegisterPatients(/** @type {any} */ (legacy)), false);
+    assert.equal(roleHome(/** @type {any} */ (legacy)), null, `roleHome(${legacy})`);
+  }
   assert.equal(isStaff(null), false);
   assert.equal(isCampCrew(undefined), false);
 
-  assert.equal(roleHome("doctor"), "/doctor");
   assert.equal(roleHome("volunteer"), "/volunteer");
+  assert.equal(roleHome("team_lead"), "/volunteer");
   assert.equal(roleHome("admin"), "/admin");
-  assert.equal(roleHome(/** @type {any} */ ("patient")), null);
 });
 
 test("CSP script-src keeps self and nonce without unsafe-inline or strict-dynamic", () => {
@@ -294,30 +295,6 @@ test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164(""), null);
 });
 
-test("only a completed, error-free doctor assignment is successful", () => {
-  const completed = {
-    already_seen: false,
-    doctor_id: "00000000-0000-4000-8000-000000000001",
-    error_code: null,
-    queue_status: "seen",
-  };
-
-  assert.equal(isSuccessfulAssignment(completed), true);
-  assert.equal(
-    isSuccessfulAssignment({ ...completed, error_code: "unexpected" }),
-    false,
-  );
-  assert.equal(
-    isSuccessfulAssignment({ ...completed, queue_status: "waiting" }),
-    false,
-  );
-  assert.equal(isSuccessfulAssignment({ ...completed, doctor_id: null }), false);
-  assert.equal(
-    isSuccessfulAssignment({ ...completed, already_seen: true }),
-    false,
-  );
-});
-
 test("queue labels and tones map known statuses", () => {
   assert.equal(queueLabel("seen"), "Doctor seen");
   assert.equal(queueLabel("waiting"), "In queue");
@@ -336,3 +313,4 @@ test("team_lead role predicates and roleHome route correctly", () => {
   assert.equal(canRegisterPatients("team_lead"), true);
   assert.equal(roleHome("team_lead"), "/volunteer");
 });
+

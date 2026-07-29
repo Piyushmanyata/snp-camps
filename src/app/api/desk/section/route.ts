@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile } from "@/lib/auth";
-import { isCampCrew, isDoctor, isStaff } from "@/lib/roles";
+import { isCampCrew, isStaff } from "@/lib/roles";
 import { isPatientUuid } from "@/lib/qr";
 import {
   isSectionKey,
@@ -40,16 +40,6 @@ export async function GET(request: Request) {
   const section: SectionKey = sectionRaw;
 
   // Role gates for sensitive sections
-  if (
-    (section === "doctor-stats" || section === "doctor-seen") &&
-    !isDoctor(profile?.role) &&
-    profile?.role !== "admin"
-  ) {
-    return NextResponse.json(
-      { error: "Doctor access required" },
-      { status: 403, headers: NO_STORE },
-    );
-  }
   if (section === "admin-queue-counts" && profile?.role !== "admin") {
     return NextResponse.json(
       { error: "Admin access required" },
