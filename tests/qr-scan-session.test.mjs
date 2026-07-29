@@ -126,6 +126,77 @@ test("rapid begin A then B does not keep A's stream", async () => {
   assert.equal(session.isCurrent(tokenB), true);
 });
 
+test("camera acquisition retries a simpler profile after an Android constraint failure", async () => {
+  const session = new QrCameraSession();
+  const token = session.begin();
+  const stream = fakeStream("fallback");
+  const seen = [];
+
+  const result = await session.acquireFirstAvailable(
+    token,
+    async (constraints) => {
+      seen.push(constraints);
+      if (seen.length === 1) {
+        throw new DOMException("OEM camera rejected preferred size", "OverconstrainedError");
+      }
+      return stream;
+    },
+    [
+      {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 2560 },
+          height: { ideal: 1440 },
+        },
+        audio: false,
+      },
+      {
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      },
+    ],
+  );
+
+  assert.equal(result, stream);
+  assert.equal(seen.length, 2);
+  assert.equal(session.mediaStream, stream);
+});
+
+test("camera acquisition does not repeat a denied permission prompt", async () => {
+  const session = new QrCameraSession();
+  const token = session.begin();
+  let attempts = 0;
+
+  const result = await session.acquireFirstAvailable(
+    token,
+    async () => {
+      attempts += 1;
+      throw new DOMException("denied", "NotAllowedError");
+    },
+    [{ video: true }, { video: { facingMode: "environment" } }],
+  );
+
+  assert.equal(result, null);
+  assert.equal(attempts, 1);
+});
+
+test("camera permission denial from another realm is still terminal", async () => {
+  const session = new QrCameraSession();
+  const token = session.begin();
+  let attempts = 0;
+
+  await session.acquireFirstAvailable(
+    token,
+    async () => {
+      attempts += 1;
+      throw { name: "NotAllowedError" };
+    },
+    [{ video: true }, { video: { facingMode: "environment" } }],
+  );
+
+  assert.equal(attempts, 1);
+});
+
 test("pause then delayed detect does not callback; resume allows next", async () => {
   const session = new QrCameraSession();
   const token = session.begin();

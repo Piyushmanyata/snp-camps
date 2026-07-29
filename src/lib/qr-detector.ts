@@ -99,20 +99,24 @@ export async function applyBestEffortCameraConstraints(
     const caps = track?.getCapabilities?.() as
       | { focusMode?: string[]; zoom?: { min: number; max: number } }
       | undefined;
-    const constraints: Record<string, unknown> = {};
     if (caps?.focusMode?.includes("continuous")) {
-      constraints.focusMode = "continuous";
+      await track
+        .applyConstraints({
+          advanced: [{ focusMode: "continuous" }],
+        } as unknown as MediaTrackConstraints)
+        .catch(() => {});
     }
     if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
-      constraints.zoom = Math.min(
+      const zoom = Math.min(
         caps.zoom.max,
-        Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.35),
+        2,
+        Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) * 0.25),
       );
-    }
-    if (Object.keys(constraints).length && track) {
-      await track.applyConstraints({
-        advanced: [constraints],
-      } as unknown as MediaTrackConstraints);
+      await track
+        .applyConstraints({
+          advanced: [{ zoom }],
+        } as unknown as MediaTrackConstraints)
+        .catch(() => {});
     }
   } catch {
     /* ignore unsupported constraints */

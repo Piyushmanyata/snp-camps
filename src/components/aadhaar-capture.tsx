@@ -19,20 +19,36 @@ const COPY = {
   desk: {
     scan: "Scan Aadhaar QR",
     stop: "Stop scanner",
+    photo: "Use Aadhaar photo",
+    readingPhoto: "Reading photo…",
     aim: "Hold the Aadhaar QR inside the frame",
   },
   patient: {
     scan: "Aadhaar QR scan karein",
     stop: "Scanner band karein",
+    photo: "Aadhaar photo chunein",
+    readingPhoto: "Photo padh rahe hain…",
     aim: "Aadhaar QR ko frame ke andar rakhein",
   },
 } as const;
 
-/** Shared, camera-only Aadhaar capture surface for desk and self-registration. */
+/** Shared camera/photo Aadhaar capture surface for desk and self-registration. */
 export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
   const copy = COPY[tone];
-  const { isScanning, scanError, videoRef, start, stop } = scanner;
+  const {
+    isScanning,
+    isReadingPhoto,
+    scanError,
+    videoRef,
+    start,
+    readPhoto,
+    stop,
+  } = scanner;
   const shownDiagnostic = diagnostic ?? scanner.scanDiagnostic;
+  const shownError =
+    tone === "patient" && scanError
+      ? "QR nahi padha. Camera ya Aadhaar photo dobara try karein, ya details manually bharein."
+      : scanError;
 
   return (
     <div className="space-y-3">
@@ -47,6 +63,23 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
       >
         {isScanning ? copy.stop : copy.scan}
       </Button>
+
+      <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition active:scale-[0.98] focus-within:outline focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-brand sm:inline-flex">
+        <span>{isReadingPhoto ? copy.readingPhoto : copy.photo}</span>
+        <input
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          disabled={isReadingPhoto}
+          aria-label={copy.photo}
+          data-testid="aadhaar-photo-input"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) void readPhoto(file);
+          }}
+        />
+      </label>
 
       {isScanning ? (
         <div className="relative flex aspect-video max-h-64 items-center justify-center overflow-hidden rounded-xl bg-black">
@@ -69,13 +102,13 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
         </div>
       ) : null}
 
-      {scanError ? (
+      {shownError ? (
         <div
           role="alert"
           data-testid="aadhaar-scan-error"
           className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-950"
         >
-          {scanError}
+          {shownError}
         </div>
       ) : null}
 

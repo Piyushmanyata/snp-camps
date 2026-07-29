@@ -2,19 +2,18 @@ import { closeSync, existsSync, openSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import zxing from "@zxing/library";
+import sharp from "sharp";
 
 export const fakeAadhaarCameraPath = join(
   tmpdir(),
   "snp-e2e-aadhaar-camera.y4m",
 );
+export const fakeAadhaarPhotoPath = join(
+  tmpdir(),
+  "snp-e2e-aadhaar-photo.png",
+);
 
-/**
- * Generate a short Y4M camera loop containing a real Aadhaar-format QR.
- * The file lives in the OS temp directory and is never committed as evidence.
- */
-export function ensureFakeAadhaarCamera() {
-  if (existsSync(fakeAadhaarCameraPath)) return fakeAadhaarCameraPath;
-
+function renderAadhaarFrame() {
   const { BarcodeFormat, QRCodeWriter } = zxing;
   const width = 640;
   const height = 480;
@@ -39,6 +38,17 @@ export function ensureFakeAadhaarCamera() {
       }
     }
   }
+  return { width, height, luma };
+}
+
+/**
+ * Generate a short Y4M camera loop containing a real Aadhaar-format QR.
+ * The file lives in the OS temp directory and is never committed as evidence.
+ */
+export function ensureFakeAadhaarCamera() {
+  if (existsSync(fakeAadhaarCameraPath)) return fakeAadhaarCameraPath;
+
+  const { width, height, luma } = renderAadhaarFrame();
   const chroma = Buffer.alloc((width * height) / 4, 128);
   const frameHeader = Buffer.from("FRAME\n");
   const fd = openSync(fakeAadhaarCameraPath, "wx");
@@ -61,4 +71,14 @@ export function ensureFakeAadhaarCamera() {
     closeSync(fd);
   }
   return fakeAadhaarCameraPath;
+}
+
+/** Synthetic on-disk photo for the local-only file chooser E2E. */
+export async function ensureFakeAadhaarPhoto() {
+  if (existsSync(fakeAadhaarPhotoPath)) return fakeAadhaarPhotoPath;
+  const { width, height, luma } = renderAadhaarFrame();
+  await sharp(luma, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(fakeAadhaarPhotoPath);
+  return fakeAadhaarPhotoPath;
 }

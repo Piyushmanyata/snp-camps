@@ -131,6 +131,33 @@ test.beforeEach(async ({ page, context }) => {
   await blockRemoteRequests(page);
 });
 
+test("mobile photo fallback reads Aadhaar locally and fills the shared desk form", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, "/register");
+
+  const photoInput = page.getByTestId("aadhaar-photo-input");
+  await expect(photoInput).toHaveAttribute("accept", "image/*");
+  await photoInput.setInputFiles(env("E2E_FAKE_AADHAAR_PHOTO_PATH"));
+
+  await expect(page.getByLabel(/Full name/i)).toHaveValue("Timing Patient", {
+    timeout: 15_000,
+  });
+  await expect(page.getByLabel(/Full name/i)).toHaveAttribute(
+    "readonly",
+    "",
+  );
+  await expect(page.getByLabel(/^Age/i)).toHaveValue(/[0-9]+/);
+  await expect(photoInput).toHaveValue("");
+  const width = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 1);
+});
+
 test("delayed success navigates pre-opened print target (no noopener open)", async ({
   page,
 }) => {

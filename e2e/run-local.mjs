@@ -2,7 +2,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { ensureFakeAadhaarCamera } from "./fake-aadhaar-camera.mjs";
+import {
+  ensureFakeAadhaarCamera,
+  ensureFakeAadhaarPhoto,
+} from "./fake-aadhaar-camera.mjs";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const baseURL = process.env.E2E_BASE_URL || "http://127.0.0.1:3100";
@@ -201,6 +204,7 @@ const env = {
   E2E_PRODUCTION: useProduction ? "1" : "0",
   PLAYWRIGHT_HTML_OPEN: "never",
   E2E_FAKE_CAMERA_PATH: ensureFakeAadhaarCamera(),
+  E2E_FAKE_AADHAAR_PHOTO_PATH: await ensureFakeAadhaarPhoto(),
 };
 
 const require = createRequire(import.meta.url);

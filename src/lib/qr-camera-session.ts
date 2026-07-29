@@ -82,6 +82,54 @@ export class QrCameraSession {
   }
 
   /**
+   * Try camera profiles from most useful to most compatible.
+   *
+   * `ideal` constraints should be best-effort, but several Android OEM camera
+   * stacks still reject a high-resolution request outright. Retrying without
+   * width/height keeps those phones on the rear camera instead of sending the
+   * operator straight to manual entry.
+   */
+  async acquireFirstAvailable(
+    token: number,
+    getUserMedia: GetUserMedia,
+    profiles: MediaStreamConstraints[],
+  ): Promise<MediaStream | null> {
+    for (const constraints of profiles) {
+      if (!this.isCurrent(token)) return null;
+      let stream: MediaStream;
+      try {
+        stream = await getUserMedia(constraints);
+      } catch (error) {
+        // WebViews may surface a named error from a different JS realm, where
+        // `instanceof DOMException` is false. The name is the stable contract.
+        const name =
+          typeof error === "object" &&
+          error !== null &&
+          "name" in error &&
+          typeof error.name === "string"
+            ? error.name
+            : "";
+        // Permission/security failures are terminal. Retrying would only repeat
+        // the prompt or denial; profile fallback is for camera-stack failures.
+        if (name === "NotAllowedError" || name === "SecurityError") return null;
+        continue;
+      }
+      if (!this.isCurrent(token)) {
+        try {
+          stream.getTracks().forEach((track) => track.stop());
+        } catch {
+          /* ignore */
+        }
+        return null;
+      }
+      this.stopTracks();
+      this.stream = stream;
+      return stream;
+    }
+    return null;
+  }
+
+  /**
    * Release tracks without bumping generation (pause-with-hold uses decode
    * pause instead). Prefer invalidate() for Stop / unmount.
    */

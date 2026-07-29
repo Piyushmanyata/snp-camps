@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { applyBestEffortCameraConstraints } from "@/lib/qr-detector";
-import { probeSurface, type Probe } from "@/lib/qr-decode-geometry";
+import {
+  AADHAAR_PROBES,
+  probeSurface,
+  type Probe,
+} from "@/lib/qr-decode-geometry";
 import { QrCameraSession } from "@/lib/qr-camera-session";
 import type { DecodeOutcome } from "@/lib/aadhaar-decode-client";
 
@@ -45,6 +49,8 @@ const ESCALATE_AFTER_FRAMES = 12;
  * heavy passes several times a second.
  */
 const THOROUGH_EVERY_N_FRAMES = 4;
+/** Browser-side resize request that bounds typical 4:3 phone photos to ~31 MB. */
+const PHOTO_DECODE_WIDTH = 2400;
 /**
  * Probe geometries cycled one per frame, so all card sizes are covered within
  * ~6 frames without making any single frame expensive.
@@ -54,15 +60,6 @@ const THOROUGH_EVERY_N_FRAMES = 4;
  * to resolve from the whole frame. Cropping in and upscaling is what makes
  * those cards readable at all.
  */
-const LIVE_PROBES: Probe[] = [
-  { scale: 1, zoom: 1 },
-  { scale: 0.6, zoom: 1 },
-  { scale: 0.4, zoom: 2 },
-  { scale: 0.25, zoom: 2 },
-  { scale: 0.4, zoom: 2, offsetX: -0.15, offsetY: -0.15 },
-  { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
-];
-
 /** What the caller does with a decoded card. */
 export type OnParsed = (
   parsed: ParsedAadhaarQr,
@@ -71,12 +68,14 @@ export type OnParsed = (
 
 export type AadhaarScanner = {
   isScanning: boolean;
+  isReadingPhoto: boolean;
   /** Operator-facing failure. Always names manual entry as the way forward. */
   scanError: string | null;
   /** Structure-only fingerprint of a problem payload — never patient data. */
   scanDiagnostic: string | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   start: () => Promise<void>;
+  readPhoto: (file: File) => Promise<void>;
   stop: () => void;
   clearError: () => void;
 };
@@ -99,6 +98,7 @@ const MANUAL_HINT = "Please type the details manually.";
  */
 export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const [isScanning, setIsScanning] = useState(false);
+  const [isReadingPhoto, setIsReadingPhoto] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanDiagnostic, setScanDiagnostic] = useState<string | null>(null);
   const sessionRef = useRef(new QrCameraSession());
@@ -122,6 +122,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       videoRef.current.srcObject = null;
     }
     setIsScanning(false);
+    setIsReadingPhoto(false);
   }, []);
 
   const clearError = useCallback(() => {
@@ -182,6 +183,8 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   );
 
   const start = useCallback(async () => {
+    // Starting the camera supersedes any in-flight photo decode.
+    setIsReadingPhoto(false);
     setScanError(null);
     setScanDiagnostic(null);
     setIsScanning(true);
@@ -191,19 +194,26 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       // Camera permission and decoder loading are independent. Starting both
       // together removes a full network/worker round trip from time-to-preview.
       const clientPromise = loadDecodeClient();
-      const streamPromise = sessionRef.current.acquire(
+      const streamPromise = sessionRef.current.acquireFirstAvailable(
         token,
         (c) => navigator.mediaDevices.getUserMedia(c),
-        {
-          video: {
-            facingMode: { ideal: "environment" },
-            // Dense Secure QR and tiny legacy QR are both pixel-starved; ask for
-            // the most the device will give and let it fall back on its own.
-            width: { ideal: 2560 },
-            height: { ideal: 1440 },
+        [
+          {
+            video: {
+              facingMode: { ideal: "environment" },
+              // Dense Secure QR and tiny legacy QR are both pixel-starved; ask
+              // for detail first, then retry without a size on broken OEMs.
+              width: { ideal: 2560 },
+              height: { ideal: 1440 },
+            },
+            audio: false,
           },
-          audio: false,
-        },
+          {
+            video: { facingMode: { ideal: "environment" } },
+            audio: false,
+          },
+          { video: true, audio: false },
+        ],
       );
       const [client, stream] = await Promise.all([
         clientPromise,
@@ -231,6 +241,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       let frameTick = 0;
       let lastFrameAt = 0;
       let busy = false;
+      let consecutiveDecodeErrors = 0;
 
       function video(): HTMLVideoElement | null {
         return videoRef.current;
@@ -286,15 +297,26 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                 frameTick % THOROUGH_EVERY_N_FRAMES === 0;
 
               const image =
-                probeImage(LIVE_PROBES[frameTick % LIVE_PROBES.length]);
+                probeImage(
+                  AADHAAR_PROBES[frameTick % AADHAAR_PROBES.length],
+                );
               if (image) {
                 const outcome = await client.decodeFrame(image, thorough);
+                consecutiveDecodeErrors = 0;
                 if (!sessionRef.current.isCurrent(token)) return;
                 if (await handleOutcome(outcome)) return;
               }
             }
           } catch {
-            /* keep scanning */
+            consecutiveDecodeErrors += 1;
+            if (consecutiveDecodeErrors >= 3) {
+              client.disposeDecoder();
+              setScanError(
+                `Scanner could not start on this phone. Use an Aadhaar photo, or ${MANUAL_HINT.toLowerCase()}`,
+              );
+              stop();
+              return;
+            }
           } finally {
             busy = false;
           }
@@ -315,14 +337,109 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
       setIsScanning(false);
     }
-  }, [handleOutcome]);
+  }, [handleOutcome, stop]);
+
+  const readPhoto = useCallback(
+    async (file: File) => {
+      stop();
+      const token = sessionRef.current.begin();
+      setScanError(null);
+      setScanDiagnostic(null);
+      setIsReadingPhoto(true);
+
+      let bitmap: ImageBitmap | null = null;
+      let objectUrl: string | null = null;
+      try {
+        if (!file.type.startsWith("image/")) {
+          throw new Error("Please choose an image.");
+        }
+
+        let source: CanvasImageSource;
+        let width: number;
+        let height: number;
+
+        if (typeof createImageBitmap === "function") {
+          bitmap = await createImageBitmap(file, {
+            imageOrientation: "from-image",
+            resizeWidth: PHOTO_DECODE_WIDTH,
+            resizeQuality: "high",
+          })
+            .catch(() =>
+              createImageBitmap(file, {
+                resizeWidth: PHOTO_DECODE_WIDTH,
+                resizeQuality: "high",
+              }),
+            )
+            .catch(() => createImageBitmap(file));
+          if (!sessionRef.current.isCurrent(token)) return;
+          source = bitmap;
+          width = bitmap.width;
+          height = bitmap.height;
+        } else {
+          objectUrl = URL.createObjectURL(file);
+          const image = new Image();
+          image.src = objectUrl;
+          await image.decode();
+          if (!sessionRef.current.isCurrent(token)) return;
+          source = image;
+          width = image.naturalWidth;
+          height = image.naturalHeight;
+        }
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx || width < 40 || height < 40) {
+          throw new Error("This photo could not be read.");
+        }
+
+        const client = await loadDecodeClient();
+        for (const probe of AADHAAR_PROBES) {
+          if (!sessionRef.current.isCurrent(token)) return;
+          const surface = probeSurface(width, height, probe);
+          if (!surface) continue;
+          const { sx, sy, cw, ch, dw, dh } = surface;
+          canvas.width = dw;
+          canvas.height = dh;
+          ctx.imageSmoothingEnabled = dw < cw;
+          ctx.drawImage(source, sx, sy, cw, ch, 0, 0, dw, dh);
+          const outcome = await client.decodeFrame(
+            ctx.getImageData(0, 0, dw, dh),
+            true,
+          );
+          if (!sessionRef.current.isCurrent(token)) return;
+          if (outcome.status !== "none") {
+            setIsReadingPhoto(false);
+            await handleOutcome(outcome);
+            return;
+          }
+        }
+
+        if (!sessionRef.current.isCurrent(token)) return;
+        setScanError(
+          `No Aadhaar QR found in this photo. Take a closer, well-lit photo, or ${MANUAL_HINT.toLowerCase()}`,
+        );
+      } catch {
+        if (!sessionRef.current.isCurrent(token)) return;
+        setScanError(
+          `Photo unavailable or unreadable. Try another photo, or ${MANUAL_HINT.toLowerCase()}`,
+        );
+      } finally {
+        bitmap?.close();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (sessionRef.current.isCurrent(token)) setIsReadingPhoto(false);
+      }
+    },
+    [handleOutcome, stop],
+  );
 
   return {
     isScanning,
+    isReadingPhoto,
     scanError,
     scanDiagnostic,
     videoRef,
     start,
+    readPhoto,
     stop,
     clearError,
   };

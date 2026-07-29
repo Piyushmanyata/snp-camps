@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyBestEffortCameraConstraints,
   canUseNativeQrDetector,
   decodeQrFromImageData,
   getBarcodeDetectorConstructor,
@@ -60,4 +61,36 @@ test("decodeQrFromImageData returns null when decoder finds nothing", () => {
     ),
     "snp:abc",
   );
+});
+
+test("camera tuning keeps autofocus when zoom is unsupported and caps magnification", async () => {
+  const applied = [];
+  const track = {
+    getCapabilities() {
+      return {
+        focusMode: ["manual", "continuous"],
+        zoom: { min: 1, max: 10 },
+      };
+    },
+    async applyConstraints(constraints) {
+      applied.push(constraints);
+      if ("zoom" in constraints.advanced[0]) {
+        throw new DOMException("zoom rejected", "OverconstrainedError");
+      }
+    },
+  };
+  const stream = {
+    getVideoTracks() {
+      return [track];
+    },
+  };
+
+  await applyBestEffortCameraConstraints(
+    /** @type {MediaStream} */ (stream),
+  );
+
+  assert.deepEqual(applied[0], {
+    advanced: [{ focusMode: "continuous" }],
+  });
+  assert.equal(applied[1].advanced[0].zoom, 2);
 });

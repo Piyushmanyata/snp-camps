@@ -43,6 +43,7 @@ export const THOROUGH_VARIANTS: Variant[] = [
 // Geometry lives in its own dependency-free module so the main thread can size
 // probes without loading the preprocessing cascade below.
 export {
+  AADHAAR_PROBES,
   MAX_DECODE_EDGE,
   decodeScale,
   probeSurface,
@@ -103,7 +104,12 @@ export function loadZxing(): Promise<ZxingReader | null> {
         });
         return module;
       })
-      .catch(() => null);
+      .catch(() => {
+        // A killed Android worker or interrupted first WASM fetch must not
+        // poison every later scan attempt for the lifetime of the page.
+        zxingPromise = null;
+        return null;
+      });
   }
   return zxingPromise;
 }
@@ -118,7 +124,10 @@ export function loadZbar(): Promise<ZbarModule | null> {
         });
         return module;
       })
-      .catch(() => null);
+      .catch(() => {
+        zbarPromise = null;
+        return null;
+      });
   }
   return zbarPromise;
 }

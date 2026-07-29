@@ -47,6 +47,21 @@ export type Probe = {
 };
 
 /**
+ * Shared sweep for live frames and uploaded photos. The offset probes rescue a
+ * QR that is not perfectly centred; the tight probes magnify legacy cards.
+ */
+export const AADHAAR_PROBES: Probe[] = [
+  { scale: 1, zoom: 1 },
+  { scale: 0.6, zoom: 1 },
+  { scale: 0.4, zoom: 2 },
+  { scale: 0.25, zoom: 2 },
+  { scale: 0.4, zoom: 2, offsetX: -0.15, offsetY: -0.15 },
+  { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: -0.15 },
+  { scale: 0.4, zoom: 2, offsetX: -0.15, offsetY: 0.15 },
+  { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
+];
+
+/**
  * Source rect and bounded destination size for one probe against a frame.
  *
  * Pure and exported so the destination bound is testable: twice now a refactor

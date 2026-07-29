@@ -84,7 +84,7 @@ export default async function RegisterPage() {
           ) : null}
         </Card>
       ) : (
-        <div className="grid gap-3 sm:gap-4 lg:grid-cols-5 lg:items-start">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-5 lg:items-start">
           {/* Form first on phone — speed for walk-ins */}
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
@@ -106,10 +106,10 @@ export default async function RegisterPage() {
               <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-[11px]">
                 Active camp
               </p>
-              <p className="text-base font-bold tracking-tight sm:text-lg">
+              <p className="break-words text-base font-bold tracking-tight sm:text-lg">
                 {camp.name}
               </p>
-              <p className="text-sm text-muted">
+              <p className="break-words text-sm text-muted">
                 {camp.venue || "Registration"}
               </p>
             </Card>

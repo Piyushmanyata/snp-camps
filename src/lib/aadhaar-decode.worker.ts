@@ -15,7 +15,6 @@ import {
   decodeImageMultiPass,
   loadZbar,
   loadZxing,
-  preloadDecoders,
   type QrPayload,
 } from "@/lib/qr-decode-pipeline";
 import {
@@ -30,11 +29,6 @@ export type DecodeOutcome =
   | { status: "rejected"; message: string; diagnostic: string }
   /** No QR found in this image at all. */
   | { status: "none" };
-
-async function engines() {
-  const [zxing, zbar] = await Promise.all([loadZxing(), loadZbar()]);
-  return { zxing, zbar };
-}
 
 /** Turn a decoded payload into an outcome, keeping errors operator-facing. */
 async function toOutcome(payload: QrPayload): Promise<DecodeOutcome> {
@@ -60,9 +54,9 @@ async function toOutcome(payload: QrPayload): Promise<DecodeOutcome> {
 /* ------------------------------------------------------------------ */
 
 const api = {
-  /** Warm both engines while the operator is still aiming the camera. */
+  /** Warm only the primary engine; low-memory phones should not allocate both. */
   async warmUp(): Promise<void> {
-    await preloadDecoders();
+    await loadZxing();
   },
 
   /**
@@ -71,13 +65,22 @@ const api = {
    * on its own.
    */
   async decodeFrame(image: ImageData, thorough = false): Promise<DecodeOutcome> {
-    const { zxing, zbar } = await engines();
-    if (!zxing && !zbar) return { status: "none" };
-    const payload = await decodeImageMultiPass(image, {
-      zxing,
-      zbar,
-      variants: thorough ? THOROUGH_VARIANTS : FAST_VARIANTS,
-    });
+    const variants = thorough ? THOROUGH_VARIANTS : FAST_VARIANTS;
+    const zxing = await loadZxing();
+    let payload = zxing
+      ? await decodeImageMultiPass(image, { zxing, variants })
+      : null;
+
+    // ZBar is a rescue engine. Loading both WASM heaps during camera startup
+    // caused avoidable memory pressure on budget Android phones. Bring it in
+    // only after the primary failed on a thorough pass, or when ZXing itself
+    // could not load.
+    if (!payload && (thorough || !zxing)) {
+      const zbar = await loadZbar();
+      if (zbar) {
+        payload = await decodeImageMultiPass(image, { zbar, variants });
+      }
+    }
     return payload ? toOutcome(payload) : { status: "none" };
   },
 };

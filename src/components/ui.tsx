@@ -127,7 +127,7 @@ export function Shell({
             </div>
           ) : null}
         </header>
-        <main id="main" className="flex flex-1 flex-col gap-0">
+        <main id="main" className="flex w-full min-w-0 flex-1 flex-col gap-0">
           {children}
         </main>
       </div>

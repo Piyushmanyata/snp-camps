@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 
 import {
+  AADHAAR_PROBES,
   MAX_DECODE_EDGE,
   decodeImageMultiPass,
   probeSurface,
@@ -62,16 +63,6 @@ setDecoderWasmBase(`${wasmDir}${sep}`, {
 const [zxingReader, zbarReader] = await Promise.all([loadZxing(), loadZbar()]);
 assert.ok(zxingReader, "zxing-wasm failed to load — run `npm run wasm:copy`");
 assert.ok(zbarReader, "zbar-wasm failed to load — run `npm run wasm:copy`");
-
-/** The probe geometries the live loop cycles (use-aadhaar-scanner LIVE_PROBES). */
-const LIVE_PROBES = [
-  { scale: 1, zoom: 1 },
-  { scale: 0.6, zoom: 1 },
-  { scale: 0.4, zoom: 2 },
-  { scale: 0.25, zoom: 2 },
-  { scale: 0.4, zoom: 2, offsetX: -0.15, offsetY: -0.15 },
-  { scale: 0.4, zoom: 2, offsetX: 0.15, offsetY: 0.15 },
-];
 
 const LEGACY_XML =
   '<PrintLetterBarcodeData uid="324779287260" name="Jyothsna Mondal" ' +
@@ -160,7 +151,7 @@ async function sweep(frame, { thorough = false } = {}) {
     zbar: zbarReader,
     variants: thorough ? THOROUGH_VARIANTS : FAST_VARIANTS,
   };
-  for (const probe of LIVE_PROBES) {
+  for (const probe of AADHAAR_PROBES) {
     const surface = probeSurface(frame.width, frame.height, probe);
     if (!surface) continue;
     const { sx, sy, cw, ch, dw, dh } = surface;
@@ -175,7 +166,7 @@ async function sweep(frame, { thorough = false } = {}) {
 
 test("every live probe surface stays within MAX_DECODE_EDGE", () => {
   // 2560x1440 is what the scanner asks getUserMedia for.
-  for (const probe of LIVE_PROBES) {
+  for (const probe of AADHAAR_PROBES) {
     const surface = probeSurface(2560, 1440, probe);
     assert.ok(surface, `probe ${JSON.stringify(probe)} produced no surface`);
     const longest = Math.max(surface.dw, surface.dh);
@@ -188,7 +179,7 @@ test("every live probe surface stays within MAX_DECODE_EDGE", () => {
 });
 
 test("probe surface stays inside the frame and magnifies the tight probes", () => {
-  for (const probe of LIVE_PROBES) {
+  for (const probe of AADHAAR_PROBES) {
     const { sx, sy, cw, ch, dw } = probeSurface(2560, 1440, probe);
     assert.ok(sx >= 0 && sx + cw <= 2560, `probe ${JSON.stringify(probe)} crops outside the frame`);
     assert.ok(sy >= 0 && sy + ch <= 1440, `probe ${JSON.stringify(probe)} crops outside the frame`);
