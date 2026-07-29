@@ -1,4 +1,0 @@
-GREEN fully-aligned {"status":200,"ok":true,"failedCheck":null,"expected":"20260726220000","applied":"20260726220000"}
-GREEN discovery-fail {"status":503,"ok":false,"failedCheck":"migration_head_discovery","expected":"20260726220000","applied":null}
-GREEN head-mismatch {"status":503,"ok":false,"failedCheck":"applied_head_agreement","expected":"20260726220000","applied":"19990101000000"}
-GREEN unreachable {"status":503,"ok":false,"failedCheck":"database_reachability","expected":"20260726220000","applied":"20260726220000"}
