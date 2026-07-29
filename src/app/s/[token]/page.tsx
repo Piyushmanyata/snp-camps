@@ -6,6 +6,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { QrCode } from "@/components/qr-code";
+import { ErrorBox } from "@/components/ui";
+import { StatusAutoRefresh } from "@/components/status-auto-refresh";
 import { getPatientStatusGuidance } from "@/lib/patient-status-guidance";
 
 const STATUS_RATE_LIMIT = {
@@ -23,7 +25,6 @@ type StatusRpcRow = {
   venue: string | null;
   day_date: string | null;
   patient_id?: string | null;
-  pending_orders?: string[] | null;
 };
 
 export function mapStatusRpcRow(row: StatusRpcRow) {
@@ -39,12 +40,7 @@ export function mapStatusRpcRow(row: StatusRpcRow) {
     venue: row.venue?.trim() ? row.venue : "—",
     dayDate: row.day_date ? String(row.day_date) : null,
     patientId: row.patient_id || null,
-    pendingOrders: Array.isArray(row.pending_orders) ? row.pending_orders : [],
   };
-}
-
-function StatusRefresh() {
-  return <meta httpEquiv="refresh" content="30" />;
 }
 
 export default async function PatientStatusPage({
@@ -76,22 +72,13 @@ export default async function PatientStatusPage({
 
   if (error) {
     return (
-      <>
-        <head>
-          <StatusRefresh />
-        </head>
-        <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
-          <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
-          <div
-            role="alert"
-            className="mt-6 rounded-xl border border-red-200 bg-danger-soft px-3.5 py-3 text-[0.9375rem] text-danger"
-          >
-            <p className="font-medium">
-              Status could not be loaded. Please refresh and try again.
-            </p>
-          </div>
-        </main>
-      </>
+      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+        <StatusAutoRefresh />
+        <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
+        <div className="mt-6">
+          <ErrorBox message="Status abhi load nahi ho paaya. Thodi der baad refresh karein." />
+        </div>
+      </main>
     );
   }
 
@@ -100,104 +87,98 @@ export default async function PatientStatusPage({
 
   const view = mapStatusRpcRow(rows[0] as StatusRpcRow);
   const qrValue = view.patientId ? `snp:${view.patientId}` : `reg:${view.regNo}`;
-  const statusGuidance = getPatientStatusGuidance(
-    view.queueStatus,
-    view.pendingOrders.length,
-  );
-
-  const treatmentLabels: Record<string, string> = {
-    pharmacy: "Medicines",
-    spectacles: "Spectacles",
-    ot: "OT / Surgery",
-  };
+  const statusGuidance = getPatientStatusGuidance(view.queueStatus);
 
   return (
-    <>
-      <head>
-        <StatusRefresh />
-      </head>
-      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
-        <div className="space-y-6">
-          <div className="text-center">
-            <h1 className="text-xl font-bold tracking-tight text-brand">Camp Status</h1>
-            <p className="text-xs text-muted mt-0.5">Live FCFS status & queue info</p>
-          </div>
+    <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+      <StatusAutoRefresh />
+      <div className="space-y-5">
+        <div className="text-center">
+          <h1 className="text-xl font-bold tracking-tight text-brand">
+            Aapka camp status
+          </h1>
+          <p className="mt-0.5 text-[0.8125rem] text-muted">
+            Line pehle-aao-pehle-paao ke hisaab se chalti hai
+          </p>
+        </div>
 
-          {/* Patient QR Code Card */}
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3">
-            <div className="rounded-xl border border-border bg-white p-2.5 shadow-inner">
-              <QrCode value={qrValue} size={140} level="M" />
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Patient QR · Reg #{view.regNo}
+        {/* Queue position first: on camp day it is the only number that matters. */}
+        {view.queuePosition != null ? (
+          <div className="rounded-2xl border border-brand/25 bg-brand-soft p-5 text-center">
+            <p className="text-[0.8125rem] font-bold uppercase tracking-wider text-brand">
+              Line mein aapka number
+            </p>
+            <p className="tabular mt-1 text-6xl font-extrabold leading-none text-brand">
+              {view.queuePosition}
             </p>
           </div>
+        ) : null}
 
-          <section
-            aria-labelledby="current-status-heading"
-            className={
-              statusGuidance.tone === "complete"
-                ? "rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"
-                : statusGuidance.tone === "waiting"
-                  ? "rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
-                  : "rounded-2xl border border-brand/20 bg-brand-soft/50 p-4 text-foreground"
-            }
+        <section
+          aria-labelledby="current-status-heading"
+          className={
+            statusGuidance.tone === "complete"
+              ? "rounded-2xl border border-brand/25 bg-success-soft p-4 text-foreground"
+              : statusGuidance.tone === "waiting"
+                ? "rounded-2xl border border-warning/30 bg-warning-soft p-4 text-foreground"
+                : "rounded-2xl border border-border bg-card p-4 text-foreground"
+          }
+        >
+          <h2
+            id="current-status-heading"
+            className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted"
           >
-            <h2
-              id="current-status-heading"
-              className="text-xs font-semibold uppercase tracking-wider"
-            >
-              Current status
-            </h2>
-            <p className="mt-1 text-lg font-bold">{statusGuidance.label}</p>
-            <p className="mt-1 text-sm">{statusGuidance.instruction}</p>
-          </section>
+            Abhi ki sthiti
+          </h2>
+          <p className="mt-1 text-lg font-bold">{statusGuidance.label}</p>
+          <p className="mt-1 text-[0.9375rem]">{statusGuidance.instruction}</p>
+        </section>
 
-          <dl className="rounded-2xl border border-border bg-card p-5 space-y-4 text-[1.0625rem] shadow-sm">
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Name</dt>
-              <dd className="font-bold text-foreground text-lg">{view.fullName}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Registration Number</dt>
-              <dd className="font-bold text-foreground tabular">#{view.regNo}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Camp Name</dt>
-              <dd className="font-semibold text-foreground">{view.campName}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Camp Date</dt>
-              <dd className="font-semibold text-foreground">
-                {view.dayDate ? formatCampDay(view.dayDate) : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wider text-muted">Venue</dt>
-              <dd className="font-semibold text-foreground">{view.venue}</dd>
-            </div>
-            {view.queuePosition != null ? (
-              <div className="rounded-xl border border-brand/20 bg-brand-soft/50 p-3">
-                <dt className="text-xs font-semibold uppercase tracking-wider text-brand">Live Queue Position</dt>
-                <dd className="text-2xl font-extrabold tabular text-brand">{view.queuePosition}</dd>
-              </div>
-            ) : null}
-
-            {view.pendingOrders.length > 0 ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-1">
-                <dt className="text-xs font-semibold uppercase tracking-wider text-amber-900">Awaited Treatments</dt>
-                <dd className="flex flex-wrap gap-1.5">
-                  {view.pendingOrders.map((k) => (
-                    <span key={k} className="rounded-md bg-white border border-amber-200 px-2 py-0.5 text-xs font-bold text-amber-950 shadow-xs">
-                      {treatmentLabels[k] || k}
-                    </span>
-                  ))}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
+        <div className="flex flex-col items-center justify-center space-y-3 rounded-2xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border bg-white p-2.5">
+            <QrCode value={qrValue} size={140} level="M" />
+          </div>
+          <p className="text-center text-[0.8125rem] font-semibold text-muted">
+            Yeh QR desk par dikhayein · Reg{" "}
+            <span className="tabular font-bold text-brand">#{view.regNo}</span>
+          </p>
         </div>
-      </main>
-    </>
+
+        <dl className="space-y-4 rounded-2xl border border-border bg-card p-5 text-[1.0625rem]">
+          <div>
+            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
+              Naam
+            </dt>
+            <dd className="text-lg font-bold text-foreground">{view.fullName}</dd>
+          </div>
+          <div>
+            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
+              Registration number
+            </dt>
+            <dd className="tabular font-bold text-foreground">#{view.regNo}</dd>
+          </div>
+          <div>
+            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
+              Camp
+            </dt>
+            <dd className="font-semibold text-foreground">{view.campName}</dd>
+          </div>
+          <div>
+            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
+              Camp ka din
+            </dt>
+            <dd className="font-semibold text-foreground">
+              {view.dayDate ? formatCampDay(view.dayDate) : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
+              Jagah
+            </dt>
+            <dd className="font-semibold text-foreground">{view.venue}</dd>
+          </div>
+        </dl>
+      </div>
+    </main>
   );
 }

@@ -31,7 +31,6 @@ export default async function RegisterPage() {
         ? [
             { href: "/register", label: "Register", primary: true as const },
             { href: "/admin", label: "Admin" },
-            { href: "/counter", label: "Counter" },
             { href: "/admin/patients", label: "Patients" },
           ]
         : undefined;

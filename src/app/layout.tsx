@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: "%s · SNP Camps",
   },
   description:
-    "Medical camp desk: register, print prescription (queue), staff-scan doctor assign — Sikar Nagarik Parishad (Kolkata)",
+    "Medical camp desk: register, print prescription (queue), mark seen — Sikar Nagarik Parishad (Kolkata)",
   applicationName: "SNP Camps",
   formatDetection: { telephone: false },
   metadataBase: new URL(

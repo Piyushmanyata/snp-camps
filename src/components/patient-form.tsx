@@ -552,7 +552,7 @@ export function PatientForm({
         };
       },
       errorContext: "patient-form.check-in-likely-dup",
-      errorFallback: "Could not check in this patient. Try again.",
+      errorFallback: "Could not queue this patient. Try again.",
     });
     if (!outcome.ok) {
       // Preserve likely-duplicate selection + form state for Try Again (#61).
@@ -565,7 +565,7 @@ export function PatientForm({
     setFlash(
       row.already_waiting
         ? `Reg #${reg} pehle se line mein hai. Naya register nahi banaya.`
-        : `Reg #${reg} check-in ho gaya. Naya register nahi banaya.`,
+        : `Reg #${reg} ka parcha print ho gaya — line mein aa gaye. Naya register nahi banaya.`,
     );
     setLikelyDuplicateRegNo(null);
     setAadhaarDuplicateRegNo(null);

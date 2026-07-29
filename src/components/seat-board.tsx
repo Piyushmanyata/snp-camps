@@ -10,6 +10,7 @@ import {
   Badge,
   Card,
   EmptyState,
+  ErrorBox,
   SectionTitle,
   Spinner,
 } from "@/components/ui";
@@ -110,13 +111,7 @@ export function SeatBoard({
           />
         ) : null}
         {seatsFailed ? (
-          <p
-            className="rounded-xl bg-red-50 px-3 py-3 text-sm font-medium text-red-900 ring-1 ring-red-200"
-            role="alert"
-          >
-            Seat board could not be loaded. Use Refresh or Try again — this is
-            not an empty schedule.
-          </p>
+          <ErrorBox message="Seat board could not be loaded. Use Refresh or Try again — this is not an empty schedule." />
         ) : (
           <EmptyState>
             No camp days configured yet. Admin can add days and seat limits.
@@ -167,7 +162,7 @@ export function SeatBoard({
               key={d.id}
               className={`rounded-xl border p-3 transition-colors ${
                 d.is_full
-                  ? "border-amber-200/80 bg-amber-50/40"
+                  ? "border-warning/30 bg-warning-soft"
                   : "border-border bg-background/50"
               }`}
             >
@@ -201,7 +196,7 @@ export function SeatBoard({
               >
                 <div
                   className={`h-full rounded-full transition-[width] duration-300 ${
-                    d.is_full ? "bg-amber-500" : "bg-brand"
+                    d.is_full ? "bg-warning" : "bg-brand"
                   }`}
                   style={{ width: `${pct}%` }}
                 />

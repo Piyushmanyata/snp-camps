@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Input } from "@/components/ui";
+import { Button, ErrorBox, Input } from "@/components/ui";
 
 export default function PatientLookupPage() {
   const router = useRouter();
@@ -27,11 +27,11 @@ export default function PatientLookupPage() {
       if (res.ok && data.ok && data.redirectUrl) {
         router.push(data.redirectUrl);
       } else {
-        setError(data.error || "Registration details did not match our records.");
+        setError(data.error || "Ye registration number aur janm tithi match nahi hui.");
         setLoading(false);
       }
     } catch {
-      setError("Registration details did not match our records.");
+      setError("Ye registration number aur janm tithi match nahi hui.");
       setLoading(false);
     }
   }
@@ -40,48 +40,53 @@ export default function PatientLookupPage() {
     <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-brand">Patient Lookup</h1>
-          <p className="mt-1 text-sm text-muted">
-            Enter your registration number and date of birth to check your live camp queue status.
+          <h1 className="text-2xl font-bold tracking-tight text-brand">
+            Apna status dekhein
+          </h1>
+          <p className="mt-1 text-[0.9375rem] text-muted">
+            Apna registration number aur janm tithi daalein — aapko apna live
+            camp status mil jayega.
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
-          {error ? (
-            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-950">
-              {error}
-            </div>
-          ) : null}
+        <form
+          onSubmit={onSubmit}
+          className="space-y-4 rounded-2xl border border-border bg-card p-5"
+        >
+          <ErrorBox message={error} />
 
           <Input
             id="lookup-reg-no"
-            label="Registration Number *"
+            label="Registration number"
             type="number"
             min={1}
             required
             inputMode="numeric"
             value={regNo}
             onChange={(e) => setRegNo(e.target.value)}
-            placeholder="e.g. 101"
+            placeholder="jaise 101"
           />
 
           <Input
             id="lookup-dob"
-            label="Date of Birth *"
+            label="Janm tithi (date of birth)"
             type="date"
             required
             value={dateOfBirth}
             onChange={(e) => setDateOfBirth(e.target.value)}
           />
 
-          <Button type="submit" variant="primary" disabled={loading} className="w-full min-h-12 text-base font-semibold">
-            {loading ? "Searching…" : "Find My Status"}
+          <Button type="submit" variant="primary" loading={loading}>
+            {loading ? "Dhoondh rahe hain…" : "Status dekhein"}
           </Button>
         </form>
 
         <div className="text-center">
-          <Link href="/" className="text-sm font-semibold text-brand hover:underline">
-            ← Back to Home
+          <Link
+            href="/"
+            className="inline-flex min-h-12 items-center text-[0.9375rem] font-semibold text-brand hover:underline"
+          >
+            ← Wapas home
           </Link>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionProfile } from "@/lib/auth";
+import { getSessionProfile, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { ActionCard, Card, StepList } from "@/components/ui";
 import { SeatBoard } from "@/components/seat-board";
@@ -10,11 +10,11 @@ export default async function HomePage() {
     getActiveCampSnapshot(),
   ]);
   const { profile } = session;
-  if (profile?.role === "admin") redirect("/admin");
-  if (profile?.role === "team_lead") redirect("/team-lead");
-  if (profile?.role === "volunteer") redirect("/volunteer");
-  if (profile?.role === "doctor") redirect("/doctor");
-  // Patient sessions have no app home; stay on public landing (status is /s/<token>).
+  // One routing table, not four — roleHome() is the single source (CONTEXT.md
+  // §Navigation). It returns null for non-login roles, who stay on the public
+  // landing; patient status lives at /s/<token>.
+  const home = roleHome(profile?.role);
+  if (home) redirect(home);
 
   const camp = snapshot;
   const days = snapshot?.days || [];
@@ -46,8 +46,8 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
-                Multi-day eye camp with limited seats. Self-register, get your
-                slip, then doctor scan.
+                Multi-day eye camp with limited seats. Self-register online, then
+                collect your printed prescription at the desk.
               </p>
             </div>
           </div>
@@ -94,7 +94,7 @@ export default async function HomePage() {
             <ActionCard
               href="/login"
               title="Staff login"
-              description="Admin · volunteers · doctors"
+              description="Admin · team leads · volunteers"
               variant="soft"
             />
           </div>
@@ -112,15 +112,15 @@ export default async function HomePage() {
               steps={[
                 {
                   title: "Self registration",
-                  detail: "Scan Aadhaar card · get slip",
+                  detail: "Scan your Aadhaar card · get your reg number",
                 },
                 {
-                  title: "Print joins queue",
-                  detail: "FCFS queue · staff-scan QR",
+                  title: "Print joins the queue",
+                  detail: "Desk prints your prescription · FCFS order",
                 },
                 {
-                  title: "Doctor scan",
-                  detail: "No print needed · seen once",
+                  title: "Doctor sees you",
+                  detail: "Staff scan your QR to mark you seen",
                 },
               ]}
             />

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useCampDeskLive } from "@/lib/use-camp-desk-live";
 import {
-  Badge,
   Button,
   EmptyState,
   ErrorBox,
@@ -247,16 +246,18 @@ export function LiveQueue({
         {showRows
           ? rows.map((p, index) => (
           <li key={p.id} className="px-1 py-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-start gap-2.5">
+            {/* Wraps instead of pushing the actions off a narrow phone. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 basis-40 items-start gap-2.5">
                 <span
-                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-[11px] font-bold tabular-nums text-warning ring-1 ring-amber-300/60"
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-[11px] font-bold tabular-nums text-warning ring-1 ring-warning/40"
                   aria-label={`Position ${index + 1}`}
                 >
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="tabular text-sm font-bold text-brand">
+                  {/* Reg number is the identity staff call out and scan for. */}
+                  <p className="tabular text-lg font-bold leading-tight text-brand">
                     #{p.reg_no}
                   </p>
                   <p className="break-words font-semibold leading-snug">
@@ -267,8 +268,10 @@ export function LiveQueue({
                   ) : null}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Badge tone="wait">In queue</Badge>
+              {/* No "In queue" badge — every row in this list is in the queue.
+                  basis-40 above stops a long name collapsing to a 9px column
+                  and wrapping over 20+ lines; the actions wrap under instead. */}
+              <div className="flex flex-1 items-center justify-end gap-1.5">
                 <Link
                   href={`/print/${p.id}`}
                   className="pressable inline-flex min-h-12 items-center rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand-soft"
@@ -292,9 +295,7 @@ export function LiveQueue({
         {queueFailed && !rows.length ? (
           <li className="px-1 py-2">
             {/* Distinct from empty: hard load failure, not "nothing here". */}
-            <p className="rounded-xl bg-red-50 px-3 py-3 text-sm font-medium text-red-900 ring-1 ring-red-200" role="alert">
-              Queue could not be loaded. Use Refresh or Try again — this is not an empty line.
-            </p>
+            <ErrorBox message="Queue could not be loaded. Use Refresh or Try again — this is not an empty line." />
           </li>
         ) : null}
         {showEmpty ? (

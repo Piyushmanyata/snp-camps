@@ -13,6 +13,7 @@ import {
   Shell,
 } from "@/components/ui";
 import { mapAuthError } from "@/lib/public-error";
+import { roleHome } from "@/lib/roles";
 
 export function StaffLoginForm() {
   const router = useRouter();
@@ -60,10 +61,11 @@ export function StaffLoginForm() {
         return;
       }
 
-      if (profile.role === "admin") router.replace("/admin");
-      else if (profile.role === "team_lead") router.replace("/team-lead");
-      else if (profile.role === "volunteer") router.replace("/volunteer");
-      else if (profile.role === "doctor") router.replace("/doctor");
+      // roleHome() is the single routing table (CONTEXT.md §Navigation). It
+      // sends a team lead straight to /volunteer — their actual desk — instead
+      // of bouncing through /team-lead, and returns null for non-login roles.
+      const home = roleHome(profile.role);
+      if (home) router.replace(home);
       else {
         // Residual/non-staff profiles cannot use staff login (#59).
         await supabase.auth.signOut();

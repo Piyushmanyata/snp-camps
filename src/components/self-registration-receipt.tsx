@@ -68,8 +68,9 @@ export function SelfRegistrationReceipt({
       </dl>
 
       <p className="text-sm text-muted">
-        Aap <strong>registered</strong> hain, abhi queue mein nahi. Camp par
-        pahunchkar desk par check-in karein.
+        Aap <strong>registered</strong> hain, abhi line mein nahi. Camp ke din
+        desk par jaayein — wahan aapka parcha print hoga, tabhi aap line mein
+        aayenge.
       </p>
 
       <div>

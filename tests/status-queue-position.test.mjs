@@ -20,10 +20,25 @@ test("status page is a Server Component (no use client)", () => {
   assert.match(src, /export default async function PatientStatusPage/);
 });
 
-test("status page refreshes every 30 seconds without client JavaScript", () => {
+test("status page refreshes on a timer the user is not trapped by", () => {
   const src = readPage();
-  assert.match(src, /<meta\s+httpEquiv=["']refresh["']\s+content=["']30["']\s*\/>/);
-  assert.doesNotMatch(src, /use client/);
+  // A `<meta http-equiv="refresh">` reloaded the whole document on a timer the
+  // patient could neither pause nor extend — WCAG 2.2 SC 2.2.1 — and restarted
+  // every screen reader mid-sentence. Refreshing now happens in a client island
+  // that swaps content in place and pauses while the tab is hidden.
+  assert.doesNotMatch(src, /httpEquiv/);
+  assert.doesNotMatch(src, /<head>/);
+  assert.match(src, /<StatusAutoRefresh\s*\/>/);
+});
+
+test("the refresh island keeps its 30s cadence and pauses when hidden", () => {
+  const src = fs.readFileSync(
+    path.join(root, "src", "components", "status-auto-refresh.tsx"),
+    "utf8",
+  );
+  assert.match(src, /ms\s*=\s*30_000/);
+  // useFixedPoll is the shared helper that skips ticks while the tab is hidden.
+  assert.match(src, /useFixedPoll\(/);
 });
 
 test("status page rate-limits by IP before token lookup without an oracle", () => {
@@ -61,7 +76,8 @@ test("status page uses patient_status_by_token RPC only", () => {
 test("status page treats RPC error as safe retry UI, zero rows as notFound", () => {
   const src = readPage();
   assert.match(src, /if\s*\(\s*error\s*\)/);
-  assert.match(src, /Status could not be loaded/);
+  // Patients read Hinglish (CONTEXT.md §Language).
+  assert.match(src, /Status abhi load nahi ho paaya/);
   assert.match(src, /notFound\s*\(\s*\)/);
   // Error path must not call notFound for calculation failure
   const errorBlock = src.slice(

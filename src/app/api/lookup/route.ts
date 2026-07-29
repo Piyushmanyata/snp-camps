@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const rate = checkRateLimit(request, LOOKUP_RATE_LIMIT);
   if (!rate.allowed) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       { status: 429 },
     );
   }
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   }>(request, 1_024);
   if (!body) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       { status: 400 },
     );
   }
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   if (!Number.isInteger(regNo) || regNo <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dobStr)) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       { status: 400 },
     );
   }
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   const admin = createServiceRoleClient();
   if (!admin) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       { status: 500 },
     );
   }
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   });
   if (!durableRate.allowed) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       {
         status: durableRate.unavailable ? 503 : 429,
         headers: {
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
   if (error || !Array.isArray(data) || data.length === 0 || !data[0]?.status_token) {
     return NextResponse.json(
-      { ok: false, error: "Registration details did not match our records." },
+      { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
       { status: 400 },
     );
   }

@@ -155,7 +155,7 @@ export function PrintActions({
             ? "Ready to print · consultation complete"
             : primaryStatus === "waiting"
               ? "Ready to reprint · already in queue"
-              : "Ready to print · will check in"}
+              : "Ready to print · joins the queue"}
         </p>
         <p className="truncate text-base font-semibold">
           {`${primary?.regNo != null ? `#${primary.regNo}` : "Prescription"}${
@@ -167,7 +167,7 @@ export function PrintActions({
             ? "Reprinting keeps the completed consultation status unchanged."
             : primaryStatus === "waiting"
               ? "The patient is already waiting for a doctor."
-              : "Printing a pre-registered patient also checks them into the line."}
+              : "Printing is what puts a pre-registered patient in the line."}
         </p>
         {message ? (
           <p
@@ -202,7 +202,7 @@ export function PrintActions({
               ? "Print completed form"
               : primaryStatus === "waiting"
                 ? "Reprint (1 page)"
-                : "Check in & print"}
+                : "Print prescription"}
         </Button>
         <Link
           href={deskHref}

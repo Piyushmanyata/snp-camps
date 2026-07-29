@@ -17,7 +17,7 @@ export default async function PatientScanPage({
 
   if (!isPatientUuid(id)) {
     return (
-      <main className="mx-auto max-w-md px-4 py-16 text-center">
+      <main id="main" className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-lg font-semibold">Invalid code</h1>
         <p className="mt-2 text-sm text-muted">
           Show this screen at the camp desk.
@@ -29,7 +29,7 @@ export default async function PatientScanPage({
   const { profile } = await getSessionProfile();
   if (!isCampCrew(profile?.role)) {
     return (
-      <main className="mx-auto max-w-md px-4 py-16 text-center">
+      <main id="main" className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-lg font-semibold">Camp desk scan only</h1>
         <p className="mt-2 text-sm text-muted">
           This QR is for camp staff. Show it at the volunteer desk.

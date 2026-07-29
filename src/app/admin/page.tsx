@@ -139,7 +139,7 @@ export default async function AdminPage() {
             <NavLink href="/register" variant="primary">
               Register patient
             </NavLink>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-3 gap-2">
               <NavLink href="/admin/patients" variant="soft">
                 Patients
               </NavLink>
@@ -148,9 +148,6 @@ export default async function AdminPage() {
               </NavLink>
               <NavLink href="/volunteer" variant="soft">
                 Volunteers
-              </NavLink>
-              <NavLink href="/doctor" variant="soft">
-                Doctors
               </NavLink>
             </div>
           </div>
@@ -163,9 +160,6 @@ export default async function AdminPage() {
             </NavLink>
             <NavLink href="/volunteer" variant="soft">
               Volunteer desk
-            </NavLink>
-            <NavLink href="/doctor" variant="soft">
-              Doctor desk
             </NavLink>
             <NavLink href="/admin/patients" variant="soft">
               Patient desk

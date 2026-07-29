@@ -194,13 +194,12 @@ export default async function PatientDeskPage() {
   return (
     <Shell
       title="Patient desk"
-      subtitle="All patients · volunteer · doctor · timestamps"
+      subtitle="All patients · volunteer · timestamps"
       width="xl"
       roleLabel="Admin"
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
-        { href: "/counter", label: "Counter" },
         { href: "/admin", label: "Admin" },
         { href: "/volunteer", label: "Volunteers" },
       ]}

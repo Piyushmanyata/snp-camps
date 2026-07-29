@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr, parseRegistrationNumber } from "@/lib/qr";
-import { Button, ErrorBox, Input, SuccessBox } from "@/components/ui";
+import { Button, ErrorBox, Input, WarningBox } from "@/components/ui";
 import {
   checkInPatientWithRetries,
   searchRegisteredPatientsWithRetries,
@@ -59,7 +59,6 @@ export function CheckIn({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   /** Last patient id chosen from name list — preserved across check-in failure. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchGen = useRef(0);
@@ -96,7 +95,6 @@ export function CheckIn({
       if (busy || !campId) return;
       setBusy(true);
       setError(null);
-      setSuccess(null);
       if (opts.id) setSelectedId(opts.id);
 
       const outcome = await checkInPatientWithRetries({
@@ -172,7 +170,6 @@ export function CheckIn({
     e.preventDefault();
     if (busy) return;
     setError(null);
-    setSuccess(null);
     setSelectedId(null);
     const raw = regInput.trim();
     if (!raw) {
@@ -198,12 +195,7 @@ export function CheckIn({
 
   if (disabledReason || !campId) {
     return (
-      <div
-        className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-        role="status"
-      >
-        {disabledReason || "No active camp."}
-      </div>
+      <WarningBox>{disabledReason || "No active camp."}</WarningBox>
     );
   }
 
@@ -291,7 +283,7 @@ export function CheckIn({
         ) : null}
         {showEmpty ? (
           <p className="text-xs text-muted" role="status">
-            No registered patients match. Already checked-in names are hidden.
+            No registered patients match. Names already printed for are hidden.
           </p>
         ) : null}
         {showSearchError ? (
@@ -304,7 +296,7 @@ export function CheckIn({
               onClick={retrySearch}
               className="sm:w-auto"
             >
-              Try Again
+              Try again
             </Button>
           </div>
         ) : null}
@@ -320,10 +312,9 @@ export function CheckIn({
           onClick={retryCheckIn}
           className="sm:w-auto"
         >
-          Try Again
+          Try again
         </Button>
       ) : null}
-      {success ? <SuccessBox message={success} /> : null}
     </div>
   );
 }

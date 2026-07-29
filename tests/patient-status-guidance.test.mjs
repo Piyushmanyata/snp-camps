@@ -2,30 +2,42 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getPatientStatusGuidance } from "../src/lib/patient-status-guidance.ts";
 
-test("registered patients are told to check in", () => {
-  const result = getPatientStatusGuidance("registered", 0);
-  assert.equal(result.label, "Registered");
-  assert.match(result.instruction, /check in/i);
+// Patients read Hinglish (CONTEXT.md §Language). These assertions are the guard
+// against an English regression leaking back onto the status page.
+
+test("registered patients are sent to the desk, not into the queue", () => {
+  const result = getPatientStatusGuidance("registered");
+  assert.equal(result.label, "Registration ho gaya");
+  assert.match(result.instruction, /desk par jaayein/i);
+  assert.equal(result.tone, "neutral");
 });
 
 test("waiting patients receive queue guidance", () => {
-  const result = getPatientStatusGuidance("waiting", 0);
-  assert.equal(result.label, "Waiting for doctor");
-  assert.match(result.instruction, /30 seconds/i);
+  const result = getPatientStatusGuidance("waiting");
+  assert.equal(result.label, "Line mein hain");
+  assert.match(result.instruction, /30 second/i);
+  assert.equal(result.tone, "waiting");
 });
 
-test("seen patients distinguish pending treatment from completion", () => {
-  const pending = getPatientStatusGuidance("seen", 2);
-  assert.equal(pending.label, "Consultation complete");
-  assert.match(pending.instruction, /pending treatments/i);
-
-  const complete = getPatientStatusGuidance("seen", 0);
-  assert.equal(complete.label, "Camp visit complete");
-  assert.equal(complete.tone, "complete");
+test("seen is terminal and has no pending-treatment arm", () => {
+  const result = getPatientStatusGuidance("seen");
+  assert.equal(result.label, "Aapka number ho gaya");
+  assert.equal(result.tone, "complete");
 });
 
 test("unknown status fails safely with desk guidance", () => {
-  const result = getPatientStatusGuidance("unexpected", 0);
-  assert.equal(result.label, "Status unavailable");
-  assert.match(result.instruction, /registration desk/i);
+  const result = getPatientStatusGuidance("unexpected");
+  assert.equal(result.label, "Status nahi mil paaya");
+  assert.match(result.instruction, /desk/i);
+});
+
+test("guidance is Hinglish, never English clinical copy", () => {
+  for (const status of ["registered", "waiting", "seen", "unexpected"]) {
+    const { label, instruction } = getPatientStatusGuidance(status);
+    assert.doesNotMatch(
+      `${label} ${instruction}`,
+      /consultation|treatment|pending|check in/i,
+      `retired English copy leaked back into "${status}"`,
+    );
+  }
 });

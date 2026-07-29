@@ -4,47 +4,47 @@ export type PatientStatusGuidance = {
   tone: "neutral" | "waiting" | "complete";
 };
 
-/** Patient-facing meaning of the queue state and remaining treatment work. */
+/**
+ * Patient-facing meaning of the queue state. Hinglish — patients read Hinglish,
+ * staff read English, and a leak either way is a bug (CONTEXT.md §Language).
+ *
+ * There is no treatment-order arm any more: migration 20260728119000 retired the
+ * counter, so `patient_status_by_token` no longer returns `pending_orders` and
+ * the old "pending treatments" branch was unreachable.
+ */
 export function getPatientStatusGuidance(
   queueStatus: string,
-  pendingOrderCount: number,
 ): PatientStatusGuidance {
   if (queueStatus === "registered") {
     return {
-      label: "Registered",
-      instruction: "Check in at the registration desk when you arrive.",
+      label: "Registration ho gaya",
+      instruction:
+        "Camp ke din desk par jaayein. Wahan aapka parcha print hoga, tabhi aap line mein aayenge.",
       tone: "neutral",
     };
   }
 
   if (queueStatus === "waiting") {
     return {
-      label: "Waiting for doctor",
+      label: "Line mein hain",
       instruction:
-        "Stay near the consultation area. Your queue position refreshes every 30 seconds.",
-      tone: "waiting",
-    };
-  }
-
-  if (queueStatus === "seen" && pendingOrderCount > 0) {
-    return {
-      label: "Consultation complete",
-      instruction: "Please collect the pending treatments shown below.",
+        "Doctor ke kamre ke paas rukein. Aapka number har 30 second mein apne aap update hota hai.",
       tone: "waiting",
     };
   }
 
   if (queueStatus === "seen") {
     return {
-      label: "Camp visit complete",
-      instruction: "Your consultation and prescribed treatments are complete.",
+      label: "Aapka number ho gaya",
+      instruction:
+        "Doctor ne aapko dekh liya hai. Apna parcha sambhaal kar rakhein.",
       tone: "complete",
     };
   }
 
   return {
-    label: "Status unavailable",
-    instruction: "Please ask the registration desk for help.",
+    label: "Status nahi mil paaya",
+    instruction: "Kripya registration desk par poochein.",
     tone: "neutral",
   };
 }
