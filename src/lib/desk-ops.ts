@@ -336,6 +336,15 @@ export async function undoMarkSeenWithRetries(options: {
             value: { ok: false, error: "This patient is not marked seen." },
           };
         }
+        if (row.error_code === "inactive_camp") {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error: "This camp is no longer active, so the result cannot be reopened.",
+            },
+          };
+        }
         return { done: true, value: { ok: true, row } };
       } catch (thrown) {
         const classified = classifyOperationError(thrown, {

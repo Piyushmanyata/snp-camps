@@ -398,6 +398,98 @@ test("undo returns the patient to the queue on their original position", async (
   assert.equal(again.error_code, "not_seen");
 });
 
+test("undo refuses to reopen a patient after the camp becomes inactive", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const volunteerId = await seedProfile("volunteer");
+  const { campId, dayId } = await seedCampFutureDay();
+  const patient = await registerPatient(campId, dayId, "Inactive Undo Patient");
+
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.check_in_patient($1, null)`, [
+      patient.id,
+    ]);
+    await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
+  });
+  await client.query(`update public.camps set is_active = false where id = $1`, [
+    campId,
+  ]);
+
+  const undone = await asAuthenticated(volunteerId, async (c) => {
+    const { rows } = await c.query(`select * from public.undo_mark_seen($1)`, [
+      patient.id,
+    ]);
+    return rows[0];
+  });
+  assert.equal(undone.error_code, "inactive_camp");
+  assert.equal(undone.queue_status, "seen");
+  assert.equal((await snapshotPatient(patient.id)).queue_status, "seen");
+});
+
+test("undo holds the camp lifecycle lock until its transition commits", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const volunteerId = await seedProfile("volunteer");
+  const { campId, dayId } = await seedCampFutureDay();
+  const patient = await registerPatient(campId, dayId, "Undo Lock Patient");
+
+  await asAuthenticated(volunteerId, async (c) => {
+    await c.query(`select * from public.check_in_patient($1, null)`, [
+      patient.id,
+    ]);
+    await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
+  });
+
+  const undoClient = new pg.Client({ connectionString: DATABASE_URL });
+  const lifecycleClient = new pg.Client({ connectionString: DATABASE_URL });
+  await undoClient.connect();
+  await lifecycleClient.connect();
+  try {
+    await undoClient.query("begin");
+    await undoClient.query(
+      `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+    );
+    await undoClient.query(
+      `select set_config('request.jwt.claim.sub', $1, true)`,
+      [volunteerId],
+    );
+    await undoClient.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ role: "authenticated", sub: volunteerId })],
+    );
+    await undoClient.query(`set local role authenticated`);
+    const { rows } = await undoClient.query(
+      `select * from public.undo_mark_seen($1)`,
+      [patient.id],
+    );
+    assert.equal(rows[0]?.error_code, null);
+
+    await lifecycleClient.query(`set statement_timeout = '150ms'`);
+    await assert.rejects(
+      () =>
+        lifecycleClient.query(
+          `update public.camps set is_active = false where id = $1`,
+          [campId],
+        ),
+      /statement timeout|canceling statement/i,
+      "camp deactivation must wait while undo holds the lifecycle row lock",
+    );
+
+    await undoClient.query("commit");
+    await lifecycleClient.query(`set statement_timeout = 0`);
+    await lifecycleClient.query(
+      `update public.camps set is_active = false where id = $1`,
+      [campId],
+    );
+
+    const after = await snapshotPatient(patient.id);
+    assert.equal(after.queue_status, "waiting");
+  } finally {
+    await undoClient.query("rollback").catch(() => {});
+    await lifecycleClient.query(`set statement_timeout = 0`).catch(() => {});
+    await undoClient.end().catch(() => {});
+    await lifecycleClient.end().catch(() => {});
+  }
+});
+
 test("concurrent mark_seen produces exactly one first-time transition", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");

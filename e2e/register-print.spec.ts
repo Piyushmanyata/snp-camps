@@ -122,8 +122,8 @@ async function fillMinimalRegistration(page: Page, fullName: string) {
   const manualEntry = page.getByTestId("desk-manual-entry-escape");
   if (await manualEntry.isVisible()) await manualEntry.click();
 
-  await page.getByLabel(/Poora naam/i).fill(fullName);
-  await page.getByLabel(/^Umar/i).fill("42");
+  await page.getByLabel(/Full name/i).fill(fullName);
+  await page.getByLabel(/^Age/i).fill("42");
 }
 
 test.beforeEach(async ({ page, context }) => {
@@ -207,7 +207,7 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   // scan-first for the next patient, so the typed identity fields are gone
   // entirely rather than merely blank.
   await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
-  await expect(page.getByLabel(/Poora naam/i)).toHaveCount(0);
+  await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
 });
 
 /** #107 — Register-only saves without opening a print window. */
@@ -251,7 +251,7 @@ test("register-only saves with no print window", async ({ page }) => {
   expect(openArgs.length).toBe(0);
   // Saved and reset: the desk goes back to scan-first for the next patient.
   await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
-  await expect(page.getByLabel(/Poora naam/i)).toHaveCount(0);
+  await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
 });
 
 test("blocked popup: one registration, recovery Print, never claims window opened", async ({
@@ -383,8 +383,8 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
   expect(rpcCalls).toBe(3);
 
   // Fields preserved — form not reset.
-  await expect(page.getByLabel(/Poora naam/i)).toHaveValue(name);
-  await expect(page.getByLabel(/^Umar/i)).toHaveValue("42");
+  await expect(page.getByLabel(/Full name/i)).toHaveValue(name);
+  await expect(page.getByLabel(/^Age/i)).toHaveValue("42");
   await expect(page.getByLabel(/Mobile number/i)).toHaveValue("9876543210");
 
   // Same request id on every attempt.
@@ -449,7 +449,9 @@ test("terminal business error is not auto-retried and has no connectivity Try Ag
   );
   await page.getByTestId("desk-register-submit").click();
 
-  await expect(page.getByText(/full|another day/i)).toBeVisible({
+  await expect(
+    page.getByText("That camp day is full. Choose another day."),
+  ).toBeVisible({
     timeout: 10_000,
   });
   await expect(page.getByTestId("desk-register-try-again")).toHaveCount(0);

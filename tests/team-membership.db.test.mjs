@@ -154,7 +154,7 @@ test("every active camp-crew role sees only the two distinct-patient leaderboard
       [campId, dayId, volunteer],
     );
 
-    for (const caller of [admin, lead, volunteer, doctor]) {
+    for (const caller of [admin, lead, volunteer]) {
       await client.query("set local role authenticated");
       await client.query(
         `select set_config('request.jwt.claims', $1, true)`,
@@ -187,6 +187,22 @@ test("every active camp-crew role sees only the two distinct-patient leaderboard
       );
       await client.query("reset role");
     }
+
+    await client.query("set local role authenticated");
+    await client.query(
+      `select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: doctor, role: "authenticated" })],
+    );
+    await assert.rejects(
+      () =>
+        client.query(
+          `select * from public.staff_person_kpis(
+             null, null, $1, null, 'leaderboard'
+           )`,
+          [campId],
+        ),
+      /active camp crew required/i,
+    );
   } finally {
     await client.query("rollback");
   }

@@ -82,7 +82,7 @@ test("QR parser accepts staff-scan identifiers only", () => {
     normalized,
   );
   assert.equal(
-    parsePatientIdFromQr("https://camp.example/doctor?scan=" + id),
+    parsePatientIdFromQr("https://camp.example/scan?value=" + id),
     normalized,
   );
   assert.equal(
@@ -296,7 +296,7 @@ test("notification phone normalization accepts common Indian formats", () => {
 });
 
 test("queue labels and tones map known statuses", () => {
-  assert.equal(queueLabel("seen"), "Doctor seen");
+  assert.equal(queueLabel("seen"), "Seen");
   assert.equal(queueLabel("waiting"), "In queue");
   assert.equal(queueLabel("registered"), "Registered");
   assert.equal(queueTone("seen"), "ok");

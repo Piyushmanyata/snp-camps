@@ -45,7 +45,7 @@ export function StaffDetailPanel({
   onClose,
 }: {
   person: StaffPerson;
-  role: "doctor" | "volunteer" | "team_lead";
+  role: "volunteer" | "team_lead";
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(true);
@@ -124,27 +124,16 @@ export function StaffDetailPanel({
         <ErrorBox message={error} />
       ) : (
         <>
-          <div
-            className={`grid gap-2 ${
- role === "volunteer" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"
- }`}
-          >
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label={kpis?.label || "Total"} value={kpis?.total ?? 0} tone="ok" />
-            <Stat
-              label={role === "volunteer" ? "Handled today" : "Seen today"}
-              value={kpis?.today ?? 0}
-            />
-            {role === "volunteer" ? (
-              <>
-                <Stat label="In queue" value={kpis?.waiting ?? 0} tone="wait" />
-                <Stat label="Doctor seen" value={kpis?.seen ?? 0} tone="ok" />
-              </>
-            ) : null}
+            <Stat label="Handled today" value={kpis?.today ?? 0} />
+            <Stat label="In queue" value={kpis?.waiting ?? 0} tone="wait" />
+            <Stat label="Seen" value={kpis?.seen ?? 0} tone="ok" />
           </div>
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-              {role === "doctor" ? "Patients seen" : "Patients handled"}
+              Patients handled
             </p>
             {patients.length ? (
               <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border bg-white">
@@ -160,14 +149,7 @@ export function StaffDetailPanel({
                       </p>
                       <p className="text-xs text-muted">
                         {p.phone || "—"}
-                        {role === "doctor" && p.seen_at
-                          ? ` · ${new Date(p.seen_at).toLocaleString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              day: "numeric",
-                              month: "short",
-                            })}`
-                          : p.created_at
+                        {p.created_at
                             ? ` · ${new Date(p.created_at).toLocaleString("en-IN", {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -184,11 +166,7 @@ export function StaffDetailPanel({
                 ))}
               </ul>
             ) : (
-              <EmptyState>
-                {role === "doctor"
-                  ? "No patients marked seen yet."
-                  : "No patients registered by this volunteer yet."}
-              </EmptyState>
+              <EmptyState>No patients handled yet.</EmptyState>
             )}
           </div>
         </>

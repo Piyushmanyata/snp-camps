@@ -1,7 +1,6 @@
 /**
  * Behavioural coverage for /api/admin/staff/[role] (#23).
- * Four ops × two roles + invalid role + self-deactivation; cache invalidation
- * asserted on every mutating path (including volunteer — previously missing).
+ * Four volunteer lifecycle ops + invalid/retired roles + self-deactivation.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -26,7 +25,6 @@ import {
 import { __resetCookies } from "./stubs/next-headers.mjs";
 
 const ADMIN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const DOCTOR_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const VOLUNTEER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const TEAM_LEAD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
@@ -259,8 +257,8 @@ test("rejects unknown role with 400 before database access", async () => {
   assert.equal(__revalidateTagCalls.length, 0);
 });
 
-for (const role of ["doctor", "volunteer"]) {
-  test(`${role}: create provisions profile and invalidates doctors-list`, async () => {
+for (const role of ["volunteer"]) {
+  test(`${role}: create provisions profile`, async () => {
     sessionAsAdmin();
     const fake = createStaffFake();
     __setServiceRoleClient(fake);
@@ -280,12 +278,12 @@ for (const role of ["doctor", "volunteer"]) {
     assert.equal(body.staff.email, `${role}@example.com`);
     assert.ok(fake.profiles.has(body.staff.id));
     assert.equal(fake.profiles.get(body.staff.id).role, role);
-    assert.deepEqual(__revalidateTagCalls, ["doctors-list"]);
+    assert.deepEqual(__revalidateTagCalls, []);
   });
 
   test(`${role}: reset password returns temporary password and invalidates cache`, async () => {
     sessionAsAdmin();
-    const id = role === "doctor" ? DOCTOR_ID : VOLUNTEER_ID;
+    const id = VOLUNTEER_ID;
     const fake = createStaffFake([
       {
         id,
@@ -309,12 +307,12 @@ for (const role of ["doctor", "volunteer"]) {
     assert.equal(body.ok, true);
     assert.ok(body.temporaryPassword?.length >= 10);
     assert.equal(body.staff.id, id);
-    assert.deepEqual(__revalidateTagCalls, ["doctors-list"]);
+    assert.deepEqual(__revalidateTagCalls, []);
   });
 
   test(`${role}: deactivate sets disabled_at, bans sign-in, invalidates cache`, async () => {
     sessionAsAdmin();
-    const id = role === "doctor" ? DOCTOR_ID : VOLUNTEER_ID;
+    const id = VOLUNTEER_ID;
     const fake = createStaffFake([
       {
         id,
@@ -340,12 +338,12 @@ for (const role of ["doctor", "volunteer"]) {
     assert.ok(fake.profiles.get(id).disabled_at);
     const user = [...fake.users.values()].find((u) => u.id === id);
     assert.equal(user?.ban_duration, "876000h");
-    assert.deepEqual(__revalidateTagCalls, ["doctors-list"]);
+    assert.deepEqual(__revalidateTagCalls, []);
   });
 
   test(`${role}: reactivate clears disabled_at and invalidates cache`, async () => {
     sessionAsAdmin();
-    const id = role === "doctor" ? DOCTOR_ID : VOLUNTEER_ID;
+    const id = VOLUNTEER_ID;
     const disabledAt = "2026-07-01T00:00:00.000Z";
     const fake = createStaffFake([
       {
@@ -370,7 +368,7 @@ for (const role of ["doctor", "volunteer"]) {
     assert.equal(body.ok, true);
     assert.equal(body.staff.disabled_at, null);
     assert.equal(fake.profiles.get(id).disabled_at, null);
-    assert.deepEqual(__revalidateTagCalls, ["doctors-list"]);
+    assert.deepEqual(__revalidateTagCalls, []);
   });
 }
 
@@ -485,7 +483,7 @@ test("admin cannot deactivate their own account", async () => {
   const fake = createStaffFake([
     {
       id: ADMIN_ID,
-      role: "doctor",
+      role: "volunteer",
       full_name: "Self",
       email: "self@example.com",
       disabled_at: null,
@@ -495,10 +493,10 @@ test("admin cannot deactivate their own account", async () => {
 
   const res = await DELETE(
     new Request(
-      `http://127.0.0.1/api/admin/staff/doctor?id=${encodeURIComponent(ADMIN_ID)}`,
+      `http://127.0.0.1/api/admin/staff/volunteer?id=${encodeURIComponent(ADMIN_ID)}`,
       { method: "DELETE" },
     ),
-    ctx("doctor"),
+    ctx("volunteer"),
   );
   assert.equal(res.status, 400);
   const body = await res.json();
@@ -511,11 +509,11 @@ test("GET list returns staff rows for the path role", async () => {
   sessionAsAdmin();
   const rows = [
     {
-      id: DOCTOR_ID,
-      full_name: "Doc",
-      email: "doc@example.com",
+      id: VOLUNTEER_ID,
+      full_name: "Volunteer",
+      email: "volunteer@example.com",
       phone: null,
-      role: "doctor",
+      role: "volunteer",
       created_at: "2026-01-01",
       disabled_at: null,
     },
@@ -530,15 +528,15 @@ test("GET list returns staff rows for the path role", async () => {
       email: "admin@test.local",
       disabled_at: null,
     },
-    listByRole: { doctor: rows, volunteer: [] },
+    listByRole: { volunteer: rows },
   });
 
   const res = await GET(
-    new Request("http://127.0.0.1/api/admin/staff/doctor"),
-    ctx("doctor"),
+    new Request("http://127.0.0.1/api/admin/staff/volunteer"),
+    ctx("volunteer"),
   );
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.staff.length, 1);
-  assert.equal(body.staff[0].id, DOCTOR_ID);
+  assert.equal(body.staff[0].id, VOLUNTEER_ID);
 });

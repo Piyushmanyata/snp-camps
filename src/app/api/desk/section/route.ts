@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   const section: SectionKey = sectionRaw;
 
   // Role gates for sensitive sections
-  if (section === "admin-queue-counts" && profile?.role !== "admin") {
+  if (section === "admin-analytics" && profile?.role !== "admin") {
     return NextResponse.json(
       { error: "Admin access required" },
       { status: 403, headers: NO_STORE },

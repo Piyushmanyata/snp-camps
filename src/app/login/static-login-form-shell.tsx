@@ -11,7 +11,7 @@ export function StaticLoginFormShell() {
   return (
     <Shell
       title="Staff login"
-      subtitle="Admin, volunteer, and doctor access"
+      subtitle="Admin and camp staff access"
       backHref="/"
       width="md"
       roleLabel="Staff"

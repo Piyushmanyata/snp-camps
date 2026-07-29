@@ -12,7 +12,7 @@ import type { SectionKey } from "@/lib/section-reads";
 import { Card, SectionTitle, Spinner, Stat } from "@/components/ui";
 
 type SectionState<T> =
-  | { status: "data"; data: T }
+  | { status: "data"; data: T; staleError?: string }
   | { status: "error"; error: string }
   | { status: "loading" };
 
@@ -30,7 +30,10 @@ export function SectionDataIsland<T>({
   section: SectionKey;
   campId?: string | null;
   initial: { ok: true; data: T } | { ok: false; error: string };
-  children: (data: T, controls: { refresh: () => void }) => ReactNode;
+  children: (
+    data: T,
+    controls: { refresh: () => void; pending: boolean },
+  ) => ReactNode;
 }) {
   const [state, setState] = useState<SectionState<T>>(() =>
     initial.ok
@@ -51,7 +54,9 @@ export function SectionDataIsland<T>({
       }
       setState((prev) => {
         // Preserve already-loaded content on soft refresh failure (#63).
-        if (prev.status === "data") return prev;
+        if (prev.status === "data") {
+          return { ...prev, staleError: result.error };
+        }
         return { status: "error", error: result.error };
       });
     });
@@ -74,7 +79,27 @@ export function SectionDataIsland<T>({
     );
   }
 
-  return <>{children(state.data, { refresh })}</>;
+  return (
+    <>
+      {state.staleError ? (
+        <div
+          role="status"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm"
+        >
+          <span>Showing earlier data. {state.staleError}</span>
+          <button
+            type="button"
+            className="min-h-12 rounded-lg px-3 font-semibold text-brand"
+            onClick={refresh}
+            disabled={pending}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {children(state.data, { refresh, pending })}
+    </>
+  );
 }
 
 /** Volunteer KPI strip with isolated retry. */
@@ -106,15 +131,57 @@ export function VolunteerKpisSection({
           <Stat label="You handled" value={data.total} tone="ok" />
           <Stat label="Handled today" value={data.today} />
           <Stat label="In queue" value={data.waiting} tone="wait" />
-          <Stat label="Doctor seen" value={data.seen} tone="ok" />
+          <Stat label="Seen" value={data.seen} tone="ok" />
         </div>
       )}
     </SectionDataIsland>
   );
 }
 
-/** Admin header KPI strip with isolated retry. */
-export function AdminHeaderStatsPanel({
+function percent(value: number, total: number): number {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function waitLabel(value: number | null): string {
+  if (value == null) return "Unavailable";
+  if (value < 1) return "< 1 min";
+  return `${Math.round(value)} min`;
+}
+
+function FunnelRow({
+  label,
+  value,
+  total,
+}: {
+  label: string;
+  value: number;
+  total: number;
+}) {
+  const pct = percent(value, total);
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="tabular text-muted">
+          {value} · {pct}%
+        </span>
+      </div>
+      <div
+        className="h-2 overflow-hidden rounded-full bg-border/80"
+        role="progressbar"
+        aria-label={`${label}: ${pct}%`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Admin analytics card with one isolated aggregate retry seam. */
+export function AdminAnalyticsPanel({
   campId,
   initial,
 }: {
@@ -125,8 +192,16 @@ export function AdminHeaderStatsPanel({
         data: {
           registered: number;
           inQueue: number;
-          doctorSeen: number;
-          avgWaitMinutes: number | null;
+          seen: number;
+          total: number;
+          currentLongestWaitMinutes: number | null;
+          completedWaitMedianMinutes: number | null;
+          completedWaitP90Minutes: number | null;
+          completedToday: number;
+          deskRegistrations: number;
+          selfRegistrations: number;
+          scannedRegistrations: number;
+          selfDeclaredRegistrations: number;
         };
       }
     | { ok: false; error: string }
@@ -134,38 +209,110 @@ export function AdminHeaderStatsPanel({
 }) {
   if (!campId || !initial) {
     return (
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <Stat label="Registered" value={0} />
-        <Stat label="In queue" value={0} tone="wait" />
-        <Stat label="Doctor seen" value={0} tone="ok" />
-      </div>
+      <Card>
+        <SectionTitle>Active-camp analytics</SectionTitle>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <Stat label="Registered" value={0} />
+          <Stat label="In queue" value={0} tone="wait" />
+          <Stat label="Seen" value={0} tone="ok" />
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          No active camp. Activate a camp to see operational analytics.
+        </p>
+      </Card>
     );
   }
 
   return (
     <SectionDataIsland
-      section="admin-queue-counts"
+      section="admin-analytics"
       campId={campId}
       initial={initial}
     >
-      {(data) => (
-        <div className="space-y-2">
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <Stat label="Registered" value={data.registered} />
-            <Stat label="In queue" value={data.inQueue} tone="wait" />
-            <Stat label="Doctor seen" value={data.doctorSeen} tone="ok" />
+      {(data, controls) => (
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <SectionTitle hint="Active camp · Asia/Kolkata">
+              Operational analytics
+            </SectionTitle>
+            <button
+              type="button"
+              onClick={controls.refresh}
+              disabled={controls.pending}
+              className="pressable min-h-12 rounded-lg px-3 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
+              aria-busy={controls.pending}
+            >
+              {controls.pending ? "Refreshing…" : "Refresh"}
+            </button>
           </div>
-          {data.avgWaitMinutes != null ? (
-            <p className="text-[0.8125rem] text-muted">
-              Avg wait (queued → doctor seen):{" "}
-              <span className="font-semibold tabular text-foreground">
-                {data.avgWaitMinutes < 1
-                  ? "< 1 min"
-                  : `${Math.round(data.avgWaitMinutes)} min`}
-              </span>
+          {data.total === 0 ? (
+            <p className="rounded-xl border border-border bg-background/50 p-3 text-sm text-muted">
+              No registrations in this camp yet. Wait percentiles remain
+              unavailable until a queued patient is marked seen.
             </p>
           ) : null}
-        </div>
+          <div className="mt-3 grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2.5">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">
+                Queue funnel
+              </p>
+              <FunnelRow label="Registered" value={data.registered} total={data.total} />
+              <FunnelRow label="In queue" value={data.inQueue} total={data.total} />
+              <FunnelRow label="Seen" value={data.seen} total={data.total} />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">
+                Queue pressure & throughput
+              </p>
+              <dl className="mt-2 grid grid-cols-2 gap-2">
+                {[
+                  ["Current queue", String(data.inQueue)],
+                  ["Longest current wait", waitLabel(data.currentLongestWaitMinutes)],
+                  ["Completed today", String(data.completedToday)],
+                  ["Median completed wait", waitLabel(data.completedWaitMedianMinutes)],
+                  ["P90 completed wait", waitLabel(data.completedWaitP90Minutes)],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-xl border border-border bg-background/50 p-3"
+                  >
+                    <dt className="text-xs text-muted">{label}</dt>
+                    <dd className="tabular mt-0.5 text-lg font-bold text-foreground">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted">
+              Registration source mix
+            </p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <FunnelRow
+                label="Desk registration"
+                value={data.deskRegistrations}
+                total={data.total}
+              />
+              <FunnelRow
+                label="Self registration"
+                value={data.selfRegistrations}
+                total={data.total}
+              />
+              <FunnelRow
+                label="Card scanned"
+                value={data.scannedRegistrations}
+                total={data.total}
+              />
+              <FunnelRow
+                label="Self-declared details"
+                value={data.selfDeclaredRegistrations}
+                total={data.total}
+              />
+            </div>
+          </div>
+        </Card>
       )}
     </SectionDataIsland>
   );

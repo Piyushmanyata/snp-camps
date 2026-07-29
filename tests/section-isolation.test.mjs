@@ -18,6 +18,12 @@ import {
   SECTION_KEYS,
 } from "../src/lib/section-reads.ts";
 import { fetchDeskSection } from "../src/lib/section-client.ts";
+import { GET as getSection } from "../src/app/api/desk/section/route.ts";
+import {
+  __resetAuthMock,
+  __setAuthMock,
+} from "./stubs/supabase-ssr.mjs";
+import { __resetCookies } from "./stubs/next-headers.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -51,10 +57,10 @@ test("fetchDeskSection requests only the named section (queue)", async () => {
   assert.equal(urls.length, 1);
   assert.match(urls[0], /section=queue/);
   assert.match(urls[0], /campId=11111111/);
-  assert.doesNotMatch(urls[0], /section=seats|section=doctors|section=volunteer-kpis/);
+  assert.doesNotMatch(urls[0], /section=seats|section=admin-analytics|section=volunteer-kpis/);
 });
 
-test("fetchDeskSection doctors retry never requests queue or kpis", async () => {
+test("fetchDeskSection analytics retry never requests queue or volunteer KPIs", async () => {
   /** @type {string[]} */
   const urls = [];
   const fetchImpl = async (url) => {
@@ -65,23 +71,19 @@ test("fetchDeskSection doctors retry never requests queue or kpis", async () => 
     );
   };
 
-  await fetchDeskSection("doctors", { fetchImpl });
+  await fetchDeskSection("admin-analytics", {
+    campId: "11111111-1111-4111-8111-111111111111",
+    fetchImpl,
+  });
   await fetchDeskSection("volunteer-kpis", {
     campId: "11111111-1111-4111-8111-111111111111",
     fetchImpl,
   });
-  await fetchDeskSection("doctor-stats", {
-    campId: "11111111-1111-4111-8111-111111111111",
-    fetchImpl,
-  });
-
-  assert.equal(urls.length, 3);
-  assert.match(urls[0], /section=doctors/);
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /section=admin-analytics/);
   assert.doesNotMatch(urls[0], /section=queue/);
   assert.match(urls[1], /section=volunteer-kpis/);
-  assert.doesNotMatch(urls[1], /section=doctors|section=queue/);
-  assert.match(urls[2], /section=doctor-stats/);
-  assert.doesNotMatch(urls[2], /section=doctor-seen|section=queue/);
+  assert.doesNotMatch(urls[1], /section=admin-analytics|section=queue/);
 });
 
 test("fetchDeskSection maps HTTP failure to safe error (no raw body leak)", async () => {
@@ -117,6 +119,82 @@ test("section key catalog is exhaustive for the API seam", () => {
   }
   assert.equal(isSectionKey("router-refresh"), false);
   assert.equal(isSectionKey("all"), false);
+});
+
+test("admin analytics section is role-gated and returns aggregate-only data", async () => {
+  const campId = "11111111-1111-4111-8111-111111111111";
+  const url = `http://local/api/desk/section?section=admin-analytics&campId=${campId}`;
+
+  __resetAuthMock();
+  __resetCookies([]);
+  assert.equal((await getSection(new Request(url))).status, 401);
+
+  for (const role of ["patient", "doctor", "volunteer", "team_lead"]) {
+    __resetCookies([{ name: "sb-test-auth-token", value: "1" }]);
+    __setAuthMock({
+      userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      profile: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        role,
+        full_name: role,
+        phone: null,
+        email: null,
+        disabled_at: null,
+      },
+    });
+    assert.equal((await getSection(new Request(url))).status, 403);
+  }
+
+  __setAuthMock({
+    profile: {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      role: "volunteer",
+      full_name: "Disabled",
+      phone: null,
+      email: null,
+      disabled_at: "2026-07-29T00:00:00.000Z",
+    },
+  });
+  assert.equal((await getSection(new Request(url))).status, 401);
+
+  __setAuthMock({
+    profile: {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      role: "admin",
+      full_name: "Admin",
+      phone: null,
+      email: null,
+      disabled_at: null,
+    },
+    rpc: async (name) => {
+      assert.equal(name, "camp_queue_counts");
+      return {
+        data: [{
+          registered_count: 1,
+          waiting_count: 2,
+          seen_count: 3,
+          total_count: 6,
+          current_longest_wait_minutes: 12,
+          completed_wait_median_minutes: 10,
+          completed_wait_p90_minutes: 20,
+          completed_today_count: 3,
+          desk_registration_count: 4,
+          self_registration_count: 2,
+          scanned_registration_count: 5,
+          self_declared_count: 1,
+        }],
+        error: null,
+      };
+    },
+  });
+  const response = await getSection(new Request(url));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.data.total, 6);
+  assert.deepEqual(
+    Object.keys(body.data).some((key) => /name|phone|token|aadhaar|address/i.test(key)),
+    false,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -280,7 +358,7 @@ test("admin page section loaders do not throw inside Suspense children", () => {
   assert.doesNotMatch(admin, /throw new Error\("Admin queue counts/);
   // Uses result-model loaders
   assert.match(admin, /loadAdminQueueCountsSection|loadQueueSection|loadSeatsSection/);
-  assert.match(admin, /AdminHeaderStatsPanel|initialLoadKnown/);
+  assert.match(admin, /AdminAnalyticsPanel|initialLoadKnown/);
 });
 
 test("volunteer page always mounts LiveQueue/SeatBoard for camp (no SectionLoadError gate)", () => {

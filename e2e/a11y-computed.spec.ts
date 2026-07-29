@@ -565,7 +565,7 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
   ).toBeVisible();
 
   const filters = page.getByRole("button", {
-    name: /^(All|Registered|In queue|Doctor seen)$/,
+    name: /^(All|Registered|In queue|Seen)$/,
   });
   const filterCount = await filters.count();
   expect(filterCount).toBeGreaterThan(0);

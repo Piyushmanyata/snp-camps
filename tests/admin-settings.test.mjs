@@ -59,7 +59,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
     spectacles_collection_venue: null,
     post_camp_surgery_date: null,
     post_camp_surgery_venue: null,
-    paper_fallback_mode: false,
   };
 
   const mockClient = {
@@ -70,7 +69,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
           spectacles_collection_venue: params.p_spectacles_collection_venue,
           post_camp_surgery_date: params.p_post_camp_surgery_date,
           post_camp_surgery_venue: params.p_post_camp_surgery_venue,
-          paper_fallback_mode: params.p_paper_fallback_mode,
         };
         return { error: null };
       }
@@ -92,7 +90,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
     spectaclesCollectionVenue: null,
     postCampSurgeryDate: null,
     postCampSurgeryVenue: null,
-    paperFallbackMode: false,
   });
 
   // Admin updates only spectacles collection pair
@@ -101,7 +98,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
     {
       spectaclesCollectionDate: "2026-10-20",
       spectaclesCollectionVenue: "Community Center",
-      paperFallbackMode: true,
     },
     mockClient
   );
@@ -111,7 +107,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
   assert.equal(afterSpecUpdate.spectaclesCollectionVenue, "Community Center");
   assert.equal(afterSpecUpdate.postCampSurgeryDate, null, "surgery date remains unset");
   assert.equal(afterSpecUpdate.postCampSurgeryVenue, null, "surgery venue remains unset");
-  assert.equal(afterSpecUpdate.paperFallbackMode, true, "paper fallback mode is enabled");
 
   // Admin updates post-camp surgery pair independently
   await updateCampSettings(
@@ -121,7 +116,6 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
       spectaclesCollectionVenue: "Community Center",
       postCampSurgeryDate: "2026-11-05",
       postCampSurgeryVenue: "General Hospital",
-      paperFallbackMode: false,
     },
     mockClient
   );
@@ -131,5 +125,4 @@ test("getCampSettings & updateCampSettings: mock client handles independent sett
   assert.equal(afterSurgeryUpdate.spectaclesCollectionVenue, "Community Center");
   assert.equal(afterSurgeryUpdate.postCampSurgeryDate, "2026-11-05");
   assert.equal(afterSurgeryUpdate.postCampSurgeryVenue, "General Hospital");
-  assert.equal(afterSurgeryUpdate.paperFallbackMode, false);
 });

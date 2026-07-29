@@ -11,10 +11,7 @@ const KOLKATA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-/**
- * Doctor/volunteer KPIs + recent patients for camp-crew desks and admin.
- * Doctor → patients seen by them. Volunteer → patients they registered or checked in.
- */
+/** Staff KPIs and recent handled patients for camp-crew desks and admin. */
 export async function GET(req: Request) {
   const { userId, profile } = await getSessionProfile();
   if (!userId || !isCampCrew(profile?.role)) {
@@ -24,9 +21,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const id = (url.searchParams.get("id") || "").trim();
   const role = (url.searchParams.get("role") || "").trim();
-  if (!UUID.test(id) || (role !== "doctor" && role !== "volunteer" && role !== "team_lead")) {
+  if (!UUID.test(id) || (role !== "volunteer" && role !== "team_lead")) {
     return NextResponse.json(
-      { error: "Valid id and role (doctor|volunteer|team_lead) required" },
+      { error: "Valid id and role (volunteer|team_lead) required" },
       { status: 400 },
     );
   }
@@ -77,18 +74,9 @@ export async function GET(req: Request) {
     .select(
       "id, reg_no, full_name, phone, queue_status, seen_at, created_at",
     )
+    .or(`created_by.eq.${id},checked_in_by.eq.${id}`)
+    .order("created_at", { ascending: false })
     .limit(40);
-
-  if (role === "doctor") {
-    patientsQuery = patientsQuery
-      .eq("seen_by", id)
-      .eq("queue_status", "seen")
-      .order("seen_at", { ascending: false });
-  } else {
-    patientsQuery = patientsQuery
-      .or(`created_by.eq.${id},checked_in_by.eq.${id}`)
-      .order("created_at", { ascending: false });
-  }
   if (campId) {
     patientsQuery = patientsQuery.eq("camp_id", campId);
   }
@@ -129,9 +117,7 @@ export async function GET(req: Request) {
       today: Number(kpiRow?.today ?? 0),
       waiting: Number(kpiRow?.waiting ?? 0),
       seen: Number(kpiRow?.seen ?? 0),
-      label:
-        kpiRow?.label ||
-        (role === "doctor" ? "Patients seen" : "Patients handled"),
+      label: kpiRow?.label || "Patients handled",
     },
     patients: patients || [],
   });

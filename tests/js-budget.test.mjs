@@ -34,13 +34,13 @@ test("checkBudgets fails when a route exceeds its gzipped budget", () => {
 
 test("checkBudgets fails when a measured route has no budget entry", () => {
   const result = checkBudgets(
-    [{ route: "/doctor", raw: 100, gzip: 50 }],
+    [{ route: "/example", raw: 100, gzip: 50 }],
     { "/volunteer": 999_999 },
   );
 
   assert.equal(result.ok, false);
-  assert.deepEqual(result.missingBudgets, ["/doctor"]);
-  assert.match(formatReport(result), /budget missing: \/doctor/);
+  assert.deepEqual(result.missingBudgets, ["/example"]);
+  assert.match(formatReport(result), /budget missing: \/example/);
 });
 
 test("checkBudgets passes when every route is within budget", () => {
@@ -130,9 +130,9 @@ test("checkEagerMarkers detects minified jsqr (BitMatrix+VERSIONS / decimal hex)
   );
 
   const result = checkEagerMarkers(
-    [{ route: "/doctor", initialChunks: [chunkRel] }],
+    [{ route: "/example", initialChunks: [chunkRel] }],
     dir,
-    { "/doctor": ["jsqr_lib"] },
+    { "/example": ["jsqr_lib"] },
   );
   assert.equal(result.ok, false);
   assert.match(result.failures[0].message, /jsqr decoder library/);
@@ -147,9 +147,9 @@ test("checkEagerMarkers passes when only property name jsQR appears", () => {
   fs.writeFileSync(abs, `if (opts.jsQR) opts.jsQR(data, w, h);`);
 
   const result = checkEagerMarkers(
-    [{ route: "/doctor", initialChunks: [chunkRel] }],
+    [{ route: "/example", initialChunks: [chunkRel] }],
     dir,
-    { "/doctor": ["jsqr_lib"] },
+    { "/example": ["jsqr_lib"] },
   );
   assert.equal(result.ok, true);
   fs.rmSync(dir, { recursive: true, force: true });

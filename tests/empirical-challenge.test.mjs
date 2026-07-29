@@ -447,7 +447,7 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
     if (i < 5) {
       // Patients 0..4 were 'waiting'.
       // EXACTLY 1 request should succeed (error_code null, queue_status seen, already_seen false).
-      // The other 2 requests MUST be 'already_seen' (error_code already_seen, already_seen true, doctor_id = winner doctor_id).
+      // The other 2 requests MUST be 'already_seen' with the original staff attribution.
       const successes = pResults.filter(
         (r) => r.result?.error_code === null && r.result?.queue_status === "seen",
       );

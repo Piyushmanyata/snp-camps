@@ -35,9 +35,7 @@ export type AdminPatientRow = {
   seen_at?: string | null;
   volunteer_name?: string | null;
   checked_in_by_name?: string | null;
-  doctor_name?: string | null;
-  /** True when at least one prescriptions row exists for this patient. */
-  has_prescription?: boolean;
+  seen_by_name?: string | null;
 };
 
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -92,7 +90,7 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       | { full_name: string }
       | { full_name: string }[]
       | null;
-    const doctor = patient.doctor as
+    const seenByProfile = patient.seen_by_profile as
       | { full_name: string }
       | { full_name: string }[]
       | null;
@@ -105,16 +103,9 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
     const checkedInByName = Array.isArray(checkedInByRel)
       ? checkedInByRel[0]?.full_name ?? null
       : checkedInByRel?.full_name ?? null;
-    const doctorName = Array.isArray(doctor)
-      ? doctor[0]?.full_name ?? null
-      : doctor?.full_name ?? null;
-    const prescriptions = patient.prescriptions as
-      | { id: string }
-      | { id: string }[]
-      | null;
-    const hasPrescription = Array.isArray(prescriptions)
-      ? prescriptions.length > 0
-      : Boolean(prescriptions?.id);
+    const seenByName = Array.isArray(seenByProfile)
+      ? seenByProfile[0]?.full_name ?? null
+      : seenByProfile?.full_name ?? null;
     return {
       id: patient.id as string,
       reg_no: patient.reg_no as number,
@@ -136,24 +127,23 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       seen_at: (patient.seen_at as string | null) ?? null,
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
-      doctor_name: doctorName,
-      has_prescription: hasPrescription,
+      seen_by_name: seenByName,
     };
   });
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), doctor:profiles!seen_by(full_name), prescriptions(id)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), seen_by_profile:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
   totalCount,
-  avgWaitMinutes = null,
+  completedMedianWaitMinutes = null,
   showAttribution = true,
 }: {
   initial: AdminPatientRow[];
   totalCount?: number;
-  avgWaitMinutes?: number | null;
+  completedMedianWaitMinutes?: number | null;
   showAttribution?: boolean;
 }) {
   const router = useRouter();
@@ -314,14 +304,15 @@ export function AdminPatients({
 
   return (
     <div className="space-y-3">
-      {avgWaitMinutes != null && !Number.isNaN(avgWaitMinutes) ? (
+      {completedMedianWaitMinutes != null &&
+      !Number.isNaN(completedMedianWaitMinutes) ? (
         <div className="grid grid-cols-1 gap-2 sm:max-w-xs">
           <Stat
-            label="Avg wait (queue → doctor)"
+            label="Median wait (queue → seen)"
             value={
-              avgWaitMinutes < 1
+              completedMedianWaitMinutes < 1
                 ? "< 1 min"
-                : `${Math.round(avgWaitMinutes)} min`
+                : `${Math.round(completedMedianWaitMinutes)} min`
             }
             tone="wait"
           />
@@ -349,7 +340,7 @@ export function AdminPatients({
               ["all", "All"],
               ["registered", "Registered"],
               ["waiting", "In queue"],
-              ["seen", "Doctor seen"],
+              ["seen", "Seen"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -442,13 +433,13 @@ export function AdminPatients({
                       {r.queue_status === "seen" || r.seen_at ? (
                         <p>
                           <span className="font-semibold text-foreground/70">
-                            Doctor seen
+                            Seen
                           </span>
                           {seenAt ? ` · ${seenAt}` : ""}
-                          {r.doctor_name
-                            ? ` · Dr ${r.doctor_name}`
+                          {r.seen_by_name
+                            ? ` · by ${r.seen_by_name}`
                             : r.seen_by
-                              ? " · doctor"
+                              ? " · by staff"
                               : ""}
                           {wait != null ? ` · wait ${wait} min` : ""}
                         </p>
@@ -464,17 +455,8 @@ export function AdminPatients({
                     href={`/print/${r.id}`}
                     className="pressable inline-flex min-h-12 items-center rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
                   >
-                    Print slip
+                    Print prescription
                   </Link>
-                  {r.has_prescription ? (
-                    <Link
-                      href={`/print/prescription/${r.id}`}
-                      className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-2.5 py-2 text-sm font-semibold text-brand hover:bg-white"
-                      data-testid="print-prescription"
-                    >
-                      Print prescription
-                    </Link>
-                  ) : null}
                   <Button
                     type="button"
                     variant="danger"

@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
-export type StaffRole = "doctor" | "volunteer" | "team_lead";
+export type StaffRole = "volunteer" | "team_lead";
 
-const STAFF_ROLES = new Set<string>(["doctor", "volunteer", "team_lead"]);
+const STAFF_ROLES = new Set<string>(["volunteer", "team_lead"]);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -21,7 +20,6 @@ function generateTemporaryPassword(length = 14): string {
 }
 
 function roleLabel(role: StaffRole): string {
-  if (role === "doctor") return "Doctor";
   if (role === "team_lead") return "Team Lead";
   return "Volunteer";
 }
@@ -40,7 +38,7 @@ async function parseRole(
  * Who may act on this staff role: an admin always, plus a team lead confined to
  * volunteers. `scopeTeamLeadId` is non-null only for the team-lead case and is
  * the caller's own id — every query below filters on it, so a lead can never
- * read or change a volunteer outside their team, or any doctor or other lead.
+ * read or change a volunteer outside their team, or another lead.
  *
  * A separate team-lead route would duplicate the deactivate/reactivate/reset
  * flows and drift from them; one guard here keeps a single implementation.
@@ -64,11 +62,6 @@ async function requireStaffManager(
       { status: 403 },
     ),
   };
-}
-
-/** Invalidate desk caches that depend on staff lists (over-invalidate is cheap). */
-function invalidateStaffCaches() {
-  revalidateTag("doctors-list", { expire: 0 });
 }
 
 type RouteCtx = { params: Promise<{ role: string }> };
@@ -235,8 +228,6 @@ export async function POST(req: Request, { params }: RouteCtx) {
     );
   }
 
-  invalidateStaffCaches();
-
   return NextResponse.json(
     {
       ok: true,
@@ -357,7 +348,6 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
       );
     }
 
-    invalidateStaffCaches();
     return NextResponse.json({ ok: true, staff: reactivated });
   }
 
@@ -378,8 +368,6 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
       { status: 500 },
     );
   }
-
-  invalidateStaffCaches();
 
   return NextResponse.json(
     {
@@ -513,6 +501,5 @@ export async function DELETE(req: Request, { params }: RouteCtx) {
     );
   }
 
-  invalidateStaffCaches();
   return NextResponse.json({ ok: true, id, disabledAt });
 }

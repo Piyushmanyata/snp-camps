@@ -27,7 +27,6 @@ export type Camp = {
   spectacles_collection_venue?: string | null;
   post_camp_surgery_date?: string | null;
   post_camp_surgery_venue?: string | null;
-  paper_fallback_mode?: boolean;
 };
 
 export type CampDayStats = {
@@ -38,13 +37,10 @@ export type CampDayStats = {
   seats_taken: number;
   seats_left: number;
   is_full: boolean;
-  theatre_capacity?: number;
-  theatre_reserved?: number;
-  theatre_remaining?: number;
 };
 
 export function queueLabel(status: string) {
-  if (status === "seen") return "Doctor seen";
+  if (status === "seen") return "Seen";
   if (status === "waiting") return "In queue";
   return "Registered";
 }

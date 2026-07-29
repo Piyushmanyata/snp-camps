@@ -1,6 +1,6 @@
 /**
  * Minimal desk live payload (#53) — waiting queue + seat board only.
- * Does not include doctor list or staff KPIs (those stay on full page load).
+ * Does not include staff KPIs (those stay on full page load).
  */
 
 import type { CampDayStats } from "@/lib/types";

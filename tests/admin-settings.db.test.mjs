@@ -114,10 +114,10 @@ test("Admin camp settings DB operations", async (t) => {
     [campId, "Admin Settings Test Camp", testVenue]
   );
 
-  // 1. Verify default unset state (all settings columns NULL / paper_fallback_mode false)
+  // 1. Verify default unset state for the active settings contract.
   const { rows: defaultRows } = await client.query(
     `select spectacles_collection_date, spectacles_collection_venue,
-            post_camp_surgery_date, post_camp_surgery_venue, paper_fallback_mode
+            post_camp_surgery_date, post_camp_surgery_venue
      from public.camps where id = $1`,
     [campId]
   );
@@ -127,26 +127,24 @@ test("Admin camp settings DB operations", async (t) => {
   assert.equal(def.spectacles_collection_venue, null, "collection venue is null by default");
   assert.equal(def.post_camp_surgery_date, null, "surgery date is null by default");
   assert.equal(def.post_camp_surgery_venue, null, "surgery venue is null by default");
-  assert.equal(def.paper_fallback_mode, false, "paper fallback mode is false by default");
 
   // 2. Admin role can set spectacles collection date and venue
   await asAdmin(async () => {
     await client.query(
-      `select public.update_camp_settings($1, $2::date, $3::text, $4::date, $5::text, $6::boolean)`,
+      `select public.update_camp_settings($1, $2::date, $3::text, $4::date, $5::text)`,
       [
         campId,
         "2026-10-15",
         "Local Clinic 1",
         null,
         null,
-        false,
       ]
     );
   });
 
   const { rows: specRows } = await client.query(
     `select spectacles_collection_date::text, spectacles_collection_venue,
-            post_camp_surgery_date::text, post_camp_surgery_venue, paper_fallback_mode
+            post_camp_surgery_date::text, post_camp_surgery_venue
      from public.camps where id = $1`,
     [campId]
   );
@@ -155,24 +153,23 @@ test("Admin camp settings DB operations", async (t) => {
   assert.equal(specRows[0].post_camp_surgery_date, null, "surgery date remains independently null");
   assert.equal(specRows[0].post_camp_surgery_venue, null, "surgery venue remains independently null");
 
-  // 3. Admin can set post-camp surgery pair and paper fallback mode independently
+  // 3. Admin can set the post-camp surgery pair independently.
   await asAdmin(async () => {
     await client.query(
-      `select public.update_camp_settings($1, $2::date, $3::text, $4::date, $5::text, $6::boolean)`,
+      `select public.update_camp_settings($1, $2::date, $3::text, $4::date, $5::text)`,
       [
         campId,
         "2026-10-15",
         "Local Clinic 1",
         "2026-11-01",
         "District Hospital",
-        true,
       ]
     );
   });
 
   const { rows: surgRows } = await client.query(
     `select spectacles_collection_date::text, spectacles_collection_venue,
-            post_camp_surgery_date::text, post_camp_surgery_venue, paper_fallback_mode
+            post_camp_surgery_date::text, post_camp_surgery_venue
      from public.camps where id = $1`,
     [campId]
   );
@@ -180,7 +177,6 @@ test("Admin camp settings DB operations", async (t) => {
   assert.equal(surgRows[0].spectacles_collection_venue, "Local Clinic 1");
   assert.equal(surgRows[0].post_camp_surgery_date, "2026-11-01");
   assert.equal(surgRows[0].post_camp_surgery_venue, "District Hospital");
-  assert.equal(surgRows[0].paper_fallback_mode, true);
 
   // 4. Venue length validation fails in DB when venue > 35 chars
   const longVenue = "A".repeat(36);
@@ -188,7 +184,7 @@ test("Admin camp settings DB operations", async (t) => {
     async () => {
       await asAdmin(async () => {
         await client.query(
-          `select public.update_camp_settings($1, null, $2, null, null, false)`,
+          `select public.update_camp_settings($1, null, $2, null, null)`,
           [campId, longVenue]
         );
       });
@@ -248,7 +244,7 @@ test("Role boundary: Volunteer / Doctor / Anonymous update attempt is refused by
         await client.query(`select set_config('request.jwt.claims', '{"role": "authenticated", "sub": "00000000-0000-0000-0000-000000000000"}', true)`);
         await client.query(`set local role authenticated`);
         await client.query(
-          `select public.update_camp_settings($1, '2026-10-10', 'Hacked Venue', null, null, true)`,
+          `select public.update_camp_settings($1, '2026-10-10', 'Hacked Venue', null, null)`,
           [campId]
         );
         await client.query("commit");

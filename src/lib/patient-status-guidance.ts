@@ -9,7 +9,7 @@ export type PatientStatusGuidance = {
  * staff read English, and a leak either way is a bug (CONTEXT.md §Language).
  *
  * There is no treatment-order arm any more: migration 20260728119000 retired the
- * counter, so `patient_status_by_token` no longer returns `pending_orders` and
+ * station, so `patient_status_by_token` no longer returns `pending_orders` and
  * the old "pending treatments" branch was unreachable.
  */
 export function getPatientStatusGuidance(

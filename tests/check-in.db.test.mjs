@@ -284,7 +284,7 @@ test("check_in is idempotent for waiting and blocks seen", async (t) => {
      where id = $1`,
     [created.id, staffId],
   );
-  // seen_by must be a doctor for a clean message; still expect already_seen.
+  // seen_by identifies the staff member who marked the patient seen.
   const blocked = await asStaff(staffId, async () => {
     const { rows } = await client.query(
       `select * from public.check_in_patient($1, null)`,

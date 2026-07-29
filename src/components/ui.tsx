@@ -68,7 +68,7 @@ export function Shell({
   actions?: ReactNode;
   /** Desktop content width. Mobile stays full-bleed with padding. */
   width?: keyof typeof shellWidths;
-  /** Optional role chip (Admin, Volunteer, Doctor, Patient) */
+  /** Optional role chip for the signed-in camp role. */
   roleLabel?: string;
   /** Mobile sticky bottom actions (hidden on desktop) */
   dock?: DockItem[];

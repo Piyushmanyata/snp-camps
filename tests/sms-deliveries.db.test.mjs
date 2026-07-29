@@ -201,6 +201,143 @@ test("registration with phone enqueues pending delivery in same txn", async (t) 
   }
 });
 
+test("same-day desk walk-in never creates or exposes a registration SMS", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
+  const { campId, dayId } = await seedCampDay();
+  try {
+    await admin.query(
+      `update public.camp_days
+       set day_date = (timezone('Asia/Kolkata', now()))::date
+       where id = $1`,
+      [dayId],
+    );
+    const { rows } = await admin.query("begin").then(async () => {
+      await admin.query(
+        `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+      );
+      await admin.query(
+        `select set_config('request.jwt.claim.sub', $1, true)`,
+        [staffId],
+      );
+      await admin.query(
+        `select set_config('request.jwt.claims', $1, true)`,
+        [JSON.stringify({ role: "authenticated", sub: staffId })],
+      );
+      const result = await admin.query(
+        `select id, queue_status
+         from public.register_patient_idempotent(
+           $1::uuid, $2::uuid, 'Same Day Patient', 'F', 44, 'A',
+           '9876502468', null, null, null, null, $3::uuid, false, false
+         )`,
+        [randomUUID(), campId, dayId],
+      );
+      await admin.query("commit");
+      return result;
+    });
+
+    assert.equal(rows[0].queue_status, "waiting");
+    const delivery = await admin.query(
+      `select 1 from public.sms_deliveries where patient_id = $1`,
+      [rows[0].id],
+    );
+    assert.deepEqual(delivery.rows, []);
+
+    await admin.query("begin");
+    try {
+      await admin.query(
+        `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+      );
+      await admin.query(
+        `select set_config('request.jwt.claim.sub', $1, true)`,
+        [staffId],
+      );
+      await admin.query(`set local role authenticated`);
+      const notify = await admin.query(
+        `select * from public.patient_registration_notify_fields($1)`,
+        [rows[0].id],
+      );
+      assert.deepEqual(notify.rows, []);
+    } finally {
+      await admin.query("rollback");
+    }
+  } finally {
+    if (admin) {
+      await admin.query("rollback").catch(() => {});
+    }
+    await cleanupCamp(campId);
+    await cleanupStaff(staffId);
+  }
+});
+
+test("an already-pending registration SMS becomes unclaimable on camp day", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaff();
+  const { campId, dayId } = await seedCampDay();
+  try {
+    await admin.query("begin");
+    await admin.query(
+      `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+    );
+    await admin.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+      staffId,
+    ]);
+    await admin.query(`select set_config('request.jwt.claims', $1, true)`, [
+      JSON.stringify({ role: "authenticated", sub: staffId }),
+    ]);
+    const { rows } = await admin.query(
+      `select id
+       from public.register_patient_idempotent(
+         $1::uuid, $2::uuid, 'Pending Camp Day SMS', 'F', 44, 'A',
+         '9876502468', null, null, null, null, $3::uuid, false, false
+       )`,
+      [randomUUID(), campId, dayId],
+    );
+    await admin.query("commit");
+
+    const patientId = rows[0].id;
+    const pending = await admin.query(
+      `select state
+       from public.sms_deliveries
+       where patient_id = $1 and kind = 'registration'`,
+      [patientId],
+    );
+    assert.equal(pending.rows[0]?.state, "pending");
+
+    await admin.query(
+      `update public.camp_days
+       set day_date = (timezone('Asia/Kolkata', now()))::date
+       where id = $1`,
+      [dayId],
+    );
+
+    const claim = await asService(admin, () =>
+      admin.query(
+        `select *
+         from public.claim_sms_delivery($1, 'registration', '2468', 60)`,
+        [patientId],
+      ),
+    );
+    assert.deepEqual(
+      claim.rows,
+      [],
+      "a pending delivery must not cross the camp-day eligibility boundary",
+    );
+
+    const after = await admin.query(
+      `select state, attempt_count
+       from public.sms_deliveries
+       where patient_id = $1 and kind = 'registration'`,
+      [patientId],
+    );
+    assert.equal(after.rows[0]?.state, "pending");
+    assert.equal(Number(after.rows[0]?.attempt_count), 0);
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(staffId);
+  }
+});
+
 test("registration without phone creates no delivery", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();

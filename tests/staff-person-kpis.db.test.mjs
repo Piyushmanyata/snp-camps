@@ -189,7 +189,7 @@ test("catalog exposes one five-argument KPI contract and no leaderboard RPC", as
   assert.equal(rows[0].anon_exec, false);
 });
 
-test("volunteer and doctor metrics stay distinct and active-Camp bounded", async (t) => {
+test("volunteer metrics stay active-Camp bounded and residual doctor targets are rejected", async (t) => {
   if (skipIfNoDb(t)) return;
   await client.query("begin");
   try {
@@ -228,16 +228,6 @@ test("volunteer and doctor metrics stay distinct and active-Camp bounded", async
       [{ total: 2, waiting: 1, seen: 1, label: "Patients handled" }],
     );
 
-    const doctorRows = await personKpis(
-      doctor,
-      doctor,
-      "doctor",
-      active.campId,
-    );
-    assert.equal(Number(doctorRows.rows[0].total), 1);
-    assert.equal(Number(doctorRows.rows[0].seen), 1);
-    assert.equal(doctorRows.rows[0].label, "Patients seen");
-
     const staleCamp = await personKpis(
       volunteer,
       volunteer,
@@ -246,6 +236,12 @@ test("volunteer and doctor metrics stay distinct and active-Camp bounded", async
     );
     assert.equal(Number(staleCamp.rows[0].total), 0);
     assert.equal(Number(staleCamp.rows[0].waiting), 0);
+    // PostgreSQL aborts this local transaction after the authorization error,
+    // so keep the residual-role rejection as the final assertion.
+    await assert.rejects(
+      () => personKpis(doctor, doctor, "doctor", active.campId),
+      /active camp crew required/i,
+    );
   } finally {
     await client.query("rollback");
   }
@@ -398,7 +394,7 @@ test("all camp crew see deterministic aggregate-only boards including zero activ
       status: "waiting",
     });
 
-    for (const caller of [admin, lead, volunteer, doctor]) {
+    for (const caller of [admin, lead, volunteer]) {
       const { rows, fields } = await leaderboard(caller, active.campId);
       assert.deepEqual(
         fields.map((field) => field.name),
@@ -441,6 +437,10 @@ test("all camp crew see deterministic aggregate-only boards including zero activ
         "rows are ordered by distinct patients descending",
       );
     }
+    await assert.rejects(
+      () => leaderboard(doctor, active.campId),
+      /active camp crew required/i,
+    );
   } finally {
     await client.query("rollback");
   }

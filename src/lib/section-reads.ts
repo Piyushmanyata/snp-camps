@@ -37,11 +37,19 @@ export type KpisSectionData = {
 };
 
 
-export type AdminQueueCountsData = {
+export type AdminAnalyticsData = {
   registered: number;
   inQueue: number;
-  doctorSeen: number;
-  avgWaitMinutes: number | null;
+  seen: number;
+  total: number;
+  currentLongestWaitMinutes: number | null;
+  completedWaitMedianMinutes: number | null;
+  completedWaitP90Minutes: number | null;
+  completedToday: number;
+  deskRegistrations: number;
+  selfRegistrations: number;
+  scannedRegistrations: number;
+  selfDeclaredRegistrations: number;
 };
 
 
@@ -49,7 +57,7 @@ export const SECTION_KEYS = [
   "queue",
   "seats",
   "volunteer-kpis",
-  "admin-queue-counts",
+  "admin-analytics",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -213,7 +221,7 @@ export async function loadStaffLeaderboardSection(
 
 export async function loadAdminQueueCountsSection(
   campId: string,
-): Promise<SectionResult<AdminQueueCountsData>> {
+): Promise<SectionResult<AdminAnalyticsData>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("camp_queue_counts", {
     p_camp_id: campId,
@@ -223,7 +231,7 @@ export async function loadAdminQueueCountsSection(
     return {
       ok: false,
       error: mapDbError(error, {
-        context: "section.admin-queue-counts",
+        context: "section.admin-analytics",
         fallback: "Dashboard stats could not be loaded — retry.",
       }),
     };
@@ -233,17 +241,30 @@ export async function loadAdminQueueCountsSection(
     string,
     unknown
   > | null;
-  const avgRaw = row?.avg_wait_minutes;
-  const avgWaitMinutes =
-    avgRaw != null && !Number.isNaN(Number(avgRaw)) ? Number(avgRaw) : null;
+  const optionalNumber = (value: unknown): number | null =>
+    value != null && !Number.isNaN(Number(value)) ? Number(value) : null;
 
   return {
     ok: true,
     data: {
       registered: Number(row?.registered_count ?? 0),
       inQueue: Number(row?.waiting_count ?? 0),
-      doctorSeen: Number(row?.seen_count ?? 0),
-      avgWaitMinutes,
+      seen: Number(row?.seen_count ?? 0),
+      total: Number(row?.total_count ?? 0),
+      currentLongestWaitMinutes: optionalNumber(
+        row?.current_longest_wait_minutes,
+      ),
+      completedWaitMedianMinutes: optionalNumber(
+        row?.completed_wait_median_minutes,
+      ),
+      completedWaitP90Minutes: optionalNumber(
+        row?.completed_wait_p90_minutes,
+      ),
+      completedToday: Number(row?.completed_today_count ?? 0),
+      deskRegistrations: Number(row?.desk_registration_count ?? 0),
+      selfRegistrations: Number(row?.self_registration_count ?? 0),
+      scannedRegistrations: Number(row?.scanned_registration_count ?? 0),
+      selfDeclaredRegistrations: Number(row?.self_declared_count ?? 0),
     },
   };
 }
@@ -268,7 +289,7 @@ export async function loadSection(
         return { ok: false, error: "Camp and user required." };
       }
       return loadVolunteerKpisSection(campId, userId);
-    case "admin-queue-counts":
+    case "admin-analytics":
       if (!campId) return { ok: false, error: "Camp required." };
       return loadAdminQueueCountsSection(campId);
     default: {

@@ -68,8 +68,7 @@ test("lookup success on second attempt after serialization_failure", async () =>
             full_name: "A",
             queue_status: "waiting",
             phone: null,
-            doctor_id: null,
-            doctor_name: null,
+            seen_by_name: null,
           },
         ],
         error: null,
@@ -233,6 +232,28 @@ test("undo mark seen surfaces an expired window as a terminal, plain message", a
   assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
 });
 
+test("undo mark seen explains that an inactive camp cannot be reopened", async () => {
+  const result = await undoMarkSeenWithRetries({
+    patientId: "p1",
+    rpc: async () => ({
+      data: [
+        {
+          id: "p1",
+          reg_no: 1,
+          full_name: "A",
+          queue_status: "seen",
+          error_code: "inactive_camp",
+        },
+      ],
+      error: null,
+    }),
+    sleep,
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /no longer active/i);
+});
+
 test("change-day retries twice on thrown transport then surfaces exhausted copy", async () => {
   let calls = 0;
   const result = await changeCampDayWithRetries({
@@ -391,7 +412,7 @@ test("check-in success on second attempt after serialization_failure", async () 
             full_name: "Sita Devi",
             queue_status: "waiting",
             already_waiting: false,
-            doctor_name: null,
+            seen_by_name: null,
             error_code: null,
           },
         ],
@@ -476,7 +497,7 @@ test("check-in already_waiting success is not retried", async () => {
             full_name: "Waiting",
             queue_status: "waiting",
             already_waiting: true,
-            doctor_name: null,
+            seen_by_name: null,
             error_code: null,
           },
         ],

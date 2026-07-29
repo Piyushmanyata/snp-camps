@@ -21,7 +21,7 @@ import {
 import { TeamLeadPanel } from "@/components/team-lead-panel";
 import { mapDbError } from "@/lib/public-error";
 import {
-  AdminHeaderStatsPanel,
+  AdminAnalyticsPanel,
   CampsLoadFailed,
 } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
@@ -30,10 +30,7 @@ import { CheckIn } from "@/components/check-in";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
-import {
-  AdminTestSmsLazySection,
-  ChangePasswordLazySection,
-} from "@/components/admin-optional-lazy";
+import { ChangePasswordLazySection } from "@/components/admin-optional-lazy";
 
 export default async function AdminPage() {
   const { userId, profile } = await getSessionProfile();
@@ -61,8 +58,16 @@ export default async function AdminPage() {
         data: {
           registered: number;
           inQueue: number;
-          doctorSeen: number;
-          avgWaitMinutes: number | null;
+          seen: number;
+          total: number;
+          currentLongestWaitMinutes: number | null;
+          completedWaitMedianMinutes: number | null;
+          completedWaitP90Minutes: number | null;
+          completedToday: number;
+          deskRegistrations: number;
+          selfRegistrations: number;
+          scannedRegistrations: number;
+          selfDeclaredRegistrations: number;
         };
       }
     | { ok: false; error: string }
@@ -121,7 +126,7 @@ export default async function AdminPage() {
       }
     >
       <div className="space-y-3 sm:space-y-4 lg:space-y-5">
-        <AdminHeaderStatsPanel campId={active?.id ?? null} initial={statsInitial} />
+        <AdminAnalyticsPanel campId={active?.id ?? null} initial={statsInitial} />
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
@@ -243,7 +248,6 @@ export default async function AdminPage() {
           </div>
         ) : null}
 
-        <AdminTestSmsLazySection />
         <ChangePasswordLazySection />
       </div>
     </Shell>

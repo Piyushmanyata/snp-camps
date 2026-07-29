@@ -16,7 +16,7 @@ import {
   type StaffPerson,
 } from "@/components/staff-detail";
 
-export type ManageableStaffRole = "doctor" | "volunteer" | "team_lead";
+export type ManageableStaffRole = "volunteer" | "team_lead";
 
 type CredentialShare = {
   id: string;
@@ -26,29 +26,6 @@ type CredentialShare = {
 };
 
 function roleCopy(role: ManageableStaffRole) {
-  if (role === "doctor") {
-    return {
-      intro: "Tap a doctor for KPIs and patients they saw.",
-      empty: "No doctors yet — add the first below.",
-      addButton: "Add doctor",
-      createSubmit: "Create doctor & get password",
-      createOk: "Doctor created. Share the temporary password below (shown once).",
-      createFail: "Failed to create doctor",
-      resetFail: "Failed to reset doctor password",
-      reactivateFail: "Failed to reactivate doctor",
-      deactivateFail: "Failed to deactivate doctor",
-      credentialTitle: "SNP Camps doctor login",
-      defaultName: "Doctor",
-      formId: "doctor-create-form",
-      credentialHeadingId: "doctor-credential-heading",
-      detailIdPrefix: "doctor-detail",
-      historyOnDeactivate:
-        "They will no longer be able to sign in. Their patient history and name will be preserved.",
-      namePlaceholder: undefined as string | undefined,
-      emailPlaceholder: undefined as string | undefined,
-      emailHint: undefined as string | undefined,
-    };
-  }
   if (role === "team_lead") {
     return {
       intro:

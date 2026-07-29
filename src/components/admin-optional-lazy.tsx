@@ -8,21 +8,6 @@ import { useCallback, useState, type ReactNode } from "react";
  * Primary desk controls stay on the page; these panels are optional islands.
  */
 
-const AdminTestSms = dynamic(
-  () =>
-    import("@/components/admin-test-sms").then((m) => ({
-      default: m.AdminTestSms,
-    })),
-  {
-    loading: () => (
-      <p role="status" className="py-4 text-xs text-muted">
-        Loading SMS tools…
-      </p>
-    ),
-    ssr: false,
-  },
-);
-
 const ChangePasswordCard = dynamic(
   () =>
     import("@/components/change-password-card").then((m) => ({
@@ -87,22 +72,6 @@ function OpenOnToggle({
         {children(ready)}
       </div>
     </details>
-  );
-}
-
-export function AdminTestSmsLazySection() {
-  return (
-    <OpenOnToggle title="Registration SMS (MSG91)" hint="Test send · recent failures">
-      {(ready) =>
-        ready ? (
-          <AdminTestSms />
-        ) : (
-          <p role="status" className="py-4 text-xs text-muted">
-            Open to load SMS tools…
-          </p>
-        )
-      }
-    </OpenOnToggle>
   );
 }
 

@@ -263,7 +263,7 @@ export default async function VolunteerPage() {
                 <Stat label="You handled" value={0} tone="ok" />
                 <Stat label="Handled today" value={0} />
                 <Stat label="In queue" value={0} tone="wait" />
-                <Stat label="Doctor seen" value={0} tone="ok" />
+                <Stat label="Seen" value={0} tone="ok" />
               </div>
             )}
             {!camp ? (

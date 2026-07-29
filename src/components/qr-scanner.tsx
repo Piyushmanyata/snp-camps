@@ -779,8 +779,8 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
         or type the reg number. Then{" "}
         <strong className="text-foreground">Print prescription</strong> — that
         puts them in the queue — or{" "}
-        <strong className="text-foreground">Mark seen</strong> once the doctor
-        is done. A patient already seen is refused.
+        <strong className="text-foreground">Mark seen</strong> after the
+        consultation. A patient already seen is refused.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">

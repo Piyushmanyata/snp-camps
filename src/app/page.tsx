@@ -119,7 +119,7 @@ export default async function HomePage() {
                   detail: "Desk prints your prescription · FCFS order",
                 },
                 {
-                  title: "Doctor sees you",
+                  title: "Consultation",
                   detail: "Staff scan your QR to mark you seen",
                 },
               ]}

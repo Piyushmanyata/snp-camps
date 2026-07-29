@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 4;
+export const READINESS_CONTRACT_VERSION = 5;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260728119000";
+export const EXPECTED_MIGRATION_HEAD = "20260729075022";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -121,6 +121,7 @@ export const REQUIRED_FUNCTIONS = [
   "mark_sms_dispatch_started",
   "complete_sms_delivery",
   "patient_registration_notify_fields",
+  "camp_queue_counts",
 ] as const;
 
 /** Catalog invariants that cannot be proven by table/column presence alone. */
@@ -181,6 +182,9 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   mark_sms_dispatch_started_authenticated_execute: true,
   mark_sms_dispatch_started_service_role_execute: true,
   patient_registration_notify_fields_authenticated_execute: true,
+  camp_queue_counts_authenticated_execute: true,
+  camp_queue_counts_anon_execute: false,
+  camp_queue_counts_service_role_execute: true,
   latest_applied_migration_service_role_execute: true,
 };
 

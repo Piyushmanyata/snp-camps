@@ -10,7 +10,6 @@ export type CampSettings = {
   spectaclesCollectionVenue: string | null;
   postCampSurgeryDate: string | null;
   postCampSurgeryVenue: string | null;
-  paperFallbackMode: boolean;
 };
 
 export type CampSettingsInput = {
@@ -18,7 +17,6 @@ export type CampSettingsInput = {
   spectaclesCollectionVenue?: string | null;
   postCampSurgeryDate?: string | null;
   postCampSurgeryVenue?: string | null;
-  paperFallbackMode?: boolean;
 };
 
 /** Validates venue string length against SMS segment cap (35 chars). */
@@ -50,7 +48,7 @@ export async function getCampSettings(
   const { data, error } = await supabase
     .from("camps")
     .select(
-      "spectacles_collection_date, spectacles_collection_venue, post_camp_surgery_date, post_camp_surgery_venue, paper_fallback_mode"
+      "spectacles_collection_date, spectacles_collection_venue, post_camp_surgery_date, post_camp_surgery_venue"
     )
     .eq("id", campId)
     .single();
@@ -62,7 +60,6 @@ export async function getCampSettings(
     spectaclesCollectionVenue: data.spectacles_collection_venue ?? null,
     postCampSurgeryDate: data.post_camp_surgery_date ?? null,
     postCampSurgeryVenue: data.post_camp_surgery_venue ?? null,
-    paperFallbackMode: Boolean(data.paper_fallback_mode),
   };
 }
 
@@ -89,7 +86,6 @@ export async function updateCampSettings(
 
   const specDate = normalizeDateInput(input.spectaclesCollectionDate);
   const surgDate = normalizeDateInput(input.postCampSurgeryDate);
-  const paperMode = Boolean(input.paperFallbackMode);
 
   const supabase = client ?? (await createClient());
 
@@ -100,7 +96,6 @@ export async function updateCampSettings(
     p_spectacles_collection_venue: specVenue,
     p_post_camp_surgery_date: surgDate,
     p_post_camp_surgery_venue: surgVenue,
-    p_paper_fallback_mode: paperMode,
   });
 
   if (!rpcErr) {
@@ -115,7 +110,6 @@ export async function updateCampSettings(
       spectacles_collection_venue: specVenue,
       post_camp_surgery_date: surgDate,
       post_camp_surgery_venue: surgVenue,
-      paper_fallback_mode: paperMode,
     })
     .eq("id", campId)
     .select();

@@ -72,7 +72,11 @@ export default async function PatientStatusPage({
 
   if (error) {
     return (
-      <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+      <main
+        id="main"
+        lang="hi-Latn"
+        className="mx-auto max-w-md px-4 py-10 text-foreground"
+      >
         <StatusAutoRefresh />
         <h1 className="text-xl font-bold tracking-tight">Camp status</h1>
         <div className="mt-6">
@@ -90,7 +94,11 @@ export default async function PatientStatusPage({
   const statusGuidance = getPatientStatusGuidance(view.queueStatus);
 
   return (
-    <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+    <main
+      id="main"
+      lang="hi-Latn"
+      className="mx-auto max-w-md px-4 py-10 text-foreground"
+    >
       <StatusAutoRefresh />
       <div className="space-y-5">
         <div className="text-center">

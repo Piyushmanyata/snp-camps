@@ -13,7 +13,7 @@ export type PrintActionPatient = {
 };
 
 /**
- * Print chrome for patient desk slip.
+ * Print controls for the patient's paper prescription.
  */
 export function PrintActions({
   className = "",
@@ -166,7 +166,7 @@ export function PrintActions({
           {primaryStatus === "seen"
             ? "Reprinting keeps the completed consultation status unchanged."
             : primaryStatus === "waiting"
-              ? "The patient is already waiting for a doctor."
+              ? "The patient is already in the queue."
               : "Printing is what puts a pre-registered patient in the line."}
         </p>
         {message ? (

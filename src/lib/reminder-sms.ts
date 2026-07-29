@@ -357,7 +357,7 @@ export async function runDayBeforeReminders(
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : "complete sent failed";
-        console.error("[reminder-sms] complete sent failed", row.id, detail);
+        console.error("[reminder-sms] complete sent failed", detail);
         summary.ambiguous += 1;
         summary.ok = false;
         summary.error = "Provider accepted an SMS but ledger confirmation failed.";

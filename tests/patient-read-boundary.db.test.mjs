@@ -356,6 +356,10 @@ test("staff registration notify RPC returns status_token; doctor cannot", async 
   const volunteerId = await seedProfile("volunteer");
   const doctorId = await seedProfile("doctor");
   const { patientId, token } = await seedActiveCampPatient();
+  await client.query(
+    `update public.patients set created_by = $1 where id = $2`,
+    [volunteerId, patientId],
+  );
 
   const staffRows = await asAuthenticated(volunteerId, async (c) => {
     const { rows: r } = await c.query(

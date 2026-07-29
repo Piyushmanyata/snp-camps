@@ -1,5 +1,5 @@
 /**
- * Patient QR codes are for **staff scan only** (volunteer / doctor / admin).
+ * Patient QR codes are for **camp staff scan only**.
  * Never used for patient login — patients have no app login; status is
  * passwordless via /s/<token> (not this QR).
  */

@@ -261,7 +261,9 @@ export function PatientForm({
       setProvenance("self_declared");
     }
     setLookupState(d.length >= 4 ? "skipped" : "idle");
-    setLookupMsg(d.length >= 4 ? "Optional · sirf last 4 store hota hai." : null);
+    setLookupMsg(
+      d.length >= 4 ? "Optional · only the last 4 digits are stored." : null,
+    );
   }
 
   function failValidation(
@@ -495,7 +497,7 @@ export function PatientForm({
         setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
         setLikelyDuplicateRegNo(null);
         setError(
-          `Naam + Aadhaar last-4 pehle se reg #${outcome.aadhaarDuplicateRegNo} pe hai. Pehle woh patient dekho. Override sirf alag person ho to.`,
+          `Name + Aadhaar last 4 already belong to registration #${outcome.aadhaarDuplicateRegNo}. Review that patient first. Override only for a different person.`,
         );
         setPhase("idle");
       } else {
@@ -564,8 +566,8 @@ export function PatientForm({
     const reg = row.reg_no ?? regTarget;
     setFlash(
       row.already_waiting
-        ? `Reg #${reg} pehle se line mein hai. Naya register nahi banaya.`
-        : `Reg #${reg} ka parcha print ho gaya — line mein aa gaye. Naya register nahi banaya.`,
+        ? `Registration #${reg} is already in the queue. No duplicate was created.`
+        : `Registration #${reg} was printed and remains in the queue. No duplicate was created.`,
     );
     setLikelyDuplicateRegNo(null);
     setAadhaarDuplicateRegNo(null);
@@ -606,12 +608,15 @@ export function PatientForm({
 
   if (!isStaff) {
     return (
-      <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+      <div
+        lang="hi-Latn"
+        className="space-y-3 rounded-2xl border border-border bg-card p-4"
+      >
         <p className="text-sm font-semibold text-foreground">
           Registration sirf camp desk pe
         </p>
         <p className="prose-help text-sm text-muted">
-          Volunteer ke paas jao. Staff register karega, desk slip print hogi.
+          Volunteer ke paas jao. Staff register karega, parcha print hoga.
           Public online registration nahi hai.
         </p>
         <Link
@@ -627,7 +632,7 @@ export function PatientForm({
   if (!days.length) {
     return (
       <p className="text-sm text-muted">
-        Camp days nahi hain. Admin se days add karwao.
+        No camp days are available. Ask an admin to add them.
       </p>
     );
   }
@@ -635,8 +640,8 @@ export function PatientForm({
   if (!openDays.length) {
     return (
       <WarningBox>
-        Saare din full hain. Seats free hone ya admin limit badhane ka wait
-        karo.
+        All camp days are full. Wait for seats to open or ask an admin to
+        increase the limit.
       </WarningBox>
     );
   }
@@ -649,7 +654,7 @@ export function PatientForm({
       noValidate
     >
       <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
-        Desk · sirf poora naam aur umar zaroori
+        Desk · only full name and age are required
       </div>
 
       {/* Aadhaar QR Scanner Action */}
@@ -697,7 +702,7 @@ export function PatientForm({
             className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
             onClick={() => setManualEntry(true)}
           >
-            Card scan nahi ho raha &mdash; details type karein
+            Card scan is not working &mdash; enter details manually
           </button>
         ) : null}
       </div>
@@ -736,7 +741,7 @@ export function PatientForm({
             data-testid="desk-print-recovery-button"
             onClick={openPrintRecovery}
           >
-            Print desk slip
+            Print prescription
           </Button>
         </div>
       ) : null}
@@ -820,7 +825,7 @@ export function PatientForm({
         <>
       <Input
         id="patient-full-name"
-        label={isNameLocked ? "Poora naam (Aadhaar Locked 🔒) *" : "Poora naam *"}
+        label={isNameLocked ? "Full name (Aadhaar locked 🔒) *" : "Full name *"}
         error={fieldErrors.fullName}
         required
         readOnly={isNameLocked}
@@ -836,7 +841,7 @@ export function PatientForm({
           const val = e.target.value;
           setFullName(val);
         }}
-        placeholder="Patient ka poora naam"
+        placeholder="Patient's full name"
       />
 
       {isNonLatinText(fullName) ? (
@@ -854,7 +859,7 @@ export function PatientForm({
 
       <Input
         id="patient-age"
-        label={isAgeLocked ? "Umar (Aadhaar Locked 🔒) *" : "Umar *"}
+        label={isAgeLocked ? "Age (Aadhaar locked 🔒) *" : "Age *"}
         error={fieldErrors.age}
         type="number"
         min={0}
@@ -871,7 +876,7 @@ export function PatientForm({
           if (isAgeLocked) return;
           setAge(e.target.value);
         }}
-        placeholder="Saal"
+        placeholder="Years"
       />
         </>
       ) : null}
@@ -886,7 +891,7 @@ export function PatientForm({
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         placeholder="10 digit (optional)"
-        hint="Optional — SMS baad mein, agar number diya"
+        hint="Optional — used only for eligible future-camp SMS"
       />
 
       {identityVisible ? (
@@ -902,7 +907,7 @@ export function PatientForm({
         className={isAadhaarLocked ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed" : ""}
         autoComplete="off"
         placeholder="XXXX XXXX 1234"
-        hint="Poora number kabhi store nahi — sirf last 4"
+        hint="The full number is never stored — only the last 4 digits"
         value={aadhaar}
         onChange={(e) => {
           if (isAadhaarLocked) return;
@@ -987,8 +992,8 @@ export function PatientForm({
           className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
         >
           <p className="text-sm font-medium text-amber-950">
-            Ye reg #{likelyDuplicateRegNo} jaisa lagta hai — pehle se registered
-            hai.
+            This looks like registration #{likelyDuplicateRegNo}, which already
+            exists.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
@@ -1020,7 +1025,8 @@ export function PatientForm({
           <p className="text-sm text-amber-950">
             Conflict:{" "}
             <span className="font-bold tabular">#{aadhaarDuplicateRegNo}</span>.
-            Override aapke account pe record hoga. Next patient pe sticky nahi.
+            The override will be recorded against your account and applies only
+            to this patient.
           </p>
           <Button
             type="button"
@@ -1032,7 +1038,7 @@ export function PatientForm({
               formRef.current?.requestSubmit();
             }}
           >
-            Override — alag person hai
+            Override — different person
           </Button>
         </div>
       ) : null}
