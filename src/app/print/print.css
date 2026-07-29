@@ -23,7 +23,8 @@
 
 @page {
   size: A4;
-  margin: 15mm;
+  /* Keep the complete configurable prescription on one physical sheet. */
+  margin: 8mm;
 }
 
 @media print {

@@ -89,7 +89,7 @@ test("prescription sheet prints identity only, with no passcode and no clinical 
   );
 });
 
-test("A4-class sheet on screen, QR top-right, nothing clipped in print", async ({
+test("maximum bounded template is one A4 page, with QR inside", async ({
   page,
 }) => {
   const patientId = env("E2E_PATIENT_ID");
@@ -166,11 +166,15 @@ test("A4-class sheet on screen, QR top-right, nothing clipped in print", async (
 
   // Real proof of the paper geometry: render the actual A4 PDF.
   fs.mkdirSync(scratchDir, { recursive: true });
-  await page.pdf({
+  const pdfBuffer = await page.pdf({
     path: path.join(scratchDir, "prescription-a4.pdf"),
     format: "A4",
     printBackground: true,
+    preferCSSPageSize: true,
   });
   const pdf = fs.statSync(path.join(scratchDir, "prescription-a4.pdf"));
   expect(pdf.size).toBeGreaterThan(1000);
+  const pageObjects =
+    pdfBuffer.toString("latin1").match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+  expect(pageObjects, "prescription PDF must be exactly one A4 page").toBe(1);
 });

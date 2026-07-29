@@ -61,7 +61,7 @@ export default async function RegisterPage() {
 
   return (
     <Shell
-      title="Register walk-in"
+      title="Register"
       subtitle="Desk · poora naam + umar zaroori · baaki optional"
       backHref={deskHref}
       width="lg"
@@ -110,7 +110,7 @@ export default async function RegisterPage() {
                 {camp.name}
               </p>
               <p className="text-sm text-muted">
-                {camp.venue || "Walk-in registration"}
+                {camp.venue || "Registration"}
               </p>
             </Card>
             <SeatBoard

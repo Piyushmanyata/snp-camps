@@ -36,9 +36,38 @@ import {
   productionScriptSrcAllowsUnsafeInline,
 } from "../src/lib/csp.ts";
 import { validateSupabaseProjectUrl } from "../scripts/bootstrap-admin.mjs";
+import {
+  DEFAULT_PRESCRIPTION_TEMPLATE,
+  resolvePrescriptionTemplate,
+} from "../src/lib/prescription-template.ts";
 
 const VALID_UUID = "e3b0c442-98fc-41c4-a012-3456789abcde";
 const VALID_UUID_UPPER = "E3B0C442-98FC-41C4-A012-3456789ABCDE";
+
+test("prescription template bounds dynamic content to one-page-safe limits", () => {
+  const template = resolvePrescriptionTemplate({
+    diagnosisOptions: Array.from({ length: 20 }, (_, i) => `Diagnosis ${i}`),
+    vitalsFields: Array.from({ length: 20 }, (_, i) => `Vital ${i}`),
+    sections: Array.from({ length: 10 }, (_, i) => ({
+      key: `section-${i}`,
+      label: `Section ${i}`,
+      heightMm: 120,
+    })),
+    footerNote: "x".repeat(1000),
+  });
+
+  assert.equal(template.diagnosisOptions.length, 6);
+  assert.equal(template.vitalsFields.length, 4);
+  assert.ok(template.sections.length <= 4);
+  assert.ok(
+    template.sections.reduce((sum, section) => sum + section.heightMm, 0) <= 42,
+  );
+  assert.equal(template.footerNote.length, 180);
+  assert.equal(
+    resolvePrescriptionTemplate(null),
+    DEFAULT_PRESCRIPTION_TEMPLATE,
+  );
+});
 
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");

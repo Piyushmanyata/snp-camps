@@ -90,6 +90,10 @@ export type RegisteredSearchRow = {
   address: string | null;
 };
 
+export type DeskPatientSearchRow = RegisteredSearchRow & {
+  queue_status: "registered" | "waiting" | "seen";
+};
+
 type Step<T> =
   | { done: false }
   | { done: true; value: T };
@@ -566,6 +570,64 @@ export async function searchRegisteredPatientsWithRetries(options: {
           };
         }
         const rows = (Array.isArray(data) ? data : data ? [data] : []) as RegisteredSearchRow[];
+        return { done: true, value: { ok: true, rows } };
+      } catch (thrown) {
+        const classified = classifyOperationError(thrown, {
+          context,
+          transportFailure: true,
+          log: true,
+          fallback,
+        });
+        if (classified.retryable) return { done: false };
+        return {
+          done: true,
+          value: { ok: false, error: classified.publicMessage },
+        };
+      }
+    },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.search },
+    options.sleep,
+  );
+}
+
+/** Unified staff desk name search across registered, waiting, and seen rows. */
+export async function searchDeskPatientsWithRetries(options: {
+  campId: string;
+  query: string;
+  limit?: number;
+  rpc: DeskRpc;
+  errorContext?: string;
+  errorFallback?: string;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<
+  { ok: true; rows: DeskPatientSearchRow[] } | { ok: false; error: string }
+> {
+  type Out =
+    | { ok: true; rows: DeskPatientSearchRow[] }
+    | { ok: false; error: string };
+  const context = options.errorContext ?? "desk-ops.desk-search";
+  const fallback =
+    options.errorFallback ?? "Could not search patients. Try again.";
+
+  return withTransientSteps<Out>(
+    async () => {
+      try {
+        const { data, error } = await options.rpc("search_desk_patients", {
+          p_camp_id: options.campId,
+          p_query: options.query,
+          p_limit: options.limit ?? 10,
+        });
+        if (error) {
+          const classified = classifyRpcFailure(error, context, fallback);
+          if (classified.retryable) return { done: false };
+          return {
+            done: true,
+            value: { ok: false, error: classified.publicMessage },
+          };
+        }
+        const rows = (
+          Array.isArray(data) ? data : data ? [data] : []
+        ) as DeskPatientSearchRow[];
         return { done: true, value: { ok: true, rows } };
       } catch (thrown) {
         const classified = classifyOperationError(thrown, {

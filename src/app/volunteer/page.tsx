@@ -13,7 +13,6 @@ import {
   Card,
   ErrorBox,
   NavLink,
-  SectionTitle,
   Shell,
   Stat,
 } from "@/components/ui";
@@ -31,7 +30,6 @@ import { mapDbError } from "@/lib/public-error";
 import { VolunteerKpisSection } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
 import { SeatBoard } from "@/components/seat-board";
-import { CheckIn } from "@/components/check-in";
 import { AdminStaff } from "@/components/admin-staff";
 import { TeamLeadPanel } from "@/components/team-lead-panel";
 import type { StaffPerson } from "@/components/staff-detail";
@@ -223,8 +221,7 @@ export default async function VolunteerPage() {
       actions={<SignOutButton place="header" />}
       dock={[
         { href: "/register", label: "Register", primary: true },
-        { href: "#checkin", label: "Find patient" },
-        { href: "#scan", label: "Scan" },
+        { href: "#scan", label: "Scan patient" },
         { href: "#queue", label: "Queue" },
       ]}
     >
@@ -278,7 +275,7 @@ export default async function VolunteerPage() {
           <div className="mt-3 space-y-2 lg:hidden">
             <ActionCard
               href="/register"
-              title="Register walk-in"
+              title="Register"
               description={
                 camp
                   ? "New patient · name, phone, day"
@@ -289,11 +286,8 @@ export default async function VolunteerPage() {
               disabledReason="No active camp. Ask admin to activate one."
             />
             <div className="jump-chip-row" aria-label="Jump to section">
-              <a href="#checkin" className="jump-chip">
-                Find patient
-              </a>
               <a href="#scan" className="jump-chip">
-                Scan QR
+                Scan patient
               </a>
               <a href="#queue" className="jump-chip">
                 Live queue
@@ -303,7 +297,7 @@ export default async function VolunteerPage() {
 
           <div className="desk-inline-actions mt-4">
             <NavLink href="/register" variant="primary">
-              Register walk-in patient
+              Register
             </NavLink>
           </div>
         </Card>
@@ -319,28 +313,6 @@ export default async function VolunteerPage() {
             initialLoadKnown={seatsKnown}
           />
         ) : null}
-
-        <Card id="checkin" className="!p-4 sm:!p-5">
-          <SectionTitle hint="Pre-registered · reg # · name · QR paste">
-            Find patient
-          </SectionTitle>
-          <Suspense
-            fallback={
-              <p role="status" className="py-4 text-xs text-muted">
-                Loading patient search…
-              </p>
-            }
-          >
-            <CheckIn
-              campId={camp?.id ?? null}
-              disabledReason={
-                camp
-                  ? undefined
-                  : "No active camp. Ask an admin to activate a camp first."
-              }
-            />
-          </Suspense>
-        </Card>
 
         <DeskScanQueue
           campId={camp?.id ?? null}

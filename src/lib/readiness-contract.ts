@@ -16,7 +16,7 @@ export const READINESS_CONTRACT_VERSION = 5;
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260729075022";
+export const EXPECTED_MIGRATION_HEAD = "20260729104500";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -122,6 +122,7 @@ export const REQUIRED_FUNCTIONS = [
   "complete_sms_delivery",
   "patient_registration_notify_fields",
   "camp_queue_counts",
+  "search_desk_patients",
 ] as const;
 
 /** Catalog invariants that cannot be proven by table/column presence alone. */
@@ -164,6 +165,8 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   upsert_camp_day_authenticated_execute: true,
   check_in_patient_authenticated_execute: true,
   lookup_patient_scan_authenticated_execute: true,
+  search_desk_patients_authenticated_execute: true,
+  search_desk_patients_anon_execute: false,
   // The two desk actions (D22). Never reachable without a signed-in staff session.
   mark_seen_authenticated_execute: true,
   mark_seen_anon_execute: false,

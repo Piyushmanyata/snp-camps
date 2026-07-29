@@ -66,6 +66,14 @@ export const DEFAULT_PRESCRIPTION_TEMPLATE: PrescriptionTemplate = {
   signatureLabel: "Signature of Optometrist / Eye Surgeon",
 };
 
+const MAX_DIAGNOSIS_OPTIONS = 6;
+const MAX_VITAL_FIELDS = 4;
+const MAX_SECTIONS = 4;
+const MAX_SECTION_HEIGHT_MM = 40;
+const MAX_SECTIONS_TOTAL_HEIGHT_MM = 42;
+const MAX_SHORT_TEXT = 80;
+const MAX_FOOTER_TEXT = 180;
+
 /**
  * Merge a camp's stored overrides over the default. Any missing or malformed
  * field falls back rather than throwing — a bad template must never stop a
@@ -78,11 +86,16 @@ export function resolvePrescriptionTemplate(
     return DEFAULT_PRESCRIPTION_TEMPLATE;
   }
   const raw = stored as Partial<Record<keyof PrescriptionTemplate, unknown>>;
-  const str = (value: unknown, fallback: string) =>
-    typeof value === "string" && value.trim() ? value : fallback;
-  const strList = (value: unknown, fallback: string[]) =>
+  const str = (value: unknown, fallback: string, max = MAX_SHORT_TEXT) =>
+    typeof value === "string" && value.trim()
+      ? value.trim().slice(0, max)
+      : fallback;
+  const strList = (value: unknown, fallback: string[], maxItems: number) =>
     Array.isArray(value) && value.every((item) => typeof item === "string")
       ? (value as string[])
+          .map((item) => item.trim().slice(0, MAX_SHORT_TEXT))
+          .filter(Boolean)
+          .slice(0, maxItems)
       : fallback;
 
   const sections = Array.isArray(raw.sections)
@@ -94,17 +107,25 @@ export function resolvePrescriptionTemplate(
             typeof (item as PrescriptionSection).key === "string" &&
             typeof (item as PrescriptionSection).label === "string",
         )
+        .slice(0, MAX_SECTIONS)
         .map((item) => ({
-          key: item.key,
-          label: item.label,
+          key: item.key.slice(0, MAX_SHORT_TEXT),
+          label: item.label.trim().slice(0, MAX_SHORT_TEXT),
           heightMm:
             typeof item.heightMm === "number" &&
             item.heightMm > 0 &&
-            item.heightMm <= 120
-              ? item.heightMm
+            item.heightMm <= MAX_SECTION_HEIGHT_MM
+              ? Math.round(item.heightMm)
               : 20,
         }))
     : DEFAULT_PRESCRIPTION_TEMPLATE.sections;
+
+  let remainingHeight = MAX_SECTIONS_TOTAL_HEIGHT_MM;
+  const boundedSections = sections.map((section) => {
+    const heightMm = Math.min(section.heightMm, remainingHeight);
+    remainingHeight -= heightMm;
+    return { ...section, heightMm };
+  }).filter((section) => section.heightMm > 0);
 
   const base = DEFAULT_PRESCRIPTION_TEMPLATE;
   return {
@@ -114,16 +135,24 @@ export function resolvePrescriptionTemplate(
         ? raw.sponsorLogoUrl
         : base.sponsorLogoUrl,
     sponsorLabel: str(raw.sponsorLabel, base.sponsorLabel),
-    diagnosisOptions: strList(raw.diagnosisOptions, base.diagnosisOptions),
-    vitalsFields: strList(raw.vitalsFields, base.vitalsFields),
-    sections: sections.length ? sections : base.sections,
+    diagnosisOptions: strList(
+      raw.diagnosisOptions,
+      base.diagnosisOptions,
+      MAX_DIAGNOSIS_OPTIONS,
+    ),
+    vitalsFields: strList(
+      raw.vitalsFields,
+      base.vitalsFields,
+      MAX_VITAL_FIELDS,
+    ),
+    sections: boundedSections.length ? boundedSections : base.sections,
     operationLabel: str(raw.operationLabel, base.operationLabel),
     showGlassesTable:
       typeof raw.showGlassesTable === "boolean"
         ? raw.showGlassesTable
         : base.showGlassesTable,
     glassesTableTitle: str(raw.glassesTableTitle, base.glassesTableTitle),
-    footerNote: str(raw.footerNote, base.footerNote),
+    footerNote: str(raw.footerNote, base.footerNote, MAX_FOOTER_TEXT),
     signatureLabel: str(raw.signatureLabel, base.signatureLabel),
   };
 }

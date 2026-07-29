@@ -78,6 +78,11 @@ function GenderBox({ gender }: { gender: string | null }) {
 /** Empty cell of the refraction table — the optometrist writes in these. */
 const cell = "border border-current px-1 py-[6px]";
 
+function boundedPrintText(value: string | null | undefined, max: number) {
+  const text = value?.trim() ?? "";
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 export function PrescriptionSheet({
   patient,
   camp,
@@ -85,7 +90,10 @@ export function PrescriptionSheet({
   qrValue,
   template = DEFAULT_PRESCRIPTION_TEMPLATE,
 }: PrescriptionSheetProps) {
-  const venue = camp?.venue || camp?.name || "";
+  const venue = boundedPrintText(camp?.venue || camp?.name, 80);
+  const patientName = boundedPrintText(patient.full_name, 80);
+  const patientAddress = boundedPrintText(patient.address, 120);
+  const patientPhone = boundedPrintText(patient.phone, 30);
   const day = campDayDate ? formatCampDay(campDayDate) : "";
 
   return (
@@ -101,7 +109,7 @@ export function PrescriptionSheet({
         <img
           src={template.letterheadUrl}
           alt=""
-          className="mb-2 block w-full"
+          className="mb-2 block max-h-[42mm] w-full object-contain"
           aria-hidden="true"
         />
       ) : null}
@@ -110,8 +118,8 @@ export function PrescriptionSheet({
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-[7px] pt-1">
           <FilledLine label="Venue" value={venue} />
-          <FilledLine label="Name" value={patient.full_name} />
-          <FilledLine label="Address" value={patient.address} />
+          <FilledLine label="Name" value={patientName} />
+          <FilledLine label="Address" value={patientAddress} />
         </div>
 
         <div className="flex shrink-0 items-start gap-2">
@@ -130,7 +138,7 @@ export function PrescriptionSheet({
               </span>
               <GenderBox gender={patient.gender} />
             </div>
-            <FilledLine label="Contact No." value={patient.phone} />
+            <FilledLine label="Contact No." value={patientPhone} />
           </div>
 
           {/* Patient QR — staff scan to queue and to mark seen. */}

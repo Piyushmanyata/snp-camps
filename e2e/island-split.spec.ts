@@ -115,7 +115,7 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
     await loginStaff(page, "volunteer");
     await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Look up patient/i }),
+      page.getByRole("button", { name: "Search" }),
     ).toBeVisible();
     return;
   }
@@ -155,9 +155,9 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
   // Critical controls available without waiting for optional decoder.
   await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Look up patient/i }),
+    page.getByRole("button", { name: "Search" }),
   ).toBeVisible();
-  await expect(page.getByLabel(/Reg no/i)).toBeVisible();
+  await expect(page.getByLabel("Registration number or name")).toBeVisible();
 
   const jsqrPaths = jsqrChunks.map(chunkUrlPath);
   const beforeOpen = new Set(chunkPaths);
@@ -227,7 +227,7 @@ test("production: print route may load qrcode; volunteer initial must not", asyn
   await loginStaff(page, "volunteer");
   await expect(page.getByRole("link", { name: /Register/i }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Look up patient/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
 
   // Health of production server
   const health = await request.get("/api/health");

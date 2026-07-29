@@ -26,7 +26,7 @@ export function DeskScanQueue({
   return (
     <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
       <Card id="scan" className="!p-4 sm:!p-5">
-        <SectionTitle hint="Scan the paper or phone QR, or type the reg number">
+        <SectionTitle hint="Scan a QR, or enter a registration number or name">
           Scan patient
         </SectionTitle>
         <Suspense
@@ -36,7 +36,7 @@ export function DeskScanQueue({
             </p>
           }
         >
-          <QrScannerLazy disabledReason={noCampReason} />
+          <QrScannerLazy campId={campId} disabledReason={noCampReason} />
         </Suspense>
       </Card>
 

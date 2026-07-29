@@ -5,7 +5,6 @@ import {
   Card,
   CollapsibleSection,
   NavLink,
-  SectionTitle,
   Shell,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
@@ -26,7 +25,6 @@ import {
 } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
 import { SeatBoard } from "@/components/seat-board";
-import { CheckIn } from "@/components/check-in";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
@@ -112,7 +110,7 @@ export default async function AdminPage() {
       dock={
         active
           ? [
-              { href: "#checkin", label: "Find patient", primary: true },
+              { href: "#scan", label: "Scan patient", primary: true },
               { href: "/register", label: "Register" },
               { href: "/team-lead", label: "Team Leads" },
               { href: "/admin/patients", label: "Patients" },
@@ -221,12 +219,6 @@ export default async function AdminPage() {
 
         {active ? (
           <div className="space-y-3 sm:space-y-4">
-            <Card id="checkin" className="!p-4 sm:!p-5">
-              <SectionTitle hint="Pre-registered · reg # · name · QR paste">
-                Find patient
-              </SectionTitle>
-              <CheckIn campId={active.id} />
-            </Card>
             <DeskScanQueue
               campId={active.id}
               waiting={waiting}

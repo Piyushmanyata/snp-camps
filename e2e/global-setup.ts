@@ -4,6 +4,31 @@ import { createClient, type SupabaseClient, type User } from "@supabase/supabase
 const USER_PREFIX = "codex-e2e-";
 const PATIENT_PREFIX = "Codex E2E Patient";
 const CAMP_PREFIX = "Codex E2E Camp";
+const MAX_PRINT_NAME = `${PATIENT_PREFIX} ${"N".repeat(80)}`.slice(0, 80);
+const MAX_PRINT_ADDRESS = "A".repeat(120);
+const MAX_PRINT_VENUE = "V".repeat(80);
+const MAX_PRINT_TEMPLATE = {
+  letterheadUrl: "/brand/letterhead.png",
+  sponsorLogoUrl: "/brand/rupa-logo.png",
+  sponsorLabel: "S".repeat(80),
+  diagnosisOptions: Array.from({ length: 6 }, (_, index) =>
+    `Diagnosis ${index + 1} ${"X".repeat(68)}`,
+  ),
+  vitalsFields: Array.from({ length: 4 }, (_, index) =>
+    `Vital ${index + 1} ${"X".repeat(72)}`,
+  ),
+  sections: [
+    { key: "section-1", label: "A".repeat(80), heightMm: 11 },
+    { key: "section-2", label: "B".repeat(80), heightMm: 11 },
+    { key: "section-3", label: "C".repeat(80), heightMm: 10 },
+    { key: "section-4", label: "D".repeat(80), heightMm: 10 },
+  ],
+  operationLabel: "O".repeat(80),
+  showGlassesTable: true,
+  glassesTableTitle: "G".repeat(80),
+  footerNote: "Maximum bounded footer text ".repeat(8).slice(0, 180),
+  signatureLabel: "Signature ".repeat(10).slice(0, 80),
+};
 
 function required(name: string) {
   const value = process.env[name];
@@ -299,8 +324,9 @@ export default async function globalSetup() {
       .from("camps")
       .insert({
         name: `${CAMP_PREFIX} ${Date.now()}`,
-        venue: "Local E2E",
+        venue: MAX_PRINT_VENUE,
         is_active: true,
+        prescription_template: MAX_PRINT_TEMPLATE,
       })
       .select("id")
       .single();
@@ -337,7 +363,7 @@ export default async function globalSetup() {
     const phone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
     const secondPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
     let regNo = 1001;
-    let patientName = `${PATIENT_PREFIX} ${Date.now()}`;
+    let patientName = MAX_PRINT_NAME;
     let secondRegNo = regNo + 1;
     let secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
     {
@@ -362,6 +388,7 @@ export default async function globalSetup() {
             full_name: patientName,
             gender: "O",
             age: 30,
+            address: MAX_PRINT_ADDRESS,
             phone: `+91${phone}`,
             queue_status: "registered",
             created_by: null,

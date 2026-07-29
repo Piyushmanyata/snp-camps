@@ -421,6 +421,86 @@ test("name search finds one-character typo via trigram (#61)", async (t) => {
   );
 });
 
+test("unified desk name search returns registered, waiting, and seen patients", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId, todayDayId } = await seedCampWithDays();
+
+  const created = await asServiceRole(async () => {
+    const rows = [];
+    for (const [name, dayId] of [
+      ["Unified Registered", futureDayId],
+      ["Unified Waiting", todayDayId],
+      ["Unified Seen", todayDayId],
+    ]) {
+      const { rows: inserted } = await client.query(
+        `select * from public.register_patient_idempotent(
+           $1, $2, $3, 'F', 30, 'Sikar', null, null, null,
+           null, $4, $5, false, false
+         )`,
+        [randomUUID(), campId, name, staffId, dayId],
+      );
+      rows.push(inserted[0]);
+    }
+    return rows;
+  });
+
+  await asStaff(staffId, async () => {
+    await client.query(
+      `select * from public.check_in_patient($1, null)`,
+      [created[2].id],
+    );
+    await client.query(`select * from public.mark_seen($1, null)`, [created[2].id]);
+  });
+
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_desk_patients($1, 'unified', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.deepEqual(
+    new Set(matches.map((row) => row.queue_status)),
+    new Set(["registered", "waiting", "seen"]),
+  );
+});
+
+test("unified desk search finds and returns a Latin display name", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedStaffVolunteer();
+  const { campId, futureDayId } = await seedCampWithDays();
+
+  const patient = await asServiceRole(async () => {
+    const { rows } = await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'रमेश कुमार', 'M', 44, 'Sikar', null, null, null,
+         null, $3, $4, false, false
+       )`,
+      [randomUUID(), campId, staffId, futureDayId],
+    );
+    await client.query(
+      `update public.patients set display_name = 'Ramesh Kumar' where id = $1`,
+      [rows[0].id],
+    );
+    return rows[0];
+  });
+
+  const matches = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.search_desk_patients($1, 'ramesh', 10)`,
+      [campId],
+    );
+    return rows;
+  });
+
+  assert.equal(
+    matches.find((row) => row.id === patient.id)?.full_name,
+    "Ramesh Kumar",
+  );
+});
+
 test("name search finds simple transposition via trigram (#61)", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaffVolunteer();

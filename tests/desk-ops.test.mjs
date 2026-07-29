@@ -10,6 +10,7 @@ import {
   checkInPatientWithRetries,
   lookupPatientScanWithRetries,
   searchRegisteredPatientsWithRetries,
+  searchDeskPatientsWithRetries,
   undoMarkSeenWithRetries,
 } from "../src/lib/desk-ops.ts";
 import { RETRY_EXHAUSTED_COPY } from "../src/lib/with-retries.ts";
@@ -620,5 +621,31 @@ test("search unknown XX000 is terminal error not empty", async () => {
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.doesNotMatch(result.error, /exploded|relation patients/i);
+});
+
+test("unified desk search calls the all-status RPC and preserves queue state", async () => {
+  const result = await searchDeskPatientsWithRetries({
+    campId: "c1",
+    query: "ramesh",
+    rpc: async (fn, args) => {
+      assert.equal(fn, "search_desk_patients");
+      assert.equal(args.p_camp_id, "c1");
+      return {
+        data: [{
+          id: "p1",
+          reg_no: 7,
+          full_name: "Ramesh",
+          age: 44,
+          address: "Sikar",
+          queue_status: "waiting",
+        }],
+        error: null,
+      };
+    },
+    sleep,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.rows[0].queue_status, "waiting");
 });
 

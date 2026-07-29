@@ -20,7 +20,9 @@ import {
   checkInPatientWithRetries,
   lookupPatientScanWithRetries,
   markSeenWithRetries,
+  searchDeskPatientsWithRetries,
   undoMarkSeenWithRetries,
+  type DeskPatientSearchRow,
   type LookupRow,
   type MarkSeenRow,
 } from "@/lib/desk-ops";
@@ -66,7 +68,13 @@ function loadJsQr(): Promise<JsQrFn> {
  * Camp-day scan surface. Admin and volunteer desks behave identically now that
  * the doctor station is retired — there is no per-role branch left to make.
  */
-export function QrScanner({ disabledReason }: { disabledReason?: string }) {
+export function QrScanner({
+  campId,
+  disabledReason,
+}: {
+  campId: string | null;
+  disabledReason?: string;
+}) {
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const reviewHeadingId = `qr-review-heading-${uid}`;
@@ -75,6 +83,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [manual, setManual] = useState("");
+  const [nameMatches, setNameMatches] = useState<DeskPatientSearchRow[]>([]);
   const [looking, setLooking] = useState(false);
   const [lookup, setLookup] = useState<LookupRow | null>(null);
   const [seen, setSeen] = useState<MarkSeenRow | null>(null);
@@ -98,6 +107,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const reviewRef = useRef<HTMLDivElement | null>(null);
+  const firstNameMatchRef = useRef<HTMLButtonElement | null>(null);
   const assigningRef = useRef(false);
 
   const cancelAnimation = useCallback(() => {
@@ -143,6 +153,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
     setLookup(null);
     setSeen(null);
     setManual("");
+    setNameMatches([]);
     handledRef.current = false;
   }, []);
 
@@ -417,7 +428,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
       badScanAt.current = now;
       if (isMounted.current) {
         setError(
-          "That QR is not a patient staff-scan code. Type the registration number beside the camera.",
+          "That QR is not a patient staff-scan code. Enter the registration number or name beside the camera.",
         );
       }
     }
@@ -469,7 +480,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
       isMounted.current
     ) {
       setError(
-        "Camera unavailable or permission denied. Type the registration number beside the camera.",
+        "Camera unavailable or permission denied. Enter the registration number or name beside the camera.",
       );
       setActive(false);
       setStarting(false);
@@ -588,7 +599,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
               await stopScanner();
               if (isMounted.current) {
                 setError(
-                  "Camera decoding stopped. Type the registration number beside the camera.",
+                  "Camera decoding stopped. Enter the registration number or name beside the camera.",
                 );
               }
               return;
@@ -636,6 +647,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
     setError(null);
     setLookup(null);
     setSeen(null);
+    setNameMatches([]);
     handledRef.current = false;
     badScanAt.current = 0;
     lastCameraRawRef.current = null;
@@ -680,7 +692,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
         if (session.isCurrent(token) && isMounted.current) {
           await stopScanner();
           setError(
-            "QR decoder could not load. Type the registration number beside the camera.",
+            "QR decoder could not load. Enter the registration number or name beside the camera.",
           );
         }
         return;
@@ -707,7 +719,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
       setError(
         e instanceof Error
           ? e.message
-          : "Camera failed. Type the registration number beside the camera.",
+          : "Camera failed. Enter the registration number or name beside the camera.",
       );
       setActive(false);
     } finally {
@@ -729,6 +741,11 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
     const raw = manual.trim();
 
     const cleanedRaw = raw.trim();
+    if (!cleanedRaw) {
+      setError("Enter a registration number or patient name.");
+      setLooking(false);
+      return;
+    }
     if (cleanedRaw && !/^\d+$/.test(cleanedRaw)) {
       const asId = parsePatientIdFromQr(cleanedRaw);
       if (asId) {
@@ -736,7 +753,27 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
         setLooking(false);
         return;
       }
-      setError("Enter registration number (e.g. 1001).");
+      if (cleanedRaw.length < 2 || !campId) {
+        setError("Type at least 2 letters of the patient's name.");
+        setLooking(false);
+        return;
+      }
+      const outcome = await searchDeskPatientsWithRetries({
+        campId,
+        query: cleanedRaw,
+        rpc: deskRpc(createClient()),
+        errorContext: "qr-scanner.name-search",
+      });
+      if (!outcome.ok) {
+        setError(outcome.error);
+      } else if (outcome.rows.length === 0) {
+        setError("No patient matches that name in the active camp.");
+      } else {
+        setNameMatches(outcome.rows);
+        setLooking(false);
+        requestAnimationFrame(() => firstNameMatchRef.current?.focus());
+        return;
+      }
       setLooking(false);
       return;
     }
@@ -776,7 +813,7 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
       ) : null}
       <p className="prose-help text-sm text-muted">
         <strong className="text-foreground">Scan</strong> the paper or phone QR,
-        or type the reg number. Then{" "}
+        or enter their registration number or name. Then{" "}
         <strong className="text-foreground">Print prescription</strong> — that
         puts them in the queue — or{" "}
         <strong className="text-foreground">Mark seen</strong> after the
@@ -841,28 +878,67 @@ export function QrScanner({ disabledReason }: { disabledReason?: string }) {
           onSubmit={(e) => void openManual(e)}
           className="flex min-h-[16rem] flex-col gap-2 rounded-2xl border border-border bg-card p-3"
         >
-          <p className="text-sm font-semibold text-foreground">
-            Registration number
-          </p>
+          <p className="text-sm font-semibold text-foreground">Type patient</p>
           <p className="text-xs text-muted">
-            Equal path to the camera — type when light is poor or permission is
-            blocked.
+            Enter their registration number or type their name.
           </p>
           <Input
-            label="Reg no"
-            inputMode="numeric"
+            label="Registration number or name"
             enterKeyHint="go"
-            placeholder="e.g. 1001"
+            placeholder="e.g. 1001 or Ramesh"
             disabled={Boolean(disabledReason) || assigning || looking}
             value={manual}
-            onChange={(e) => setManual(e.target.value)}
+            onChange={(e) => {
+              setManual(e.target.value);
+              setNameMatches([]);
+            }}
           />
+          {nameMatches.length > 0 ? (
+            <>
+              <p className="sr-only" role="status" aria-live="polite">
+                {nameMatches.length} matching{" "}
+                {nameMatches.length === 1 ? "patient" : "patients"} found.
+                Focus moved to the first result.
+              </p>
+              <ul
+                className="divide-y divide-border overflow-hidden rounded-xl border border-border"
+                aria-label="Matching patients"
+              >
+                {nameMatches.map((patient, index) => (
+                  <li key={patient.id}>
+                    <button
+                      ref={index === 0 ? firstNameMatchRef : undefined}
+                      type="button"
+                      disabled={looking || assigning}
+                      onClick={() => {
+                        setNameMatches([]);
+                        void resolvePatient({ id: patient.id }, "manual");
+                      }}
+                      className="pressable flex min-h-12 w-full flex-col items-start justify-center px-3 py-2 text-left hover:bg-brand-soft disabled:opacity-50"
+                    >
+                      <span className="font-semibold text-foreground">
+                        <span className="tabular text-brand">
+                          #{patient.reg_no}
+                        </span>{" "}
+                        {patient.full_name}
+                      </span>
+                      <span className="text-xs text-muted">
+                        {patient.age != null ? `Age ${patient.age}` : "Age —"}
+                        {patient.address ? ` · ${patient.address}` : ""}
+                        {` · ${patient.queue_status}`}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           <div className="mt-auto">
             <Button
               type="submit"
               disabled={looking || assigning || Boolean(disabledReason)}
             >
-              {looking ? "Looking up…" : "Look up patient"}
+              {looking ? "Searching…" : "Search"}
             </Button>
           </div>
         </form>

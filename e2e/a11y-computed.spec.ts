@@ -425,12 +425,12 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   ).toBeVisible();
 
   const openCamera = page.getByRole("button", { name: /Open camera/i });
-  const lookUp = page.getByRole("button", { name: "Look up patient" });
+  const lookUp = page.getByRole("button", { name: "Search" });
   const refresh = page.getByRole("button", { name: "Refresh" }).first();
 
   const measurements: Record<string, unknown> = {};
   measurements.openCamera = await assertTouchTarget(openCamera, "Open camera");
-  measurements.lookUp = await assertTouchTarget(lookUp, "Look up patient");
+  measurements.lookUp = await assertTouchTarget(lookUp, "Search");
   if (await refresh.isVisible().catch(() => false)) {
     measurements.seatRefresh = await assertTouchTarget(
       refresh,
@@ -446,7 +446,10 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
       "scanner prose-help",
     );
   }
-  const regHint = page.getByText(/Equal path to the camera/i);
+  const regHint = page.getByText(
+    "Enter their registration number or type their name.",
+    { exact: true },
+  );
   if (await regHint.isVisible()) {
     measurements.regHintContrast = await assertContrastAA(
       regHint,
@@ -455,7 +458,9 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   }
 
   // Lookup success guidance (brand-soft panel) after scan path
-  await page.getByLabel("Reg no").fill(env("E2E_PATIENT_REG_NO"));
+  await page
+    .getByLabel("Registration number or name")
+    .fill(env("E2E_PATIENT_REG_NO"));
   await lookUp.click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
@@ -485,7 +490,7 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   }
 
   await assertFocusVisible(openCamera, "Open camera");
-  await assertFocusVisible(lookUp, "Look up patient");
+  await assertFocusVisible(lookUp, "Search");
 
   // Keyboard: Tab reaches Open camera and Look up
   await page.locator("body").click({ position: { x: 5, y: 5 } });
@@ -525,14 +530,16 @@ test("desk at desktop width: Mark seen path meets 48×48 and focus rings", async
   ).toBeVisible();
 
   const openCamera = page.getByRole("button", { name: /Open camera/i });
-  const lookUp = page.getByRole("button", { name: "Look up patient" });
+  const lookUp = page.getByRole("button", { name: "Search" });
   await assertTouchTarget(openCamera, "desk Open camera");
   await assertTouchTarget(lookUp, "desk Look up");
   await assertFocusVisible(openCamera, "desk Open camera");
 
   // The fixture second patient is already `waiting`, so this is the one place
   // the Mark seen control is guaranteed to render.
-  await page.getByLabel("Reg no").fill(env("E2E_SECOND_PATIENT_REG_NO"));
+  await page
+    .getByLabel("Registration number or name")
+    .fill(env("E2E_SECOND_PATIENT_REG_NO"));
   await lookUp.click();
   const review = page.getByRole("region", {
     name: new RegExp(`#${env("E2E_SECOND_PATIENT_REG_NO")}`),
@@ -558,8 +565,7 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
   await loginStaff(page, "admin");
   await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
 
-  await page.goto("/admin/patients");
-  await page.waitForLoadState("networkidle");
+  await gotoHydrated(page, "/admin/patients");
   await expect(
     page.getByRole("heading", { name: "Patient desk" }),
   ).toBeVisible();
@@ -582,8 +588,7 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
     await assertContrastAA(badge, "status badge");
   }
 
-  await page.goto("/admin");
-  await page.waitForLoadState("networkidle");
+  await gotoHydrated(page, "/admin");
 
   // Camp set-active / delete if inactive camps exist — otherwise staff area
   const setActive = page.getByRole("button", { name: /Set active/i }).first();
@@ -641,7 +646,7 @@ test("public register + login: touch, focus, 200% text zoom operable", async ({
   await loginStaff(page, "volunteer");
   await applyTextZoom200(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  const lookUp = page.getByRole("button", { name: "Look up patient" });
+  const lookUp = page.getByRole("button", { name: "Search" });
   await expect(lookUp).toBeVisible();
   await assertNoTwoAxisScroll(page, "volunteer @200% text");
   // Critical action still in viewport or scrollable on primary axis only
@@ -687,19 +692,24 @@ test("lost-paper recovery: keyboard path and touch targets", async ({ page }) =>
   await page.setViewportSize({ width: 390, height: 844 });
   await loginStaff(page, "volunteer");
 
-  const nameSearch = page.getByLabel("Name search");
-  const regInput = page.getByLabel("Registration number").first();
-  // Scoped to the find-patient card: the scanner has its own Print button.
-  const findCard = page.locator("#checkin");
-  const printBtn = findCard
-    .getByRole("button", { name: "Print prescription" })
+  const patientInput = page.getByLabel("Registration number or name");
+  await expect(patientInput).toBeVisible();
+  await patientInput.fill(env("E2E_PATIENT_NAME"));
+  await page.getByRole("button", { name: "Search" }).click();
+  const match = page
+    .getByRole("list", { name: "Matching patients" })
+    .getByRole("button")
     .first();
+  await expect(match).toBeVisible();
+  await expect(match).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(/matching patient/i);
+  await assertTouchTarget(match, "Name search result");
+  await page.keyboard.press("Enter");
+  const printBtn = page.getByTestId("print-prescription");
 
-  await expect(nameSearch).toBeVisible();
-  await assertTouchTarget(nameSearch, "Name search (lost paper)");
-  await assertTouchTarget(regInput, "Find-patient reg input");
+  await assertTouchTarget(patientInput, "Unified patient input");
   await assertTouchTarget(printBtn, "Print prescription button");
-  await assertFocusVisible(nameSearch, "Name search");
+  await assertFocusVisible(patientInput, "Unified patient input");
   await assertFocusVisible(printBtn, "Print prescription");
 
   // Queue / seat refresh if present
