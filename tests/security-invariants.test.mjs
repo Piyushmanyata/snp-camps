@@ -122,7 +122,7 @@ test("every public table in the baseline migration has RLS enabled", () => {
  * node:test. Assert only the role-name string literals inside each function
  * definition (not TypeScript, not call-site greps).
  */
-test("SQL is_staff and is_camp_crew role sets stay aligned", () => {
+test("SQL keeps Registration Staff separate from Clinical Desk crew", () => {
   const migrationsDir = path.join(root, "supabase", "migrations");
   const sqlAll = fs
     .readdirSync(migrationsDir)
@@ -142,6 +142,7 @@ test("SQL is_staff and is_camp_crew role sets stay aligned", () => {
   assert.match(sqlStaff, /'admin'/);
   assert.match(sqlStaff, /'volunteer'/);
   assert.doesNotMatch(sqlStaff, /'doctor'/);
+  assert.doesNotMatch(sqlStaff, /'clinical_operator'/);
 
   const crewDefs = [
     ...sqlAll.matchAll(
@@ -150,7 +151,15 @@ test("SQL is_staff and is_camp_crew role sets stay aligned", () => {
   ].map((m) => m[0]);
   assert.ok(crewDefs.length > 0, "expected at least one is_camp_crew() definition");
   const sqlCrew = crewDefs[crewDefs.length - 1];
-  assert.match(sqlCrew, /'admin'/);
-  assert.match(sqlCrew, /'volunteer'/);
-  assert.match(sqlCrew, /'doctor'/);
+  const crewBody = sqlCrew.split(/drop function/i, 1)[0];
+  assert.match(crewBody, /is_staff/);
+  assert.doesNotMatch(crewBody, /is_clinical_operator/);
+
+  const clinicalDefs = [
+    ...sqlAll.matchAll(
+      /CREATE(?:\s+OR\s+REPLACE)?\s+FUNCTION\s+(?:"?public"?\.)?"?is_clinical_operator"?\s*\(\s*\)[\s\S]*?\$\$;/gi,
+    ),
+  ].map((m) => m[0]);
+  assert.ok(clinicalDefs.length > 0);
+  assert.match(clinicalDefs.at(-1), /'clinical_operator'/);
 });

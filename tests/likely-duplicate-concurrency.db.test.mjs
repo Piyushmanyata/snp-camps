@@ -374,7 +374,7 @@ test("warned request can override once with attribution", async (t) => {
   }
 });
 
-test("shared family phone different person remains overridable", async (t) => {
+test("shared family phone different person registers without an override", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, day1, day2 } = await seedCampWithTwoDays();
@@ -397,25 +397,6 @@ test("shared family phone different person remains overridable", async (t) => {
 
       await c.query("begin");
       await setStaffAuth(c, staffId);
-      let warned = null;
-      try {
-        await register(c, {
-          requestId: randomUUID(),
-          campId,
-          dayId: day2,
-          fullName: "Child Two",
-          age: 12,
-          phone: "9000011122",
-        });
-        await c.query("commit");
-      } catch (err) {
-        await c.query("rollback");
-        warned = String(err.message || err);
-      }
-      assert.match(String(warned), /LIKELY_DUPLICATE:reg=/);
-
-      await c.query("begin");
-      await setStaffAuth(c, staffId);
       const child = await register(c, {
         requestId: randomUUID(),
         campId,
@@ -423,7 +404,6 @@ test("shared family phone different person remains overridable", async (t) => {
         fullName: "Child Two",
         age: 12,
         phone: "9000011122",
-        likelyOverride: true,
       });
       await c.query("commit");
       assert.ok(child?.id);
@@ -573,7 +553,7 @@ test("two-key inputs stress: no deadlock across concurrent desks", async (t) => 
   }
 });
 
-test("phone-only concurrent race serializes like name+age", async (t) => {
+test("phone-only concurrent registrations both succeed", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, day1, day2 } = await seedCampWithTwoDays();
@@ -617,9 +597,8 @@ test("phone-only concurrent race serializes like name+age", async (t) => {
     await sleep(100);
     await c1.query("commit");
     const second = await secondPromise;
-    assert.equal(second.ok, false, JSON.stringify(second));
-    assert.match(second.message, /LIKELY_DUPLICATE:reg=/);
-    assert.match(second.message, new RegExp(String(first.reg_no)));
+    assert.equal(second.ok, true, JSON.stringify(second));
+    assert.notEqual(second.row.id, first.id);
   } finally {
     try {
       await c1.query("rollback");

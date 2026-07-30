@@ -16,7 +16,10 @@ import {
   type StaffPerson,
 } from "@/components/staff-detail";
 
-export type ManageableStaffRole = "volunteer" | "team_lead";
+export type ManageableStaffRole =
+  | "volunteer"
+  | "team_lead"
+  | "clinical_operator";
 
 type CredentialShare = {
   id: string;
@@ -26,6 +29,29 @@ type CredentialShare = {
 };
 
 function roleCopy(role: ManageableStaffRole) {
+  if (role === "clinical_operator") {
+    return {
+      intro: "Create a least-privilege Clinical Desk Operator account.",
+      empty: "No Clinical Desk Operators yet.",
+      addButton: "Add Clinical Desk Operator",
+      createSubmit: "Create operator & get password",
+      createOk: "Operator created. Share the temporary password once.",
+      createFail: "Failed to create Clinical Desk Operator",
+      resetFail: "Failed to reset operator password",
+      reactivateFail: "Failed to reactivate operator",
+      deactivateFail: "Failed to deactivate operator",
+      credentialTitle: "SNP Camps Clinical Desk login",
+      defaultName: "Clinical Desk Operator",
+      formId: "clinical-operator-create-form",
+      credentialHeadingId: "clinical-operator-credential-heading",
+      detailIdPrefix: "clinical-operator-detail",
+      historyOnDeactivate:
+        "Sign-in stops immediately; attributed clinical history is preserved.",
+      namePlaceholder: "Operator name",
+      emailPlaceholder: "clinical@example.com",
+      emailHint: "Used only for the operator's station login",
+    };
+  }
   if (role === "team_lead") {
     return {
       intro:
@@ -453,7 +479,7 @@ export function AdminStaff({
                   ) : null}
                 </div>
               </div>
-              {open ? (
+              {open && role !== "clinical_operator" ? (
                 <div id={detailId} className="px-3 pb-3">
                   <StaffDetailPanel
                     person={person}

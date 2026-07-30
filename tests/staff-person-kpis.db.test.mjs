@@ -189,7 +189,7 @@ test("catalog exposes one five-argument KPI contract and no leaderboard RPC", as
   assert.equal(rows[0].anon_exec, false);
 });
 
-test("volunteer metrics stay active-Camp bounded and residual doctor targets are rejected", async (t) => {
+test("volunteer metrics use original-registrar credit and reject residual doctor targets", async (t) => {
   if (skipIfNoDb(t)) return;
   await client.query("begin");
   try {
@@ -225,7 +225,7 @@ test("volunteer metrics stay active-Camp bounded and residual doctor targets are
         seen: Number(seen),
         label,
       })),
-      [{ total: 2, waiting: 1, seen: 1, label: "Patients handled" }],
+      [{ total: 1, waiting: 0, seen: 0, label: "Registered" }],
     );
 
     const staleCamp = await personKpis(
@@ -290,7 +290,7 @@ test("Team Lead rollup is distinct, includes lead work, and follows current memb
     });
     const active = await camp();
 
-    // One patient touched by two teammates counts once, plus the lead's work.
+    // Later handlers never move original-registrar credit.
     await patient(active.campId, active.dayId, {
       createdBy: volunteerA,
       checkedInBy: volunteerB,
@@ -316,8 +316,8 @@ test("Team Lead rollup is distinct, includes lead work, and follows current memb
     rollup = await personKpis(lead, lead, "team_lead", active.campId);
     assert.equal(
       Number(rollup.rows[0].total),
-      2,
-      "volunteer B still attributes the shared patient to Lead A",
+      1,
+      "moving the original registrar moves credit; the later handler is irrelevant",
     );
 
     await client.query(
@@ -328,7 +328,7 @@ test("Team Lead rollup is distinct, includes lead work, and follows current memb
     assert.equal(
       Number(rollup.rows[0].total),
       1,
-      "moving both volunteers moves their handled history",
+      "moving a later handler does not change attribution",
     );
     const other = await personKpis(
       otherLead,

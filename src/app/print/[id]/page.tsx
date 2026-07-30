@@ -66,7 +66,7 @@ export default async function PrintPage({
     );
   }
 
-  const deskHref = roleHome(profile.role) || "/volunteer";
+  const deskHref = profile.role === "admin" ? "/admin" : "/volunteer";
   const deskLabel =
     profile.role === "admin" ? "Admin dashboard" : "Volunteer desk";
 

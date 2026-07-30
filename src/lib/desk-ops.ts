@@ -334,6 +334,16 @@ export async function undoMarkSeenWithRetries(options: {
             },
           };
         }
+        if (row.error_code === "clinical_started") {
+          return {
+            done: true,
+            value: {
+              ok: false,
+              error:
+                "Clinical transcription has started. Ask an admin for a reasoned correction.",
+            },
+          };
+        }
         if (row.error_code === "not_seen") {
           return {
             done: true,
@@ -647,4 +657,3 @@ export async function searchDeskPatientsWithRetries(options: {
     options.sleep,
   );
 }
-

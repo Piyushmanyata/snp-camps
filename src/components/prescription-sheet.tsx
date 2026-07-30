@@ -174,7 +174,7 @@ export function PrescriptionSheet({
         {template.vitalsFields.map((field) => (
           <FilledLine key={field} label={`${field} :`} />
         ))}
-        {template.sections.map((section) => (
+      {template.sections.filter((section) => section.visible !== false).map((section) => (
           <div key={section.key}>
             <p className="text-[10pt] font-bold">{section.label} :</p>
             <div
@@ -266,15 +266,23 @@ export function PrescriptionSheet({
           {template.sponsorLabel ? (
             <p className="text-[12pt] font-bold">{template.sponsorLabel}</p>
           ) : null}
-          {template.sponsorLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- print asset
-            <img
-              src={template.sponsorLogoUrl}
-              alt=""
-              className="mt-1 h-[16mm] w-auto"
-              aria-hidden="true"
-            />
-          ) : null}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {(template.sponsorLogos.length
+              ? template.sponsorLogos
+              : [template.sponsorLogoUrl]
+            )
+              .filter(Boolean)
+              .map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element -- managed print asset
+                <img
+                  key={url}
+                  src={url}
+                  alt=""
+                  className="h-[14mm] max-w-[30mm] object-contain"
+                  aria-hidden="true"
+                />
+              ))}
+          </div>
         </div>
         <p className="pb-1 text-right text-[9pt] leading-tight">
           {template.signatureLabel}

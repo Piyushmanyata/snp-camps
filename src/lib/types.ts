@@ -3,7 +3,11 @@
  * the app treats both as non-login. The doctor station was retired — a
  * volunteer or team lead marks a patient seen by scanning their prescription.
  */
-export type UserRole = "admin" | "team_lead" | "volunteer";
+export type UserRole =
+  | "admin"
+  | "team_lead"
+  | "volunteer"
+  | "clinical_operator";
 export type QueueStatus = "registered" | "waiting" | "seen";
 
 export type Profile = {

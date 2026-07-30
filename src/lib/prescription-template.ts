@@ -18,6 +18,7 @@ export type PrescriptionSection = {
   label: string;
   /** Rendered height in millimetres of writing space. */
   heightMm: number;
+  visible?: boolean;
 };
 
 export type PrescriptionTemplate = {
@@ -25,6 +26,7 @@ export type PrescriptionTemplate = {
   letterheadUrl: string;
   /** Sponsor logo shown in the footer. Empty string hides the whole block. */
   sponsorLogoUrl: string;
+  sponsorLogos: string[];
   sponsorLabel: string;
   /** Diagnosis tick-boxes across the top of the clinical area. */
   diagnosisOptions: string[];
@@ -46,6 +48,7 @@ export type PrescriptionTemplate = {
 export const DEFAULT_PRESCRIPTION_TEMPLATE: PrescriptionTemplate = {
   letterheadUrl: "/brand/letterhead.png",
   sponsorLogoUrl: "/brand/rupa-logo.png",
+  sponsorLogos: ["/brand/rupa-logo.png"],
   sponsorLabel: "Sponsorer :",
   diagnosisOptions: [
     "RE - CATARACT",
@@ -55,8 +58,8 @@ export const DEFAULT_PRESCRIPTION_TEMPLATE: PrescriptionTemplate = {
   ],
   vitalsFields: ["Blood Sugar (Random)", "BP"],
   sections: [
-    { key: "remarks", label: "Remarks", heightMm: 16 },
-    { key: "medicines", label: "MEDICINES", heightMm: 26 },
+    { key: "remarks", label: "Remarks", heightMm: 16, visible: true },
+    { key: "medicines", label: "MEDICINES", heightMm: 26, visible: true },
   ],
   operationLabel: "Operation will be done at :",
   showGlassesTable: true,
@@ -111,6 +114,7 @@ export function resolvePrescriptionTemplate(
         .map((item) => ({
           key: item.key.slice(0, MAX_SHORT_TEXT),
           label: item.label.trim().slice(0, MAX_SHORT_TEXT),
+          visible: item.visible !== false,
           heightMm:
             typeof item.heightMm === "number" &&
             item.heightMm > 0 &&
@@ -134,6 +138,14 @@ export function resolvePrescriptionTemplate(
       typeof raw.sponsorLogoUrl === "string"
         ? raw.sponsorLogoUrl
         : base.sponsorLogoUrl,
+    sponsorLogos: Array.isArray(raw.sponsorLogos)
+      ? (raw.sponsorLogos as unknown[])
+          .filter((value): value is string => typeof value === "string")
+          .filter((value) =>
+            /^\/api\/admin\/sponsor-assets\/[0-9a-f-]+$/i.test(value),
+          )
+          .slice(0, 8)
+      : base.sponsorLogos,
     sponsorLabel: str(raw.sponsorLabel, base.sponsorLabel),
     diagnosisOptions: strList(
       raw.diagnosisOptions,

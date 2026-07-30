@@ -31,6 +31,7 @@ import { isNonLatinText } from "@/lib/aadhaar-text";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
+import { validateHouseholdPhone } from "@/lib/phone";
 
 /** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
@@ -61,6 +62,7 @@ export function PatientForm({
   defaultPhone = "",
   createdBy = null,
   isStaff = false,
+  userRole = null,
 }: Props) {
   const openDays = days.filter((d) => !d.is_full);
   const firstOpen = openDays[0]?.id || "";
@@ -73,6 +75,9 @@ export function PatientForm({
   const [age, setAge] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState(defaultPhone);
+  const phoneValidation = validateHouseholdPhone(phone);
+  const [failedScanAttempts, setFailedScanAttempts] = useState(0);
+  const [manualReason, setManualReason] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -180,7 +185,7 @@ export function PatientForm({
         });
         setPartialScanDiagnostic(diagnostic);
         setScannedBanner(
-          "Aadhaar card scan is incomplete. Scan again, or close the scanner and choose manual entry.",
+          "Aadhaar card scan is incomplete. Scan again and ask a Team Lead after three failures.",
         );
         return false;
       }
@@ -218,8 +223,48 @@ export function PatientForm({
 
   const scanner = useAadhaarScanner(onCardScanned);
   const { clearError: clearScanError } = scanner;
+  const wedgeBuffer = useRef({ value: "", at: 0 });
+  useEffect(() => {
+    if (!phoneValidation.ok || scanner.isScanning) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const now = performance.now();
+      if (now - wedgeBuffer.current.at > 100) wedgeBuffer.current.value = "";
+      wedgeBuffer.current.at = now;
+      if (event.key === "Enter") {
+        const payload = wedgeBuffer.current.value;
+        wedgeBuffer.current.value = "";
+        if (payload.length < 20) return;
+        event.preventDefault();
+        void import("@/lib/aadhaar-qr")
+          .then((module) => module.parseAadhaarQrAsync(payload))
+          .then((parsed) =>
+            parsed
+              ? onCardScanned(parsed, "usb-keyboard-wedge")
+              : Promise.resolve(false),
+          )
+          .then((accepted) => {
+            if (!accepted) setFailedScanAttempts((count) => count + 1);
+          })
+          .catch(() => setFailedScanAttempts((count) => count + 1));
+        return;
+      }
+      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        wedgeBuffer.current.value += event.key;
+        if (wedgeBuffer.current.value.length > 8192) wedgeBuffer.current.value = "";
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onCardScanned, phoneValidation.ok, scanner.isScanning]);
   // A rejected payload (the app's own desk slip) means nothing was filled.
   const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
+  const lastDiagnostic = useRef<string | null>(null);
+  useEffect(() => {
+    if (scanDiagnostic && scanDiagnostic !== lastDiagnostic.current) {
+      lastDiagnostic.current = scanDiagnostic;
+      setFailedScanAttempts((count) => count + 1);
+    }
+  }, [scanDiagnostic]);
 
   /**
    * Aadhaar is the source of patient identity, so the typed fields stay out of
@@ -331,7 +376,6 @@ export function PatientForm({
         )
       : null;
 
-    const supabase = createClient();
     const resetFormFields = () => {
       setFullName("");
       setDisplayName("");
@@ -349,6 +393,8 @@ export function PatientForm({
       setLegacyQrWarning(null);
       setPartialScanDiagnostic(null);
       clearScanError();
+      setFailedScanAttempts(0);
+      setManualReason("");
       setLookupState("idle");
       setLookupMsg(null);
       setFieldErrors({});
@@ -433,18 +479,37 @@ export function PatientForm({
             };
           }
         }
-        const result = await supabase.rpc(fn, args);
-        return {
-          data: result.data,
-          error: result.error
-            ? {
-                message: result.error.message,
-                code: result.error.code,
-                details: result.error.details,
-                hint: result.error.hint,
-              }
-            : null,
-        };
+        try {
+          const response = await fetch("/api/desk/register-manual", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              requestId: args.p_request_id,
+              campId: args.p_camp_id,
+              campDayId: args.p_camp_day_id,
+              fullName: args.p_full_name,
+              displayName: args.p_display_name,
+              gender: args.p_gender,
+              age: args.p_age,
+              address: args.p_address,
+              phone: args.p_phone,
+              reason: manualReason,
+              failedScanAttempts,
+            }),
+          });
+          const body = await response.json();
+          return {
+            data: body.data ?? null,
+            error: body.error?.message
+              ? { message: body.error.message, code: String(response.status) }
+              : null,
+          };
+        } catch {
+          return {
+            data: null,
+            error: { message: "Manual registration service is unavailable." },
+          };
+        }
       },
       printTarget,
       resetForm: resetFormFields,
@@ -657,7 +722,21 @@ export function PatientForm({
         Desk · only full name and age are required
       </div>
 
-      {/* Aadhaar QR Scanner Action */}
+      <Input
+        id="patient-phone"
+        label="Household mobile number *"
+        error={fieldErrors.phone}
+        inputMode="numeric"
+        autoComplete="tel"
+        required
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        placeholder="10 digit mobile"
+        hint="Contact only — family members may share the same number."
+      />
+
+      {/* Aadhaar capture stays closed until the household contact is valid. */}
+      {phoneValidation.ok ? (
       <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
         <div>
           <p className="text-sm font-semibold text-brand">
@@ -695,17 +774,32 @@ export function PatientForm({
           </div>
         ) : null}
 
-        {!identityVisible ? (
+        {!identityVisible &&
+        failedScanAttempts >= 3 &&
+        (userRole === "team_lead" || userRole === "admin") ? (
           <button
             type="button"
             data-testid="desk-manual-entry-escape"
             className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
             onClick={() => setManualEntry(true)}
           >
-            Card scan is not working &mdash; enter details manually
+            Use audited manual exception
           </button>
         ) : null}
+        {!identityVisible && failedScanAttempts >= 3 && userRole === "volunteer" ? (
+          <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
+            Ask Team Lead — manual identity entry is not available to volunteers.
+          </p>
+        ) : null}
+        <p className="text-xs font-semibold text-muted">
+          Failed scan attempts: {failedScanAttempts}/3
+        </p>
       </div>
+      ) : (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          Enter a valid household mobile number to open the Aadhaar scanner.
+        </p>
+      )}
       {flash ? (
         <p
           role="status"
@@ -881,21 +975,18 @@ export function PatientForm({
         </>
       ) : null}
 
-      <Input
-        id="patient-phone"
-        label="Mobile number (optional)"
-        error={fieldErrors.phone}
-        inputMode="numeric"
-        autoComplete="tel"
-        enterKeyHint="next"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="10 digit (optional)"
-        hint="Optional — used only for eligible future-camp SMS"
-      />
-
       {identityVisible ? (
         <>
+      {manualEntry ? (
+        <Input
+          id="manual-registration-reason"
+          label="Manual exception reason *"
+          required
+          value={manualReason}
+          onChange={(e) => setManualReason(e.target.value)}
+          placeholder="Why the Aadhaar QR could not be captured"
+        />
+      ) : null}
       <Input
         id="patient-aadhaar"
         label={isAadhaarLocked ? "Aadhaar last 4 (Aadhaar Locked 🔒)" : "Aadhaar last 4 (optional)"}
@@ -1052,6 +1143,8 @@ export function PatientForm({
             lookupState === "loading" ||
             !campDayId ||
             !identityVisible ||
+            !phoneValidation.ok ||
+            (manualEntry && !manualReason.trim()) ||
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}
@@ -1070,6 +1163,8 @@ export function PatientForm({
             lookupState === "loading" ||
             !campDayId ||
             !identityVisible ||
+            !phoneValidation.ok ||
+            (manualEntry && !manualReason.trim()) ||
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}

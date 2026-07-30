@@ -225,7 +225,7 @@ test("name + age match in same camp raises LIKELY_DUPLICATE with reg no", async 
   }
 });
 
-test("phone match in same camp raises LIKELY_DUPLICATE", async (t) => {
+test("shared household phone does not create a duplicate warning", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, dayId } = await seedCampWithDay();
@@ -248,9 +248,8 @@ test("phone match in same camp raises LIKELY_DUPLICATE", async (t) => {
       age: 99,
       phone: "98765 43210",
     });
-    assert.equal(second.ok, false);
-    assert.match(second.message, /LIKELY_DUPLICATE:reg=/);
-    assert.match(second.message, new RegExp(String(first.row.reg_no)));
+    assert.equal(second.ok, true, second.message);
+    assert.notEqual(second.row.id, first.row.id);
   } finally {
     await cleanupCamp(campId);
     await cleanupStaff(staffId);

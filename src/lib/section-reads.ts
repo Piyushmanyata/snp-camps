@@ -172,6 +172,12 @@ export type StaffKpiRow = {
   full_name: string;
   role: string;
   distinct_patients: number;
+  registered_count: number;
+  seen_count: number;
+  metric_label: string;
+  total?: number | null;
+  seen?: number | null;
+  label?: string | null;
   team_lead_id: string | null;
   team_headcount: number;
 };
@@ -210,6 +216,9 @@ export async function loadStaffLeaderboardSection(
       full_name: row.full_name,
       role: row.staff_role ?? row.role,
       distinct_patients: Number(row.distinct_patients ?? 0),
+      registered_count: Number(row.total ?? 0),
+      seen_count: Number(row.seen ?? 0),
+      metric_label: String(row.label ?? "Registered"),
       team_lead_id: row.team_lead_id ?? null,
       team_headcount: Number(row.team_headcount ?? 0),
     })),

@@ -9,6 +9,9 @@ type StaffKpiRow = {
   full_name: string;
   role: string;
   distinct_patients: number;
+  registered_count: number;
+  seen_count: number;
+  metric_label: string;
   team_lead_id: string | null;
   team_headcount: number;
 };
@@ -57,7 +60,7 @@ export function TeamLeadPanel({
         </SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-xs font-semibold text-muted uppercase">Team distinct patients</p>
+            <p className="text-xs font-semibold text-muted uppercase">{myTeamLeadRow?.metric_label ?? "Registered"}</p>
             <p className="text-2xl font-extrabold text-brand tabular mt-1">
               {myTeamLeadRow?.distinct_patients ?? 0}
             </p>
@@ -102,7 +105,7 @@ export function TeamLeadPanel({
         {/* 1. Team Lead Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            Team Lead leaderboard · distinct patients
+            Team Lead leaderboard · outcomes
           </h3>
           {teamLeads.length === 0 ? (
             <p className="text-xs text-muted">No team leads recorded.</p>
@@ -128,7 +131,8 @@ export function TeamLeadPanel({
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular">
                     <span className="block text-base">{tl.distinct_patients}</span>
-                    <span className="block text-[11px]">patients</span>
+                    <span className="block text-[11px]">{tl.metric_label}</span>
+                    <span className="block text-[10px] font-medium text-muted">Registered {tl.registered_count} · Seen {tl.seen_count}</span>
                   </span>
                 </div>
               ))}
@@ -139,7 +143,7 @@ export function TeamLeadPanel({
         {/* 2. Volunteer Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            Volunteer leaderboard · distinct patients
+            Volunteer leaderboard · outcomes
           </h3>
           {volunteers.length === 0 ? (
             <p className="text-xs text-muted">No volunteers recorded.</p>
@@ -160,7 +164,8 @@ export function TeamLeadPanel({
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular text-brand">
                     <span className="block text-base">{vol.distinct_patients}</span>
-                    <span className="block text-[11px]">patients</span>
+                    <span className="block text-[11px]">{vol.metric_label}</span>
+                    <span className="block text-[10px] font-medium text-muted">Registered {vol.registered_count} · Seen {vol.seen_count}</span>
                   </span>
                 </div>
               ))}

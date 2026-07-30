@@ -7,6 +7,7 @@ import {
   parseLikelyDuplicateError,
 } from "@/lib/registration-request";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { validateHouseholdPhone } from "@/lib/phone";
 
 type ScannedDeskRegistrationBody = {
   requestId?: unknown;
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
   const displayName = str(body.displayName);
   const gender = str(body.gender).toUpperCase();
   const address = str(body.address);
-  const phone = str(body.phone).replace(/\D/g, "").slice(-10);
+  const phoneResult = validateHouseholdPhone(str(body.phone));
   const email = str(body.email);
   const aadhaarLast4 = str(body.aadhaarLast4).replace(/\D/g, "").slice(-4);
   const dateOfBirth = str(body.dateOfBirth);
@@ -72,7 +73,8 @@ export async function POST(request: Request) {
     !dateOfBirth ||
     aadhaarLast4.length !== 4 ||
     !["M", "F", "O"].includes(gender) ||
-    age == null
+    age == null ||
+    !phoneResult.ok
   ) {
     return failure(
       "The Aadhaar card scan is incomplete. Scan again or switch to manual entry.",
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
     p_gender: gender,
     p_age: age,
     p_address: address || null,
-    p_phone: phone || null,
+    p_phone: phoneResult.phone,
     p_email: email || null,
     p_aadhaar_last4: aadhaarLast4,
     p_user_id: null,

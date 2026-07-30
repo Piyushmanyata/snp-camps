@@ -47,6 +47,15 @@ export default async function TeamLeadPage() {
     mapDbError(volunteersError, { context: "team-lead-page.assignments" });
     throw new Error("Team assignments could not be loaded");
   }
+  const { data: clinicalOperators, error: clinicalError } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone, role, created_at, disabled_at")
+    .eq("role", "clinical_operator")
+    .order("created_at", { ascending: false });
+  if (clinicalError) {
+    mapDbError(clinicalError, { context: "team-lead-page.clinical-list" });
+    throw new Error("Clinical Desk accounts could not be loaded");
+  }
 
   return (
     <Shell
@@ -81,6 +90,17 @@ export default async function TeamLeadPage() {
         </Card>
         <Card>
           <AdminStaff role="team_lead" initial={teamLeadsFull || []} canManage />
+        </Card>
+        <Card>
+          <h2 className="mb-3 text-base font-bold text-foreground">
+            Clinical Desk Operators
+          </h2>
+          <AdminStaff
+            role="clinical_operator"
+            initial={clinicalOperators || []}
+            canManage
+            canViewDetail={false}
+          />
         </Card>
         <Card>
           <h2 className="text-base font-bold text-foreground">Team assignments</h2>

@@ -17,3 +17,20 @@ export function normalizePhoneE164(raw: string): string | null {
   }
   return null;
 }
+
+export type HouseholdPhoneValidation =
+  | { ok: true; phone: string }
+  | { ok: false; message: string };
+
+/** Desk-only household contact: required, shareable, and not an identity key. */
+export function validateHouseholdPhone(raw: string): HouseholdPhoneValidation {
+  const normalized = normalizePhoneE164(raw);
+  const phone = normalized?.slice(-10) ?? "";
+  if (!phone || /^(\d)\1{9}$/.test(phone)) {
+    return {
+      ok: false,
+      message: "Enter a valid 10-digit household mobile number.",
+    };
+  }
+  return { ok: true, phone };
+}

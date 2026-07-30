@@ -5,9 +5,13 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
-export type StaffRole = "volunteer" | "team_lead";
+export type StaffRole = "volunteer" | "team_lead" | "clinical_operator";
 
-const STAFF_ROLES = new Set<string>(["volunteer", "team_lead"]);
+const STAFF_ROLES = new Set<string>([
+  "volunteer",
+  "team_lead",
+  "clinical_operator",
+]);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -21,6 +25,7 @@ function generateTemporaryPassword(length = 14): string {
 
 function roleLabel(role: StaffRole): string {
   if (role === "team_lead") return "Team Lead";
+  if (role === "clinical_operator") return "Clinical Desk Operator";
   return "Volunteer";
 }
 

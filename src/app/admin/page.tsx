@@ -167,6 +167,9 @@ export default async function AdminPage() {
             <NavLink href="/admin/patients" variant="soft">
               Patient desk
             </NavLink>
+            <NavLink href="/admin/clinical" variant="soft">
+              Clinical records
+            </NavLink>
           </div>
         </Card>
 
@@ -245,4 +248,3 @@ export default async function AdminPage() {
     </Shell>
   );
 }
-

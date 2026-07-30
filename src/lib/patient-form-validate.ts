@@ -3,7 +3,7 @@ import {
   digitsOnly,
   isValidAadhaarNumber,
 } from "@/lib/aadhaar";
-import { normalizePhoneE164 } from "@/lib/phone";
+import { validateHouseholdPhone } from "@/lib/phone";
 
 export type PatientFormField =
   | "campDay"
@@ -125,14 +125,13 @@ export function validatePatientForm(
     };
   }
 
-  const phoneRaw = draft.phone.trim();
-  const normalizedPhone = phoneRaw ? normalizePhoneE164(phoneRaw) : null;
-  if (phoneRaw && !normalizedPhone) {
+  const phoneResult = validateHouseholdPhone(draft.phone);
+  if (!phoneResult.ok) {
     return {
       ok: false,
       field: "phone",
       elementId: "patient-phone",
-      message: "Mobile 10 digit ho, ya khali chhod do.",
+      message: phoneResult.message,
     };
   }
 
@@ -183,7 +182,7 @@ export function validatePatientForm(
       gender: draft.gender || null,
       age: ageValue,
       address: draft.address.trim() || null,
-      phone: normalizedPhone?.slice(-10) || null,
+      phone: phoneResult.phone,
       email: draft.email.trim() || null,
       aadhaarLast4: last4 || null,
     },

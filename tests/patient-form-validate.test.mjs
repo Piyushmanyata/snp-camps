@@ -15,20 +15,20 @@ function draft(over = {}) {
     gender: "",
     age: "42",
     address: "",
-    phone: "",
+    phone: "9876543210",
     email: "",
     aadhaar: "",
     ...over,
   };
 }
 
-test("name + age only (no phone, no address) succeeds", () => {
+test("name + age + household phone succeeds", () => {
   const result = validatePatientForm(draft(), days);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.values.fullName, "Rina Das");
   assert.equal(result.values.age, 42);
-  assert.equal(result.values.phone, null);
+  assert.equal(result.values.phone, "9876543210");
   assert.equal(result.values.address, null);
   assert.equal(result.values.email, null);
   assert.equal(result.values.aadhaarLast4, null);
@@ -48,9 +48,10 @@ test("missing age fails", () => {
   assert.equal(result.field, "age");
 });
 
-test("invalid phone fails; blank phone ok", () => {
+test("invalid, blank, and repeated-digit phones fail", () => {
   assert.equal(validatePatientForm(draft({ phone: "123" }), days).ok, false);
-  assert.equal(validatePatientForm(draft({ phone: "" }), days).ok, true);
+  assert.equal(validatePatientForm(draft({ phone: "" }), days).ok, false);
+  assert.equal(validatePatientForm(draft({ phone: "9999999999" }), days).ok, false);
   const ok = validatePatientForm(draft({ phone: "9876543210" }), days);
   assert.equal(ok.ok, true);
   if (ok.ok) assert.equal(ok.values.phone, "9876543210");

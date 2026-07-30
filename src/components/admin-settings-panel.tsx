@@ -16,6 +16,7 @@ import {
   validateVenueLength,
 } from "@/lib/admin-settings";
 import { mapDbError } from "@/lib/public-error";
+import { PrescriptionTemplateEditor } from "@/components/prescription-template-editor";
 
 export function AdminSettingsPanel({ camp }: { camp: Camp }) {
   const router = useRouter();
@@ -80,6 +81,7 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
   }
 
   return (
+    <div className="space-y-4">
     <Card className="!p-4 sm:!p-5 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border pb-3">
         <div>
@@ -191,5 +193,7 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
         </div>
       </form>
     </Card>
+    <PrescriptionTemplateEditor campId={camp.id} />
+    </div>
   );
 }

@@ -31,8 +31,8 @@ type PatientRow = {
   phone: string | null;
   queue_status: QueueStatus;
   camps:
-    | { name: string; venue: string | null; prescription_template?: unknown }
-    | { name: string; venue: string | null; prescription_template?: unknown }[]
+    | { id: string; name: string; venue: string | null; prescription_template?: unknown }
+    | { id: string; name: string; venue: string | null; prescription_template?: unknown }[]
     | null;
   camp_days: { day_date: string } | { day_date: string }[] | null;
 };
@@ -48,7 +48,7 @@ function campDayFromRow(row: PatientRow): string | null {
   return dayRel?.day_date ?? null;
 }
 
-function toLoaded(row: PatientRow, origin: string): LoadedPrintPatient {
+function toLoaded(row: PatientRow, origin: string, published?: unknown): LoadedPrintPatient {
   const camp = campFromRow(row);
   return {
     patient: {
@@ -64,7 +64,7 @@ function toLoaded(row: PatientRow, origin: string): LoadedPrintPatient {
     campDayDate: campDayFromRow(row),
     qrValue: patientScanUrl(row.id, origin),
     queueStatus: row.queue_status,
-    prescriptionTemplate: camp?.prescription_template ?? null,
+    prescriptionTemplate: published ?? camp?.prescription_template ?? null,
   };
 }
 
@@ -90,7 +90,7 @@ export async function loadPrintSlips(
   const { data, error } = await supabase
     .from("patients")
     .select(
-      "id, reg_no, full_name, age, gender, address, phone, queue_status, camps(name, venue, prescription_template), camp_days(day_date)",
+      "id, reg_no, full_name, age, gender, address, phone, queue_status, camps(id, name, venue, prescription_template), camp_days(day_date)",
     )
     .in("id", clean);
 
@@ -102,10 +102,20 @@ export async function loadPrintSlips(
   }
 
   const out: LoadedPrintPatient[] = [];
+  const templates = new Map<string, unknown>();
   for (const id of clean) {
     const row = byId.get(id);
     if (!row) continue;
-    out.push(toLoaded(row, origin));
+    const camp = campFromRow(row);
+    let published = camp ? templates.get(camp.id) : undefined;
+    if (camp && !templates.has(camp.id)) {
+      const result = await supabase.rpc("published_prescription_template", {
+        p_camp_id: camp.id,
+      });
+      published = result.data ?? null;
+      templates.set(camp.id, published);
+    }
+    out.push(toLoaded(row, origin, published));
   }
   return out;
 }
