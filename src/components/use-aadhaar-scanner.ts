@@ -49,8 +49,6 @@ const ESCALATE_AFTER_FRAMES = 12;
  * heavy passes several times a second.
  */
 const THOROUGH_EVERY_N_FRAMES = 4;
-/** Browser-side resize request that bounds typical 4:3 phone photos to ~31 MB. */
-const PHOTO_DECODE_WIDTH = 2400;
 /**
  * Probe geometries cycled one per frame, so all card sizes are covered within
  * ~6 frames without making any single frame expensive.
@@ -69,6 +67,8 @@ export type OnParsed = (
 export type AadhaarScanner = {
   isScanning: boolean;
   isReadingPhoto: boolean;
+  isReadingUsb: boolean;
+  hasConsent: boolean;
   /** Operator-facing failure. Always names manual entry as the way forward. */
   scanError: string | null;
   /** Structure-only fingerprint of a problem payload — never patient data. */
@@ -76,6 +76,8 @@ export type AadhaarScanner = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   start: () => Promise<void>;
   readPhoto: (file: File) => Promise<void>;
+  readPayload: (payload: string) => Promise<void>;
+  setConsent: (consented: boolean) => void;
   stop: () => void;
   clearError: () => void;
 };
@@ -99,6 +101,8 @@ const MANUAL_HINT = "Please type the details manually.";
 export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const [isScanning, setIsScanning] = useState(false);
   const [isReadingPhoto, setIsReadingPhoto] = useState(false);
+  const [isReadingUsb, setIsReadingUsb] = useState(false);
+  const [hasConsent, setHasConsent] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanDiagnostic, setScanDiagnostic] = useState<string | null>(null);
   const sessionRef = useRef(new QrCameraSession());
@@ -123,6 +127,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
     }
     setIsScanning(false);
     setIsReadingPhoto(false);
+    setIsReadingUsb(false);
   }, []);
 
   const clearError = useCallback(() => {
@@ -162,6 +167,11 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         stop();
         return true;
       }
+      if (outcome.status === "malformed") {
+        setScanError(outcome.message);
+        setScanDiagnostic(outcome.diagnostic);
+        return false;
+      }
 
       const accepted = await onParsedRef.current(
         outcome.parsed,
@@ -183,6 +193,10 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   );
 
   const start = useCallback(async () => {
+    if (!hasConsent) {
+      setScanError("Record the patient's consent before extracting Aadhaar details.");
+      return;
+    }
     // Starting the camera supersedes any in-flight photo decode.
     setIsReadingPhoto(false);
     setScanError(null);
@@ -337,10 +351,14 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
       setIsScanning(false);
     }
-  }, [handleOutcome, stop]);
+  }, [handleOutcome, hasConsent, stop]);
 
   const readPhoto = useCallback(
     async (file: File) => {
+      if (!hasConsent) {
+        setScanError("Record consent before choosing an Aadhaar photo.");
+        return;
+      }
       stop();
       const token = sessionRef.current.begin();
       setScanError(null);
@@ -361,15 +379,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         if (typeof createImageBitmap === "function") {
           bitmap = await createImageBitmap(file, {
             imageOrientation: "from-image",
-            resizeWidth: PHOTO_DECODE_WIDTH,
-            resizeQuality: "high",
           })
-            .catch(() =>
-              createImageBitmap(file, {
-                resizeWidth: PHOTO_DECODE_WIDTH,
-                resizeQuality: "high",
-              }),
-            )
             .catch(() => createImageBitmap(file));
           if (!sessionRef.current.isCurrent(token)) return;
           source = bitmap;
@@ -429,17 +439,43 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         if (sessionRef.current.isCurrent(token)) setIsReadingPhoto(false);
       }
     },
-    [handleOutcome, stop],
+    [handleOutcome, hasConsent, stop],
+  );
+
+  const readPayload = useCallback(
+    async (payload: string) => {
+      if (!hasConsent) {
+        setScanError("Record consent before using the USB Aadhaar scanner.");
+        return;
+      }
+      stop();
+      setScanError(null);
+      setScanDiagnostic(null);
+      setIsReadingUsb(true);
+      try {
+        const client = await loadDecodeClient();
+        await handleOutcome(await client.decodePayload(payload));
+      } catch {
+        setScanError("USB scanner payload could not be read. Scan the card again.");
+      } finally {
+        setIsReadingUsb(false);
+      }
+    },
+    [handleOutcome, hasConsent, stop],
   );
 
   return {
     isScanning,
     isReadingPhoto,
+    isReadingUsb,
+    hasConsent,
     scanError,
     scanDiagnostic,
     videoRef,
     start,
     readPhoto,
+    readPayload,
+    setConsent: setHasConsent,
     stop,
     clearError,
   };

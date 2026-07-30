@@ -53,3 +53,8 @@ export function decodeFrame(
     thorough,
   );
 }
+
+/** Parse one complete keyboard-wedge payload in the existing worker. */
+export function decodePayload(payload: string): Promise<DecodeOutcome> {
+  return getWorker().api.decodePayload(payload);
+}

@@ -69,6 +69,18 @@ test("prescription template bounds dynamic content to one-page-safe limits", () 
   );
 });
 
+test("prescription template preserves the built-in and uploaded sponsor order", () => {
+  const first = "/api/admin/sponsor-assets/11111111-1111-4111-8111-111111111111";
+  const second = "/api/admin/sponsor-assets/22222222-2222-4222-8222-222222222222";
+
+  assert.deepEqual(
+    resolvePrescriptionTemplate({
+      sponsorLogos: ["/brand/rupa-logo.png", first, second],
+    }).sponsorLogos,
+    ["/brand/rupa-logo.png", first, second],
+  );
+});
+
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
   assert.equal(formatAadhaarDisplay("99999999001988"), "9999 9999 0019");
@@ -342,4 +354,3 @@ test("team_lead role predicates and roleHome route correctly", () => {
   assert.equal(canRegisterPatients("team_lead"), true);
   assert.equal(roleHome("team_lead"), "/volunteer");
 });
-

@@ -135,11 +135,12 @@ test.describe("throttled primary desk action", () => {
 
     const startedAt = performance.now();
     try {
+      await page.getByLabel(/Mobile number/i).fill("9876543210");
+      await page.getByTestId("aadhaar-consent").check();
       await page.getByTestId("scan-aadhaar-qr-button").click();
       await expect(page.getByTestId("aadhaar-scanned-banner")).toBeVisible({
         timeout: DESK_ACTION_BUDGET_MS,
       });
-      await page.getByLabel(/Mobile number/i).fill("9876543210");
 
       const popupPromise = page.waitForEvent("popup");
       const registrationResponsePromise = page.waitForResponse(
@@ -218,4 +219,3 @@ test.describe("throttled primary desk action", () => {
     ).toBeLessThan(DESK_ACTION_BUDGET_MS);
   });
 });
-

@@ -157,6 +157,12 @@ const MATRIX = [
     category: "transient",
   },
   {
+    name: "browser API transport sentinel",
+    error: { code: "NETWORK_ERROR", message: "Registration service unavailable" },
+    retryable: true,
+    category: "transient",
+  },
+  {
     name: "connection failure 08006",
     error: { code: "08006", message: "connection_failure" },
     retryable: true,

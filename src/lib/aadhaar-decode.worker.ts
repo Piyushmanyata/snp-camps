@@ -27,6 +27,8 @@ export type DecodeOutcome =
   | { status: "parsed"; parsed: ParsedAadhaarQr; diagnostic: string }
   /** A QR was read but it is not an Aadhaar card (typically our own desk slip). */
   | { status: "rejected"; message: string; diagnostic: string }
+  /** A QR was read completely, but its Aadhaar payload was malformed or unsupported. */
+  | { status: "malformed"; message: string; diagnostic: string }
   /** No QR found in this image at all. */
   | { status: "none" };
 
@@ -39,13 +41,15 @@ async function toOutcome(payload: QrPayload): Promise<DecodeOutcome> {
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Invalid Aadhaar QR code.";
-    // "Unreadable" on a payload we did decode means the format is one we do not
-    // understand yet — not a terminal rejection, so the caller may keep trying
-    // other frames or rescue variants.
     if (/desk slip/i.test(message)) {
       return { status: "rejected", message, diagnostic };
     }
-    return { status: "none" };
+    return {
+      status: "malformed",
+      message:
+        "A QR was found, but its Aadhaar data was incomplete or unsupported. Retake the photo or try another method.",
+      diagnostic,
+    };
   }
 }
 
@@ -82,6 +86,18 @@ const api = {
       }
     }
     return payload ? toOutcome(payload) : { status: "none" };
+  },
+
+  /** Parse one complete keyboard-wedge payload without copying it to the UI. */
+  async decodePayload(payload: string): Promise<DecodeOutcome> {
+    if (payload.length < 20 || payload.length > 16_384) {
+      return {
+        status: "malformed",
+        message: "The USB scanner returned an incomplete Aadhaar payload. Scan the card again.",
+        diagnostic: `kind=usb;len=${payload.length};accepted=false`,
+      };
+    }
+    return toOutcome(payload);
   },
 };
 

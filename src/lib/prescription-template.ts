@@ -142,6 +142,7 @@ export function resolvePrescriptionTemplate(
       ? (raw.sponsorLogos as unknown[])
           .filter((value): value is string => typeof value === "string")
           .filter((value) =>
+            value === "/brand/rupa-logo.png" ||
             /^\/api\/admin\/sponsor-assets\/[0-9a-f-]+$/i.test(value),
           )
           .slice(0, 8)

@@ -113,11 +113,13 @@ export default async function AdminPage() {
               { href: "#scan", label: "Scan patient", primary: true },
               { href: "/register", label: "Register" },
               { href: "/team-lead", label: "Team Leads" },
+              { href: "/admin/clinical-operators", label: "Clinical Accounts" },
               { href: "/admin/patients", label: "Patients" },
             ]
           : [
               { href: "/register", label: "Register", primary: true },
               { href: "/team-lead", label: "Team Leads" },
+              { href: "/admin/clinical-operators", label: "Clinical Accounts" },
               { href: "/admin/patients", label: "Patients" },
               { href: "/volunteer", label: "Staff management" },
             ]
@@ -142,7 +144,7 @@ export default async function AdminPage() {
             <NavLink href="/register" variant="primary">
               Register patient
             </NavLink>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <NavLink href="/admin/patients" variant="soft">
                 Patients
               </NavLink>
@@ -151,6 +153,9 @@ export default async function AdminPage() {
               </NavLink>
               <NavLink href="/volunteer" variant="soft">
                 Volunteers
+              </NavLink>
+              <NavLink href="/admin/clinical-operators" variant="soft">
+                Clinical accounts
               </NavLink>
             </div>
           </div>
@@ -169,6 +174,9 @@ export default async function AdminPage() {
             </NavLink>
             <NavLink href="/admin/clinical" variant="soft">
               Clinical records
+            </NavLink>
+            <NavLink href="/admin/clinical-operators" variant="soft">
+              Clinical Desk Accounts
             </NavLink>
           </div>
         </Card>

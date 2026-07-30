@@ -31,6 +31,7 @@ import { isNonLatinText } from "@/lib/aadhaar-text";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
+import { AadhaarUsbInput } from "@/components/aadhaar-usb-input";
 import { validateHouseholdPhone } from "@/lib/phone";
 
 /** Recoverable print action after a successful registration (#62 / #64). */
@@ -223,39 +224,6 @@ export function PatientForm({
 
   const scanner = useAadhaarScanner(onCardScanned);
   const { clearError: clearScanError } = scanner;
-  const wedgeBuffer = useRef({ value: "", at: 0 });
-  useEffect(() => {
-    if (!phoneValidation.ok || scanner.isScanning) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const now = performance.now();
-      if (now - wedgeBuffer.current.at > 100) wedgeBuffer.current.value = "";
-      wedgeBuffer.current.at = now;
-      if (event.key === "Enter") {
-        const payload = wedgeBuffer.current.value;
-        wedgeBuffer.current.value = "";
-        if (payload.length < 20) return;
-        event.preventDefault();
-        void import("@/lib/aadhaar-qr")
-          .then((module) => module.parseAadhaarQrAsync(payload))
-          .then((parsed) =>
-            parsed
-              ? onCardScanned(parsed, "usb-keyboard-wedge")
-              : Promise.resolve(false),
-          )
-          .then((accepted) => {
-            if (!accepted) setFailedScanAttempts((count) => count + 1);
-          })
-          .catch(() => setFailedScanAttempts((count) => count + 1));
-        return;
-      }
-      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        wedgeBuffer.current.value += event.key;
-        if (wedgeBuffer.current.value.length > 8192) wedgeBuffer.current.value = "";
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onCardScanned, phoneValidation.ok, scanner.isScanning]);
   // A rejected payload (the app's own desk slip) means nothing was filled.
   const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
   const lastDiagnostic = useRef<string | null>(null);
@@ -393,6 +361,7 @@ export function PatientForm({
       setLegacyQrWarning(null);
       setPartialScanDiagnostic(null);
       clearScanError();
+      scanner.setConsent(false);
       setFailedScanAttempts(0);
       setManualReason("");
       setLookupState("idle");
@@ -753,6 +722,7 @@ export function PatientForm({
           tone="desk"
           diagnostic={scanDiagnostic}
         />
+        <AadhaarUsbInput scanner={scanner} />
 
         {scannedBanner ? (
           <div

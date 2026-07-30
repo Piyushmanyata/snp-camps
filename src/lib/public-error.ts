@@ -70,6 +70,8 @@ const DEFAULT_FALLBACK =
 
 /** Explicit transient SQLSTATE / PostgREST codes (allow-list). */
 const RETRYABLE_CODES = new Set([
+  // Explicit browser/API transport sentinel
+  "NETWORK_ERROR",
   // Class 08 — connection exception
   "08000",
   "08001",

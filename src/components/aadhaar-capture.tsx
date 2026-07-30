@@ -17,18 +17,24 @@ type Props = {
 
 const COPY = {
   desk: {
-    scan: "Scan Aadhaar QR",
+    scan: "Live camera fallback",
     stop: "Stop scanner",
-    photo: "Use Aadhaar photo",
+    photo: "Take full-resolution photo",
+    gallery: "Choose existing photo",
     readingPhoto: "Reading photo…",
     aim: "Hold the Aadhaar QR inside the frame",
+    consent:
+      "The patient has consented to extracting Aadhaar card details for registration.",
   },
   patient: {
-    scan: "Aadhaar QR scan karein",
+    scan: "Live camera se try karein",
     stop: "Scanner band karein",
-    photo: "Aadhaar photo chunein",
+    photo: "Aadhaar ka photo lein",
+    gallery: "Gallery se photo chunein",
     readingPhoto: "Photo padh rahe hain…",
     aim: "Aadhaar QR ko frame ke andar rakhein",
+    consent:
+      "Main registration ke liye Aadhaar card ki details nikalne ki sahmati deta/deti hoon.",
   },
 } as const;
 
@@ -38,10 +44,12 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
   const {
     isScanning,
     isReadingPhoto,
+    hasConsent,
     scanError,
     videoRef,
     start,
     readPhoto,
+    setConsent,
     stop,
   } = scanner;
   const shownDiagnostic = diagnostic ?? scanner.scanDiagnostic;
@@ -52,6 +60,59 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
 
   return (
     <div className="space-y-3">
+      <label className="flex min-h-12 items-start gap-3 rounded-xl border border-border bg-card px-3 py-3 text-sm font-semibold text-foreground">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-5 shrink-0"
+          checked={hasConsent}
+          onChange={(event) => setConsent(event.target.checked)}
+          data-testid="aadhaar-consent"
+        />
+        <span>
+          {copy.consent}
+          <span className="mt-1 block text-xs font-normal text-muted">
+            Details are extracted for autofill only. Aadhaar identity is not verified.
+          </span>
+        </span>
+      </label>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-brand bg-brand-soft px-4 py-2 text-sm font-semibold text-brand transition active:scale-[0.98] focus-within:outline focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-brand">
+          <span>{isReadingPhoto ? copy.readingPhoto : copy.photo}</span>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            disabled={!hasConsent || isReadingPhoto}
+            aria-label={copy.photo}
+            data-testid="aadhaar-photo-input"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void readPhoto(file);
+            }}
+          />
+        </label>
+
+        <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition active:scale-[0.98] focus-within:outline focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-brand">
+          <span>{isReadingPhoto ? copy.readingPhoto : copy.gallery}</span>
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            disabled={!hasConsent || isReadingPhoto}
+            aria-label={copy.gallery}
+            data-testid="aadhaar-gallery-input"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void readPhoto(file);
+            }}
+          />
+        </label>
+      </div>
+
       <Button
         type="button"
         variant="secondary"
@@ -59,27 +120,11 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
         className="sm:w-auto"
         data-testid="scan-aadhaar-qr-button"
         aria-pressed={isScanning}
+        disabled={!hasConsent || isReadingPhoto}
         onClick={isScanning ? stop : () => void start()}
       >
         {isScanning ? copy.stop : copy.scan}
       </Button>
-
-      <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition active:scale-[0.98] focus-within:outline focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-brand sm:inline-flex">
-        <span>{isReadingPhoto ? copy.readingPhoto : copy.photo}</span>
-        <input
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          disabled={isReadingPhoto}
-          aria-label={copy.photo}
-          data-testid="aadhaar-photo-input"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) void readPhoto(file);
-          }}
-        />
-      </label>
 
       {isScanning ? (
         <div className="relative flex aspect-video max-h-64 items-center justify-center overflow-hidden rounded-xl bg-black">

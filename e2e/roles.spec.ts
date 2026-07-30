@@ -120,6 +120,24 @@ test("admin can sign in, inspect the patient desk, and sign out", async ({
   await loginStaff(page, "admin");
   await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
   await expect(
+    page.getByRole("link", { name: "Clinical Desk Accounts" }),
+  ).toBeVisible();
+
+  await page.goto("/team-lead");
+  await expect(
+    page.getByRole("heading", { name: "Clinical Desk Operators" }),
+  ).toHaveCount(0);
+
+  await page.goto("/admin/clinical-operators");
+  await expect(
+    page.getByRole("heading", { name: "Clinical Desk Accounts" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add Clinical Desk Operator" }),
+  ).toBeVisible();
+
+  await page.goto("/admin");
+  await expect(
     page.getByText("Camps & camp days", { exact: true }),
   ).toBeVisible();
 
@@ -185,7 +203,7 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
   ).toBeVisible();
   await expect(page.getByText("Team Lead Overview", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Team distinct patients", { exact: true }),
+    page.getByText("Team Headcount", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("My team's volunteers", { exact: true }),

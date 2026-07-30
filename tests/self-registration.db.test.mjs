@@ -431,6 +431,32 @@ test("patient storage has no full Aadhaar field or twelve-digit value", async (t
       [result.row.id],
     );
     assert.doesNotMatch(rows[0].row_json, /123456789012/);
+
+    const { rows: audits } = await client.query(
+      `select method, trust_level, outcome, aadhaar_last4,
+              consent_at is not null as consent_recorded,
+              to_jsonb(a)::text as row_json
+       from public.aadhaar_extraction_events a
+       where patient_id = $1`,
+      [result.row.id],
+    );
+    assert.deepEqual(
+      {
+        method: audits[0].method,
+        trustLevel: audits[0].trust_level,
+        outcome: audits[0].outcome,
+        last4: audits[0].aadhaar_last4,
+        consentRecorded: audits[0].consent_recorded,
+      },
+      {
+        method: "SECURE_QR",
+        trustLevel: "SELF_DECLARED",
+        outcome: "PARSED",
+        last4: "9012",
+        consentRecorded: true,
+      },
+    );
+    assert.doesNotMatch(audits[0].row_json, /123456789012|raw|payload/i);
   } finally {
     await cleanupCamp(campId);
   }

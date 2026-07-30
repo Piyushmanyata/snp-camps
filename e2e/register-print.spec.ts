@@ -2,7 +2,7 @@
  * #62 — Register-and-Print survives popup blocking, delayed save, auto-retries,
  * closed targets, and exhausted transient failure with explicit Try Again.
  *
- * Success paths mock `register_patient_idempotent` so we exercise the browser
+ * Success paths mock the scanned-card endpoint so we exercise the browser
  * print-target contract without polluting reg_no sequences or camp fixtures.
  * Failure paths abort/fulfill the same RPC to prove retry + Try Again UX.
  */
@@ -55,7 +55,7 @@ async function blockRemoteRequests(page: Page) {
 }
 
 function isRegisterRpc(url: string) {
-  return /\/rest\/v1\/rpc\/register_patient_idempotent/i.test(url);
+  return /\/api\/desk\/register-scanned/i.test(url);
 }
 
 /** Preferential handler — register before blockRemote so LIFO hits this first. */
@@ -92,18 +92,20 @@ async function mockRegisterSuccess(
       await new Promise((r) => setTimeout(r, options.delayMs));
     }
 
-    // PostgREST returns a JSON array for set-returning RPCs.
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: patientId,
-          reg_no: regNo,
-          full_name: name,
-          queue_status: "waiting",
-        },
-      ]),
+      body: JSON.stringify({
+        data: [
+          {
+            id: patientId,
+            reg_no: regNo,
+            full_name: name,
+            queue_status: "waiting",
+          },
+        ],
+        error: null,
+      }),
     });
   });
 
@@ -114,16 +116,22 @@ async function mockRegisterSuccess(
   };
 }
 
-async function fillMinimalRegistration(page: Page, fullName: string) {
-  // Registration is Aadhaar-first: the typed identity fields stay hidden until
-  // a card is read or the operator declares the scan a failure. These tests are
-  // about print behaviour, so they take the same escape a desk takes when a
-  // card will not scan.
-  const manualEntry = page.getByTestId("desk-manual-entry-escape");
-  if (await manualEntry.isVisible()) await manualEntry.click();
+async function fillMinimalRegistration(page: Page, _fullName: string) {
+  void _fullName;
+  const phone = page.getByLabel(/Household mobile number/i);
+  await expect(async () => {
+    await phone.fill("9876543210");
+    await page.waitForTimeout(250);
+    await expect(phone).toHaveValue("9876543210");
+  }).toPass({ timeout: 5_000 });
+  await page.getByTestId("aadhaar-consent").check();
 
-  await page.getByLabel(/Full name/i).fill(fullName);
-  await page.getByLabel(/^Age/i).fill("42");
+  await page
+    .getByTestId("aadhaar-photo-input")
+    .setInputFiles(env("E2E_FAKE_AADHAAR_PHOTO_PATH"));
+  await expect(page.getByLabel(/Full name/i)).toHaveValue("Timing Patient", {
+    timeout: 15_000,
+  });
 }
 
 test.beforeEach(async ({ page, context }) => {
@@ -138,8 +146,13 @@ test("mobile photo fallback reads Aadhaar locally and fills the shared desk form
   await loginStaff(page, "volunteer");
   await gotoHydrated(page, "/register");
 
+  await page.getByLabel(/Household mobile number/i).fill("9876543210");
   const photoInput = page.getByTestId("aadhaar-photo-input");
+  await expect(photoInput).toBeDisabled();
+  await page.getByTestId("aadhaar-consent").check();
+  await expect(photoInput).toBeEnabled();
   await expect(photoInput).toHaveAttribute("accept", "image/*");
+  await expect(photoInput).toHaveAttribute("capture", "environment");
   await photoInput.setInputFiles(env("E2E_FAKE_AADHAAR_PHOTO_PATH"));
 
   await expect(page.getByLabel(/Full name/i)).toHaveValue("Timing Patient", {
@@ -180,7 +193,7 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
     delayMs: 900,
   });
 
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
 
   const name = `Codex E2E Patient Print Allowed ${Date.now()}`;
@@ -233,7 +246,7 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   // Form reset after success — recovery retained, and the desk returns to
   // scan-first for the next patient, so the typed identity fields are gone
   // entirely rather than merely blank.
-  await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
+  await expect(page.getByTestId("aadhaar-consent")).toHaveCount(0);
   await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
 });
 
@@ -253,7 +266,7 @@ test("register-only saves with no print window", async ({ page }) => {
   });
 
   const mock = await mockRegisterSuccess(page);
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
 
   const name = `Codex E2E Patient Register Only ${Date.now()}`;
@@ -277,7 +290,7 @@ test("register-only saves with no print window", async ({ page }) => {
   )) as unknown[][];
   expect(openArgs.length).toBe(0);
   // Saved and reset: the desk goes back to scan-first for the next patient.
-  await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible();
+  await expect(page.getByTestId("aadhaar-consent")).toHaveCount(0);
   await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
 });
 
@@ -290,7 +303,7 @@ test("blocked popup: one registration, recovery Print, never claims window opene
 
   const mock = await mockRegisterSuccess(page);
 
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
 
   await fillMinimalRegistration(
@@ -351,7 +364,7 @@ test("closed pre-opened target leaves recovery Print for same patient", async ({
 
   const mock = await mockRegisterSuccess(page);
 
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
 
   await fillMinimalRegistration(
@@ -393,11 +406,13 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
     await route.continue();
   });
 
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
 
-  const name = `Codex E2E Patient Retry Preserve ${Date.now()}`;
-  await fillMinimalRegistration(page, name);
+  await fillMinimalRegistration(
+    page,
+    `Codex E2E Patient Retry Preserve ${Date.now()}`,
+  );
   await page.getByLabel(/Mobile number/i).fill("9876543210");
 
   await page.getByTestId("desk-register-submit").click();
@@ -410,15 +425,15 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
   expect(rpcCalls).toBe(3);
 
   // Fields preserved — form not reset.
-  await expect(page.getByLabel(/Full name/i)).toHaveValue(name);
-  await expect(page.getByLabel(/^Age/i)).toHaveValue("42");
+  await expect(page.getByLabel(/Full name/i)).toHaveValue("Timing Patient");
+  await expect(page.getByLabel(/^Age/i)).toHaveValue(/[0-9]+/);
   await expect(page.getByLabel(/Mobile number/i)).toHaveValue("9876543210");
 
   // Same request id on every attempt.
   const ids = requestBodies.map((body) => {
     try {
-      const parsed = JSON.parse(body) as { p_request_id?: string };
-      return parsed.p_request_id;
+      const parsed = JSON.parse(body) as { requestId?: string };
+      return parsed.requestId;
     } catch {
       return null;
     }
@@ -434,8 +449,8 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
   });
   expect(rpcCalls).toBe(6);
   const moreIds = requestBodies.slice(3).map((body) => {
-    const parsed = JSON.parse(body) as { p_request_id?: string };
-    return parsed.p_request_id;
+    const parsed = JSON.parse(body) as { requestId?: string };
+    return parsed.requestId;
   });
   for (const id of moreIds) {
     expect(id).toBe(idBefore);
@@ -457,10 +472,10 @@ test("terminal business error is not auto-retried and has no connectivity Try Ag
         status: 400,
         contentType: "application/json",
         body: JSON.stringify({
-          code: "P0001",
-          message: "This day is full (40 seats). Choose another day.",
-          details: null,
-          hint: null,
+          data: null,
+          error: {
+            message: "This day is full (40 seats). Choose another day.",
+          },
         }),
       });
       return;
@@ -468,7 +483,7 @@ test("terminal business error is not auto-retried and has no connectivity Try Ag
     await route.continue();
   });
 
-  await loginStaff(page, "volunteer");
+  await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
   await fillMinimalRegistration(
     page,
@@ -492,4 +507,3 @@ function assertAllSame(values: (string | null | undefined)[]) {
     expect(v).toBe(first);
   }
 }
-
