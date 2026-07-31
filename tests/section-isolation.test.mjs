@@ -390,3 +390,27 @@ test("mapDbError still maps RLS without raw table names", () => {
   );
   assert.equal(msg, "You do not have permission for this action.");
 });
+
+
+// ---------------------------------------------------------------------------
+// W5 FCFS + amortized count
+// ---------------------------------------------------------------------------
+
+test("loadQueueSection source uses FCFS orders and DESK_LIVE_WAITING_LIMIT", () => {
+  const src = read("src/lib/section-reads.ts");
+  assert.match(src, /DESK_LIVE_WAITING_LIMIT/);
+  assert.match(src, /\.order\("queued_at"/);
+  assert.match(src, /\.order\("reg_no"/);
+  assert.match(src, /\.order\("id"/);
+  assert.doesNotMatch(src, /count:\s*"exact"[^]*?\.limit\(100\)/);
+  assert.match(src, /count:\s*"exact",\s*head:\s*true/);
+});
+
+test("desk-live select drops queued_at from payload columns", () => {
+  const src = read("src/lib/desk-live.ts");
+  assert.match(src, /DESK_LIVE_WAITING_SELECT[\s\S]*"id, reg_no, full_name, phone"/);
+  assert.doesNotMatch(
+    src,
+    /DESK_LIVE_WAITING_SELECT[\s\S]*queued_at/,
+  );
+});

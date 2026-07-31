@@ -4,6 +4,7 @@
  * Client retry hits one section only via /api/desk/section.
  */
 
+import { DESK_LIVE_WAITING_LIMIT } from "@/lib/desk-live";
 import { mapDbError } from "@/lib/public-error";
 import { createClient } from "@/lib/supabase/server";
 import type { CampDayStats } from "@/lib/types";
@@ -80,13 +81,16 @@ export async function loadQueueSection(
   campId: string,
 ): Promise<SectionResult<QueueSectionData>> {
   const supabase = await createClient();
-  const { data, error, count } = await supabase
+  const fetchLimit = DESK_LIVE_WAITING_LIMIT + 1;
+  const { data, error } = await supabase
     .from("patients")
-    .select("id, reg_no, full_name, phone, queued_at", { count: "exact" })
+    .select("id, reg_no, full_name, phone, queued_at")
     .eq("camp_id", campId)
     .eq("queue_status", "waiting")
     .order("queued_at", { ascending: true, nullsFirst: false })
-    .limit(100);
+    .order("reg_no", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(fetchLimit);
 
   if (error) {
     return {
@@ -98,12 +102,29 @@ export async function loadQueueSection(
     };
   }
 
-  const waiting = (data || []) as WaitingRow[];
+  const rows = (data || []) as WaitingRow[];
+  const overLimit = rows.length > DESK_LIVE_WAITING_LIMIT;
+  const waiting = overLimit
+    ? rows.slice(0, DESK_LIVE_WAITING_LIMIT)
+    : rows;
+
+  let waitingTotal = waiting.length;
+  if (overLimit) {
+    const { count, error: countError } = await supabase
+      .from("patients")
+      .select("id", { count: "exact", head: true })
+      .eq("camp_id", campId)
+      .eq("queue_status", "waiting");
+    if (!countError && typeof count === "number") {
+      waitingTotal = count;
+    }
+  }
+
   return {
     ok: true,
     data: {
       waiting,
-      waitingTotal: count ?? waiting.length,
+      waitingTotal,
     },
   };
 }

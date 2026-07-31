@@ -154,8 +154,10 @@ export function PatientForm({
    * running when the payload carried no autofillable field — a partial read on
    * one blurry frame should not end the session when the next may read cleanly.
    */
-  const onCardScanned = useCallback(
-    async (parsed: ParsedAadhaarQr, diagnostic: string): Promise<boolean> => {
+  const onCardScanned = async (
+    parsed: ParsedAadhaarQr,
+    diagnostic: string,
+  ): Promise<boolean> => {
       const useful =
         Boolean(parsed.fullName) || parsed.age != null || Boolean(parsed.gender);
       if (!useful) return false;
@@ -221,9 +223,7 @@ export function PatientForm({
         "Aadhaar card scanned and autofilled. Identity fields locked.",
       );
       return true;
-    },
-    [],
-  );
+  };
 
   const scanner = useAadhaarScanner(onCardScanned);
   const { clearError: clearScanError } = scanner;

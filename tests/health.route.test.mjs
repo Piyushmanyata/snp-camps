@@ -143,6 +143,7 @@ test.beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
   process.env.AADHAAR_HASH_PEPPER = "health-route-test-pepper";
+  process.env.RATE_LIMIT_SECRET = "health-route-test-rate-limit";
 });
 
 test.afterEach(() => {
@@ -242,6 +243,31 @@ test("missing Aadhaar Person pepper fails required configuration", async () => {
     );
   } finally {
     if (previous !== undefined) process.env.AADHAAR_HASH_PEPPER = previous;
+  }
+});
+
+
+test("missing RATE_LIMIT_SECRET fails required configuration", async () => {
+  __setServiceRoleClient(mockServiceRole());
+  const previous = process.env.RATE_LIMIT_SECRET;
+  delete process.env.RATE_LIMIT_SECRET;
+  try {
+    const res = await GET(
+      healthRequest("/api/health?ready=1", "198.51.100.97"),
+    );
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.failedCheck, "required_configuration");
+    assert.equal(body.checks.required_configuration.ok, false);
+    assert.equal(
+      body.checks.required_configuration.code,
+      "rate_limit_secret_missing",
+    );
+    assert.match(JSON.stringify(body), /RATE_LIMIT_SECRET/);
+    assert.doesNotMatch(JSON.stringify(body), /health-route-test-rate-limit/);
+  } finally {
+    if (previous !== undefined) process.env.RATE_LIMIT_SECRET = previous;
   }
 });
 

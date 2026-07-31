@@ -364,3 +364,38 @@ test("register_manual_exception returns narrow projection without status_token",
     await cleanupStaff(actorId);
   }
 });
+
+
+test("exactly one register_patient_idempotent and no register_patient_v2", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows } = await client.query(`
+    select
+      (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'register_patient_idempotent') as reg_count,
+      (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'register_patient_v2') as v2_count,
+      to_regprocedure(
+        'public.register_patient_v2(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,text)'
+      ) is null as v2_sig_gone
+  `);
+  assert.equal(rows[0].reg_count, 1);
+  assert.equal(rows[0].v2_count, 0);
+  assert.equal(rows[0].v2_sig_gone, true);
+});
+
+test("SMS eligibility routines no longer contain card_verified", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows } = await client.query(`
+    select p.proname
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'claim_sms_delivery',
+        'patient_registration_notify_fields',
+        'reject_self_registration_delivery'
+      )
+      and pg_get_functiondef(p.oid) like '%card_verified%'
+  `);
+  assert.equal(rows.length, 0);
+});

@@ -393,3 +393,28 @@ test("patients table is absent from supabase_realtime publication", async (t) =>
   );
   assert.equal(rows.length, 0, "patients must not be in supabase_realtime");
 });
+
+
+test("persons is server-only for authenticated (privilege + denial)", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows: priv } = await client.query(`
+    select
+      has_table_privilege('authenticated', 'public.persons', 'SELECT') as sel,
+      has_table_privilege('authenticated', 'public.persons', 'INSERT') as ins,
+      has_table_privilege('authenticated', 'public.persons', 'UPDATE') as upd
+  `);
+  assert.equal(priv[0].sel, false);
+  assert.equal(priv[0].ins, false);
+  assert.equal(priv[0].upd, false);
+
+  const volunteerId = await seedProfile("volunteer");
+  await asAuthenticated(volunteerId, async (c) => {
+    await assert.rejects(
+      () => c.query(`select duplicate_key from public.persons limit 1`),
+      (err) => {
+        assert.equal(err.code, "42501");
+        return true;
+      },
+    );
+  });
+});

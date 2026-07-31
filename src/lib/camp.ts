@@ -37,10 +37,22 @@ async function fetchCachedSnapshot() {
   cacheLife({ revalidate: 5 });
 
   const supabase = createServiceRoleClient();
-  if (!supabase) throw new Error("Camp service is not configured");
+  if (!supabase) {
+    console.error("[camp] active camp snapshot failed", {
+      code: undefined,
+      message: "Camp service is not configured",
+    });
+    return null;
+  }
 
   const { data, error } = await supabase.rpc("active_camp_snapshot");
-  if (error) throw new Error("Active camp data could not be loaded");
+  if (error) {
+    console.error("[camp] active camp snapshot failed", {
+      code: error?.code,
+      message: error?.message,
+    });
+    return null;
+  }
   return parseSnapshot(data);
 }
 
@@ -48,7 +60,13 @@ async function fetchSnapshot() {
   const supabase = createServiceRoleClient() ?? (await createClient());
 
   const { data, error } = await supabase.rpc("active_camp_snapshot");
-  if (error) throw new Error("Active camp data could not be loaded");
+  if (error) {
+    console.error("[camp] active camp snapshot failed", {
+      code: error?.code,
+      message: error?.message,
+    });
+    return null;
+  }
   return parseSnapshot(data);
 }
 

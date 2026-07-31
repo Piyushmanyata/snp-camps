@@ -18,7 +18,7 @@ import {
   SMS_DELIVERY_KINDS,
   SMS_DELIVERY_STATES,
 } from "../src/lib/readiness-contract.ts";
-import { evaluateCatalogFacts } from "../src/lib/readiness.ts";
+import { evaluateCatalogFacts, evaluateReadiness, integrationConfig } from "../src/lib/readiness.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -68,4 +68,37 @@ test("evaluateCatalogFacts fails closed on missing critical column", () => {
   evald = evaluateCatalogFacts(facts);
   assert.equal(evald.schema_contract.ok, false);
   assert.match(evald.schema_contract.detail, /status_token/);
+});
+
+
+test("integrationConfig reports missing RATE_LIMIT_SECRET", () => {
+  const cfg = integrationConfig({ AADHAAR_HASH_PEPPER: "x" });
+  assert.equal(cfg.rateLimitSecret, false);
+  assert.equal(cfg.aadhaarPepper, true);
+});
+
+test("evaluateReadiness fails required_configuration without RATE_LIMIT_SECRET", async () => {
+  const prevPepper = process.env.AADHAAR_HASH_PEPPER;
+  const prevRate = process.env.RATE_LIMIT_SECRET;
+  process.env.AADHAAR_HASH_PEPPER = "unit-pepper";
+  delete process.env.RATE_LIMIT_SECRET;
+  try {
+    const result = await evaluateReadiness(null);
+    assert.equal(result.ok, false);
+    assert.equal(result.checks.required_configuration.ok, false);
+    assert.match(
+      String(result.checks.required_configuration.detail ?? ""),
+      /RATE_LIMIT_SECRET/,
+    );
+    assert.doesNotMatch(JSON.stringify(result), /unit-pepper/);
+  } finally {
+    if (prevPepper !== undefined) process.env.AADHAAR_HASH_PEPPER = prevPepper;
+    else delete process.env.AADHAAR_HASH_PEPPER;
+    if (prevRate !== undefined) process.env.RATE_LIMIT_SECRET = prevRate;
+  }
+});
+
+test("GRANT_EXPECTATIONS includes persons server-only facts", () => {
+  assert.equal(GRANT_EXPECTATIONS.persons_authenticated_select, false);
+  assert.equal(GRANT_EXPECTATIONS.persons_authenticated_write, false);
 });

@@ -20,7 +20,7 @@ export type DeskLivePayload = {
 
 /** Columns returned for each waiting patient — keep the poll response small. */
 export const DESK_LIVE_WAITING_SELECT =
-  "id, reg_no, full_name, phone, queued_at" as const;
+  "id, reg_no, full_name, phone" as const;
 
 export const DESK_LIVE_WAITING_LIMIT = 100;
 

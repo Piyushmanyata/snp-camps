@@ -81,13 +81,6 @@ export function ClinicalDesk({
   const [message, setMessage] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
 
-  useEffect(() => {
-    if (initialScan) {
-      void lookup(initialScan);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
-  }, [initialScan]);
-
   function applySavedDiagnoses(saved: Record<string, unknown>) {
     const raw = saved.diagnoses;
     const list = Array.isArray(raw)
@@ -166,6 +159,17 @@ export function ClinicalDesk({
     setOtNotes(String(savedOt.notes ?? ""));
     setBusy(false);
   }
+
+  useEffect(() => {
+    if (!initialScan) return;
+    // Defer so setState inside lookup is not synchronous in the effect body
+    // (React Compiler set-state-in-effect); still one-shot for the deep link.
+    const timer = setTimeout(() => {
+      void lookup(initialScan);
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
+  }, [initialScan]);
 
   async function lookupFollowup() {
     setBusy(true);

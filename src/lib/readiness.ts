@@ -46,6 +46,8 @@ export type ReadinessResult = {
      * keyed on it, so a scanned registration cannot proceed without it.
      */
     aadhaarPepper: boolean;
+    /** Durable public rate limiting for /s/<token>, lookup, self-registration. */
+    rateLimitSecret: boolean;
     cron: boolean;
   };
 };
@@ -59,6 +61,7 @@ export function integrationConfig(env: Record<string, string | undefined> = proc
         (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()),
     ),
     aadhaarPepper: Boolean(env.AADHAAR_HASH_PEPPER?.trim()),
+    rateLimitSecret: Boolean(env.RATE_LIMIT_SECRET?.trim()),
     cron: Boolean(env.CRON_SECRET?.trim()),
   };
 }
@@ -285,9 +288,15 @@ export async function evaluateReadiness(
         checks[id] = fail("service_role_unconfigured", id);
       }
     }
-    checks.required_configuration = base.integrations.aadhaarPepper
-      ? pass("required_configuration_ok")
-      : fail("aadhaar_pepper_missing", "required_configuration");
+    checks.required_configuration =
+      base.integrations.aadhaarPepper && base.integrations.rateLimitSecret
+        ? pass("required_configuration_ok")
+        : fail(
+            !base.integrations.aadhaarPepper
+              ? "aadhaar_pepper_missing"
+              : "rate_limit_secret_missing",
+            "required_configuration",
+          );
     return {
       ...base,
       ok: false,
@@ -347,9 +356,15 @@ async function evaluateReadinessInner(
     );
   }
 
-  checks.required_configuration = base.integrations.aadhaarPepper
-    ? pass("required_configuration_ok")
-    : fail("aadhaar_pepper_missing", "required_configuration");
+  checks.required_configuration =
+    base.integrations.aadhaarPepper && base.integrations.rateLimitSecret
+      ? pass("required_configuration_ok")
+      : fail(
+          !base.integrations.aadhaarPepper
+            ? "aadhaar_pepper_missing"
+            : "rate_limit_secret_missing",
+          "required_configuration",
+        );
 
   // 2) Migration-head discovery — failure is not ready (never coerce to null success).
   let applied: string | null = null;

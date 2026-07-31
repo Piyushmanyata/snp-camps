@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
@@ -55,22 +54,6 @@ export async function loadSessionProfile(): Promise<{
 
 /** Request-deduped session for Server Components / layouts. */
 export const getSessionProfile = cache(loadSessionProfile);
-
-/** API guard: requires signed-in admin. Returns JSON error response or user+profile. */
-export async function requireAdmin() {
-  const { userId, profile } = await getSessionProfile();
-  if (!userId) {
-    return {
-      error: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-  if (profile?.role !== "admin") {
-    return {
-      error: NextResponse.json({ error: "Admin only" }, { status: 403 }),
-    };
-  }
-  return { userId, profile };
-}
 
 /** Parse a small JSON body with a strict media type and bounded decoded size. */
 export async function readJsonBody<T = Record<string, unknown>>(

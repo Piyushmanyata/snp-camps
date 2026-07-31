@@ -164,3 +164,15 @@ test("probe output contains no PHI-looking fields", async (t) => {
   assert.ok(!/postgres:\/\//.test(raw));
   assert.ok(!/[0-9a-f]{32}/.test(raw));
 });
+
+
+test("readiness_catalog_probe reports single register RPC and closed persons", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const { rows } = await admin.query(
+    `select public.readiness_catalog_probe() as facts`,
+  );
+  const facts = rows[0].facts;
+  assert.equal(facts.invariants.register_rpc_supported_signatures_only, true);
+  assert.equal(facts.grants.persons_authenticated_select, false);
+  assert.equal(facts.grants.persons_authenticated_write, false);
+});

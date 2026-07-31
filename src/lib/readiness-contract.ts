@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 5;
+export const READINESS_CONTRACT_VERSION = 6;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260731090000";
+export const EXPECTED_MIGRATION_HEAD = "20260731100000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -189,6 +189,10 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   camp_queue_counts_anon_execute: false,
   camp_queue_counts_service_role_execute: true,
   latest_applied_migration_service_role_execute: true,
+  // persons is server-only: duplicate_key is the pepper-derived Person key.
+  persons_authenticated_select: false,
+  // persons is server-only: duplicate_key is the pepper-derived Person key.
+  persons_authenticated_write: false,
 };
 
 /** patients must NOT be in supabase_realtime after #56. */
@@ -218,7 +222,7 @@ export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =
     database_reachability:
       "Database did not answer within the readiness budget. Check Supabase status and service-role configuration.",
     required_configuration:
-      "AADHAAR_HASH_PEPPER is required for stable Person identity. Configure the existing production pepper; never rotate it during an active Camp.",
+      "AADHAAR_HASH_PEPPER is required for stable Person identity, and RATE_LIMIT_SECRET is required for durable public rate limiting. Without RATE_LIMIT_SECRET every /s/<token> status link returns 404 and self-registration and patient lookup fail closed. Configure the existing production values; never rotate the pepper during an active Camp.",
     migration_head_discovery:
       "Could not read the applied migration ledger. Treat the environment as not ready until discovery succeeds.",
     applied_head_agreement:

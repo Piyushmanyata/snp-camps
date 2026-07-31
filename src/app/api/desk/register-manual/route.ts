@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile, readJsonBody } from "@/lib/auth";
 import { validateHouseholdPhone } from "@/lib/phone";
+import { isPatientUuid } from "@/lib/qr";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 type Body = Record<string, unknown>;
@@ -28,16 +29,40 @@ export async function POST(request: Request) {
       "Three failed scans, a reason, and a valid household phone are required.",
     );
   }
+  const requestId = text(body.requestId);
+  const campId = text(body.campId);
+  const campDayId = text(body.campDayId);
+  const fullName = text(body.fullName);
+  const gender = text(body.gender).toUpperCase();
+  const age = Number(body.age);
+  if (
+    !isPatientUuid(requestId) ||
+    !isPatientUuid(campId) ||
+    !isPatientUuid(campDayId)
+  ) {
+    return fail(
+      "Registration session is invalid. Reload the desk and try again.",
+    );
+  }
+  if (!fullName) {
+    return fail("Enter the patient's full name.");
+  }
+  if (!["M", "F", "O"].includes(gender)) {
+    return fail("Select M, F or O.");
+  }
+  if (!Number.isInteger(age) || age < 0 || age > 149) {
+    return fail("Enter an age between 0 and 149.");
+  }
   const supabase = createServiceRoleClient();
   if (!supabase) return fail("Registration service unavailable.", 503);
   const { data, error } = await supabase.rpc("register_manual_exception", {
-    p_request_id: text(body.requestId),
-    p_camp_id: text(body.campId),
-    p_camp_day_id: text(body.campDayId),
-    p_full_name: text(body.fullName),
+    p_request_id: requestId,
+    p_camp_id: campId,
+    p_camp_day_id: campDayId,
+    p_full_name: fullName,
     p_display_name: text(body.displayName) || null,
-    p_gender: text(body.gender) || null,
-    p_age: Number(body.age),
+    p_gender: gender,
+    p_age: age,
     p_address: text(body.address) || null,
     p_phone: phone.phone,
     p_reason: reason,
