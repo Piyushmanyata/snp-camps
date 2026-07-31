@@ -9,6 +9,7 @@ import {
   parseAadhaarDuplicateError,
   parseLikelyDuplicateError,
 } from "@/lib/registration-request";
+import { validateHouseholdPhone } from "@/lib/phone";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 /**
@@ -28,6 +29,9 @@ const SELF_REGISTRATION_RATE_LIMIT = {
   windowMs: 10 * 60_000,
 };
 
+const AGE_MIN = 0;
+const AGE_MAX = 149;
+
 type ScannedCard = {
   fullName?: unknown;
   displayName?: unknown;
@@ -39,6 +43,8 @@ type ScannedCard = {
 };
 
 type SelfRegistrationBody = {
+  /** Client-stable UUID for idempotent retries. */
+  requestId?: unknown;
   campId?: unknown;
   campDayId?: unknown;
   phone?: unknown;
@@ -50,6 +56,17 @@ function errorResponse(detail: string, status = 400) {
 }
 
 const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+/** Same-origin status path only — never absolute external URLs. */
+function statusPath(token: string) {
+  return `/s/${token}`;
+}
 
 export async function POST(request: Request) {
   const rate = checkRateLimit(request, SELF_REGISTRATION_RATE_LIMIT);
@@ -67,22 +84,35 @@ export async function POST(request: Request) {
     return errorResponse("Ek Camp Day chunkar dobara try karein.");
   }
 
+  const requestIdRaw = str(body?.requestId);
+  const requestId = isUuid(requestIdRaw) ? requestIdRaw : randomUUID();
+
   const card = body?.card ?? {};
   const fullName = str(card.fullName);
-  const gender = str(card.gender);
+  const gender = str(card.gender).toUpperCase();
   const address = str(card.address);
   const dateOfBirth = str(card.dateOfBirth);
   const aadhaarLast4 = str(card.aadhaarLast4).replace(/\D/g, "").slice(-4);
   const age = typeof card.age === "number" && Number.isInteger(card.age) ? card.age : null;
-  const phone = str(body?.phone).replace(/\D/g, "").slice(-10);
+  const phoneResult = validateHouseholdPhone(str(body?.phone));
 
-  if (!fullName || !gender || !dateOfBirth || aadhaarLast4.length !== 4 || age == null) {
+  if (
+    !fullName ||
+    !["M", "F", "O"].includes(gender) ||
+    !dateOfBirth ||
+    aadhaarLast4.length !== 4 ||
+    age == null ||
+    age < AGE_MIN ||
+    age > AGE_MAX
+  ) {
     return errorResponse(
       "Aadhaar card poora scan nahi hua. Kripya dobara scan karein ya camp desk par register karayein.",
     );
   }
-  if (phone.length !== 10) {
-    return errorResponse("10-digit mobile number daalein. Yeh Aadhaar card par nahi hota.");
+  if (!phoneResult.ok) {
+    return errorResponse(
+      "10-digit mobile number daalein (6–9 se shuru). Dummy numbers (jaise 0000000000) nahi chalenge.",
+    );
   }
 
   // The duplicate key and name-search both assume a Latin alphabet, so a
@@ -143,13 +173,13 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await supabase.rpc("register_patient_idempotent", {
-    p_request_id: randomUUID(),
+    p_request_id: requestId,
     p_camp_id: campId,
     p_full_name: fullName,
     p_gender: gender,
     p_age: age,
     p_address: address || null,
-    p_phone: phone,
+    p_phone: phoneResult.phone,
     p_email: null,
     p_aadhaar_last4: aadhaarLast4,
     // Patients hold no Auth identity (#59) and no staff created this row.
@@ -169,13 +199,54 @@ export async function POST(request: Request) {
     const message = error ? String((error as { message?: unknown }).message ?? error) : "";
     const aadhaarDup = parseAadhaarDuplicateError(message);
     const likelyDup = parseLikelyDuplicateError(message);
-    const dupRegNo = aadhaarDup?.regNo ?? likelyDup?.regNo ?? null;
-    if (dupRegNo != null) {
+    // Same-card (hard Person key) re-scan may return the status link.
+    // Soft name+age likely-duplicates must NOT leak a stranger's bearer token.
+    if (aadhaarDup?.regNo != null) {
+      const dupRegNo = aadhaarDup.regNo;
+      const existing = await supabase
+        .from("patients")
+        .select("id, reg_no, status_token, camp_day_id, queue_status")
+        .eq("reg_no", dupRegNo)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const row = existing.data;
+      if (row?.id && row.status_token && row.reg_no != null) {
+        let dayDate: string | null = null;
+        if (row.camp_day_id) {
+          const day = await supabase
+            .from("camp_days")
+            .select("day_date")
+            .eq("id", row.camp_day_id)
+            .maybeSingle();
+          dayDate =
+            day.data?.day_date != null ? String(day.data.day_date) : null;
+        }
+        return NextResponse.json({
+          ok: true,
+          existing: true,
+          patientId: row.id,
+          registrationNumber: row.reg_no,
+          campDayId: row.camp_day_id,
+          dayDate,
+          queueStatus: row.queue_status ?? "registered",
+          statusUrl: statusPath(String(row.status_token)),
+        });
+      }
       return NextResponse.json({
         ok: false,
         deskReferral: true,
         registrationNumber: dupRegNo,
         error: `Aapki details se milta-julta reg #${dupRegNo} mila hai. Kripya camp desk par check karwayen.`,
+      });
+    }
+    if (likelyDup?.regNo != null) {
+      return NextResponse.json({
+        ok: false,
+        deskReferral: true,
+        registrationNumber: likelyDup.regNo,
+        error: `Aapki details se milta-julta reg #${likelyDup.regNo} mila hai. Kripya camp desk par check karwayen.`,
       });
     }
     if (/full|seat/i.test(message)) {
@@ -204,7 +275,6 @@ export async function POST(request: Request) {
     return errorResponse("Registration ho gaya. Status link ke liye desk se poochein.", 200);
   }
 
-  const site = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
   return NextResponse.json({
     ok: true,
     patientId: row.id,
@@ -212,6 +282,6 @@ export async function POST(request: Request) {
     campDayId: row.camp_day_id,
     dayDate: row.day_date,
     queueStatus: "registered",
-    statusUrl: `${site}/s/${patient.data.status_token}`,
+    statusUrl: statusPath(String(patient.data.status_token)),
   });
 }

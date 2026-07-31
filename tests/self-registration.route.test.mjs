@@ -31,14 +31,21 @@ const VALID_CARD = {
 /** The route derives the Person key itself, so the pepper must be present. */
 process.env.AADHAAR_HASH_PEPPER ||= "test-pepper";
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= "self-registration-route-test-secret";
+process.env.RATE_LIMIT_SECRET ||= "self-registration-rate-limit-secret";
 
 /**
  * Minimal service-role fake. `rpcResult` decides what
  * register_patient_idempotent returns; every call is recorded so the arguments
  * the route sends can be asserted.
  */
-function fakeSupabase(rpcResult, rateResult = { allowed: true, retry_after_seconds: 30 }) {
+function fakeSupabase(
+  rpcResult,
+  rateResult = { allowed: true, retry_after_seconds: 30 },
+  options = {},
+) {
   const calls = [];
+  const statusToken = options.statusToken ?? "tok_abcdef";
+  const existingByReg = options.existingByReg ?? null;
   return {
     calls,
     client: {
@@ -49,20 +56,38 @@ function fakeSupabase(rpcResult, rateResult = { allowed: true, retry_after_secon
         }
         return Promise.resolve(rpcResult);
       },
-      from() {
+      from(table) {
         return {
           select() {
-            return {
-              eq() {
-                return {
-                  maybeSingle: () =>
-                    Promise.resolve({
-                      error: null,
-                      data: { status_token: "tok_abcdef" },
-                    }),
-                };
+            const chain = {
+              eq(_col, value) {
+                chain._eqValue = value;
+                return chain;
+              },
+              order() {
+                return chain;
+              },
+              limit() {
+                return chain;
+              },
+              maybeSingle: () => {
+                if (table === "patients" && existingByReg && chain._eqValue != null) {
+                  const row = existingByReg[String(chain._eqValue)] ?? null;
+                  return Promise.resolve({ error: null, data: row });
+                }
+                if (table === "camp_days") {
+                  return Promise.resolve({
+                    error: null,
+                    data: { day_date: "2026-08-01" },
+                  });
+                }
+                return Promise.resolve({
+                  error: null,
+                  data: { status_token: statusToken },
+                });
               },
             };
+            return chain;
           },
         };
       },
@@ -168,6 +193,96 @@ test("a missing or short phone is refused before any write", async () => {
 
   assert.equal(response.status, 400);
   assert.equal(fake.calls.length, 0, "no RPC may run for an invalid phone");
+});
+
+test("dummy repeated-digit phone is refused", async () => {
+  const fake = fakeSupabase(okRpc);
+  __setServiceRoleClient(fake.client);
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "0000000000",
+    card: VALID_CARD,
+  });
+  assert.equal(response.status, 400);
+  assert.equal(fake.calls.length, 0);
+});
+
+test("client-stable requestId is forwarded for idempotency", async () => {
+  const fake = fakeSupabase(okRpc);
+  __setServiceRoleClient(fake.client);
+  const requestId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  await post({
+    requestId,
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+  });
+  const { args } = fake.calls.find(
+    (call) => call.fn === "register_patient_idempotent",
+  );
+  assert.equal(args.p_request_id, requestId);
+});
+
+test("same-card re-scan returns existing reg and same-origin status link", async () => {
+  const dupRpc = {
+    data: null,
+    error: { message: "AADHAAR_DUPLICATE:reg=99" },
+  };
+  const fake = fakeSupabase(dupRpc, { allowed: true, retry_after_seconds: 30 }, {
+    existingByReg: {
+      "99": {
+        id: PATIENT_ID,
+        reg_no: 99,
+        status_token: "existing_tok",
+        camp_day_id: DAY_ID,
+        queue_status: "registered",
+      },
+    },
+  });
+  __setServiceRoleClient(fake.client);
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+  });
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.existing, true);
+  assert.equal(body.registrationNumber, 99);
+  assert.equal(body.statusUrl, "/s/existing_tok");
+});
+
+test("soft likely-duplicate never returns a status link", async () => {
+  const softRpc = {
+    data: null,
+    error: { message: "LIKELY_DUPLICATE:reg=77" },
+  };
+  const fake = fakeSupabase(softRpc, { allowed: true, retry_after_seconds: 30 }, {
+    existingByReg: {
+      "77": {
+        id: PATIENT_ID,
+        reg_no: 77,
+        status_token: "must_not_leak",
+        camp_day_id: DAY_ID,
+        queue_status: "registered",
+      },
+    },
+  });
+  __setServiceRoleClient(fake.client);
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+  });
+  const body = await response.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.deskReferral, true);
+  assert.equal(body.registrationNumber, 77);
+  assert.equal(body.statusUrl, undefined);
 });
 
 test("a half-read card is refused rather than registered with gaps", async () => {

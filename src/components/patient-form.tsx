@@ -15,6 +15,8 @@ import {
 } from "@/lib/registration-request";
 import { createRequestId } from "@/lib/request-id";
 import {
+  isDeskDaySelectable,
+  kolkataTodayIso,
   validatePatientForm,
   type PatientFormField,
 } from "@/lib/patient-form-validate";
@@ -65,7 +67,8 @@ export function PatientForm({
   isStaff = false,
   userRole = null,
 }: Props) {
-  const openDays = days.filter((d) => !d.is_full);
+  const todayIso = kolkataTodayIso();
+  const openDays = days.filter((d) => isDeskDaySelectable(d, todayIso));
   const firstOpen = openDays[0]?.id || "";
 
   const [campDayId, setCampDayId] = useState(firstOpen);
@@ -415,6 +418,13 @@ export function PatientForm({
                 email: args.p_email,
                 aadhaarLast4: args.p_aadhaar_last4,
                 dateOfBirth: args.p_date_of_birth,
+                // Staff one-shot overrides — Person key still server-derived.
+                aadhaarDuplicateOverride: Boolean(
+                  args.p_aadhaar_duplicate_override,
+                ),
+                likelyDuplicateOverride: Boolean(
+                  args.p_likely_duplicate_override,
+                ),
               }),
             });
             const body = (await response.json()) as {
@@ -496,7 +506,7 @@ export function PatientForm({
         });
         setPhase("registered-print-ready");
         const queueBit =
-          row.queue_status === "waiting" ? "line mein" : "register ho gaya";
+          row.queue_status === "waiting" ? "in the queue" : "registered";
         const flash =
           print === "navigated"
             ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
@@ -563,7 +573,11 @@ export function PatientForm({
     formRef.current?.requestSubmit();
   }
 
-  async function checkInLikelyDuplicate() {
+  /**
+   * Likely-duplicate primary action: queue existing patient + open print path.
+   * Flash copy is truth-based — never claims print when the window failed.
+   */
+  async function printLikelyDuplicateInstead() {
     if (likelyDuplicateRegNo == null || loading) return;
     const regTarget = likelyDuplicateRegNo;
     setLoading(true);
@@ -587,7 +601,7 @@ export function PatientForm({
             : null,
         };
       },
-      errorContext: "patient-form.check-in-likely-dup",
+      errorContext: "patient-form.print-likely-dup",
       errorFallback: "Could not queue this patient. Try again.",
     });
     if (!outcome.ok) {
@@ -598,11 +612,34 @@ export function PatientForm({
     }
     const row = outcome.row;
     const reg = row.reg_no ?? regTarget;
-    setFlash(
-      row.already_waiting
-        ? `Registration #${reg} is already in the queue. No duplicate was created.`
-        : `Registration #${reg} was printed and remains in the queue. No duplicate was created.`,
-    );
+    const printHref = patientPrintPath(row.id);
+    let printOpened = false;
+    try {
+      const handle = window.open(printHref, "_blank");
+      printOpened = Boolean(handle && !handle.closed);
+    } catch {
+      printOpened = false;
+    }
+    setPrintRecovery({
+      patientId: row.id,
+      regNo: reg,
+      queueStatus: row.queue_status as "registered" | "waiting" | "seen" | undefined,
+      printNavigated: printOpened,
+      printHref,
+    });
+    if (printOpened) {
+      setFlash(
+        `Registration #${reg} — print window open. No duplicate was created.`,
+      );
+    } else if (row.already_waiting) {
+      setFlash(
+        `Registration #${reg} is already in the queue. Print blocked — use Print below. No duplicate was created.`,
+      );
+    } else {
+      setFlash(
+        `Registration #${reg} is in the queue. Print blocked — use Print below. No duplicate was created.`,
+      );
+    }
     setLikelyDuplicateRegNo(null);
     setAadhaarDuplicateRegNo(null);
     aadhaarOverrideOnceRef.current = false;
@@ -627,7 +664,7 @@ export function PatientForm({
   }
 
   function moveDay(currentId: string, direction: -1 | 1) {
-    const selectable = days.filter((d) => !d.is_full);
+    const selectable = days.filter((d) => isDeskDaySelectable(d, todayIso));
     const currentIndex = selectable.findIndex((d) => d.id === currentId);
     if (currentIndex < 0 || selectable.length < 2) return;
     const next =
@@ -826,6 +863,9 @@ export function PatientForm({
         >
           {days.map((d) => {
             const active = campDayId === d.id;
+            const selectable = isDeskDaySelectable(d, todayIso);
+            const fullToday =
+              d.is_full && d.day_date === todayIso && selectable;
             return (
               <button
                 key={d.id}
@@ -834,7 +874,7 @@ export function PatientForm({
                 role="radio"
                 aria-checked={active}
                 tabIndex={active ? 0 : -1}
-                disabled={d.is_full}
+                disabled={!selectable}
                 onClick={() => setCampDayId(d.id)}
                 onKeyDown={(e) => {
                   if (e.key === "ArrowRight" || e.key === "ArrowDown") {
@@ -846,14 +886,18 @@ export function PatientForm({
                   }
                 }}
                 className={`day-chip ${active ? "day-chip-active" : ""} ${
-                  d.is_full ? "day-chip-full" : ""
+                  d.is_full && !fullToday ? "day-chip-full" : ""
                 }`}
               >
                 <span className="day-chip-date">
                   {formatCampDay(d.day_date)}
                 </span>
                 <span className="day-chip-meta">
-                  {d.is_full ? "FULL" : `${d.seats_left} left`}
+                  {fullToday
+                    ? "FULL · walk-in OK"
+                    : d.is_full
+                      ? "FULL"
+                      : `${d.seats_left} left`}
                 </span>
               </button>
             );
@@ -869,7 +913,11 @@ export function PatientForm({
         >
           <option value="">Select day…</option>
           {days.map((d) => (
-            <option key={d.id} value={d.id} disabled={d.is_full}>
+            <option
+              key={d.id}
+              value={d.id}
+              disabled={!isDeskDaySelectable(d, todayIso)}
+            >
               {formatCampDay(d.day_date)}
             </option>
           ))}
@@ -992,22 +1040,40 @@ export function PatientForm({
 
       <div>
         <p className="mb-1.5 text-[0.9375rem] font-semibold text-foreground/90 flex items-center gap-1.5">
-          Gender (optional) {isGenderLocked ? <span className="text-xs font-normal text-amber-700">🔒 (Locked)</span> : null}
+          Gender (optional){" "}
+          {isGenderLocked ? (
+            <span className="text-xs font-normal text-amber-700">
+              (Aadhaar locked)
+            </span>
+          ) : null}
         </p>
-        <SegmentedControl
-          value={gender || ""}
-          onChange={(val) => {
-            if (isGenderLocked) return;
-            setGender(val);
-          }}
-          options={[
-            { value: "", label: "—" },
-            { value: "M", label: "Male" },
-            { value: "F", label: "Female" },
-            { value: "O", label: "Other" },
-          ]}
-          label="Gender"
-        />
+        {isGenderLocked ? (
+          <p
+            className="min-h-[3.25rem] rounded-xl border border-border bg-slate-100 px-3.5 py-3 text-[1.0625rem] font-medium text-slate-700"
+            data-locked="true"
+            aria-readonly="true"
+          >
+            {gender === "M"
+              ? "Male"
+              : gender === "F"
+                ? "Female"
+                : gender === "O"
+                  ? "Other"
+                  : "—"}
+          </p>
+        ) : (
+          <SegmentedControl
+            value={gender || ""}
+            onChange={(val) => setGender(val)}
+            options={[
+              { value: "", label: "—" },
+              { value: "M", label: "Male" },
+              { value: "F", label: "Female" },
+              { value: "O", label: "Other" },
+            ]}
+            label="Gender"
+          />
+        )}
       </div>
 
       <Input
@@ -1062,10 +1128,11 @@ export function PatientForm({
               disabled={loading}
               loading={loading}
               onClick={() => {
-                void checkInLikelyDuplicate();
+                void printLikelyDuplicateInstead();
               }}
+              data-testid="print-likely-duplicate"
             >
-              Check them in instead
+              Print for them instead
             </Button>
             <Button
               type="button"

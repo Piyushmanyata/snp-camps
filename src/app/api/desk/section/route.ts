@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile } from "@/lib/auth";
-import { isCampCrew, isStaff } from "@/lib/roles";
+import { isCampCrew, isStaff, isTeamLead } from "@/lib/roles";
 import { isPatientUuid } from "@/lib/qr";
 import {
   isSectionKey,
@@ -60,6 +60,7 @@ export async function GET(request: Request) {
   const result = await loadSection(section, {
     campId,
     userId,
+    kpiRole: isTeamLead(profile?.role) ? "team_lead" : "volunteer",
   });
 
   if (!result.ok) {

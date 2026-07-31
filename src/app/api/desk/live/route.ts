@@ -62,17 +62,19 @@ export async function GET(request: Request) {
     );
   }
 
+  // Avoid exact COUNT when under the display limit: fetch limit+1 and infer.
+  const fetchLimit = DESK_LIVE_WAITING_LIMIT + 1;
   const [waitingRes, dayStatsRes] = await Promise.all([
     supabase
       .from("patients")
-      .select(DESK_LIVE_WAITING_SELECT, { count: "exact" })
+      .select(DESK_LIVE_WAITING_SELECT)
       .eq("camp_id", campId)
       .eq("queue_status", "waiting")
       // FCFS: queued_at, then reg_no, then id (#70)
       .order("queued_at", { ascending: true, nullsFirst: false })
       .order("reg_no", { ascending: true })
       .order("id", { ascending: true })
-      .limit(DESK_LIVE_WAITING_LIMIT),
+      .limit(fetchLimit),
     supabase.rpc("camp_day_stats", { p_camp_id: campId }),
   ]);
 
@@ -83,13 +85,35 @@ export async function GET(request: Request) {
     );
   }
 
-  const waitingRaw = (waitingRes.data || []).map((row) => ({
+  const waitingRows = waitingRes.data || [];
+  const overLimit = waitingRows.length > DESK_LIVE_WAITING_LIMIT;
+  const waitingSlice = overLimit
+    ? waitingRows.slice(0, DESK_LIVE_WAITING_LIMIT)
+    : waitingRows;
+
+  // Only pay for exact count when the queue exceeds the display window.
+  let waitingTotal = waitingSlice.length;
+  if (overLimit) {
+    const { count, error: countError } = await supabase
+      .from("patients")
+      .select("id", { count: "exact", head: true })
+      .eq("camp_id", campId)
+      .eq("queue_status", "waiting");
+    if (countError) {
+      return NextResponse.json(
+        { error: "Desk live data could not be loaded" },
+        { status: 502, headers: NO_STORE },
+      );
+    }
+    waitingTotal = count ?? waitingSlice.length;
+  }
+
+  const waitingRaw = waitingSlice.map((row) => ({
     id: row.id,
     reg_no: row.reg_no,
     full_name: row.full_name,
     phone: row.phone ?? null,
   })) as DeskLiveWaitingRow[];
-  const waitingTotal = waitingRes.count ?? waitingRaw.length;
   const dayStats = (dayStatsRes.data || []) as CampDayStats[];
 
   const body: DeskLivePayload = {

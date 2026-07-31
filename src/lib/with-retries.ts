@@ -15,8 +15,13 @@ export const RETRY_EXHAUSTED_COPY = {
   register: "Could not save. Check the internet and press Try Again.",
   lookup:
     "Could not look up this patient. Check the internet and press Try Again.",
+  /** @deprecated Use markSeen / undo — kept for older call sites. */
   assign:
-    "Could not assign this patient. Check the internet and press Try Again.",
+    "Could not mark this patient seen. Check the internet and press Try Again.",
+  markSeen:
+    "Could not mark this patient seen. Check the internet and press Try Again.",
+  undo:
+    "Could not undo mark-seen. Check the internet and press Try Again.",
   changeDay:
     "Could not change the day. Check the internet and press Try Again.",
   checkIn:

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionProfile, isAdmin, isCampCrew } from "@/lib/auth";
+import { loadSessionProfile, isAdmin, isCampCrew } from "@/lib/auth";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -13,7 +13,7 @@ const KOLKATA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
 
 /** Staff KPIs and recent handled patients for camp-crew desks and admin. */
 export async function GET(req: Request) {
-  const { userId, profile } = await getSessionProfile();
+  const { userId, profile } = await loadSessionProfile();
   if (!userId || !isCampCrew(profile?.role)) {
     return NextResponse.json({ error: "Camp crew only" }, { status: 403 });
   }

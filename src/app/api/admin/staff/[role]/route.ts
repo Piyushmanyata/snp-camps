@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { getSessionProfile, readJsonBody } from "@/lib/auth";
+import { loadSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 
 export type StaffRole = "volunteer" | "team_lead" | "clinical_operator";
@@ -51,7 +51,7 @@ async function parseRole(
 async function requireStaffManager(
   role: StaffRole,
 ): Promise<{ userId: string; scopeTeamLeadId: string | null } | { error: NextResponse }> {
-  const { userId, profile } = await getSessionProfile();
+  const { userId, profile } = await loadSessionProfile();
   if (!userId) {
     return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionProfile } from "@/lib/auth";
+import { loadSessionProfile } from "@/lib/auth";
 import { isStaff } from "@/lib/roles";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
@@ -7,7 +7,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { profile } = await getSessionProfile();
+  const { profile } = await loadSessionProfile();
   if (!isStaff(profile?.role)) return new NextResponse(null, { status: 404 });
   const { id } = await params;
   const admin = createServiceRoleClient();

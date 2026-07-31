@@ -144,6 +144,18 @@ canvas {
   border-radius: 0.25rem;
 }
 
+/* Native controls (select/checkbox) must keep a visible keyboard ring even when
+   component styles set outline-none on the element itself. */
+select:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="radio"]:focus-visible,
+[role="checkbox"]:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: var(--ring-offset);
+}
+
 :focus-visible,
 :target {
   scroll-margin-top: 5rem;

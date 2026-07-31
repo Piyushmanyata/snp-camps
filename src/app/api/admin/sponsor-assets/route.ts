@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getSessionProfile } from "@/lib/auth";
+import { loadSessionProfile } from "@/lib/auth";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 const MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -17,7 +17,7 @@ function hasExpectedMagic(bytes: Uint8Array, mime: string) {
 }
 
 export async function POST(request: Request) {
-  const { userId, profile } = await getSessionProfile();
+  const { userId, profile } = await loadSessionProfile();
   if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (profile?.role !== "admin") return NextResponse.json({ error: "Admin only" }, { status: 403 });
   const form = await request.formData();

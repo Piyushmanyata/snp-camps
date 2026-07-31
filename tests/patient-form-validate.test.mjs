@@ -3,10 +3,13 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validatePatientForm } from "../src/lib/patient-form-validate.ts";
+import {
+  isDeskDaySelectable,
+  validatePatientForm,
+} from "../src/lib/patient-form-validate.ts";
 
 const dayId = "22222222-2222-4222-8222-222222222222";
-const days = [{ id: dayId, is_full: false }];
+const days = [{ id: dayId, is_full: false, day_date: "2026-07-31" }];
 
 function draft(over = {}) {
   return {
@@ -63,9 +66,26 @@ test("aadhaar last-4 accepted when filled", () => {
   if (result.ok) assert.equal(result.values.aadhaarLast4, "4321");
 });
 
-test("full day rejected", () => {
-  const result = validatePatientForm(draft(), [{ id: dayId, is_full: true }]);
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.field, "campDay");
+test("future full day rejected; today full still allowed for desk walk-in", () => {
+  const futureFull = validatePatientForm(
+    draft(),
+    [{ id: dayId, is_full: true, day_date: "2026-08-15" }],
+    { todayIso: "2026-07-31" },
+  );
+  assert.equal(futureFull.ok, false);
+  if (!futureFull.ok) assert.equal(futureFull.field, "campDay");
+
+  const todayFull = validatePatientForm(
+    draft(),
+    [{ id: dayId, is_full: true, day_date: "2026-07-31" }],
+    { todayIso: "2026-07-31" },
+  );
+  assert.equal(todayFull.ok, true);
+  assert.equal(
+    isDeskDaySelectable(
+      { id: dayId, is_full: true, day_date: "2026-07-31" },
+      "2026-07-31",
+    ),
+    true,
+  );
 });

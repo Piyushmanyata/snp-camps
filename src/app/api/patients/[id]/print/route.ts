@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canRegisterPatients, getSessionProfile } from "@/lib/auth";
+import { canRegisterPatients, loadSessionProfile } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 import { createClient } from "@/lib/supabase/server";
 import type { QueueStatus } from "@/lib/types";
@@ -23,7 +23,7 @@ export async function POST(
     return json({ error: "JSON request required" }, 415);
   }
 
-  const { userId, profile } = await getSessionProfile();
+  const { userId, profile } = await loadSessionProfile();
   if (!userId) return json({ error: "Not signed in" }, 401);
   if (!canRegisterPatients(profile?.role)) {
     return json({ error: "Admin or volunteer access required" }, 403);

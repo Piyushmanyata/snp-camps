@@ -17,12 +17,18 @@ export function StaticLoginFormShell() {
       roleLabel="Staff"
     >
       <Card>
-        <form method="post" className="space-y-4">
+        {/* Non-submittable Suspense shell — never native POST without a handler. */}
+        <div
+          className="space-y-4"
+          aria-busy="true"
+          aria-label="Loading sign-in form"
+          data-testid="static-login-shell"
+        >
           <Input
             label="Email"
             type="email"
             name="email"
-            required
+            disabled
             autoComplete="email"
             spellCheck={false}
             placeholder="you@example.com"
@@ -31,12 +37,14 @@ export function StaticLoginFormShell() {
             label="Password"
             type="password"
             name="password"
-            required
+            disabled
             autoComplete="current-password"
             placeholder="Your password"
           />
-          <Button type="submit">Sign in</Button>
-        </form>
+          <Button type="button" disabled>
+            Sign in
+          </Button>
+        </div>
       </Card>
 
       <div className="mt-4 space-y-3">

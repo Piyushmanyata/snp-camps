@@ -281,7 +281,12 @@ export async function loadAdminQueueCountsSection(
 /** Dispatch one narrow section read — used by the section API and tests. */
 export async function loadSection(
   section: SectionKey,
-  params: { campId?: string | null; userId?: string | null },
+  params: {
+    campId?: string | null;
+    userId?: string | null;
+    /** When team_lead, staff_person_kpis rolls up the team. */
+    kpiRole?: "volunteer" | "team_lead";
+  },
 ): Promise<SectionResult<unknown>> {
   const campId = params.campId ?? null;
   const userId = params.userId ?? null;
@@ -297,7 +302,11 @@ export async function loadSection(
       if (!campId || !userId) {
         return { ok: false, error: "Camp and user required." };
       }
-      return loadVolunteerKpisSection(campId, userId);
+      return loadVolunteerKpisSection(
+        campId,
+        userId,
+        params.kpiRole ?? "volunteer",
+      );
     case "admin-analytics":
       if (!campId) return { ok: false, error: "Camp required." };
       return loadAdminQueueCountsSection(campId);

@@ -368,20 +368,70 @@ export function decompress(bytes: Uint8Array): Uint8Array | null {
   return null;
 }
 
-/** Converts a BigInt / numeric digit string to its big-endian byte array. */
-function numericStringToBytes(numericStr: string): Uint8Array {
+/**
+ * Converts a numeric digit string to its big-endian byte array.
+ * Chunked base-10^9 limbs avoid a multi-second full-string BigInt on long
+ * Secure QR payloads (CodSpeed-style hot path).
+ */
+export function numericStringToBytes(numericStr: string): Uint8Array {
   try {
-    let big = BigInt(numericStr);
-    const zero = BigInt(0);
-    const ff = BigInt(255);
-    const eight = BigInt(8);
-    const bytes: number[] = [];
-    while (big > zero) {
-      bytes.push(Number(big & ff));
-      big = big >> eight;
+    const digits = numericStr.replace(/\D/g, "");
+    if (!digits) return new Uint8Array();
+
+    // Short strings: BigInt is fine and keeps the original path.
+    if (digits.length <= 180) {
+      let big = BigInt(digits);
+      const zero = BigInt(0);
+      const ff = BigInt(255);
+      const eight = BigInt(8);
+      if (big === zero) return new Uint8Array([0]);
+      const bytes: number[] = [];
+      while (big > zero) {
+        bytes.push(Number(big & ff));
+        big = big >> eight;
+      }
+      bytes.reverse();
+      return new Uint8Array(bytes);
     }
-    bytes.reverse();
-    return new Uint8Array(bytes);
+
+    // Long strings: accumulate base-10^9 limbs, then convert to bytes.
+    const CHUNK = 9;
+    const BASE = 1_000_000_000;
+    const limbs: number[] = [];
+    let rem = digits.length % CHUNK;
+    if (rem === 0) rem = CHUNK;
+    limbs.push(Number(digits.slice(0, rem)));
+    for (let j = rem; j < digits.length; j += CHUNK) {
+      limbs.push(Number(digits.slice(j, j + CHUNK)));
+    }
+
+    const bytes: number[] = [0];
+    for (const limb of limbs) {
+      let carry = 0;
+      for (let i = bytes.length - 1; i >= 0; i--) {
+        const product = bytes[i] * BASE + carry;
+        bytes[i] = product & 0xff;
+        carry = Math.floor(product / 256);
+      }
+      while (carry > 0) {
+        bytes.unshift(carry & 0xff);
+        carry = Math.floor(carry / 256);
+      }
+      carry = limb;
+      for (let i = bytes.length - 1; i >= 0 && carry > 0; i--) {
+        const sum = bytes[i] + carry;
+        bytes[i] = sum & 0xff;
+        carry = Math.floor(sum / 256);
+      }
+      while (carry > 0) {
+        bytes.unshift(carry & 0xff);
+        carry = Math.floor(carry / 256);
+      }
+    }
+
+    let start = 0;
+    while (start < bytes.length - 1 && bytes[start] === 0) start += 1;
+    return new Uint8Array(bytes.slice(start));
   } catch {
     return new Uint8Array();
   }

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!rate.allowed) {
     return NextResponse.json(
       { ok: false, error: "Ye registration number aur janm tithi match nahi hui." },
-      { status: 429 },
+      { status: 429, headers: rate.headers },
     );
   }
 

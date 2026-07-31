@@ -286,7 +286,7 @@ export async function markSeenWithRetries(options: {
         };
       }
     },
-    { ok: false, error: RETRY_EXHAUSTED_COPY.assign },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.markSeen },
     options.sleep,
   );
 }
@@ -374,7 +374,7 @@ export async function undoMarkSeenWithRetries(options: {
         };
       }
     },
-    { ok: false, error: RETRY_EXHAUSTED_COPY.assign },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.undo },
     options.sleep,
   );
 }

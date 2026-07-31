@@ -132,19 +132,29 @@ export function resolvePrescriptionTemplate(
   }).filter((section) => section.heightMm > 0);
 
   const base = DEFAULT_PRESCRIPTION_TEMPLATE;
+  /** Same-origin brand paths + admin sponsor asset route only. */
+  const isAllowedAssetUrl = (value: string) =>
+    value === "/brand/letterhead.png" ||
+    value === "/brand/rupa-logo.png" ||
+    /^\/brand\/[a-z0-9._-]+\.(png|jpe?g|webp|svg)$/i.test(value) ||
+    /^\/api\/admin\/sponsor-assets\/[0-9a-f-]+$/i.test(value);
+
+  const letterheadCandidate =
+    typeof raw.letterheadUrl === "string" ? raw.letterheadUrl.trim() : "";
+  const sponsorCandidate =
+    typeof raw.sponsorLogoUrl === "string" ? raw.sponsorLogoUrl.trim() : "";
+
   return {
-    letterheadUrl: str(raw.letterheadUrl, base.letterheadUrl),
-    sponsorLogoUrl:
-      typeof raw.sponsorLogoUrl === "string"
-        ? raw.sponsorLogoUrl
-        : base.sponsorLogoUrl,
+    letterheadUrl: isAllowedAssetUrl(letterheadCandidate)
+      ? letterheadCandidate
+      : base.letterheadUrl,
+    sponsorLogoUrl: isAllowedAssetUrl(sponsorCandidate)
+      ? sponsorCandidate
+      : base.sponsorLogoUrl,
     sponsorLogos: Array.isArray(raw.sponsorLogos)
       ? (raw.sponsorLogos as unknown[])
           .filter((value): value is string => typeof value === "string")
-          .filter((value) =>
-            value === "/brand/rupa-logo.png" ||
-            /^\/api\/admin\/sponsor-assets\/[0-9a-f-]+$/i.test(value),
-          )
+          .filter(isAllowedAssetUrl)
           .slice(0, 8)
       : base.sponsorLogos,
     sponsorLabel: str(raw.sponsorLabel, base.sponsorLabel),

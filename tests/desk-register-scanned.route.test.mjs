@@ -92,7 +92,7 @@ test("derives a Person key server-side and forces trusted staff semantics", asyn
   assert.equal(args.p_duplicate_key.length, 64);
 });
 
-test("ignores forged creator, duplicate key, and override fields", async () => {
+test("ignores forged creator and client Person key; accepts staff override flags", async () => {
   signIn();
   let args;
   __setServiceRoleClient({
@@ -115,8 +115,9 @@ test("ignores forged creator, duplicate key, and override fields", async () => {
 
   assert.equal(args.p_created_by, USER_ID);
   assert.notEqual(args.p_duplicate_key, "chosen-key");
-  assert.equal(args.p_aadhaar_duplicate_override, false);
-  assert.equal(args.p_likely_duplicate_override, false);
+  // Person key is always server-derived; overrides are audited staff one-shots.
+  assert.equal(args.p_aadhaar_duplicate_override, true);
+  assert.equal(args.p_likely_duplicate_override, true);
 });
 
 test("rejects unauthenticated, non-staff, incomplete, and oversized requests", async () => {

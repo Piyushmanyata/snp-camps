@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile, isCampCrew, roleHome } from "@/lib/auth";
+import { isClinicalOperator } from "@/lib/roles";
 import { isPatientUuid } from "@/lib/qr";
 
 /**
  * Staff-scan QR entry — `/p/{uuid}`.
- * Camp crew → their desk with ?scan=. Anyone else → plain show-at-desk message.
+ * Registration staff → their desk with ?scan=.
+ * Clinical operators → Clinical Desk with ?scan= (print/mark-seen stay denied there).
+ * Anyone else → plain show-at-desk message.
  * Never logs patients in. Not the passwordless status link (/s/<token>).
  */
 export default async function PatientScanPage({
@@ -27,7 +30,13 @@ export default async function PatientScanPage({
   }
 
   const { profile } = await getSessionProfile();
-  if (!isCampCrew(profile?.role)) {
+  const role = profile?.role;
+
+  if (isClinicalOperator(role)) {
+    redirect(`/clinical?scan=${id}`);
+  }
+
+  if (!isCampCrew(role)) {
     return (
       <main id="main" className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-lg font-semibold">Camp desk scan only</h1>
@@ -38,7 +47,6 @@ export default async function PatientScanPage({
     );
   }
 
-  const deskBase = roleHome(profile?.role) || "/volunteer";
-
+  const deskBase = roleHome(role) || "/volunteer";
   redirect(`${deskBase}?scan=${id}`);
 }

@@ -20,7 +20,20 @@ const globalStore = globalThis as typeof globalThis & {
 const store = globalStore.__snpRateLimits ?? new Map<string, Entry>();
 globalStore.__snpRateLimits = store;
 
+/**
+ * Client IP for rate limiting.
+ * On Vercel, trust only platform-injected `x-vercel-forwarded-for` so spoofed
+ * XFF cannot empty buckets. Off Vercel (local/dev), fall back to XFF/real-ip.
+ */
 function clientAddress(request: Request) {
+  const onVercel =
+    process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+  if (onVercel) {
+    return (
+      request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
+      "unknown"
+    );
+  }
   return (
     request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||

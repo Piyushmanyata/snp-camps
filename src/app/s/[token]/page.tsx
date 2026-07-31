@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatCampDay } from "@/lib/format-camp-day";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { isStatusTokenFormat } from "@/lib/status-token";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { QrCode } from "@/components/qr-code";
@@ -53,18 +54,23 @@ export default async function PatientStatusPage({
   const token = raw.trim().toLowerCase();
 
   const requestHeaders = await headers();
-  const rate = checkRateLimit(
-    new Request("https://snp-camps.invalid/status", {
-      headers: new Headers(requestHeaders),
-    }),
-    STATUS_RATE_LIMIT,
-  );
+  const rateRequest = new Request("https://snp-camps.invalid/status", {
+    headers: new Headers(requestHeaders),
+  });
+  const rate = checkRateLimit(rateRequest, STATUS_RATE_LIMIT);
   if (!rate.allowed) notFound();
 
   if (!isStatusTokenFormat(token)) notFound();
 
   const admin = createServiceRoleClient();
   if (!admin) notFound();
+
+  // Multi-instance durable gate (in-memory alone is not enough under load).
+  const durable = await checkDistributedRateLimit(rateRequest, admin, {
+    ...STATUS_RATE_LIMIT,
+    identifier: token,
+  });
+  if (!durable.allowed) notFound();
 
   const { data, error } = await admin.rpc("patient_status_by_token", {
     p_token: token,

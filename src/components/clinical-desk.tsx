@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr, parseRegistrationNumber } from "@/lib/qr";
+import { DEFAULT_PRESCRIPTION_TEMPLATE } from "@/lib/prescription-template";
 import { Button, Card, ErrorBox, Input, SectionTitle } from "@/components/ui";
 import { PatientQrCamera } from "@/components/patient-qr-camera";
 
@@ -39,12 +40,30 @@ const OUTCOMES = {
   ot: ["fulfilled", "deferred", "not_required"],
 } as const;
 
-export function ClinicalDesk() {
+const DIAGNOSIS_OPTIONS = DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions;
+
+type SlipReplaceState = {
+  slip: { id: string; date: string; venue: string };
+  date: string;
+  venue: string;
+  reason: string;
+};
+
+export function ClinicalDesk({
+  canMutate = true,
+  initialScan = null,
+}: {
+  /** When false (admin view), Save/Resolve/Replace controls are hidden. */
+  canMutate?: boolean;
+  /** Prefill from `/clinical?scan=` deep link. */
+  initialScan?: string | null;
+}) {
   const supabase = createClient();
-  const [exact, setExact] = useState("");
+  const [exact, setExact] = useState(initialScan ?? "");
   const [record, setRecord] = useState<Lookup | null>(null);
   const [followup, setFollowup] = useState<Array<{ id: string; kind: string; outcome: string; camp_name: string }>>([]);
-  const [diagnoses, setDiagnoses] = useState("");
+  const [diagnosisSelected, setDiagnosisSelected] = useState<string[]>([]);
+  const [diagnosisOther, setDiagnosisOther] = useState("");
   const [bloodSugar, setBloodSugar] = useState("");
   const [bloodPressure, setBloodPressure] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -60,6 +79,32 @@ export function ClinicalDesk() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
+
+  useEffect(() => {
+    if (initialScan) {
+      void lookup(initialScan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
+  }, [initialScan]);
+
+  function applySavedDiagnoses(saved: Record<string, unknown>) {
+    const raw = saved.diagnoses;
+    const list = Array.isArray(raw)
+      ? raw.map(String)
+      : typeof raw === "string" && raw
+        ? [raw]
+        : [];
+    const known = new Set(DIAGNOSIS_OPTIONS);
+    const selected: string[] = [];
+    const otherParts: string[] = [];
+    for (const item of list) {
+      if (known.has(item)) selected.push(item);
+      else if (item.trim()) otherParts.push(item.trim());
+    }
+    setDiagnosisSelected(selected);
+    setDiagnosisOther(otherParts.join("; "));
+  }
 
   async function lookup(value = exact) {
     setBusy(true);
@@ -87,8 +132,11 @@ export function ClinicalDesk() {
     }
     const next = data as Lookup;
     setRecord(next);
-    const saved = next.effective_data ?? next.transcription?.data ?? {};
-    setDiagnoses(String(saved.diagnoses ?? ""));
+    const saved = (next.effective_data ?? next.transcription?.data ?? {}) as Record<
+      string,
+      unknown
+    >;
+    applySavedDiagnoses(saved);
     setBloodSugar(String(saved.bloodSugar ?? ""));
     setBloodPressure(String(saved.bloodPressure ?? ""));
     setRemarks(String(saved.remarks ?? ""));
@@ -97,8 +145,20 @@ export function ClinicalDesk() {
     const right = (savedSpecs.right ?? {}) as Record<string, unknown>;
     const left = (savedSpecs.left ?? {}) as Record<string, unknown>;
     setSpecType(String(savedSpecs.type ?? ""));
-    setSpecRight({ sphere: String(right.sphere ?? ""), cylinder: String(right.cylinder ?? ""), axis: String(right.axis ?? ""), vision: String(right.vision ?? ""), near: String(right.near ?? "") });
-    setSpecLeft({ sphere: String(left.sphere ?? ""), cylinder: String(left.cylinder ?? ""), axis: String(left.axis ?? ""), vision: String(left.vision ?? ""), near: String(left.near ?? "") });
+    setSpecRight({
+      sphere: String(right.sphere ?? ""),
+      cylinder: String(right.cylinder ?? ""),
+      axis: String(right.axis ?? ""),
+      vision: String(right.vision ?? ""),
+      near: String(right.near ?? ""),
+    });
+    setSpecLeft({
+      sphere: String(left.sphere ?? ""),
+      cylinder: String(left.cylinder ?? ""),
+      axis: String(left.axis ?? ""),
+      vision: String(left.vision ?? ""),
+      near: String(left.near ?? ""),
+    });
     setSpecPd(String(savedSpecs.pd ?? ""));
     const savedOt = (saved.ot ?? {}) as Record<string, unknown>;
     setOtEye(String(savedOt.eye ?? ""));
@@ -127,6 +187,7 @@ export function ClinicalDesk() {
   }
 
   async function fulfilFollowup(id: string) {
+    if (!canMutate) return;
     setBusy(true);
     const { error: rpcError } = await supabase.rpc("clinical_followup_fulfil", {
       p_item_id: id,
@@ -140,32 +201,43 @@ export function ClinicalDesk() {
   }
 
   function transcriptionData() {
+    const diagnoses = [
+      ...diagnosisSelected,
+      ...(diagnosisOther.trim() ? [diagnosisOther.trim()] : []),
+    ];
     return {
-      diagnoses: diagnoses.split(",").map((v) => v.trim()).filter(Boolean),
+      diagnoses,
       bloodSugar: bloodSugar.trim() || null,
       bloodPressure: bloodPressure.trim() || null,
       remarks: remarks.trim() || null,
       medicines: medicines.trim() || null,
-      specs: specType ? {
-        type: specType,
-        right: specRight,
-        left: specLeft,
-        pd: specPd.trim(),
-      } : null,
-      ot: otEye ? {
-        eye: otEye,
-        procedure: otProcedure.trim(),
-        notes: otNotes.trim() || null,
-      } : null,
+      specs: specType
+        ? {
+            type: specType,
+            right: specRight,
+            left: specLeft,
+            pd: specPd.trim(),
+          }
+        : null,
+      ot: otEye
+        ? {
+            eye: otEye,
+            procedure: otProcedure.trim(),
+            notes: otNotes.trim() || null,
+          }
+        : null,
     };
   }
 
-  async function replaceSlip(slip: { id: string; date: string; venue: string }) {
-    const date = window.prompt("Replacement date (YYYY-MM-DD):", slip.date);
-    const venue = window.prompt("Replacement venue:", slip.venue);
-    const reason = window.prompt("Reason for replacing this slip:");
-    if (!date || !venue?.trim() || !reason?.trim()) return;
+  async function submitSlipReplace() {
+    if (!canMutate || !slipReplace) return;
+    const { slip, date, venue, reason } = slipReplace;
+    if (!date || !venue.trim() || !reason.trim()) {
+      setError("Date, venue, and reason are required to replace a slip.");
+      return;
+    }
     setBusy(true);
+    setError(null);
     const { data, error: rpcError } = await supabase.rpc("clinical_replace_slip", {
       p_slip_id: slip.id,
       p_date: date,
@@ -175,6 +247,7 @@ export function ClinicalDesk() {
     if (rpcError) setError(rpcError.message || "Slip could not be replaced.");
     else {
       const replacement = data as { id: string };
+      setSlipReplace(null);
       window.open(`/clinical/slip/${replacement.id}`, "_blank");
       await lookup();
     }
@@ -182,7 +255,7 @@ export function ClinicalDesk() {
   }
 
   async function save() {
-    if (!record) return;
+    if (!record || !canMutate) return;
     setBusy(true);
     setError(null);
     try {
@@ -201,6 +274,7 @@ export function ClinicalDesk() {
   }
 
   async function addCorrection() {
+    if (!canMutate) return;
     if (!record || !correctionReason.trim()) {
       setError("Enter a correction reason.");
       return;
@@ -225,7 +299,11 @@ export function ClinicalDesk() {
   }
 
   async function resolve(kind: keyof typeof OUTCOMES, outcome: string) {
-    if (!record) return;
+    if (!record || !canMutate) return;
+    if (!record.transcription?.id) {
+      setError("Save a transcription before resolving fulfilment outcomes.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const { data, error: rpcError } = await supabase.rpc("clinical_resolve_item", {
@@ -248,8 +326,29 @@ export function ClinicalDesk() {
     setBusy(false);
   }
 
+  function toggleDiagnosis(option: string) {
+    setDiagnosisSelected((current) =>
+      current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option],
+    );
+  }
+
+  const hasTranscription = Boolean(record?.transcription?.id);
+  const selectClass =
+    "mt-1 min-h-12 w-full rounded-xl border border-border bg-white px-3 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]";
+
   return (
     <div className="space-y-5">
+      {!canMutate ? (
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"
+        >
+          Admin view — lookup and history only. Save, resolve, and slip replace are
+          available to clinical operators.
+        </p>
+      ) : null}
       <Card className="space-y-3">
         <SectionTitle>Exact patient lookup</SectionTitle>
         <Input
@@ -275,66 +374,199 @@ export function ClinicalDesk() {
         </div>
       </Card>
       <ErrorBox message={error} />
-      {message ? <p role="status" className="rounded-xl bg-brand-soft p-3 text-sm font-semibold text-brand">{message}</p> : null}
+      {message ? (
+        <p role="status" className="rounded-xl bg-brand-soft p-3 text-sm font-semibold text-brand">
+          {message}
+        </p>
+      ) : null}
       {record ? (
         <>
           <Card className="space-y-4">
             <div>
-              <SectionTitle>#{record.patient.reg_no} · {record.patient.full_name}</SectionTitle>
-              <p className="text-sm text-muted">{record.patient.age ?? "—"} years · {record.patient.gender ?? "—"}</p>
+              <SectionTitle>
+                #{record.patient.reg_no} · {record.patient.full_name}
+              </SectionTitle>
+              <p className="text-sm text-muted">
+                {record.patient.age ?? "—"} years · {record.patient.gender ?? "—"}
+              </p>
             </div>
-            {record.transcription?.locked_at ? (
+            {canMutate && record.transcription?.locked_at ? (
               <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-                <p>Original locked after the first outcome. Later changes are appended as corrections.</p>
-                <Input id="clinical-correction-reason" label="Correction reason" value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} />
+                <p>
+                  Original locked after the first outcome. Later changes are appended as
+                  corrections.
+                </p>
+                <Input
+                  id="clinical-correction-reason"
+                  label="Correction reason"
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value)}
+                />
               </div>
             ) : null}
-            <Input id="clinical-diagnoses" label="Diagnosis options / Other" value={diagnoses} onChange={(e) => setDiagnoses(e.target.value)} hint="Comma-separated" />
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold text-foreground">Diagnosis</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {DIAGNOSIS_OPTIONS.map((option) => {
+                  const checked = diagnosisSelected.includes(option);
+                  return (
+                    <label
+                      key={option}
+                      className="flex min-h-12 items-center gap-2 rounded-xl border border-border bg-white px-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                        onChange={() => toggleDiagnosis(option)}
+                      />
+                      {option}
+                    </label>
+                  );
+                })}
+              </div>
+              <Input
+                id="clinical-diagnosis-other"
+                label="Other diagnosis (optional)"
+                value={diagnosisOther}
+                onChange={(e) => setDiagnosisOther(e.target.value)}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                hint="Free text — not split on commas"
+              />
+            </fieldset>
+
             <div className="grid gap-3 sm:grid-cols-2">
-              <Input id="clinical-sugar" label="Blood sugar (optional)" value={bloodSugar} onChange={(e) => setBloodSugar(e.target.value)} />
-              <Input id="clinical-bp" label="Blood pressure (optional)" value={bloodPressure} onChange={(e) => setBloodPressure(e.target.value)} />
+              <Input
+                id="clinical-sugar"
+                label="Blood sugar (optional)"
+                value={bloodSugar}
+                onChange={(e) => setBloodSugar(e.target.value)}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+              />
+              <Input
+                id="clinical-bp"
+                label="Blood pressure (optional)"
+                value={bloodPressure}
+                onChange={(e) => setBloodPressure(e.target.value)}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+              />
             </div>
-            <Input id="clinical-remarks" label="Remarks / advice" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-            <Input id="clinical-medicines" label="Medicines from paper" value={medicines} onChange={(e) => setMedicines(e.target.value)} />
+            <Input
+              id="clinical-remarks"
+              label="Remarks / advice"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+            />
+            <Input
+              id="clinical-medicines"
+              label="Medicines from paper"
+              value={medicines}
+              onChange={(e) => setMedicines(e.target.value)}
+              disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+            />
             <Card className="space-y-3">
               <SectionTitle>Specs measurements</SectionTitle>
-              <label className="block text-sm font-semibold">Approved type
-                <select className="mt-1 min-h-12 w-full rounded-xl border border-border bg-white px-3" value={specType} onChange={(event) => setSpecType(event.target.value)}>
+              <label className="block text-sm font-semibold">
+                Approved type
+                <select
+                  className={selectClass}
+                  value={specType}
+                  disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                  onChange={(event) => setSpecType(event.target.value)}
+                >
                   <option value="">Not selected</option>
-                  <option value="distance">Distance</option><option value="near">Near</option>
-                  <option value="bifocal">Bifocal</option><option value="progressive">Progressive</option>
+                  <option value="distance">Distance</option>
+                  <option value="near">Near</option>
+                  <option value="bifocal">Bifocal</option>
+                  <option value="progressive">Progressive</option>
                   <option value="fixed_power">Fixed power</option>
                 </select>
               </label>
               {(["right", "left"] as const).map((side) => {
                 const eye = side === "right" ? specRight : specLeft;
                 const update = side === "right" ? setSpecRight : setSpecLeft;
-                return <div key={side} className="grid gap-2 sm:grid-cols-5">
-                  {(["sphere", "cylinder", "axis", "vision", "near"] as const).map((field) => (
-                    <Input key={field} id={`spec-${side}-${field}`} label={`${side === "right" ? "RE" : "LE"} ${field}`} value={eye[field]} onChange={(event) => update((current) => ({ ...current, [field]: event.target.value }))} />
-                  ))}
-                </div>;
+                return (
+                  <div key={side} className="grid gap-2 sm:grid-cols-5">
+                    {(["sphere", "cylinder", "axis", "vision", "near"] as const).map(
+                      (field) => (
+                        <Input
+                          key={field}
+                          id={`spec-${side}-${field}`}
+                          label={`${side === "right" ? "RE" : "LE"} ${field}`}
+                          value={eye[field]}
+                          disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                          onChange={(event) =>
+                            update((current) => ({
+                              ...current,
+                              [field]: event.target.value,
+                            }))
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                );
               })}
-              <Input id="spec-pd" label="Pupillary distance (PD)" value={specPd} onChange={(event) => setSpecPd(event.target.value)} />
+              <Input
+                id="spec-pd"
+                label="Pupillary distance (PD)"
+                value={specPd}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                onChange={(event) => setSpecPd(event.target.value)}
+              />
             </Card>
             <Card className="space-y-3">
               <SectionTitle>OT detail</SectionTitle>
-              <label className="block text-sm font-semibold">Eye
-                <select className="mt-1 min-h-12 w-full rounded-xl border border-border bg-white px-3" value={otEye} onChange={(event) => setOtEye(event.target.value)}>
-                  <option value="">Not selected</option><option value="right">Right</option>
-                  <option value="left">Left</option><option value="both">Both</option>
+              <label className="block text-sm font-semibold">
+                Eye
+                <select
+                  className={selectClass}
+                  value={otEye}
+                  disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                  onChange={(event) => setOtEye(event.target.value)}
+                >
+                  <option value="">Not selected</option>
+                  <option value="right">Right</option>
+                  <option value="left">Left</option>
+                  <option value="both">Both</option>
                 </select>
               </label>
-              <Input id="ot-procedure" label="Diagnosis / procedure" value={otProcedure} onChange={(event) => setOtProcedure(event.target.value)} />
-              <Input id="ot-notes" label="OT notes" value={otNotes} onChange={(event) => setOtNotes(event.target.value)} />
+              <Input
+                id="ot-procedure"
+                label="Diagnosis / procedure"
+                value={otProcedure}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                onChange={(event) => setOtProcedure(event.target.value)}
+              />
+              <Input
+                id="ot-notes"
+                label="OT notes"
+                value={otNotes}
+                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                onChange={(event) => setOtNotes(event.target.value)}
+              />
             </Card>
-            <Button type="button" disabled={busy || Boolean(record.transcription?.locked_at)} onClick={() => void save()}>
-              Save transcription
-            </Button>
-            {record.transcription?.locked_at ? (
-              <Button type="button" disabled={busy || !correctionReason.trim()} onClick={() => void addCorrection()}>
-                Append correction
-              </Button>
+            {canMutate ? (
+              <>
+                <Button
+                  type="button"
+                  disabled={busy || Boolean(record.transcription?.locked_at)}
+                  onClick={() => void save()}
+                >
+                  Save transcription
+                </Button>
+                {record.transcription?.locked_at ? (
+                  <Button
+                    type="button"
+                    disabled={busy || !correctionReason.trim()}
+                    onClick={() => void addCorrection()}
+                  >
+                    Append correction
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </Card>
           <div className="grid gap-3 md:grid-cols-3">
@@ -343,16 +575,59 @@ export function ClinicalDesk() {
               return (
                 <Card key={kind} className="space-y-3">
                   <SectionTitle>{kind.toUpperCase()}</SectionTitle>
-                  <p className="text-sm text-muted">Current: {current?.outcome ?? "unresolved"}</p>
-                  {OUTCOMES[kind].map((outcome) => (
-                    <Button key={outcome} type="button" variant="secondary" disabled={busy || Boolean(current)} onClick={() => void resolve(kind, outcome)}>
-                      {outcome.replace("_", " ")}
-                    </Button>
-                  ))}
+                  <p className="text-sm text-muted">
+                    Current: {current?.outcome ?? "unresolved"}
+                  </p>
+                  {canMutate
+                    ? OUTCOMES[kind].map((outcome) => (
+                        <Button
+                          key={outcome}
+                          type="button"
+                          variant="secondary"
+                          disabled={
+                            busy || Boolean(current) || !hasTranscription
+                          }
+                          onClick={() => void resolve(kind, outcome)}
+                        >
+                          {outcome.replace("_", " ")}
+                        </Button>
+                      ))
+                    : null}
+                  {!hasTranscription && canMutate ? (
+                    <p className="text-xs text-muted">
+                      Save a transcription before resolving.
+                    </p>
+                  ) : null}
                   {current?.slip ? (
                     <div className="flex flex-wrap gap-2">
-                      <Button type="button" size="sm" variant="secondary" onClick={() => window.open(`/clinical/slip/${current.slip!.id}`, "_blank")}>Reprint active slip</Button>
-                      <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void replaceSlip(current.slip!)}>Replace slip</Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          window.open(`/clinical/slip/${current.slip!.id}`, "_blank")
+                        }
+                      >
+                        Reprint active slip
+                      </Button>
+                      {canMutate ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            setSlipReplace({
+                              slip: current.slip!,
+                              date: current.slip!.date,
+                              venue: current.slip!.venue,
+                              reason: "",
+                            })
+                          }
+                        >
+                          Replace slip
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </Card>
@@ -363,12 +638,25 @@ export function ClinicalDesk() {
             <Card className="space-y-3">
               <SectionTitle>Prior clinical history · read-only</SectionTitle>
               {record.history.map((entry) => (
-                <div key={`${entry.camp_id}-${entry.created_at}`} className="rounded-xl border border-border p-3">
-                  <p className="text-sm font-semibold">{entry.camp_name} · {new Date(entry.created_at).toLocaleDateString("en-IN")}</p>
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-xs">{JSON.stringify(entry.data, null, 2)}</pre>
+                <div
+                  key={`${entry.camp_id}-${entry.created_at}`}
+                  className="rounded-xl border border-border p-3"
+                >
+                  <p className="text-sm font-semibold">
+                    {entry.camp_name} ·{" "}
+                    {new Date(entry.created_at).toLocaleDateString("en-IN")}
+                  </p>
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-xs">
+                    {JSON.stringify(entry.data, null, 2)}
+                  </pre>
                   <p className="mt-2 text-xs text-muted">
                     {entry.items.length
-                      ? entry.items.map((item) => `${item.kind}: ${item.outcome.replaceAll("_", " ")}`).join(" · ")
+                      ? entry.items
+                          .map(
+                            (item) =>
+                              `${item.kind}: ${item.outcome.replaceAll("_", " ")}`,
+                          )
+                          .join(" · ")
                       : "No fulfilment outcomes recorded."}
                   </p>
                 </div>
@@ -379,8 +667,12 @@ export function ClinicalDesk() {
             <Card className="space-y-2">
               <SectionTitle>Correction audit</SectionTitle>
               {record.corrections.map((correction) => (
-                <p key={`${correction.created_at}-${correction.reason}`} className="text-sm text-muted">
-                  {new Date(correction.created_at).toLocaleString("en-IN")} · {correction.reason}
+                <p
+                  key={`${correction.created_at}-${correction.reason}`}
+                  className="text-sm text-muted"
+                >
+                  {new Date(correction.created_at).toLocaleString("en-IN")} ·{" "}
+                  {correction.reason}
                 </p>
               ))}
             </Card>
@@ -391,12 +683,90 @@ export function ClinicalDesk() {
         <Card className="space-y-3">
           <SectionTitle>Unresolved historical items</SectionTitle>
           {followup.map((item) => (
-            <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm"><strong>{item.kind.toUpperCase()}</strong> · {item.outcome.replace("_", " ")} · {item.camp_name}</p>
-              <Button type="button" size="sm" disabled={busy} onClick={() => void fulfilFollowup(item.id)}>Mark fulfilled</Button>
+            <div
+              key={item.id}
+              className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <p className="text-sm">
+                <strong>{item.kind.toUpperCase()}</strong> ·{" "}
+                {item.outcome.replace("_", " ")} · {item.camp_name}
+              </p>
+              {canMutate ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void fulfilFollowup(item.id)}
+                >
+                  Mark fulfilled
+                </Button>
+              ) : null}
             </div>
           ))}
         </Card>
+      ) : null}
+
+      {slipReplace ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="slip-replace-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+        >
+          <Card className="w-full max-w-md space-y-3">
+            <SectionTitle>
+              <span id="slip-replace-title">Replace deferred slip</span>
+            </SectionTitle>
+            <Input
+              id="slip-replace-date"
+              label="Replacement date"
+              type="date"
+              value={slipReplace.date}
+              onChange={(e) =>
+                setSlipReplace((current) =>
+                  current ? { ...current, date: e.target.value } : current,
+                )
+              }
+            />
+            <Input
+              id="slip-replace-venue"
+              label="Replacement venue"
+              value={slipReplace.venue}
+              onChange={(e) =>
+                setSlipReplace((current) =>
+                  current ? { ...current, venue: e.target.value } : current,
+                )
+              }
+            />
+            <Input
+              id="slip-replace-reason"
+              label="Reason for replace"
+              value={slipReplace.reason}
+              onChange={(e) =>
+                setSlipReplace((current) =>
+                  current ? { ...current, reason: e.target.value } : current,
+                )
+              }
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => void submitSlipReplace()}
+              >
+                Save replacement
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setSlipReplace(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
       ) : null}
     </div>
   );

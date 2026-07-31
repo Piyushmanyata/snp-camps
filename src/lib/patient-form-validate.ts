@@ -39,7 +39,12 @@ export type PatientFormDraft = {
   aadhaar: string;
 };
 
-export type DayLike = { id: string; is_full: boolean };
+export type DayLike = {
+  id: string;
+  is_full: boolean;
+  /** YYYY-MM-DD — required for walk-in-on-full-today exemption. */
+  day_date?: string;
+};
 
 export type PatientFormValidation =
   | { ok: true; values: PatientFormValues }
@@ -50,31 +55,56 @@ export type PatientFormValidation =
       message: string;
     };
 
+/** Calendar date YYYY-MM-DD in Asia/Kolkata. */
+export function kolkataTodayIso(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 /**
- * Desk registration validation (#47, #112).
+ * Desk day selectable when open, or when it is today (walk-ins never blocked
+ * solely by seat caps — CONTEXT). Future full days stay blocked.
+ */
+export function isDeskDaySelectable(
+  day: DayLike,
+  todayIso: string = kolkataTodayIso(),
+): boolean {
+  if (day.day_date && day.day_date === todayIso) return true;
+  return !day.is_full;
+}
+
+/**
+ * Desk registration validation (#47, #112). Staff-facing English copy.
  * Required: camp day, full name, age.
  * If full name is in non-Latin script, Latin display name is required.
  */
 export function validatePatientForm(
   draft: PatientFormDraft,
   days: DayLike[],
+  options: { todayIso?: string } = {},
 ): PatientFormValidation {
+  const todayIso = options.todayIso ?? kolkataTodayIso();
+
   if (!draft.campDayId) {
     return {
       ok: false,
       field: "campDay",
       elementId: "patient-camp-day",
-      message: "Camp day chuniye — open seats wala.",
+      message: "Select a camp day.",
     };
   }
 
   const selected = days.find((d) => d.id === draft.campDayId);
-  if (selected?.is_full) {
+  if (selected && !isDeskDaySelectable(selected, todayIso)) {
     return {
       ok: false,
       field: "campDay",
       elementId: `camp-day-${draft.campDayId}`,
-      message: "Yeh din full hai. Doosra din chuniye.",
+      message: "This day is full. Select another day.",
     };
   }
 
@@ -83,7 +113,7 @@ export function validatePatientForm(
       ok: false,
       field: "fullName",
       elementId: "patient-full-name",
-      message: "Poora naam zaroori hai.",
+      message: "Full name is required.",
     };
   }
 
@@ -121,7 +151,7 @@ export function validatePatientForm(
       ok: false,
       field: "age",
       elementId: "patient-age",
-      message: "Umar zaroori hai (0 se 149).",
+      message: "Age is required (0–149).",
     };
   }
 
@@ -143,7 +173,7 @@ export function validatePatientForm(
         ok: false,
         field: "aadhaar",
         elementId: "patient-aadhaar",
-        message: "Aadhaar galat lag raha hai. Theek karo ya field saaf karo.",
+        message: "Aadhaar looks invalid. Correct it or clear the field.",
       };
     }
     if (aDigits.length > 0 && aDigits.length < 4) {
@@ -151,7 +181,7 @@ export function validatePatientForm(
         ok: false,
         field: "aadhaar",
         elementId: "patient-aadhaar",
-        message: "Aadhaar: poora 12 digit ya last 4.",
+        message: "Enter the full 12-digit Aadhaar or the last 4 digits.",
       };
     }
     if (last4.length !== 4 && aDigits.length > 0) {
@@ -159,7 +189,7 @@ export function validatePatientForm(
         ok: false,
         field: "aadhaar",
         elementId: "patient-aadhaar",
-        message: "Aadhaar: poora number ya last 4 (sirf last 4 store hota hai).",
+        message: "Enter the full Aadhaar number or last 4 (only last 4 is stored).",
       };
     }
   }
@@ -169,7 +199,7 @@ export function validatePatientForm(
       ok: false,
       field: "email",
       elementId: "patient-email",
-      message: "Email theek se likho, ya khali chhod do.",
+      message: "Enter a valid email, or leave it blank.",
     };
   }
 

@@ -135,7 +135,7 @@ test("mark seen retries twice on timeout then surfaces exhausted copy", async ()
   assert.equal(calls, 3);
   assert.equal(result.ok, false);
   if (result.ok) return;
-  assert.equal(result.error, RETRY_EXHAUSTED_COPY.assign);
+  assert.equal(result.error, RETRY_EXHAUSTED_COPY.markSeen);
 });
 
 test("mark seen already_seen after a flaky first call is terminal success", async () => {

@@ -11,6 +11,8 @@ import {
 import { isNonLatinText } from "@/lib/aadhaar-text";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { formatCampDay } from "@/lib/format-camp-day";
+import { createRequestId } from "@/lib/request-id";
+import { validateHouseholdPhone } from "@/lib/phone";
 import type { CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select, WarningBox } from "@/components/ui";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
@@ -55,6 +57,8 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const stepHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const requestIdRef = useRef(createRequestId());
+  const generationRef = useRef(0);
 
   const onParsed = useCallback((parsed: ParsedAadhaarQr): boolean => {
     // Every key field is required: without all four the Person key cannot be
@@ -78,6 +82,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
     });
     setDisplayName("");
     setError(null);
+    requestIdRef.current = createRequestId();
     return true;
   }, []);
 
@@ -90,13 +95,16 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   }, [card]);
 
   async function register() {
-    if (!card) return;
+    if (!card || busy) return;
     if (!dayId) {
       setError("Ek Camp Day chunna zaroori hai.");
       return;
     }
-    if (phone.replace(/\D/g, "").length !== 10) {
-      setError("10-digit mobile number daalein.");
+    const phoneCheck = validateHouseholdPhone(phone);
+    if (!phoneCheck.ok) {
+      setError(
+        "10-digit mobile number daalein (6–9 se shuru). Dummy numbers nahi chalenge.",
+      );
       return;
     }
     if (needsLatinName && !displayName.trim()) {
@@ -104,6 +112,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       return;
     }
 
+    const generation = ++generationRef.current;
     setBusy(true);
     setError(null);
     setDeskReferral(false);
@@ -112,12 +121,14 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          requestId: requestIdRef.current,
           campId,
           campDayId: dayId,
-          phone,
+          phone: phoneCheck.phone,
           card: { ...card, displayName: displayName.trim() || null },
         }),
       });
+      if (generation !== generationRef.current) return;
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       if (body.ok !== true) {
         setDeskReferral(body.deskReferral === true);
@@ -135,10 +146,22 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         statusUrl: String(body.statusUrl),
       });
     } catch {
+      if (generation !== generationRef.current) return;
       setError("Network problem. Dobara try karein ya camp desk par milen.");
     } finally {
-      setBusy(false);
+      if (generation === generationRef.current) setBusy(false);
     }
+  }
+
+  function rescan() {
+    if (busy) return;
+    generationRef.current += 1;
+    setCard(null);
+    setDisplayName("");
+    setError(null);
+    setDeskReferral(false);
+    requestIdRef.current = createRequestId();
+    clearScanError();
   }
 
   if (result) {
@@ -255,11 +278,8 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => {
-              setCard(null);
-              setError(null);
-              clearScanError();
-            }}
+            disabled={busy}
+            onClick={rescan}
           >
             Dobara scan karein
           </Button>

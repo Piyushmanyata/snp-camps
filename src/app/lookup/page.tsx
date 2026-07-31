@@ -26,12 +26,12 @@ export default function PatientLookupPage() {
       const data = await res.json();
       if (res.ok && data.ok && data.redirectUrl) {
         router.push(data.redirectUrl);
-      } else {
-        setError(data.error || "Ye registration number aur janm tithi match nahi hui.");
-        setLoading(false);
+        return;
       }
+      setError(data.error || "Ye registration number aur janm tithi match nahi hui.");
     } catch {
       setError("Ye registration number aur janm tithi match nahi hui.");
+    } finally {
       setLoading(false);
     }
   }

@@ -22,6 +22,9 @@ type ScannedDeskRegistrationBody = {
   email?: unknown;
   aadhaarLast4?: unknown;
   dateOfBirth?: unknown;
+  /** Staff one-shot audited overrides (Person key remains server-derived). */
+  aadhaarDuplicateOverride?: unknown;
+  likelyDuplicateOverride?: unknown;
 };
 
 const str = (value: unknown) =>
@@ -38,8 +41,8 @@ function failure(message: string, status: number, code?: string) {
  * Trusted scanned-card registration boundary.
  *
  * The Aadhaar Person key is derived only on the server and is never returned to
- * the browser. The service-role RPC is deliberately constrained to the signed-in
- * staff member, card-scanned provenance, and no duplicate overrides.
+ * the browser. Staff may send one-shot audited duplicate overrides; the key is
+ * never accepted from the client.
  */
 export async function POST(request: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -64,6 +67,8 @@ export async function POST(request: Request) {
   const dateOfBirth = str(body.dateOfBirth);
   const age =
     typeof body.age === "number" && Number.isInteger(body.age) ? body.age : null;
+  const aadhaarDuplicateOverride = body.aadhaarDuplicateOverride === true;
+  const likelyDuplicateOverride = body.likelyDuplicateOverride === true;
 
   if (
     !requestId ||
@@ -122,8 +127,8 @@ export async function POST(request: Request) {
     p_user_id: null,
     p_created_by: userId,
     p_camp_day_id: campDayId,
-    p_aadhaar_duplicate_override: false,
-    p_likely_duplicate_override: false,
+    p_aadhaar_duplicate_override: aadhaarDuplicateOverride,
+    p_likely_duplicate_override: likelyDuplicateOverride,
     p_self_service: false,
     p_provenance: "card_scanned",
     p_duplicate_key: duplicateKey,

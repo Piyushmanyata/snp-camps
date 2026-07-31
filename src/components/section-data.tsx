@@ -127,10 +127,9 @@ export function VolunteerKpisSection({
       initial={initial}
     >
       {(data) => (
-        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-          <Stat label="You handled" value={data.total} tone="ok" />
-          <Stat label="Handled today" value={data.today} />
-          <Stat label="In queue" value={data.waiting} tone="wait" />
+        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-2">
+          {/* Original-registrar credit only (issue-124 / ADR 0005). */}
+          <Stat label="Registered" value={data.total} tone="ok" />
           <Stat label="Seen" value={data.seen} tone="ok" />
         </div>
       )}

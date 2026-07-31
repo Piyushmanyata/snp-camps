@@ -16,7 +16,7 @@ export const READINESS_CONTRACT_VERSION = 5;
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260730065231";
+export const EXPECTED_MIGRATION_HEAD = "20260731090000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;

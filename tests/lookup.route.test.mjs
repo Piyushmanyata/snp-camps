@@ -10,6 +10,7 @@ import {
 } from "./stubs/service-role-admin.mjs";
 
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= "lookup-route-test-secret";
+process.env.RATE_LIMIT_SECRET ||= "lookup-rate-limit-secret";
 
 function fakeClient({ rateAllowed = true, rateError = null } = {}) {
   const calls = [];

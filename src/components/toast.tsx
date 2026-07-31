@@ -22,10 +22,11 @@ export function Toast({
       cb.current();
     }, duration);
     return () => clearTimeout(timer);
-  }, [duration]);
+    // Remount timer when message changes so rapid updates stay readable.
+  }, [duration, message]);
 
   return (
-    <div className="toast" role="status" aria-live="polite">
+    <div className="toast" role="status" aria-live="polite" key={message}>
       {message}
     </div>
   );

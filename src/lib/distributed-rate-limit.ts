@@ -28,12 +28,9 @@ export type DistributedRateLimitResult = {
   retryAfterSeconds: number;
 };
 
+/** Dedicated secret only — never fall back to the service-role key. */
 function signingSecret() {
-  return (
-    process.env.RATE_LIMIT_SECRET?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    ""
-  );
+  return process.env.RATE_LIMIT_SECRET?.trim() || "";
 }
 
 /**
