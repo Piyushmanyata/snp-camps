@@ -356,7 +356,7 @@ test("null-day desk replay remains visible and one scanned Person cannot registe
          from public.register_patient_idempotent(
            $1::uuid, $2::uuid, 'Null Desk Patient'::text, null::text,
            null::integer, null::text, null::text, null::text, null::text,
-           null::uuid, null::uuid, null::uuid, false::boolean, false::boolean
+           null::uuid, null::uuid, null::uuid, false::boolean, false::boolean, false::boolean, 'self_declared'::text, null::text, null::date, null::text
          )`,
         [requestId, campId],
       ),

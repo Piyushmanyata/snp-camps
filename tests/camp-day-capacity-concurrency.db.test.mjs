@@ -35,7 +35,7 @@ async function connect() {
       `select
          to_regprocedure('public.upsert_camp_day(uuid,date,integer,uuid)') is not null
            and to_regprocedure(
-             'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean)'
+             'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,text,date,text)'
            ) is not null as ok`,
     );
     if (!rows[0]?.ok) {
@@ -119,8 +119,7 @@ async function register(c, args) {
      from public.register_patient_idempotent(
        $1::uuid, $2::uuid, $3::text,
        'M', $4::integer, 'Addr', $5::text, null, null,
-       null, null, $6::uuid, false, false
-     )`,
+       null, null, $6::uuid, false, false, false, 'self_declared', null, null, null)`,
     [requestId, campId, fullName, age, phone, dayId],
   );
   return rows[0];

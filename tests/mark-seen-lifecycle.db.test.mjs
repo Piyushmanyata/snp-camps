@@ -208,8 +208,7 @@ async function registerPatient(campId, dayId, name) {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, $3, 'M', 40, 'Ward A', null, null, null,
-         null, null, $4, false, false
-       )`,
+         null, null, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, name, dayId],
     );
     return rows[0];

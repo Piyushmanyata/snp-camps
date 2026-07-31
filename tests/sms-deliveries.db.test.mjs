@@ -179,8 +179,7 @@ test("registration with phone enqueues pending delivery in same txn", async (t) 
     const { rows } = await admin.query(
       `select id, reg_no from public.register_patient_idempotent(
          $1::uuid, $2::uuid, 'SMS Patient', 'M', 40, 'A', '9876501234',
-         null, null, null, null, $3::uuid, false, false
-       )`,
+         null, null, null, null, $3::uuid, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, dayId],
     );
     await admin.query("commit");
@@ -228,8 +227,7 @@ test("same-day desk walk-in never creates or exposes a registration SMS", async 
         `select id, queue_status
          from public.register_patient_idempotent(
            $1::uuid, $2::uuid, 'Same Day Patient', 'F', 44, 'A',
-           '9876502468', null, null, null, null, $3::uuid, false, false
-         )`,
+           '9876502468', null, null, null, null, $3::uuid, false, false, false, 'self_declared', null, null, null)`,
         [randomUUID(), campId, dayId],
       );
       await admin.query("commit");
@@ -289,8 +287,7 @@ test("an already-pending registration SMS becomes unclaimable on camp day", asyn
       `select id
        from public.register_patient_idempotent(
          $1::uuid, $2::uuid, 'Pending Camp Day SMS', 'F', 44, 'A',
-         '9876502468', null, null, null, null, $3::uuid, false, false
-       )`,
+         '9876502468', null, null, null, null, $3::uuid, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, dayId],
     );
     await admin.query("commit");
@@ -353,8 +350,7 @@ test("registration without phone creates no delivery", async (t) => {
     const { rows } = await admin.query(
       `select id from public.register_patient_idempotent(
          $1::uuid, $2::uuid, 'No Phone', 'M', 22, 'A', null,
-         null, null, null, null, $3::uuid, false, false
-       )`,
+         null, null, null, null, $3::uuid, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, dayId],
     );
     await admin.query("commit");
@@ -587,14 +583,15 @@ test("known failure is reclaimable; sent stores provider request id", async (t) 
   if (skipIfNoDb(t)) return;
   const patientId = randomUUID();
   const campId = randomUUID();
+  const staffId = await seedStaff();
   await admin.query(
     `insert into public.camps (id, name, is_active) values ($1, 'fail-camp', false)`,
     [campId],
   );
   await admin.query(
-    `insert into public.patients (id, camp_id, full_name, queue_status, phone)
-     values ($1, $2, 'Fail Then Send', 'registered', '9000000003')`,
-    [patientId, campId],
+    `insert into public.patients (id, camp_id, full_name, queue_status, phone, created_by)
+     values ($1, $2, 'Fail Then Send', 'registered', '9000000003', $3)`,
+    [patientId, campId, staffId],
   );
 
   const c1 = await asService(admin, async () => {

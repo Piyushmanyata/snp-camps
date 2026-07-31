@@ -35,8 +35,8 @@ test("retired eKYC storage and RPC inputs are absent", async () => {
 
     assert.deepEqual(
       functions.map(({ pronargs }) => Number(pronargs)),
-      [14, 19],
-      "only the manual compatibility wrapper and canonical RPC may remain",
+      [19],
+      "only the canonical 19-arg RPC may remain",
     );
     for (const fn of functions) {
       assert.doesNotMatch(

@@ -456,17 +456,17 @@ test("STRESS #61: Trigram ranking edge cases (typos, exact prefix, case-insensit
   await asServiceRole(async () => {
     // Exact prefix match
     await client.query(
-      `select * from public.register_patient_idempotent($1, $2, 'Vikram Singh', 'M', 35, 'Ward 5', null, null, null, null, $3, $4, false, false)`,
+      `select * from public.register_patient_idempotent($1, $2, 'Vikram Singh', 'M', 35, 'Ward 5', null, null, null, null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId]
     );
     // 1-character typo
     await client.query(
-      `select * from public.register_patient_idempotent($1, $2, 'Vickram Sharma', 'M', 38, 'Ward 6', null, null, null, null, $3, $4, false, false)`,
+      `select * from public.register_patient_idempotent($1, $2, 'Vickram Sharma', 'M', 38, 'Ward 6', null, null, null, null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId]
     );
     // Transposition in full name
     await client.query(
-      `select * from public.register_patient_idempotent($1, $2, 'Priya Sharma', 'F', 28, 'Nawalgarh', null, null, null, null, $3, $4, false, false)`,
+      `select * from public.register_patient_idempotent($1, $2, 'Priya Sharma', 'F', 28, 'Nawalgarh', null, null, null, null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId]
     );
   });
@@ -507,7 +507,7 @@ test("STRESS #61: Lost-slip patient check-in updates status to waiting with queu
 
   const regPatient = await asServiceRole(async () => {
     const { rows } = await client.query(
-      `select * from public.register_patient_idempotent($1, $2, 'Lost Slip Patient', 'F', 29, 'Locality C', null, null, null, null, $3, $4, false, false)`,
+      `select * from public.register_patient_idempotent($1, $2, 'Lost Slip Patient', 'F', 29, 'Locality C', null, null, null, null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId]
     );
     return rows[0];

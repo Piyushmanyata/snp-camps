@@ -22,7 +22,7 @@ async function connect() {
     await c.connect();
     const { rows } = await c.query(
       `select to_regprocedure(
-         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean)'
+         'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,text,date,text)'
        ) is not null as ok`,
     );
     if (!rows[0]?.ok) {
@@ -168,8 +168,7 @@ async function callRegister(staffId, args) {
        from public.register_patient_idempotent(
          $1::uuid, $2::uuid, $3::text,
          'M', $7::integer, 'Addr', null, null, $4::text,
-         null, null, $5::uuid, $6::boolean, false
-       )`,
+         null, null, $5::uuid, $6::boolean, false, false, 'self_declared', null, null, null)`,
       [requestId, campId, fullName, aadhaarLast4, dayId, override, age],
     );
     await client.query("commit");
@@ -268,8 +267,7 @@ test("service_role cannot pass aadhaar override", async (t) => {
       `select id from public.register_patient_idempotent(
          $1::uuid, $2::uuid, 'First Public',
          null, 20, null, '9111111111', null, '1111',
-         null, null, $3::uuid, false, false
-       )`,
+         null, null, $3::uuid, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, dayId],
     );
     await client.query("commit");
@@ -284,8 +282,7 @@ test("service_role cannot pass aadhaar override", async (t) => {
         `select id from public.register_patient_idempotent(
            $1::uuid, $2::uuid, 'First Public',
            null, 21, null, '9222222222', null, '1111',
-           null, null, $3::uuid, true, false
-         )`,
+           null, null, $3::uuid, true, false, false, 'self_declared', null, null, null)`,
         [randomUUID(), campId, dayId],
       );
       await client.query("commit");

@@ -132,7 +132,7 @@ test("Every patient row has a linked Person after backfill", async () => {
   assert.equal(rows[0].unlinked_count, 0, "All patients must have a person_id");
 });
 
-test("RLS: Anon and patient callers cannot read persons table; Staff can", async () => {
+test("persons is closed to anon and authenticated (including staff)", async () => {
   if (!dbAvailable || !client) return;
 
   // Anon caller
@@ -157,18 +157,16 @@ test("RLS: Anon and patient callers cannot read persons table; Staff can", async
     `select set_config('request.jwt.claims', $1, true)`,
     [JSON.stringify({ sub: patientUserId, role: "authenticated" })],
   );
-
-  const { rows: patientReadRows } = await client.query(
-    "select * from public.persons limit 5",
-  );
-  assert.equal(
-    patientReadRows.length,
-    0,
-    "Patient role must receive 0 rows from persons table via RLS",
+  await assert.rejects(
+    async () => {
+      await client.query("select * from public.persons limit 5");
+    },
+    (err) => err.code === "42501" || /permission denied/i.test(err.message),
+    "Authenticated non-staff must not read persons",
   );
   await client.query("reset role");
 
-  // Admin caller can read persons
+  // Staff also cannot read persons directly (server-only table).
   const adminId = await seedProfile("admin");
 
   await client.query("begin");
@@ -178,10 +176,13 @@ test("RLS: Anon and patient callers cannot read persons table; Staff can", async
     [JSON.stringify({ sub: adminId, role: "authenticated" })],
   );
 
-  const { rows: adminReadRows } = await client.query(
-    "select count(*)::int as cnt from public.persons",
+  await assert.rejects(
+    async () => {
+      await client.query("select count(*)::int as cnt from public.persons");
+    },
+    (err) => err.code === "42501" || /permission denied/i.test(err.message),
+    "Staff must not read persons directly",
   );
-  assert.ok(adminReadRows[0].cnt >= 0, "Admin can read persons");
 
   await client.query("rollback");
   await client.query("reset role");

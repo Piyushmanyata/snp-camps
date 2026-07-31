@@ -198,8 +198,7 @@ test("pre-reg stays registered and is excluded from waiting queue", async (t) =>
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Pre Reg Patient', 'M', 40, 'Ward 1', null, null, null,
-         null, null, $3, false, false
-       )`,
+         null, null, $3, false, false, false, 'self_declared', null, null, null)`,
       [requestId, campId, futureDayId],
     );
     return rows[0];
@@ -229,8 +228,7 @@ test("check_in is idempotent for waiting and blocks seen", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Idempotent Patient', 'F', 30, 'Locality A', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [requestId, campId, staffId, futureDayId],
     );
     return rows[0];
@@ -306,8 +304,7 @@ test("queue order is by check-in time not registration time", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Early PreReg', 'M', 50, 'A', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     return rows[0];
@@ -318,8 +315,7 @@ test("queue order is by check-in time not registration time", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Walk In First', 'F', 25, 'B', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, todayDayId],
     );
     return rows[0];
@@ -354,15 +350,13 @@ test("name search returns only registered for active camp", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Ramesh Kumar', 'M', 45, 'Sikar Road', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Ramesh Waiting', 'M', 40, 'Other', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, todayDayId],
     );
   });
@@ -400,8 +394,7 @@ test("name search finds one-character typo via trigram (#61)", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Suresh Patel', 'M', 52, 'Jaipur', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
   });
@@ -436,8 +429,7 @@ test("unified desk name search returns registered, waiting, and seen patients", 
       const { rows: inserted } = await client.query(
         `select * from public.register_patient_idempotent(
            $1, $2, $3, 'F', 30, 'Sikar', null, null, null,
-           null, $4, $5, false, false
-         )`,
+           null, $4, $5, false, false, false, 'self_declared', null, null, null)`,
         [randomUUID(), campId, name, staffId, dayId],
       );
       rows.push(inserted[0]);
@@ -476,8 +468,7 @@ test("unified desk search finds and returns a Latin display name", async (t) => 
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'रमेश कुमार', 'M', 44, 'Sikar', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     await client.query(
@@ -510,8 +501,7 @@ test("name search finds simple transposition via trigram (#61)", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Priya Sharma', 'F', 28, 'Nawalgarh', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
   });
@@ -541,16 +531,14 @@ test("exact prefix ranks before fuzzy matches (#61)", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Suresh Verma', 'M', 50, 'A', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     // Fuzzy-only transposition — normalized name does not start with "suresh"
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Surehs Nair', 'F', 33, 'B', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
   });
@@ -604,8 +592,7 @@ test("name search excludes other camp and seen (#61)", async (t) => {
     const { rows } = await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Geeta Seen', 'F', 35, 'Here', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
     return rows[0];
@@ -633,8 +620,7 @@ test("name search excludes other camp and seen (#61)", async (t) => {
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Geeta Active', 'F', 34, 'Local', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
   });
@@ -664,8 +650,7 @@ test("name search returns at most 10 deterministic rows (#61)", async (t) => {
       await client.query(
         `select * from public.register_patient_idempotent(
            $1, $2, $3, 'M', 40, 'X', null, null, null,
-           null, $4, $5, false, false
-         )`,
+           null, $4, $5, false, false, false, 'self_declared', null, null, null)`,
         [
           randomUUID(),
           campId,
@@ -703,8 +688,7 @@ test("search plan uses registered filter and name index path (#61 EXPLAIN)", asy
     await client.query(
       `select * from public.register_patient_idempotent(
          $1, $2, 'Explain Seed', 'M', 40, 'Z', null, null, null,
-         null, $3, $4, false, false
-       )`,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
       [randomUUID(), campId, staffId, futureDayId],
     );
   });
