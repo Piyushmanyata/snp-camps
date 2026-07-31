@@ -104,9 +104,10 @@ DECLARE
   v_role public.user_role;
   v_patient_id uuid;
 BEGIN
-  SELECT role INTO v_role
-  FROM public.profiles
-  WHERE id = p_actor_id AND disabled_at IS NULL;
+  -- Qualify column refs: RETURNS TABLE(id ...) makes bare "id" a PL/pgSQL var.
+  SELECT pr.role INTO v_role
+  FROM public.profiles AS pr
+  WHERE pr.id = p_actor_id AND pr.disabled_at IS NULL;
 
   IF v_role NOT IN ('admin', 'team_lead') THEN
     RAISE EXCEPTION 'manual exception requires Team Lead or admin';
@@ -127,13 +128,13 @@ BEGIN
     'self_declared', null, null, p_display_name
   ) AS r;
 
-  UPDATE public.patients SET
+  UPDATE public.patients AS p SET
     provenance = 'manual_exception',
     manual_exception_actor = p_actor_id,
     manual_exception_at = now(),
     manual_exception_reason = left(btrim(p_reason), 500),
     failed_scan_attempts = p_failed_scan_attempts
-  WHERE id = v_patient_id;
+  WHERE p.id = v_patient_id;
 
   RETURN QUERY
   SELECT
@@ -262,3 +263,30 @@ $$;
 
 COMMENT ON FUNCTION public.consume_public_rate_limit(text, text[], integer, integer) IS
   'Atomically consumes keyed fixed-window limits; expired buckets pruned probabilistically (~10% of calls).';
+
+-- ---------------------------------------------------------------------------
+-- 5. Bump readiness_catalog_probe migration head (parity with TS contract)
+-- ---------------------------------------------------------------------------
+DO $migration$
+DECLARE
+  v_definition text;
+  v_old text;
+  v_new text;
+BEGIN
+  SELECT pg_get_functiondef('public.readiness_catalog_probe()'::regprocedure)
+    INTO v_definition;
+  v_old := $old$public.latest_applied_migration() = '20260730065231'$old$;
+  v_new := $new$public.latest_applied_migration() = '20260731090000'$new$;
+  IF strpos(v_definition, v_old) = 0 THEN
+    IF strpos(
+      v_definition,
+      $already$public.latest_applied_migration() = '20260731090000'$already$
+    ) > 0 THEN
+      RAISE NOTICE 'readiness migration head already at 20260731090000';
+      RETURN;
+    END IF;
+    RAISE EXCEPTION 'readiness migration head anchor not found';
+  END IF;
+  EXECUTE replace(v_definition, v_old, v_new);
+END;
+$migration$;
