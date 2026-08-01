@@ -70,11 +70,10 @@ test("acquireDeskPrintTarget: blocked null is distinct from valid handle", () =>
   assert.equal(acquired.acquired, true);
   assert.equal(lastHandle.opener, null);
 
-  assert.equal(acquired.navigate("patient-99"), true);
-  assert.equal(
-    lastHandle.location.href,
-    "/print/patient-99?auto=1",
-  );
+  assert.equal(acquired.navigate("/clinical/slip/slip-99"), true);
+  assert.equal(lastHandle.location.href, "/clinical/slip/slip-99");
+  acquired.abandon();
+  assert.equal(acquired.navigate("/clinical/slip/slip-100"), false);
 });
 
 test("acquireDeskPrintTarget: opener severed before any caller await can run", () => {
@@ -443,14 +442,14 @@ test("register-then-print: same request id on retries; navigate then onSuccess t
   if (!outcome.ok) return;
   assert.equal(outcome.print, "navigated");
   assert.equal(rpcCalls, 2);
-  assert.equal(navigatedTo, "patient-1");
+  assert.equal(navigatedTo, "/print/patient-1?auto=1");
   assert.deepEqual(requestIds, [
     "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
     "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
   ]);
   // onSuccess before rotate/reset so recovery is retained first.
   assert.deepEqual(events, [
-    "navigate:patient-1",
+    "navigate:/print/patient-1?auto=1",
     "onSuccess:patient-1:navigated",
     "rotate",
     "reset",

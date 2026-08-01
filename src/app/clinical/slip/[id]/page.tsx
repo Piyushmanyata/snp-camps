@@ -4,6 +4,7 @@ import { getSessionProfile, roleHome } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { patientScanUrl } from "@/lib/qr";
 import { AutoPrint } from "@/components/auto-print";
+import { PrintSlipButton } from "@/components/print-slip-button";
 
 type Slip = {
   id: string;
@@ -63,6 +64,7 @@ export default async function ClinicalSlipPage({
         Issued {new Date(slip.issued_at).toLocaleString("en-IN")}
       </p>
       <AutoPrint />
+      <PrintSlipButton />
     </main>
   );
 }

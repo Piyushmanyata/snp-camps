@@ -81,6 +81,32 @@ test("prescription template preserves the built-in and uploaded sponsor order", 
   );
 });
 
+test("hidden sections do not consume the visible height budget", () => {
+  const template = resolvePrescriptionTemplate({
+    sections: [
+      { key: "hidden", label: "Hidden", heightMm: 32, visible: false },
+      { key: "visible", label: "Visible", heightMm: 26, visible: true },
+    ],
+  });
+  assert.deepEqual(template.sections, [
+    { key: "hidden", label: "Hidden", heightMm: 32, visible: false },
+    { key: "visible", label: "Visible", heightMm: 26, visible: true },
+  ]);
+});
+
+test("visible sections are clamped only after the remaining budget is used", () => {
+  const template = resolvePrescriptionTemplate({
+    sections: [
+      { key: "first", label: "First", heightMm: 32, visible: true },
+      { key: "second", label: "Second", heightMm: 26, visible: true },
+    ],
+  });
+  assert.deepEqual(template.sections, [
+    { key: "first", label: "First", heightMm: 32, visible: true },
+    { key: "second", label: "Second", heightMm: 10, visible: true },
+  ]);
+});
+
 test("Aadhaar helpers normalize without retaining extra digits", () => {
   assert.equal(digitsOnly("9999 9999-0019"), "999999990019");
   assert.equal(formatAadhaarDisplay("99999999001988"), "9999 9999 0019");

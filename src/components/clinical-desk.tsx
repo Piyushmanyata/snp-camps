@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr, parseRegistrationNumber } from "@/lib/qr";
-import { DEFAULT_PRESCRIPTION_TEMPLATE } from "@/lib/prescription-template";
+import {
+  DEFAULT_PRESCRIPTION_TEMPLATE,
+  resolvePrescriptionTemplate,
+} from "@/lib/prescription-template";
+import {
+  acquireDeskPrintTarget,
+  type DeskPrintTarget,
+} from "@/lib/desk-register-flow";
+import {
+  isSameTranscription,
+  validateClinicalTranscription,
+} from "@/lib/clinical-transcription-validate";
 import { Button, Card, ErrorBox, Input, SectionTitle } from "@/components/ui";
 import { PatientQrCamera } from "@/components/patient-qr-camera";
 
@@ -13,6 +24,7 @@ type Patient = {
   full_name: string;
   age: number | null;
   gender: string | null;
+  camp_id: string;
 };
 type Lookup = {
   patient: Patient;
@@ -40,8 +52,6 @@ const OUTCOMES = {
   ot: ["fulfilled", "deferred", "not_required"],
 } as const;
 
-const DIAGNOSIS_OPTIONS = DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions;
-
 type SlipReplaceState = {
   slip: { id: string; date: string; venue: string };
   date: string;
@@ -62,8 +72,13 @@ export function ClinicalDesk({
   const [exact, setExact] = useState(initialScan ?? "");
   const [record, setRecord] = useState<Lookup | null>(null);
   const [followup, setFollowup] = useState<Array<{ id: string; kind: string; outcome: string; camp_name: string }>>([]);
+  const [diagnosisOptions, setDiagnosisOptions] = useState(
+    DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions,
+  );
   const [diagnosisSelected, setDiagnosisSelected] = useState<string[]>([]);
   const [diagnosisOther, setDiagnosisOther] = useState("");
+  const [diagnosisOtherOriginal, setDiagnosisOtherOriginal] = useState<string[]>([]);
+  const [diagnosisOtherEdited, setDiagnosisOtherEdited] = useState(false);
   const [bloodSugar, setBloodSugar] = useState("");
   const [bloodPressure, setBloodPressure] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -78,17 +93,20 @@ export function ClinicalDesk({
   const [correctionReason, setCorrectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
+  const [lastSlipId, setLastSlipId] = useState<string | null>(null);
+  const slipReplaceTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  function applySavedDiagnoses(saved: Record<string, unknown>) {
+  function applySavedDiagnoses(saved: Record<string, unknown>, options = diagnosisOptions) {
     const raw = saved.diagnoses;
     const list = Array.isArray(raw)
       ? raw.map(String)
       : typeof raw === "string" && raw
         ? [raw]
         : [];
-    const known = new Set(DIAGNOSIS_OPTIONS);
+    const known = new Set(options);
     const selected: string[] = [];
     const otherParts: string[] = [];
     for (const item of list) {
@@ -97,9 +115,21 @@ export function ClinicalDesk({
     }
     setDiagnosisSelected(selected);
     setDiagnosisOther(otherParts.join("; "));
+    setDiagnosisOtherOriginal(otherParts);
+    setDiagnosisOtherEdited(false);
+  }
+
+  function clearRecordState() {
+    setRecord(null);
+    setFollowup([]);
+    setSlipReplace(null);
+    setCorrectionReason("");
+    setLastSlipId(null);
+    setFieldErrors({});
   }
 
   async function lookup(value = exact) {
+    clearRecordState();
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -115,21 +145,40 @@ export function ClinicalDesk({
       p_reg_no: regNo,
     });
     if (rpcError) {
-      setError(
-        /not been seen/i.test(rpcError.message)
-          ? "This registration has not reached Seen. No clinical record was opened."
-          : "Exact registration lookup failed.",
-      );
-      setBusy(false);
+      if (/registration not found|not been seen/i.test(rpcError.message)) {
+        const foundFollowup = await lookupFollowup(value);
+        if (foundFollowup) {
+          setMessage("This registration is from a past camp. Unresolved items are listed below.");
+          setError(null);
+        } else {
+          setError(
+            /not been seen/i.test(rpcError.message)
+              ? "This registration has not reached Seen. No clinical record was opened."
+              : "No registration found for that QR or number in the current camp.",
+          );
+        }
+      } else {
+        setError("Exact registration lookup failed.");
+        setBusy(false);
+      }
       return;
     }
     const next = data as Lookup;
+    const { data: templateData, error: templateError } = next.patient.camp_id
+      ? await supabase.rpc("published_prescription_template", {
+          p_camp_id: next.patient.camp_id,
+        })
+      : { data: null, error: null };
+    const options = resolvePrescriptionTemplate(
+      templateError ? null : templateData,
+    ).diagnosisOptions;
+    setDiagnosisOptions(options);
     setRecord(next);
     const saved = (next.effective_data ?? next.transcription?.data ?? {}) as Record<
       string,
       unknown
     >;
-    applySavedDiagnoses(saved);
+    applySavedDiagnoses(saved, options);
     setBloodSugar(String(saved.bloodSugar ?? ""));
     setBloodPressure(String(saved.bloodPressure ?? ""));
     setRemarks(String(saved.remarks ?? ""));
@@ -171,23 +220,30 @@ export function ClinicalDesk({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
   }, [initialScan]);
 
-  async function lookupFollowup() {
+  async function lookupFollowup(value = exact) {
+    clearRecordState();
     setBusy(true);
     setError(null);
-    const patientId = parsePatientIdFromQr(exact);
-    const regNo = patientId ? null : parseRegistrationNumber(exact);
+    const patientId = parsePatientIdFromQr(value);
+    const regNo = patientId ? null : parseRegistrationNumber(value);
     if (!patientId && !regNo) {
       setError("Scan a Patient QR or enter the exact registration number.");
       setBusy(false);
-      return;
+      return false;
     }
     const { data, error: rpcError } = await supabase.rpc("clinical_followup_lookup", {
       p_patient_id: patientId,
       p_reg_no: regNo,
     });
-    if (rpcError) setError("Follow-up lookup failed.");
-    else setFollowup((data ?? []) as typeof followup);
+    if (rpcError) {
+      setError("Follow-up lookup failed.");
+      setBusy(false);
+      return false;
+    }
+    const items = (data ?? []) as typeof followup;
+    setFollowup(items);
     setBusy(false);
+    return items.length > 0;
   }
 
   async function fulfilFollowup(id: string) {
@@ -207,7 +263,15 @@ export function ClinicalDesk({
   function transcriptionData() {
     const diagnoses = [
       ...diagnosisSelected,
-      ...(diagnosisOther.trim() ? [diagnosisOther.trim()] : []),
+      ...(diagnosisOtherEdited
+        ? diagnosisOther.trim()
+          ? [diagnosisOther.trim()]
+          : []
+        : diagnosisOtherOriginal.length
+          ? diagnosisOtherOriginal
+          : diagnosisOther.trim()
+            ? [diagnosisOther.trim()]
+            : []),
     ];
     return {
       diagnoses,
@@ -233,10 +297,11 @@ export function ClinicalDesk({
     };
   }
 
-  async function submitSlipReplace() {
+  async function submitSlipReplace(printTarget: DeskPrintTarget | null = null) {
     if (!canMutate || !slipReplace) return;
     const { slip, date, venue, reason } = slipReplace;
     if (!date || !venue.trim() || !reason.trim()) {
+      printTarget?.abandon();
       setError("Date, venue, and reason are required to replace a slip.");
       return;
     }
@@ -248,30 +313,48 @@ export function ClinicalDesk({
       p_venue: venue.trim(),
       p_reason: reason.trim(),
     });
-    if (rpcError) setError(rpcError.message || "Slip could not be replaced.");
+    if (rpcError) {
+      printTarget?.abandon();
+      setError("Slip could not be replaced. Try again.");
+    }
     else {
       const replacement = data as { id: string };
-      setSlipReplace(null);
-      window.open(`/clinical/slip/${replacement.id}`, "_blank");
+      closeSlipReplace();
+      const navigated = printTarget?.navigate(`/clinical/slip/${replacement.id}`) ?? false;
+      if (printTarget && !navigated) printTarget.abandon();
       await lookup();
+      setLastSlipId(replacement.id);
+      setMessage(
+        navigated
+          ? "Replacement slip saved."
+          : "Replacement slip saved. Your browser blocked the slip window.",
+      );
     }
     setBusy(false);
   }
 
   async function save() {
     if (!record || !canMutate) return;
+    const data = transcriptionData();
+    const validation = validateClinicalTranscription(data);
+    if (!validation.ok) {
+      setFieldErrors(Object.fromEntries(validation.errors.map((item) => [item.field, item.message])));
+      setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
+      return;
+    }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_save_transcription", {
         p_patient_id: record.patient.id,
-        p_data: transcriptionData(),
+        p_data: data,
       });
       if (rpcError) throw rpcError;
       setMessage("Operational transcription saved from paper.");
       await lookup();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save transcription.");
+    } catch {
+      setError("Could not save transcription. Try again.");
     } finally {
       setBusy(false);
     }
@@ -283,26 +366,42 @@ export function ClinicalDesk({
       setError("Enter a correction reason.");
       return;
     }
+    const data = transcriptionData();
+    const validation = validateClinicalTranscription(data);
+    if (!validation.ok) {
+      setFieldErrors(Object.fromEntries(validation.errors.map((item) => [item.field, item.message])));
+      setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
+      return;
+    }
+    if (isSameTranscription(data, record.effective_data)) {
+      setError("Change at least one field before appending a correction.");
+      return;
+    }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_add_correction", {
         p_patient_id: record.patient.id,
-        p_data: transcriptionData(),
+        p_data: data,
         p_reason: correctionReason.trim(),
       });
       if (rpcError) throw rpcError;
       setCorrectionReason("");
       setMessage("Reasoned correction appended; original record preserved.");
       await lookup();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not append correction.");
+    } catch {
+      setError("Could not append correction. Try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function resolve(kind: keyof typeof OUTCOMES, outcome: string) {
+  async function resolve(
+    kind: keyof typeof OUTCOMES,
+    outcome: string,
+    printTarget: DeskPrintTarget | null = null,
+  ) {
     if (!record || !canMutate) return;
     if (!record.transcription?.id) {
       setError("Save a transcription before resolving fulfilment outcomes.");
@@ -316,19 +415,60 @@ export function ClinicalDesk({
       p_outcome: outcome,
     });
     if (rpcError) {
+      printTarget?.abandon();
+      const message = rpcError.message;
       setError(
-        /date and venue/i.test(rpcError.message)
-          ? `Configure the matching ${kind.toUpperCase()} date and venue before deferring.`
-          : "Outcome conflicted with an existing decision.",
+        /medicine detail/i.test(message)
+          ? "Enter the medicines from the paper before recording this outcome."
+          : /Specs measurements/i.test(message)
+            ? "Enter the Specs measurements before recording this outcome."
+            : /OT detail/i.test(message)
+              ? "Enter the OT eye and procedure before recording this outcome."
+              : /date and venue/i.test(message)
+                ? `Ask an admin to set the ${kind.toUpperCase()} collection date and venue for this camp before deferring.`
+                : /seen transcription required/i.test(message)
+                  ? "Save a transcription before resolving fulfilment outcomes."
+                  : /outcome conflict/i.test(message)
+                    ? "This item already has a different outcome. Ask an admin to reverse it."
+                    : /clinical operator only/i.test(message)
+                      ? "Only a Clinical Desk Operator can record outcomes."
+                      : "Could not record this outcome. Try again.",
       );
     } else {
       const slip = (data as { slip?: { id?: string } } | null)?.slip;
-      setMessage(`${kind.toUpperCase()} saved.`);
-      if (slip?.id) window.open(`/clinical/slip/${slip.id}`, "_blank");
+      const navigated = slip?.id && printTarget
+        ? printTarget.navigate(`/clinical/slip/${slip.id}`)
+        : false;
+      if (printTarget && (!slip?.id || !navigated)) printTarget.abandon();
       await lookup();
+      if (slip?.id) {
+        setLastSlipId(slip.id);
+        setMessage(
+          `${kind.toUpperCase()} saved.${
+            printTarget && !navigated ? " Your browser blocked the slip window." : ""
+          }`,
+        );
+      } else {
+        setMessage(`${kind.toUpperCase()} saved.`);
+      }
     }
     setBusy(false);
   }
+
+  function closeSlipReplace() {
+    setSlipReplace(null);
+    queueMicrotask(() => slipReplaceTriggerRef.current?.focus());
+  }
+
+  useEffect(() => {
+    if (!slipReplace) return;
+    document.getElementById("slip-replace-date")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeSlipReplace();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [slipReplace]);
 
   function toggleDiagnosis(option: string) {
     setDiagnosisSelected((current) =>
@@ -381,6 +521,16 @@ export function ClinicalDesk({
       {message ? (
         <p role="status" className="rounded-xl bg-brand-soft p-3 text-sm font-semibold text-brand">
           {message}
+          {lastSlipId ? (
+            <a
+              href={`/clinical/slip/${lastSlipId}`}
+              target="_blank"
+              rel="noopener"
+              className="ml-2 text-brand font-semibold underline"
+            >
+              Open the slip
+            </a>
+          ) : null}
         </p>
       ) : null}
       {record ? (
@@ -397,8 +547,8 @@ export function ClinicalDesk({
             {canMutate && record.transcription?.locked_at ? (
               <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <p>
-                  Original locked after the first outcome. Later changes are appended as
-                  corrections.
+                  Original locked after the first outcome. Edit the fields below and
+                  append a correction with a reason — the original is preserved.
                 </p>
                 <Input
                   id="clinical-correction-reason"
@@ -412,7 +562,7 @@ export function ClinicalDesk({
             <fieldset className="space-y-2">
               <legend className="text-sm font-semibold text-foreground">Diagnosis</legend>
               <div className="grid gap-2 sm:grid-cols-2">
-                {DIAGNOSIS_OPTIONS.map((option) => {
+                {diagnosisOptions.map((option) => {
                   const checked = diagnosisSelected.includes(option);
                   return (
                     <label
@@ -422,7 +572,7 @@ export function ClinicalDesk({
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                        disabled={!canMutate}
                         onChange={() => toggleDiagnosis(option)}
                       />
                       {option}
@@ -433,10 +583,14 @@ export function ClinicalDesk({
               <Input
                 id="clinical-diagnosis-other"
                 label="Other diagnosis (optional)"
-                value={diagnosisOther}
-                onChange={(e) => setDiagnosisOther(e.target.value)}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
-                hint="Free text — not split on commas"
+                 value={diagnosisOther}
+                 onChange={(e) => {
+                   setDiagnosisOther(e.target.value);
+                   setDiagnosisOtherEdited(true);
+                 }}
+                 disabled={!canMutate}
+                 hint="Free text — not split on commas"
+                 error={fieldErrors.diagnoses}
               />
             </fieldset>
 
@@ -446,14 +600,18 @@ export function ClinicalDesk({
                 label="Blood sugar (optional)"
                 value={bloodSugar}
                 onChange={(e) => setBloodSugar(e.target.value)}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                disabled={!canMutate}
+                hint="mg/dL, 20–1000"
+                error={fieldErrors.bloodSugar}
               />
               <Input
                 id="clinical-bp"
                 label="Blood pressure (optional)"
                 value={bloodPressure}
                 onChange={(e) => setBloodPressure(e.target.value)}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                disabled={!canMutate}
+                hint="systolic/diastolic, e.g. 120/80"
+                error={fieldErrors.bloodPressure}
               />
             </div>
             <Input
@@ -461,14 +619,16 @@ export function ClinicalDesk({
               label="Remarks / advice"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+              disabled={!canMutate}
+              error={fieldErrors.remarks}
             />
             <Input
               id="clinical-medicines"
               label="Medicines from paper"
               value={medicines}
               onChange={(e) => setMedicines(e.target.value)}
-              disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+              disabled={!canMutate}
+              error={fieldErrors.medicines}
             />
             <Card className="space-y-3">
               <SectionTitle>Specs measurements</SectionTitle>
@@ -477,7 +637,7 @@ export function ClinicalDesk({
                 <select
                   className={selectClass}
                   value={specType}
-                  disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                  disabled={!canMutate}
                   onChange={(event) => setSpecType(event.target.value)}
                 >
                   <option value="">Not selected</option>
@@ -498,9 +658,10 @@ export function ClinicalDesk({
                         <Input
                           key={field}
                           id={`spec-${side}-${field}`}
-                          label={`${side === "right" ? "RE" : "LE"} ${field}`}
-                          value={eye[field]}
-                          disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                           label={`${side === "right" ? "RE" : "LE"} ${field === "near" ? "Near add (D)" : field}`}
+                           value={eye[field]}
+                           disabled={!canMutate}
+                           error={fieldErrors[`specs.${side}.${field}`]}
                           onChange={(event) =>
                             update((current) => ({
                               ...current,
@@ -517,8 +678,10 @@ export function ClinicalDesk({
                 id="spec-pd"
                 label="Pupillary distance (PD)"
                 value={specPd}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                disabled={!canMutate}
                 onChange={(event) => setSpecPd(event.target.value)}
+                hint="Required when a spectacle type is selected · 30–80 mm"
+                error={fieldErrors["specs.pd"]}
               />
             </Card>
             <Card className="space-y-3">
@@ -528,7 +691,7 @@ export function ClinicalDesk({
                 <select
                   className={selectClass}
                   value={otEye}
-                  disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                  disabled={!canMutate}
                   onChange={(event) => setOtEye(event.target.value)}
                 >
                   <option value="">Not selected</option>
@@ -541,15 +704,18 @@ export function ClinicalDesk({
                 id="ot-procedure"
                 label="Diagnosis / procedure"
                 value={otProcedure}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                disabled={!canMutate}
                 onChange={(event) => setOtProcedure(event.target.value)}
+                hint="Required when an OT eye is selected"
+                error={fieldErrors["ot.procedure"]}
               />
               <Input
                 id="ot-notes"
                 label="OT notes"
                 value={otNotes}
-                disabled={!canMutate || Boolean(record.transcription?.locked_at)}
+                disabled={!canMutate}
                 onChange={(event) => setOtNotes(event.target.value)}
+                error={fieldErrors["ot.notes"]}
               />
             </Card>
             {canMutate ? (
@@ -591,7 +757,15 @@ export function ClinicalDesk({
                           disabled={
                             busy || Boolean(current) || !hasTranscription
                           }
-                          onClick={() => void resolve(kind, outcome)}
+                          onClick={() => {
+                            const printTarget =
+                              outcome === "deferred"
+                                ? acquireDeskPrintTarget((url, target, features) =>
+                                    window.open(url, target, features),
+                                  )
+                                : null;
+                            void resolve(kind, outcome, printTarget);
+                          }}
                         >
                           {outcome.replace("_", " ")}
                         </Button>
@@ -620,14 +794,15 @@ export function ClinicalDesk({
                           size="sm"
                           variant="secondary"
                           disabled={busy}
-                          onClick={() =>
+                          onClick={(event) => {
+                            slipReplaceTriggerRef.current = event.currentTarget;
                             setSlipReplace({
-                              slip: current.slip!,
-                              date: current.slip!.date,
-                              venue: current.slip!.venue,
-                              reason: "",
-                            })
-                          }
+                                slip: current.slip!,
+                                date: current.slip!.date,
+                                venue: current.slip!.venue,
+                                reason: "",
+                              });
+                          }}
                         >
                           Replace slip
                         </Button>
@@ -756,7 +931,13 @@ export function ClinicalDesk({
               <Button
                 type="button"
                 disabled={busy}
-                onClick={() => void submitSlipReplace()}
+                onClick={() =>
+                  void submitSlipReplace(
+                    acquireDeskPrintTarget((url, target, features) =>
+                      window.open(url, target, features),
+                    ),
+                  )
+                }
               >
                 Save replacement
               </Button>
@@ -764,7 +945,7 @@ export function ClinicalDesk({
                 type="button"
                 variant="secondary"
                 disabled={busy}
-                onClick={() => setSlipReplace(null)}
+                onClick={closeSlipReplace}
               >
                 Cancel
               </Button>

@@ -53,7 +53,7 @@ export type DeskPrintTarget = {
    * Navigate the retained handle to the patient slip.
    * Returns false when blocked, closed, abandoned, or navigation throws.
    */
-  navigate(patientId: string): boolean;
+    navigate(path: string): boolean;
   /**
    * Close/neutralize an empty pre-opened target (duplicate warning,
    * validation rejection, or terminal save failure). No-op if blocked.
@@ -98,11 +98,11 @@ export function acquireDeskPrintTarget(
   let abandoned = false;
   return {
     acquired: true,
-    navigate(patientId: string) {
+    navigate(path: string) {
       if (abandoned) return false;
       try {
         if (handle.closed) return false;
-        handle.location.href = patientPrintPath(patientId);
+        handle.location.href = path;
         return true;
       } catch {
         return false;
@@ -259,7 +259,7 @@ export async function runDeskRegisterAndPrint(options: {
   if (!options.printTarget) {
     print = "skipped";
   } else {
-    const navigated = options.printTarget.navigate(row.id);
+    const navigated = options.printTarget.navigate(patientPrintPath(row.id));
     print = navigated ? "navigated" : "recovery";
     if (!navigated) {
       // Neutralize any leftover blank tab when navigation could not complete.

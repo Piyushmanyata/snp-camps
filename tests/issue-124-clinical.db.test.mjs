@@ -110,14 +110,14 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
     await client.query("rollback to savepoint invalid_clinical");
     await client.query("reset role");
 
+    await client.query("savepoint missing_item_detail");
     await asUser(
       operator,
-      `select public.clinical_save_transcription($1,$2::jsonb)`,
+      "select public.clinical_save_transcription($1,$2::jsonb)",
       [
         patientId,
         JSON.stringify({
           diagnoses: ["Other"],
-          remarks: "Paper remains prescribing source",
           specs: {
             type: "distance",
             right: { sphere: "-1.0" },
@@ -127,7 +127,6 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
         }),
       ],
     );
-    await client.query("savepoint missing_item_detail");
     await assert.rejects(
       asUser(
         operator,
@@ -137,6 +136,41 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
       /medicine detail/i,
     );
     await client.query("rollback to savepoint missing_item_detail");
+    await client.query("reset role");
+
+    await asUser(
+      operator,
+      `select public.clinical_save_transcription($1,$2::jsonb)`,
+      [
+        patientId,
+        JSON.stringify({
+          diagnoses: ["Other"],
+          remarks: "Paper remains prescribing source",
+          medicines: "Lubricating drops",
+          specs: {
+            type: "distance",
+            right: { sphere: "-1.0" },
+            left: { sphere: "-1.5" },
+            pd: "62",
+          },
+        }),
+      ],
+    );
+    const { rows: deskFulfilled } = await asUser(
+      operator,
+      "select public.clinical_resolve_item($1,'medicine','fulfilled') as result",
+      [patientId],
+    );
+    const deskFulfilledId = deskFulfilled[0].result.item.id;
+    await client.query("savepoint desk_fulfilment_reverse");
+    await assert.rejects(
+      asUser(admin, "select public.admin_reverse_fulfilment($1,$2)", [
+        deskFulfilledId,
+        "Desk outcome must not be reversed as later fulfilment",
+      ]),
+      /only later fulfilment/i,
+    );
+    await client.query("rollback to savepoint desk_fulfilment_reverse");
     await client.query("reset role");
     const { rows: resolved } = await asUser(
       operator,
@@ -211,17 +245,35 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
     assert.deepEqual(state[0], { outcome: "deferred", status: "active" });
     const { rows: adminRecords } = await asUser(
       admin,
-      "select public.admin_clinical_records(true) as records",
+      "select public.admin_clinical_records($1,true,50,0) as records",
+      [campId],
     );
-    const reviewed = adminRecords[0].records.find(
+    assert.equal(adminRecords[0].records.total, 1);
+    const reviewed = adminRecords[0].records.records.find(
       (record) => record.patient_id === patientId,
     );
     assert.deepEqual(reviewed.data.diagnoses, ["Corrected"]);
     assert.equal(reviewed.corrections[0].reason, "Paper reread");
     assert.ok(reviewed.corrections[0].created_by);
     assert.ok(reviewed.corrections[0].created_at);
-    assert.ok(reviewed.items[0].events.some((event) => event.event === "reversed"));
-    assert.ok(reviewed.items[0].slips.some((slip) => slip.id === slipId));
+    assert.ok(
+      reviewed.items.some((item) =>
+        item.events.some((event) => event.event === "reversed"),
+      ),
+    );
+    assert.ok(
+      reviewed.items.some((item) =>
+        item.slips.some((slip) => slip.id === slipId),
+      ),
+    );
+
+    const { rows: pagedRecords } = await asUser(
+      admin,
+      "select public.admin_clinical_records($1,true,1,1) as records",
+      [campId],
+    );
+    assert.equal(pagedRecords[0].records.total, 1);
+    assert.deepEqual(pagedRecords[0].records.records, []);
 
     const validTemplate = {
       sections: [
@@ -236,6 +288,12 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
       "select public.admin_save_prescription_template($1,$2::jsonb,true)",
       [campId, JSON.stringify(validTemplate)],
     );
+    const { rows: clinicalTemplate } = await asUser(
+      operator,
+      "select public.published_prescription_template($1) as template",
+      [campId],
+    );
+    assert.deepEqual(clinicalTemplate[0].template.sections, validTemplate.sections);
     await asUser(
       admin,
       "select public.admin_save_prescription_template($1,$2::jsonb,true)",
@@ -279,6 +337,145 @@ test("clinical workflow is seen-only, locked, audited, and follow-up capable", a
       /clinical desk only/i,
     );
     await client.query("rollback to savepoint denied");
+    await client.query("reset role");
+  } finally {
+    await client.query("rollback");
+  }
+});
+
+test("clinical lookup exposes ordered prior history before a current transcription exists", async (t) => {
+  if (skipIfNoDb(t)) return;
+  await client.query("begin");
+  try {
+    const operator = await profile("clinical_operator");
+    const admin = await profile("admin");
+    const volunteer = await profile("volunteer");
+    const personId = randomUUID();
+    const secondPersonId = randomUUID();
+    const camps = [randomUUID(), randomUUID(), randomUUID()];
+    const days = [randomUUID(), randomUUID(), randomUUID()];
+    const patients = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+
+    await client.query("update public.camps set is_active=false where is_active");
+    await client.query(
+      "insert into public.persons(id,full_name,gender) values($1,'History Patient','F'),($2,'Second Patient','M')",
+      [personId, secondPersonId],
+    );
+    for (const [index, campId] of camps.entries()) {
+      await client.query(
+        "insert into public.camps(id,name,venue,is_active) values($1,$2,'History Venue',false)",
+        [campId, `History Camp ${index + 1}`],
+      );
+      await client.query(
+        "insert into public.camp_days(id,camp_id,day_date,seat_limit) values($1,$2,$3,20)",
+        [days[index], campId, `2099-0${index + 1}-01`],
+      );
+    }
+    await client.query("update public.camps set is_active=true where id=$1", [camps[0]]);
+    await client.query(
+      `insert into public.patients(
+        id,camp_id,camp_day_id,full_name,age,gender,queue_status,seen_at,person_id
+      ) values
+        ($1,$2,$3,'History Patient',52,'F','seen',now(),$4),
+        ($5,$6,$7,'History Patient',52,'F','seen',now(),$4),
+        ($8,$9,$10,'History Patient',52,'F','seen',now(),$4),
+        ($11,$9,$10,'Second Patient',44,'M','seen',now(),$12)`,
+      [
+        patients[0], camps[0], days[0], personId,
+        patients[1], camps[1], days[1],
+        patients[2], camps[2], days[2],
+        patients[3], secondPersonId,
+      ],
+    );
+
+    await asUser(
+      operator,
+      "select public.clinical_save_transcription($1,$2::jsonb)",
+      [patients[0], JSON.stringify({ diagnoses: ["Oldest"], remarks: "Old" })],
+    );
+    await client.query(
+      "update public.prescription_transcriptions set created_at='2099-01-02T00:00:00Z' where patient_id=$1",
+      [patients[0]],
+    );
+    await client.query("update public.camps set is_active=false where id=$1", [camps[0]]);
+    await client.query("update public.camps set is_active=true where id=$1", [camps[1]]);
+    await asUser(
+      operator,
+      "select public.clinical_save_transcription($1,$2::jsonb)",
+      [patients[1], JSON.stringify({ diagnoses: ["Newer"], remarks: "New" })],
+    );
+    await client.query(
+      "update public.prescription_transcriptions set created_at='2099-01-03T00:00:00Z' where patient_id=$1",
+      [patients[1]],
+    );
+    await client.query("update public.camps set is_active=false where id=$1", [camps[1]]);
+    await client.query("update public.camps set is_active=true where id=$1", [camps[2]]);
+
+    const { rows: lookupRows } = await asUser(
+      operator,
+      "select public.clinical_lookup($1,null) as record",
+      [patients[2]],
+    );
+    assert.equal(lookupRows[0].record.transcription, null);
+    assert.deepEqual(
+      lookupRows[0].record.history.map((entry) => entry.data.diagnoses),
+      [["Newer"], ["Oldest"]],
+    );
+
+    await asUser(
+      operator,
+      "select public.clinical_save_transcription($1,$2::jsonb)",
+      [patients[2], JSON.stringify({ diagnoses: ["Current"] })],
+    );
+    await client.query(
+      "update public.prescription_transcriptions set created_at='2099-01-04T00:00:00Z' where patient_id=$1",
+      [patients[2]],
+    );
+    await asUser(
+      operator,
+      "select public.clinical_save_transcription($1,$2::jsonb)",
+      [patients[3], JSON.stringify({ diagnoses: ["Second current"] })],
+    );
+    await client.query(
+      "update public.prescription_transcriptions set created_at='2099-01-05T00:00:00Z' where patient_id=$1",
+      [patients[3]],
+    );
+
+    const { rows: page } = await asUser(
+      admin,
+      "select public.admin_clinical_records($1::uuid,false,1,0) as result",
+      [null],
+    );
+    const { rows: nextPage } = await asUser(
+      admin,
+      "select public.admin_clinical_records($1::uuid,false,1,1) as result",
+      [null],
+    );
+    assert.equal(page[0].result.total, 2);
+    assert.equal(page[0].result.records.length, 1);
+    assert.equal(nextPage[0].result.total, 2);
+    assert.equal(nextPage[0].result.records.length, 1);
+    assert.notEqual(
+      page[0].result.records[0].patient_id,
+      nextPage[0].result.records[0].patient_id,
+    );
+
+    const { rows: signatures } = await client.query(
+      `select to_regprocedure('public.admin_clinical_records(boolean)') as old_signature,
+              to_regprocedure('public.admin_clinical_records(uuid,boolean,integer,integer)') as new_signature`,
+    );
+    assert.equal(signatures[0].old_signature, null);
+    assert.ok(signatures[0].new_signature);
+    await client.query("savepoint denied_admin_records");
+    await assert.rejects(
+      asUser(
+        volunteer,
+        "select public.admin_clinical_records($1::uuid,false,1,0)",
+        [null],
+      ),
+      /admin only/i,
+    );
+    await client.query("rollback to savepoint denied_admin_records");
     await client.query("reset role");
   } finally {
     await client.query("rollback");

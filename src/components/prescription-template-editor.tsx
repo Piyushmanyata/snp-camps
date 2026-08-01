@@ -42,26 +42,67 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
     return next;
   }
 
+  type EditableList = "diagnosisOptions" | "vitalsFields";
+  const listLimits: Record<EditableList, number> = {
+    diagnosisOptions: 6,
+    vitalsFields: 4,
+  };
+
+  function updateList(key: EditableList, index: number, value: string) {
+    setTemplate((current) => ({
+      ...current,
+      [key]: current[key].map((item, itemIndex) =>
+        itemIndex === index ? value.slice(0, 80) : item,
+      ),
+    }));
+  }
+
+  function addListItem(key: EditableList) {
+    setTemplate((current) => ({
+      ...current,
+      [key]: current[key].length < listLimits[key] ? [...current[key], ""] : current[key],
+    }));
+  }
+
+  function removeListItem(key: EditableList, index: number) {
+    setTemplate((current) => ({
+      ...current,
+      [key]: current[key].filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }
+
   async function upload(file: File | null) {
     if (!file) return;
     setBusy(true);
     setError(null);
-    const form = new FormData();
-    form.set("campId", campId);
-    form.set("file", file);
-    const response = await fetch("/api/admin/sponsor-assets", {
-      method: "POST",
-      body: form,
-    });
-    const body = await response.json();
-    if (!response.ok) setError(body.error ?? "Upload failed.");
-    else {
-      setTemplate((current) => ({
-        ...current,
-        sponsorLogos: [...current.sponsorLogos, body.url].slice(0, 8),
-      }));
+    try {
+      const form = new FormData();
+      form.set("campId", campId);
+      form.set("file", file);
+      const response = await fetch("/api/admin/sponsor-assets", {
+        method: "POST",
+        body: form,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setError(body.error ?? "Upload failed.");
+      else {
+        setTemplate((current) => ({
+          ...current,
+          sponsorLogos: [...current.sponsorLogos, body.url].slice(0, 8),
+        }));
+      }
+    } catch {
+      setError("Upload failed. Try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
+  }
+
+  function removeLogo(index: number) {
+    setTemplate((current) => ({
+      ...current,
+      sponsorLogos: current.sponsorLogos.filter((_, itemIndex) => itemIndex !== index),
+    }));
   }
 
   async function save(publish: boolean, value = template) {
@@ -69,23 +110,37 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
     setError(null);
     setMessage(null);
     const supabase = createClient();
-    const { error: rpcError } = await supabase.rpc(
-      "admin_save_prescription_template",
-      {
-        p_camp_id: campId,
-        p_template: {
-          ...value,
-          fitsOnePage:
-            value.sections.filter((section) => section.visible !== false)
-              .reduce((sum, section) => sum + section.heightMm, 0) <= 42 &&
-            value.sponsorLogos.length <= 8,
+    try {
+      const { error: rpcError } = await supabase.rpc(
+        "admin_save_prescription_template",
+        {
+          p_camp_id: campId,
+          p_template: {
+            ...value,
+            fitsOnePage:
+              value.sections.filter((section) => section.visible !== false)
+                .reduce((sum, section) => sum + section.heightMm, 0) <= 42 &&
+              value.sponsorLogos.length <= 8,
+          },
+          p_publish: publish,
         },
-        p_publish: publish,
-      },
-    );
-    if (rpcError) setError("Template could not be saved.");
-    else setMessage(publish ? "Template published." : "Draft saved.");
-    setBusy(false);
+      );
+      if (rpcError) {
+        setError(
+          /template sections/i.test(rpcError.message)
+            ? "Each block needs a label and the visible blocks must total 42 mm or less."
+            : /sponsor assets/i.test(rpcError.message)
+              ? "One of the sponsor logos is not an uploaded asset. Remove it and upload again."
+              : /admin only/i.test(rpcError.message)
+                ? "Only an admin can save the template."
+                : "Template could not be saved.",
+        );
+      } else setMessage(publish ? "Template published." : "Draft saved.");
+    } catch {
+      setError("Template could not be saved.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -114,12 +169,35 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
             <span className="flex-1 text-xs text-muted">Sponsor {index + 1}</span>
             <Button type="button" size="sm" variant="secondary" disabled={index === 0} onClick={() => setTemplate((current) => ({ ...current, sponsorLogos: move(current.sponsorLogos, index, -1) }))}>Up</Button>
             <Button type="button" size="sm" variant="secondary" disabled={index === template.sponsorLogos.length - 1} onClick={() => setTemplate((current) => ({ ...current, sponsorLogos: move(current.sponsorLogos, index, 1) }))}>Down</Button>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setTemplate((current) => ({ ...current, sponsorLogos: current.sponsorLogos.filter((_, itemIndex) => itemIndex !== index) }))}>
+            <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => removeLogo(index)}>
               Remove
             </Button>
           </li>
         ))}
       </ul>
+      {(["diagnosisOptions", "vitalsFields"] as const).map((key) => (
+        <fieldset key={key} className="space-y-2 rounded-xl border border-border p-3">
+          <legend className="text-sm font-semibold">
+            {key === "diagnosisOptions" ? "Diagnosis tick-boxes" : "Vitals fields"}
+          </legend>
+          {template[key].map((value, index) => (
+            <div key={`${key}-${index}`} className="flex items-end gap-2">
+              <Input
+                id={`template-${key}-${index}`}
+                label={`${key === "diagnosisOptions" ? "Diagnosis" : "Vital"} ${index + 1}`}
+                value={value}
+                onChange={(event) => updateList(key, index, event.target.value)}
+              />
+              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => removeListItem(key, index)}>
+                Remove
+              </Button>
+            </div>
+          ))}
+          <Button type="button" size="sm" variant="secondary" disabled={busy || template[key].length >= listLimits[key]} onClick={() => addListItem(key)}>
+            Add {key === "diagnosisOptions" ? "diagnosis" : "vital"}
+          </Button>
+        </fieldset>
+      ))}
       <div className="space-y-3">
         {template.sections.map((section, index) => (
           <div key={section.key} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_9rem_auto]">
@@ -188,6 +266,7 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
         <Button type="button" variant="secondary" disabled={busy} onClick={() => void save(false)}>Save draft</Button>
         <Button type="button" disabled={busy || !fitsOnePage} onClick={() => void save(true)}>Publish</Button>
         <Button type="button" variant="secondary" disabled={busy} onClick={() => {
+          if (!window.confirm("Replace this camp's published template with the default? The current template becomes superseded.")) return;
           setTemplate(DEFAULT_PRESCRIPTION_TEMPLATE);
           void save(true, DEFAULT_PRESCRIPTION_TEMPLATE);
         }}>Restore default</Button>

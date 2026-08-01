@@ -126,6 +126,7 @@ export function resolvePrescriptionTemplate(
 
   let remainingHeight = MAX_SECTIONS_TOTAL_HEIGHT_MM;
   const boundedSections = sections.map((section) => {
+    if (section.visible === false) return section;
     const heightMm = Math.min(section.heightMm, remainingHeight);
     remainingHeight -= heightMm;
     return { ...section, heightMm };

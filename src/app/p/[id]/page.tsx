@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile, isCampCrew, roleHome } from "@/lib/auth";
-import { isClinicalOperator } from "@/lib/roles";
+import { isAdmin, isClinicalOperator } from "@/lib/roles";
 import { isPatientUuid } from "@/lib/qr";
 
 /**
@@ -32,7 +32,7 @@ export default async function PatientScanPage({
   const { profile } = await getSessionProfile();
   const role = profile?.role;
 
-  if (isClinicalOperator(role)) {
+  if (isClinicalOperator(role) || isAdmin(role)) {
     redirect(`/clinical?scan=${id}`);
   }
 
