@@ -9,7 +9,6 @@ import { randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
 const VENUE = "status-fcfs-test";
@@ -239,7 +238,7 @@ async function seedPatient(opts) {
 async function statusByToken(token) {
   return asServiceRole(async (c) => {
     const { rows } = await c.query(
-      `select full_name, reg_no, queue_status::text, queue_position,
+      `select reg_no, queue_status::text, queue_position,
               camp_name, venue, day_date::text
        from public.patient_status_by_token($1)`,
       [token],
@@ -822,13 +821,13 @@ test("least-privilege projection has no phone/token/queued_at columns", async (t
        ) as result`,
     );
     const result = fr[0].result.toLowerCase();
-    assert.match(result, /full_name/);
+    assert.doesNotMatch(result, /full_name/);
     assert.match(result, /queue_position/);
     assert.doesNotMatch(result, /status_token/);
     assert.doesNotMatch(result, /\bphone\b/);
     assert.doesNotMatch(result, /queued_at/);
   } else {
-    assert.ok(names.includes("full_name"));
+    assert.ok(!names.includes("full_name"));
     assert.ok(names.includes("queue_position"));
     assert.ok(!names.includes("status_token"));
     assert.ok(!names.includes("phone"));

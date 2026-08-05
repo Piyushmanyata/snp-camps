@@ -20,6 +20,7 @@ type Options = {
   limit: number;
   windowMs: number;
   identifier?: string;
+  keyType?: "ip" | "subject" | "both";
 };
 
 export type DistributedRateLimitResult = {
@@ -47,7 +48,11 @@ export async function checkDistributedRateLimit(
     return { allowed: false, unavailable: true, retryAfterSeconds: 1 };
   }
 
-  const keyHashes = rateLimitIdentifiers(request, options.identifier).map(
+  const keyHashes = rateLimitIdentifiers(
+    request,
+    options.identifier,
+    options.keyType,
+  ).map(
     (identifier) =>
       createHmac("sha256", secret).update(identifier).digest("base64url"),
   );

@@ -98,6 +98,15 @@ export function ClinicalDesk({
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
   const [lastSlipId, setLastSlipId] = useState<string | null>(null);
   const slipReplaceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const lookupGenerationRef = useRef(0);
+  const displayedPatientIdRef = useRef<string | null>(null);
+
+  function isCurrentLookup(generation: number, patientId?: string | null) {
+    return (
+      lookupGenerationRef.current === generation &&
+      (patientId == null || displayedPatientIdRef.current === patientId)
+    );
+  }
 
   function applySavedDiagnoses(saved: Record<string, unknown>, options = diagnosisOptions) {
     const raw = saved.diagnoses;
@@ -120,6 +129,7 @@ export function ClinicalDesk({
   }
 
   function clearRecordState() {
+    displayedPatientIdRef.current = null;
     setRecord(null);
     setFollowup([]);
     setSlipReplace(null);
@@ -129,6 +139,7 @@ export function ClinicalDesk({
   }
 
   async function lookup(value = exact) {
+    const generation = ++lookupGenerationRef.current;
     clearRecordState();
     setBusy(true);
     setError(null);
@@ -144,19 +155,10 @@ export function ClinicalDesk({
       p_patient_id: patientId,
       p_reg_no: regNo,
     });
+    if (!isCurrentLookup(generation)) return;
     if (rpcError) {
       if (/registration not found|not been seen/i.test(rpcError.message)) {
-        const foundFollowup = await lookupFollowup(value);
-        if (foundFollowup) {
-          setMessage("This registration is from a past camp. Unresolved items are listed below.");
-          setError(null);
-        } else {
-          setError(
-            /not been seen/i.test(rpcError.message)
-              ? "This registration has not reached Seen. No clinical record was opened."
-              : "No registration found for that QR or number in the current camp.",
-          );
-        }
+        await lookupFollowup(value);
       } else {
         setError("Exact registration lookup failed.");
         setBusy(false);
@@ -164,15 +166,18 @@ export function ClinicalDesk({
       return;
     }
     const next = data as Lookup;
+    const nextPatientId = next.patient.id;
     const { data: templateData, error: templateError } = next.patient.camp_id
       ? await supabase.rpc("published_prescription_template", {
           p_camp_id: next.patient.camp_id,
         })
       : { data: null, error: null };
+    if (!isCurrentLookup(generation)) return;
     const options = resolvePrescriptionTemplate(
       templateError ? null : templateData,
     ).diagnosisOptions;
     setDiagnosisOptions(options);
+    displayedPatientIdRef.current = nextPatientId;
     setRecord(next);
     const saved = (next.effective_data ?? next.transcription?.data ?? {}) as Record<
       string,
@@ -220,7 +225,12 @@ export function ClinicalDesk({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
   }, [initialScan]);
 
+  useEffect(() => () => {
+    lookupGenerationRef.current += 1;
+  }, []);
+
   async function lookupFollowup(value = exact) {
+    const generation = ++lookupGenerationRef.current;
     clearRecordState();
     setBusy(true);
     setError(null);
@@ -235,6 +245,7 @@ export function ClinicalDesk({
       p_patient_id: patientId,
       p_reg_no: regNo,
     });
+    if (!isCurrentLookup(generation)) return false;
     if (rpcError) {
       setError("Follow-up lookup failed.");
       setBusy(false);
@@ -248,14 +259,17 @@ export function ClinicalDesk({
 
   async function fulfilFollowup(id: string) {
     if (!canMutate) return;
+    const generation = lookupGenerationRef.current;
     setBusy(true);
     const { error: rpcError } = await supabase.rpc("clinical_followup_fulfil", {
       p_item_id: id,
     });
+    if (!isCurrentLookup(generation)) return;
     if (rpcError) setError("Follow-up fulfilment conflicted with current state.");
     else {
       setMessage("Follow-up item fulfilled; original history preserved.");
       await lookupFollowup();
+      return;
     }
     setBusy(false);
   }
@@ -305,6 +319,8 @@ export function ClinicalDesk({
       setError("Date, venue, and reason are required to replace a slip.");
       return;
     }
+    const generation = lookupGenerationRef.current;
+    const patientId = displayedPatientIdRef.current;
     setBusy(true);
     setError(null);
     const { data, error: rpcError } = await supabase.rpc("clinical_replace_slip", {
@@ -313,6 +329,7 @@ export function ClinicalDesk({
       p_venue: venue.trim(),
       p_reason: reason.trim(),
     });
+    if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
       setError("Slip could not be replaced. Try again.");
@@ -322,13 +339,14 @@ export function ClinicalDesk({
       closeSlipReplace();
       const navigated = printTarget?.navigate(`/clinical/slip/${replacement.id}`) ?? false;
       if (printTarget && !navigated) printTarget.abandon();
-      await lookup();
       setLastSlipId(replacement.id);
       setMessage(
         navigated
           ? "Replacement slip saved."
           : "Replacement slip saved. Your browser blocked the slip window.",
       );
+      await lookup();
+      return;
     }
     setBusy(false);
   }
@@ -342,21 +360,26 @@ export function ClinicalDesk({
       setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
       return;
     }
+    const patientId = record.patient.id;
+    const generation = lookupGenerationRef.current;
     setBusy(true);
     setError(null);
     setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_save_transcription", {
-        p_patient_id: record.patient.id,
+        p_patient_id: patientId,
         p_data: data,
       });
       if (rpcError) throw rpcError;
+      if (!isCurrentLookup(generation, patientId)) return;
       setMessage("Operational transcription saved from paper.");
       await lookup();
     } catch {
-      setError("Could not save transcription. Try again.");
+      if (isCurrentLookup(generation, patientId)) {
+        setError("Could not save transcription. Try again.");
+      }
     } finally {
-      setBusy(false);
+      if (isCurrentLookup(generation, patientId)) setBusy(false);
     }
   }
 
@@ -377,23 +400,28 @@ export function ClinicalDesk({
       setError("Change at least one field before appending a correction.");
       return;
     }
+    const patientId = record.patient.id;
+    const generation = lookupGenerationRef.current;
     setBusy(true);
     setError(null);
     setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_add_correction", {
-        p_patient_id: record.patient.id,
+        p_patient_id: patientId,
         p_data: data,
         p_reason: correctionReason.trim(),
       });
       if (rpcError) throw rpcError;
+      if (!isCurrentLookup(generation, patientId)) return;
       setCorrectionReason("");
       setMessage("Reasoned correction appended; original record preserved.");
       await lookup();
     } catch {
-      setError("Could not append correction. Try again.");
+      if (isCurrentLookup(generation, patientId)) {
+        setError("Could not append correction. Try again.");
+      }
     } finally {
-      setBusy(false);
+      if (isCurrentLookup(generation, patientId)) setBusy(false);
     }
   }
 
@@ -407,13 +435,16 @@ export function ClinicalDesk({
       setError("Save a transcription before resolving fulfilment outcomes.");
       return;
     }
+    const patientId = record.patient.id;
+    const generation = lookupGenerationRef.current;
     setBusy(true);
     setError(null);
     const { data, error: rpcError } = await supabase.rpc("clinical_resolve_item", {
-      p_patient_id: record.patient.id,
+      p_patient_id: patientId,
       p_kind: kind,
       p_outcome: outcome,
     });
+    if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
       const message = rpcError.message;
@@ -440,7 +471,6 @@ export function ClinicalDesk({
         ? printTarget.navigate(`/clinical/slip/${slip.id}`)
         : false;
       if (printTarget && (!slip?.id || !navigated)) printTarget.abandon();
-      await lookup();
       if (slip?.id) {
         setLastSlipId(slip.id);
         setMessage(
@@ -451,6 +481,8 @@ export function ClinicalDesk({
       } else {
         setMessage(`${kind.toUpperCase()} saved.`);
       }
+      await lookup();
+      return;
     }
     setBusy(false);
   }
@@ -499,11 +531,16 @@ export function ClinicalDesk({
           id="clinical-exact-lookup"
           label="Patient QR or registration number"
           value={exact}
-          onChange={(event) => setExact(event.target.value)}
+          onChange={(event) => {
+            lookupGenerationRef.current += 1;
+            setExact(event.target.value);
+          }}
           placeholder="Scan QR or type exact number"
         />
         <PatientQrCamera
+          disabled={busy}
           onScan={(raw) => {
+            lookupGenerationRef.current += 1;
             setExact(raw);
             void lookup(raw);
           }}

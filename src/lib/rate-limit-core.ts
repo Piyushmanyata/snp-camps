@@ -10,6 +10,7 @@ type Options = {
   limit: number;
   windowMs: number;
   identifier?: string;
+  keyType?: "ip" | "subject" | "both";
 };
 
 const globalStore = globalThis as typeof globalThis & {
@@ -67,10 +68,19 @@ function hashValue(value: string) {
     .slice(0, 20);
 }
 
-export function rateLimitIdentifiers(request: Request, identifier?: string) {
-  const keys = [`ip:${hashValue(clientAddress(request))}`];
+export function rateLimitIdentifiers(
+  request: Request,
+  identifier?: string,
+  keyType: "ip" | "subject" | "both" = "both",
+) {
+  const keys: string[] = [];
+  if (keyType === "ip" || keyType === "both") {
+    keys.push(`ip:${hashValue(clientAddress(request))}`);
+  }
   const subject = identifier?.trim();
-  if (subject) keys.push(`subject:${hashValue(subject)}`);
+  if (subject && (keyType === "subject" || keyType === "both")) {
+    keys.push(`subject:${hashValue(subject)}`);
+  }
   return keys;
 }
 
@@ -98,9 +108,25 @@ export function checkRateLimit(request: Request, options: Options) {
   const now = Date.now();
   sweepExpired(now);
 
-  const keys = rateLimitIdentifiers(request, options.identifier).map(
+  const keys = rateLimitIdentifiers(
+    request,
+    options.identifier,
+    options.keyType,
+  ).map(
     (key) => `${options.scope}:${key}`,
   );
+
+  if (keys.length === 0) {
+    return {
+      allowed: false,
+      headers: {
+        "RateLimit-Limit": String(options.limit),
+        "RateLimit-Remaining": "0",
+        "RateLimit-Reset": String(Math.ceil((now + options.windowMs) / 1000)),
+        "Retry-After": "1",
+      },
+    };
+  }
 
   // Keep both protections: an attacker cannot rotate identifiers from one IP,
   // and one patient/token cannot bypass the limit by rotating IPs.

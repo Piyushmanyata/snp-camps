@@ -13,7 +13,6 @@ import { randomUUID } from "node:crypto";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
 /** @type {pg.Client | null} */
@@ -170,6 +169,58 @@ test("replay with null camp_day returns the original registration", async (t) =>
       [requestId],
     );
     assert.equal(countRows[0].n, 1, "must not insert a second patient");
+  } finally {
+    await cleanupCamp(campId);
+  }
+});
+
+test("same-day desk registration stays registered until print, even when the day is full", async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+  const { campId, dayId } = await seedCampWithDay({
+    seatLimit: 1,
+    dayDate: today,
+  });
+  const existingId = randomUUID();
+  const requestId = randomUUID();
+
+  try {
+    await client.query(
+      `insert into public.patients (
+         id, camp_id, camp_day_id, full_name, queue_status, queued_at
+       ) values ($1, $2, $3, 'Already present', 'waiting', now())`,
+      [existingId, campId, dayId],
+    );
+
+    const { rows } = await asServiceRole(() =>
+      client.query(
+        `select id, queue_status::text, queued_at, checked_in_by
+         from public.register_patient_idempotent(
+           $1::uuid, $2::uuid, 'Desk only', 'F', 30,
+           null, null, null, null, null, null, $3::uuid,
+           false, false, false, 'self_declared', null, null, null)`,
+        [requestId, campId, dayId],
+      ),
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].queue_status, "registered");
+    assert.equal(rows[0].queued_at, null);
+    assert.equal(rows[0].checked_in_by, null);
+
+    const { rows: persisted } = await client.query(
+      `select queue_status::text, queued_at, checked_in_by
+       from public.patients where id = $1`,
+      [rows[0].id],
+    );
+    assert.deepEqual(persisted[0], {
+      queue_status: "registered",
+      queued_at: null,
+      checked_in_by: null,
+    });
   } finally {
     await cleanupCamp(campId);
   }

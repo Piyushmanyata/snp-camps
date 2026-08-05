@@ -41,24 +41,22 @@ test("the refresh island keeps its 30s cadence and pauses when hidden", () => {
   assert.match(src, /useFixedPoll\(/);
 });
 
-test("status page rate-limits by IP before token lookup without an oracle", () => {
+test("status page validates token format before consuming separate IP/token limits", () => {
   const src = readPage();
   assert.match(src, /checkRateLimit/);
-  assert.match(src, /scope:\s*["']status-page["']/);
+  assert.match(src, /scope:\s*["']status-ip["']/);
+  assert.match(src, /limit:\s*1_200/);
+  assert.match(src, /scope:\s*["']status-token["']/);
   assert.match(src, /limit:\s*12/);
-  assert.match(src, /windowMs:\s*60_000/);
-
-  const rateLimitBlock = src.slice(
-    src.indexOf("const rate = checkRateLimit"),
-    src.indexOf("if (!isStatusTokenFormat"),
-  );
-  assert.match(rateLimitBlock, /if\s*\(!rate\.allowed\)\s*notFound\(\)/);
-  assert.doesNotMatch(rateLimitBlock, /identifier:/);
+  assert.match(src, /keyType:\s*["']ip["']/);
+  assert.match(src, /keyType:\s*["']subject["']/);
   assert.ok(
-    src.indexOf("const rate = checkRateLimit") <
-      src.indexOf("if (!isStatusTokenFormat"),
-    "rate limit must run before token validation/lookup",
+    src.indexOf("if (!isStatusTokenFormat") <
+      src.indexOf("const ipRate = checkRateLimit"),
+    "invalid token formats must not consume a rate-limit bucket",
   );
+  assert.match(src, /status-rate-limit\?retry=/);
+  assert.match(src, /Retry-After/);
 });
 
 test("status page uses patient_status_by_token RPC only", () => {
@@ -102,7 +100,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
   } catch {
     // route-loader may not be active in plain --test; define from source contract
     mapStatusRpcRow = (row) => ({
-      fullName: row.full_name,
       regNo: row.reg_no,
       queueStatus: row.queue_status,
       queuePosition:
@@ -117,7 +114,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
 
   assert.deepEqual(
     mapStatusRpcRow({
-      full_name: "Ada",
       reg_no: 42,
       queue_status: "waiting",
       queue_position: 3,
@@ -126,7 +122,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
       day_date: "2099-10-15",
     }),
     {
-      fullName: "Ada",
       regNo: 42,
       queueStatus: "waiting",
       queuePosition: 3,
@@ -138,7 +133,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
 
   assert.equal(
     mapStatusRpcRow({
-      full_name: "Bob",
       reg_no: 1,
       queue_status: "seen",
       queue_position: null,
@@ -151,7 +145,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
 
   assert.equal(
     mapStatusRpcRow({
-      full_name: "C",
       reg_no: 2,
       queue_status: "registered",
       queue_position: 99,
@@ -165,7 +158,6 @@ test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => 
 
   assert.equal(
     mapStatusRpcRow({
-      full_name: "C",
       reg_no: 2,
       queue_status: "registered",
       queue_position: 99,

@@ -31,7 +31,13 @@ function loadJsQr(): Promise<JsQrFn> {
  * Uses the same session lifecycle + decode edge bound as the desk scanner —
  * never full-resolution main-thread jsQR every frame.
  */
-export function PatientQrCamera({ onScan }: { onScan: (raw: string) => void }) {
+export function PatientQrCamera({
+  onScan,
+  disabled = false,
+}: {
+  onScan: (raw: string) => void;
+  disabled?: boolean;
+}) {
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const video = useRef<HTMLVideoElement | null>(null);
@@ -51,6 +57,13 @@ export function PatientQrCamera({ onScan }: { onScan: (raw: string) => void }) {
   }
 
   useEffect(() => () => stop(), []);
+
+  useEffect(() => {
+    if (!disabled) return;
+    if (frame.current != null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    sessionRef.current.invalidate();
+  }, [disabled]);
 
   async function start() {
     setError(null);
@@ -161,11 +174,11 @@ export function PatientQrCamera({ onScan }: { onScan: (raw: string) => void }) {
       ) : null}
       <div className="flex flex-wrap gap-2">
         {!active ? (
-          <Button type="button" onClick={() => void start()}>
+          <Button type="button" disabled={disabled} onClick={() => void start()}>
             Open camera
           </Button>
         ) : (
-          <Button type="button" variant="secondary" onClick={stop}>
+          <Button type="button" variant="secondary" disabled={disabled} onClick={stop}>
             Stop camera
           </Button>
         )}

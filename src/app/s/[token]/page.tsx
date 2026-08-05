@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { formatCampDay } from "@/lib/format-camp-day";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
@@ -11,14 +11,21 @@ import { ErrorBox } from "@/components/ui";
 import { StatusAutoRefresh } from "@/components/status-auto-refresh";
 import { getPatientStatusGuidance } from "@/lib/patient-status-guidance";
 
-const STATUS_RATE_LIMIT = {
-  scope: "status-page",
+const STATUS_IP_RATE_LIMIT = {
+  scope: "status-ip",
+  limit: 1_200,
+  windowMs: 60_000,
+  keyType: "ip" as const,
+};
+
+const STATUS_TOKEN_RATE_LIMIT = {
+  scope: "status-token",
   limit: 12,
   windowMs: 60_000,
+  keyType: "subject" as const,
 };
 
 type StatusRpcRow = {
-  full_name: string;
   reg_no: number;
   queue_status: string;
   queue_position: number | null;
@@ -30,7 +37,6 @@ type StatusRpcRow = {
 
 export function mapStatusRpcRow(row: StatusRpcRow) {
   return {
-    fullName: row.full_name,
     regNo: row.reg_no,
     queueStatus: row.queue_status,
     queuePosition:
@@ -57,20 +63,45 @@ export default async function PatientStatusPage({
   const rateRequest = new Request("https://snp-camps.invalid/status", {
     headers: new Headers(requestHeaders),
   });
-  const rate = checkRateLimit(rateRequest, STATUS_RATE_LIMIT);
-  if (!rate.allowed) notFound();
-
   if (!isStatusTokenFormat(token)) notFound();
+
+  const ipRate = checkRateLimit(rateRequest, STATUS_IP_RATE_LIMIT);
+  const tokenRate = checkRateLimit(rateRequest, {
+    ...STATUS_TOKEN_RATE_LIMIT,
+    identifier: token,
+  });
+  if (!ipRate.allowed || !tokenRate.allowed) {
+    const retryAfter = Math.max(
+      1,
+      Number(ipRate.headers["Retry-After"] ?? 1),
+      Number(tokenRate.headers["Retry-After"] ?? 1),
+    );
+    redirect(`/api/status-rate-limit?retry=${retryAfter}`);
+  }
 
   const admin = createServiceRoleClient();
   if (!admin) notFound();
 
   // Multi-instance durable gate (in-memory alone is not enough under load).
-  const durable = await checkDistributedRateLimit(rateRequest, admin, {
-    ...STATUS_RATE_LIMIT,
+  const durableIp = await checkDistributedRateLimit(rateRequest, admin, {
+    ...STATUS_IP_RATE_LIMIT,
+  });
+  const durableToken = await checkDistributedRateLimit(rateRequest, admin, {
+    ...STATUS_TOKEN_RATE_LIMIT,
     identifier: token,
   });
-  if (!durable.allowed) notFound();
+  if (durableIp.unavailable || durableToken.unavailable) {
+    redirect("/api/status-rate-limit?status=503&retry=1");
+  }
+  if (!durableIp.allowed || !durableToken.allowed) {
+    redirect(
+      `/api/status-rate-limit?retry=${Math.max(
+        1,
+        durableIp.retryAfterSeconds,
+        durableToken.retryAfterSeconds,
+      )}`,
+    );
+  }
 
   const { data, error } = await admin.rpc("patient_status_by_token", {
     p_token: token,
@@ -159,12 +190,6 @@ export default async function PatientStatusPage({
         </div>
 
         <dl className="space-y-4 rounded-2xl border border-border bg-card p-5 text-[1.0625rem]">
-          <div>
-            <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
-              Naam
-            </dt>
-            <dd className="text-lg font-bold text-foreground">{view.fullName}</dd>
-          </div>
           <div>
             <dt className="text-[0.8125rem] font-semibold uppercase tracking-wider text-muted">
               Registration number

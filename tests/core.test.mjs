@@ -351,6 +351,41 @@ test("rate limits block IP burst and subject rotation independently", () => {
   }
 });
 
+test("rate-limit scopes can consume IP and subject buckets separately", () => {
+  const request = new Request("https://camp.example/api/status", {
+    headers: { "x-forwarded-for": "203.0.113.10" },
+  });
+  const scope = `separate-status-${Math.random()}`;
+  const ip = {
+    scope: `${scope}-ip`,
+    limit: 2,
+    windowMs: 60_000,
+    keyType: "ip",
+  };
+  const subject = {
+    scope: `${scope}-subject`,
+    identifier: "status-token-1",
+    limit: 2,
+    windowMs: 60_000,
+    keyType: "subject",
+  };
+
+  assert.equal(checkRateLimit(request, ip).allowed, true);
+  assert.equal(checkRateLimit(request, subject).allowed, true);
+  assert.equal(
+    checkRateLimit(
+      new Request(request, { headers: { "x-forwarded-for": "203.0.113.11" } }),
+      ip,
+    ).allowed,
+    true,
+    "a rotated IP does not bypass the subject-only bucket",
+  );
+  assert.equal(checkRateLimit(request, subject).allowed, true);
+  assert.equal(checkRateLimit(request, subject).allowed, false);
+  assert.equal(checkRateLimit(request, ip).allowed, true);
+  assert.equal(checkRateLimit(request, ip).allowed, false);
+});
+
 test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164("9876543210"), "+919876543210");
   assert.equal(normalizePhoneE164("09876543210"), "+919876543210");
