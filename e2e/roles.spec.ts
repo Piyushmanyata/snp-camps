@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -8,16 +8,16 @@ function env(name: string) {
   return value;
 }
 
-async function gotoHydrated(page: Page, path: string) {
-  await page.goto(path);
-  await page.waitForLoadState("networkidle");
+async function gotoReady(page: Page, path: string, ready: Locator) {
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+  await expect(ready).toBeVisible();
 }
 
 async function loginStaff(
   page: Page,
   role: "admin" | "team_lead" | "volunteer",
 ) {
-  await gotoHydrated(page, "/login");
+  await gotoReady(page, "/login", page.getByLabel("Email"));
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
     .getByLabel("Password")
@@ -96,7 +96,7 @@ test("public entry points and protected-route redirects", async ({
   ).toHaveCount(0);
 });
 
-test("credential forms never put secrets in the URL before hydration", async ({
+test("no-JS login shell disables controls and keeps credentials out of the URL", async ({
   browser,
 }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
@@ -104,12 +104,18 @@ test("credential forms never put secrets in the URL before hydration", async ({
   await blockRemoteRequests(page);
   const marker = "e2e-no-js-password";
 
-  await page.goto(`${env("E2E_BASE_URL")}/login`);
-  await page.getByLabel("Email").first().fill("no-js@snp.local");
-  await page.getByLabel("Password").first().fill(marker);
-  await page.getByRole("button", { name: "Sign in" }).first().click();
-  expect(page.url()).not.toContain(marker);
-  expect(new URL(page.url()).search).toBe("");
+  await page.goto(`${env("E2E_BASE_URL")}/login`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("static-login-shell")).toBeVisible();
+  await expect(page.getByLabel("Email").first()).toBeDisabled();
+  await expect(page.getByLabel("Password").first()).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Sign in" }).first()).toBeDisabled();
+
+  const url = new URL(page.url());
+  expect(url.search).toBe("");
+  expect(url.hash).toBe("");
+  expect(`${url.search}${url.hash}`).not.toContain(marker);
 
   await context.close();
 });

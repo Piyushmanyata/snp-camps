@@ -29,7 +29,6 @@ import { RETRY_EXHAUSTED_COPY } from "../src/lib/with-retries.ts";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
 const VENUE = "m2-1-empirical-challenge";

@@ -18,13 +18,13 @@ function env(name: string) {
   return value;
 }
 
-async function gotoHydrated(page: Page, path: string) {
-  await page.goto(path);
-  await page.waitForLoadState("networkidle");
+async function gotoReady(page: Page, path: string, ready: Locator) {
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+  await expect(ready).toBeVisible();
 }
 
 async function loginStaff(page: Page, role: "admin" | "volunteer") {
-  await gotoHydrated(page, "/login");
+  await gotoReady(page, "/login", page.getByLabel("Email"));
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
     .getByLabel("Password")
@@ -565,7 +565,11 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
   await loginStaff(page, "admin");
   await expect(page.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
 
-  await gotoHydrated(page, "/admin/patients");
+  await gotoReady(
+    page,
+    "/admin/patients",
+    page.getByRole("heading", { name: "Patient desk" }),
+  );
   await expect(
     page.getByRole("heading", { name: "Patient desk" }),
   ).toBeVisible();
@@ -588,7 +592,7 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
     await assertContrastAA(badge, "status badge");
   }
 
-  await gotoHydrated(page, "/admin");
+  await gotoReady(page, "/admin", page.getByRole("heading", { name: "Admin", exact: true }));
 
   // Camp set-active / delete if inactive camps exist — otherwise staff area
   const setActive = page.getByRole("button", { name: /Set active/i }).first();
@@ -608,7 +612,7 @@ test("public register + login: touch, focus, 200% text zoom operable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await gotoHydrated(page, "/register");
+  await gotoReady(page, "/register", page.getByRole("heading", { name: "Register", exact: true }));
 
   // Public registration may require camp days; still assert primary CTAs/nav
   const staffLogin = page.getByRole("link", { name: /Staff login|Sign in/i }).first();
@@ -616,10 +620,10 @@ test("public register + login: touch, focus, 200% text zoom operable", async ({
     await assertTouchTarget(staffLogin, "staff login link");
   }
 
-  await gotoHydrated(page, "/login");
   const email = page.getByLabel("Email");
   const password = page.getByLabel("Password");
   const signIn = page.getByRole("button", { name: "Sign in" });
+  await gotoReady(page, "/login", email);
   await assertTouchTarget(email, "email input");
   await assertTouchTarget(password, "password input");
   await assertTouchTarget(signIn, "Sign in");
@@ -665,7 +669,7 @@ test("print slip chrome: actions meet touch floor (screen)", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await loginStaff(page, "volunteer");
   const patientId = env("E2E_PATIENT_ID");
-  await gotoHydrated(page, `/print/${patientId}`);
+  await gotoReady(page, `/print/${patientId}`, page.getByTestId("print-sheet-button"));
 
   const printBtn = page.getByTestId("print-sheet-button");
   await expect(printBtn).toBeVisible({ timeout: 15_000 });
@@ -724,7 +728,6 @@ test("lost-paper recovery: keyboard path and touch targets", async ({ page }) =>
 
   await scanInteractiveTargets(page, "volunteer recovery surfaces");
 });
-
 
 
 

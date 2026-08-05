@@ -175,7 +175,6 @@ if (useProduction && !reuseExistingServer) {
       cwd: process.cwd(),
       env: { ...process.env, ...e2ePublicEnv },
       stdio: "inherit",
-      shell: true,
     },
   );
   if (build.status !== 0) {

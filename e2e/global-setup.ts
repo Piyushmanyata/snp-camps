@@ -36,6 +36,33 @@ function required(name: string) {
   return value;
 }
 
+export function serializeAuthError(error: unknown) {
+  const candidate =
+    error && typeof error === "object"
+      ? (error as {
+          name?: unknown;
+          status?: unknown;
+          code?: unknown;
+          message?: unknown;
+        })
+      : {};
+  return {
+    name: typeof candidate.name === "string" ? candidate.name : "Error",
+    status: typeof candidate.status === "number" ? candidate.status : null,
+    code: typeof candidate.code === "string" ? candidate.code : null,
+    message:
+      typeof candidate.message === "string" ? candidate.message : "Unknown Auth error",
+  };
+}
+
+export function authSetupError(action: string, error: unknown) {
+  const details = serializeAuthError(error);
+  return new Error(
+    `E2E Auth ${action} failed: ${JSON.stringify(details)}. ` +
+      "Start the local Supabase stack with `npx supabase start` and rerun E2E.",
+  );
+}
+
 function password() {
   return `${randomBytes(18).toString("base64url")}Aa1!`;
 }
@@ -45,16 +72,22 @@ async function listUsers(admin: SupabaseClient) {
   try {
     for (let page = 1; ; page += 1) {
       const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-      if (error || !data?.users) return users;
+      if (error) throw authSetupError("listUsers", error);
+      if (!data?.users) {
+        throw authSetupError("listUsers", new Error("No users returned"));
+      }
       users.push(...data.users);
       if (data.users.length < 1000) return users;
     }
-  } catch {
-    return users;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("E2E Auth listUsers failed:")) {
+      throw error;
+    }
+    throw authSetupError("listUsers", error);
   }
 }
 
-async function removeStaleFixtures(admin: SupabaseClient) {
+async function removeStaleFixtures(admin: SupabaseClient, existingUsers?: User[]) {
   try {
     await admin
       .from("patients")
@@ -68,7 +101,7 @@ async function removeStaleFixtures(admin: SupabaseClient) {
     // Ignore cleanup error if database is offline
   }
 
-  for (const user of await listUsers(admin)) {
+  for (const user of existingUsers ?? (await listUsers(admin))) {
     if (
       user.email?.startsWith(USER_PREFIX) ||
       user.user_metadata?.e2e_suite === "snp-camps"
@@ -230,7 +263,10 @@ export default async function globalSetup() {
   }
 
   try {
-    await removeStaleFixtures(admin);
+    // Preflight Auth before any fixture cleanup or creation so gateway failures
+    // stop with safe diagnostics instead of producing misleading fixture errors.
+    const authUsers = await listUsers(admin);
+    await removeStaleFixtures(admin, authUsers);
 
     const createStaff = async (role: "admin" | "team_lead" | "volunteer") => {
       const email = `${USER_PREFIX}${role}@snp.local`;
@@ -263,8 +299,9 @@ export default async function globalSetup() {
             user_metadata: meta,
           });
           if (updated.error || !updated.data?.user) {
-            throw new Error(
-              `E2E createStaff(${role}) reset failed: ${updated.error?.message || "no user"}`,
+            throw authSetupError(
+              `createStaff(${role}) reset`,
+              updated.error ?? new Error("No user returned"),
             );
           }
           userId = updated.data.user.id;
@@ -272,8 +309,9 @@ export default async function globalSetup() {
       }
 
       if (!userId) {
-        throw new Error(
-          `E2E createStaff(${role}) failed: ${created.error?.message || "no user"}`,
+        throw authSetupError(
+          `createStaff(${role})`,
+          created.error ?? new Error("No user returned"),
         );
       }
 
@@ -447,5 +485,4 @@ export default async function globalSetup() {
     throw error;
   }
 }
-
 

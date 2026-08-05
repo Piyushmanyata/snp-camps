@@ -4,7 +4,6 @@ import pg from "pg";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
 test("retired eKYC storage and RPC inputs are absent", async () => {
