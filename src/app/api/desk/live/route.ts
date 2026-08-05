@@ -3,7 +3,6 @@ import { loadSessionProfile } from "@/lib/auth";
 import { isCampCrew } from "@/lib/roles";
 import {
   DESK_LIVE_WAITING_LIMIT,
-  DESK_LIVE_WAITING_SELECT,
   type DeskLivePayload,
   type DeskLiveWaitingRow,
 } from "@/lib/desk-live";
@@ -62,19 +61,11 @@ export async function GET(request: Request) {
     );
   }
 
-  // Avoid exact COUNT when under the display limit: fetch limit+1 and infer.
-  const fetchLimit = DESK_LIVE_WAITING_LIMIT + 1;
   const [waitingRes, dayStatsRes] = await Promise.all([
-    supabase
-      .from("patients")
-      .select(DESK_LIVE_WAITING_SELECT)
-      .eq("camp_id", campId)
-      .eq("queue_status", "waiting")
-      // FCFS: queued_at, then reg_no, then id (#70)
-      .order("queued_at", { ascending: true, nullsFirst: false })
-      .order("reg_no", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(fetchLimit),
+    supabase.rpc("desk_waiting_queue", {
+      p_camp_id: campId,
+      p_limit: DESK_LIVE_WAITING_LIMIT + 1,
+    }),
     supabase.rpc("camp_day_stats", { p_camp_id: campId }),
   ]);
 
@@ -85,28 +76,22 @@ export async function GET(request: Request) {
     );
   }
 
-  const waitingRows = waitingRes.data || [];
+  const waitingRows = (waitingRes.data || []) as Array<{
+    id: string;
+    reg_no: number;
+    full_name: string;
+    phone: string | null;
+    waiting_total: number;
+  }>;
   const overLimit = waitingRows.length > DESK_LIVE_WAITING_LIMIT;
   const waitingSlice = overLimit
     ? waitingRows.slice(0, DESK_LIVE_WAITING_LIMIT)
     : waitingRows;
 
-  // Only pay for exact count when the queue exceeds the display window.
-  let waitingTotal = waitingSlice.length;
-  if (overLimit) {
-    const { count, error: countError } = await supabase
-      .from("patients")
-      .select("id", { count: "exact", head: true })
-      .eq("camp_id", campId)
-      .eq("queue_status", "waiting");
-    if (countError) {
-      return NextResponse.json(
-        { error: "Desk live data could not be loaded" },
-        { status: 502, headers: NO_STORE },
-      );
-    }
-    waitingTotal = count ?? waitingSlice.length;
-  }
+  const waitingTotal = Number(
+    (waitingRows[0] as { waiting_total?: number } | undefined)?.waiting_total ??
+      waitingRows.length,
+  );
 
   const waitingRaw = waitingSlice.map((row) => ({
     id: row.id,

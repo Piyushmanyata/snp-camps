@@ -58,7 +58,7 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "^8.5.19",
+    "postcss": "^8.5.25",
     "sharp": "^0.35.3"
   }
 }

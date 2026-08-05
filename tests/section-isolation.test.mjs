@@ -396,14 +396,11 @@ test("mapDbError still maps RLS without raw table names", () => {
 // W5 FCFS + amortized count
 // ---------------------------------------------------------------------------
 
-test("loadQueueSection source uses FCFS orders and DESK_LIVE_WAITING_LIMIT", () => {
+test("loadQueueSection source uses the bounded queue RPC", () => {
   const src = read("src/lib/section-reads.ts");
   assert.match(src, /DESK_LIVE_WAITING_LIMIT/);
-  assert.match(src, /\.order\("queued_at"/);
-  assert.match(src, /\.order\("reg_no"/);
-  assert.match(src, /\.order\("id"/);
-  assert.doesNotMatch(src, /count:\s*"exact"[^]*?\.limit\(100\)/);
-  assert.match(src, /count:\s*"exact",\s*head:\s*true/);
+  assert.match(src, /rpc\("desk_waiting_queue"/);
+  assert.doesNotMatch(src, /\.from\("patients"\)/);
 });
 
 test("desk-live select drops queued_at from payload columns", () => {

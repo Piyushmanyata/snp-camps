@@ -17,11 +17,16 @@ import {
 } from "../src/lib/qr.ts";
 import {
   generateStaffPassword,
-  isPasswordLongEnough,
+  isStaffPasswordStrong,
   MIN_PASSWORD_LENGTH,
-} from "../src/lib/patient-password.ts";
+} from "../src/lib/staff-password.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
+import {
+  isIsoCalendarDate,
+  validateRegistrationIdentity,
+  validateRegistrationIds,
+} from "../src/lib/registration-input.ts";
 import { queueLabel, queueTone } from "../src/lib/types.ts";
 import {
   canRegisterPatients,
@@ -259,11 +264,47 @@ test("registration number parser rejects overflow and malformed values", () => {
   assert.equal(parseRegistrationNumber(undefined), null);
 });
 
-test("password policy matches Supabase Auth minimum length", () => {
-  assert.equal(MIN_PASSWORD_LENGTH, 6);
-  assert.equal(isPasswordLongEnough("12345"), false);
-  assert.equal(isPasswordLongEnough("123456"), true);
-  assert.equal(isPasswordLongEnough(""), false);
+test("password policy matches Supabase Auth minimum and composition rules", () => {
+  assert.equal(MIN_PASSWORD_LENGTH, 12);
+  assert.equal(isStaffPasswordStrong("a".repeat(12)), false);
+  assert.equal(isStaffPasswordStrong("Aa2!" + "a".repeat(8)), true);
+  assert.equal(isStaffPasswordStrong(""), false);
+});
+
+test("registration validation shares strict IDs, dates, identity bounds, and age rules", () => {
+  const ids = validateRegistrationIds({
+    requestId: VALID_UUID,
+    campId: VALID_UUID_UPPER,
+    campDayId: VALID_UUID,
+  });
+  assert.equal(ids.ok, true);
+  assert.equal(
+    validateRegistrationIds({ requestId: "", campId: VALID_UUID, campDayId: VALID_UUID }).ok,
+    false,
+  );
+  assert.equal(isIsoCalendarDate("2024-02-29"), true);
+  assert.equal(isIsoCalendarDate("2023-02-29"), false);
+  assert.equal(isIsoCalendarDate("2999-01-01"), false);
+  assert.equal(
+    validateRegistrationIdentity({
+      fullName: "Ramesh Kumar",
+      gender: "M",
+      age: 50,
+      address: "Sikar",
+      dateOfBirth: "1976-05-15",
+      selfService: true,
+    }).ok,
+    true,
+  );
+  assert.equal(
+    validateRegistrationIdentity({
+      fullName: "Ramesh Kumar",
+      gender: "X",
+      age: 200,
+      selfService: false,
+    }).ok,
+    false,
+  );
 });
 
 test("patient URLs are staff-scan canonical and staff passwords avoid ambiguous characters", () => {
@@ -276,10 +317,12 @@ test("patient URLs are staff-scan canonical and staff passwords avoid ambiguous 
   assert.equal(patientScanUrl(id, ""), "snp:" + id);
   assert.equal(patientScanUrl("invalid-id", "https://camp.example"), "invalid-id");
 
-  assert.match(
-    generateStaffPassword(),
-    /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{14}$/,
-  );
+  for (let i = 0; i < 200; i += 1) {
+    const password = generateStaffPassword();
+    assert.equal(password.length, 16);
+    assert.equal(isStaffPasswordStrong(password), true);
+    assert.doesNotMatch(password, /[ILOilo01]/);
+  }
 });
 
 test("admin bootstrap sends its service key only to the exact Supabase project", () => {

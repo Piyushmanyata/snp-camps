@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { POST } from "../src/app/api/admin/sponsor-assets/route.ts";
+import { DELETE } from "../src/app/api/admin/sponsor-assets/[id]/route.ts";
 import { __resetCookies, __setCookies } from "./stubs/next-headers.mjs";
 import {
   __resetAuthMock,
@@ -41,6 +42,122 @@ function formRequest(campId) {
     method: "POST",
     body: form,
   });
+}
+
+function lifecycleClient(options = {}) {
+  const state = {
+    asset: null,
+    updates: [],
+    cleanupDeleted: false,
+    ...options,
+  };
+  const query = (result, onResolve) => {
+    const filters = {};
+    const chain = {
+      eq(column, value) {
+        filters[column] = value;
+        return chain;
+      },
+      async maybeSingle() {
+        return typeof result === "function" ? result(filters) : result;
+      },
+      then(resolve, reject) {
+        return Promise.resolve(
+          typeof result === "function" ? result(filters) : result,
+        ).then(resolve, reject);
+      },
+    };
+    if (onResolve) chain.then = (resolve, reject) =>
+      Promise.resolve(onResolve(filters)).then(resolve, reject);
+    return chain;
+  };
+  const mutation = (kind, values) => {
+    const filters = {};
+    const chain = {
+      eq(column, value) {
+        filters[column] = value;
+        return chain;
+      },
+      then(resolve, reject) {
+        const result = {
+          error:
+            kind === "delete"
+              ? options.cleanupError ?? null
+              : kind === "update"
+                ? options.updateErrors?.shift?.() ?? null
+                : null,
+        };
+        if (!result.error && kind === "delete") state.cleanupDeleted = true;
+        if (!result.error && kind === "update") {
+          state.asset = { ...state.asset, ...values };
+          state.updates.push(values);
+        }
+        return Promise.resolve(result).then(resolve, reject);
+      },
+    };
+    return chain;
+  };
+  return {
+    state,
+    from(table) {
+      if (table === "camps") {
+        return {
+          select() {
+            return {
+              eq() {
+                return { maybeSingle: async () => ({ data: { id: CAMP_ID }, error: null }) };
+              },
+            };
+          },
+        };
+      }
+      if (table !== "sponsor_assets") throw new Error(`unexpected table ${table}`);
+      return {
+        insert: async (values) => {
+          state.asset = { ...values, cleanup_attempts: 0 };
+          return { error: options.pendingError ?? null };
+        },
+        update(values) {
+          return mutation("update", values);
+        },
+        delete() {
+          return mutation("delete");
+        },
+        select() {
+          return query(() => ({
+            data: state.asset
+              ? { cleanup_attempts: state.asset.cleanup_attempts ?? 0 }
+              : null,
+            error: null,
+          }));
+        },
+      };
+    },
+    storage: {
+      from() {
+        return {
+          upload: async () => ({ error: options.uploadError ?? null }),
+          remove: async () => ({ error: options.storageError ?? null }),
+        };
+      },
+    },
+    rpc: async (fn, args) => {
+      if (fn === "begin_sponsor_asset_deletion") {
+        if (options.beginError) return { data: null, error: options.beginError };
+        state.asset = {
+          ...(state.asset ?? {}),
+          id: args.p_asset_id,
+          object_key: "camp/logo.png",
+          state: "deleting",
+        };
+        return { data: options.beginData ?? { object_key: "camp/logo.png", state: "deleting" }, error: null };
+      }
+      if (fn === "finish_sponsor_asset_deletion") {
+        return { data: null, error: options.finishError ?? null };
+      }
+      throw new Error(`unexpected RPC ${fn}`);
+    },
+  };
 }
 
 test.beforeEach(() => {
@@ -111,4 +228,61 @@ test("non-UUID campId returns 400 and never touches storage", async () => {
   const res = await POST(formRequest("not-uuid"));
   assert.equal(res.status, 400);
   assert.equal(storageCalls, 0);
+});
+
+test("upload fault plus cleanup fault leaves a pending reconciliation marker", async () => {
+  signInAdmin();
+  const client = lifecycleClient({
+    uploadError: { message: "storage unavailable" },
+    cleanupError: { message: "database unavailable" },
+  });
+  __setServiceRoleClient(client);
+  const res = await POST(formRequest(CAMP_ID));
+  assert.equal(res.status, 502);
+  assert.deepEqual(client.state.updates, [{ last_error_code: "UPLOAD_OR_CLEANUP_FAILED" }]);
+});
+
+test("ready transition fault records a pending reconciliation marker", async () => {
+  signInAdmin();
+  const client = lifecycleClient({
+    updateErrors: [{ message: "ready write failed" }, null],
+  });
+  __setServiceRoleClient(client);
+  const res = await POST(formRequest(CAMP_ID));
+  assert.equal(res.status, 502);
+  assert.deepEqual(client.state.updates, [{ last_error_code: "UPLOAD_OR_CLEANUP_FAILED" }]);
+});
+
+function deleteRequest(id = "33333333-3333-4333-8333-333333333333") {
+  return new Request(`http://localhost/api/admin/sponsor-assets/${id}`, {
+    method: "DELETE",
+  });
+}
+
+test("storage delete fault increments cleanup state and keeps deletion retryable", async () => {
+  signInAdmin();
+  const client = lifecycleClient({
+    storageError: { message: "object storage timeout" },
+  });
+  __setServiceRoleClient(client);
+  const res = await DELETE(deleteRequest(), {
+    params: Promise.resolve({ id: "33333333-3333-4333-8333-333333333333" }),
+  });
+  assert.equal(res.status, 502);
+  assert.deepEqual(client.state.updates, [
+    { cleanup_attempts: 1, last_error_code: "STORAGE_DELETE_FAILED" },
+  ]);
+});
+
+test("database finish fault leaves the deleting state for retry", async () => {
+  signInAdmin();
+  const client = lifecycleClient({
+    finishError: { message: "database timeout" },
+  });
+  __setServiceRoleClient(client);
+  const res = await DELETE(deleteRequest(), {
+    params: Promise.resolve({ id: "33333333-3333-4333-8333-333333333333" }),
+  });
+  assert.equal(res.status, 502);
+  assert.deepEqual(client.state.updates, []);
 });

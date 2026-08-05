@@ -38,7 +38,6 @@ test("served CSP protects scripts and the production page hydrates cleanly", asy
   expect(scriptSrc).not.toMatch(/'unsafe-inline'/);
   expect(scriptSrc).not.toMatch(/'strict-dynamic'/);
 
-  await page.waitForLoadState("networkidle");
   await expect(
     page.getByRole("heading", { name: "Medical Camp Desk" }),
   ).toBeVisible();

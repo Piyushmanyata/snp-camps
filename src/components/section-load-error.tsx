@@ -21,7 +21,7 @@ export function SectionLoadError({
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="space-y-3 py-2" role="alert">
+    <div className="space-y-3 py-2">
       <ErrorBox message={message} />
       <Button
         type="button"

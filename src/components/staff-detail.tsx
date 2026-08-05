@@ -25,18 +25,13 @@ type PatientRow = {
   id: string;
   reg_no: number;
   full_name: string;
-  phone: string | null;
   queue_status: string;
-  seen_at?: string | null;
   created_at?: string;
 };
 
 type Kpis = {
   total: number;
-  today: number;
-  waiting?: number;
   seen?: number;
-  label: string;
 };
 
 export function StaffDetailPanel({
@@ -69,17 +64,22 @@ export function StaffDetailPanel({
         const res = await fetch(
           `/api/admin/staff-detail?id=${encodeURIComponent(person.id)}&role=${role}`,
         );
-        const json = (await res.json()) as {
-          error?: string;
-          kpis?: Kpis;
-          patients?: PatientRow[];
-        };
         if (cancelled) return;
         if (!res.ok) {
-          setError(json.error || "Could not load details");
+          setError(
+            res.status === 403
+              ? "You are not allowed to view these staff details."
+              : res.status === 404
+                ? "Staff member not found."
+                : "Staff details could not be loaded. Try again.",
+          );
           setLoading(false);
           return;
         }
+        const json = (await res.json()) as {
+          kpis?: Kpis;
+          patients?: PatientRow[];
+        };
         setKpis(json.kpis || null);
         setPatients(json.patients || []);
       } catch {
@@ -125,15 +125,13 @@ export function StaffDetailPanel({
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat label={kpis?.label || "Total"} value={kpis?.total ?? 0} tone="ok" />
-            <Stat label="Handled today" value={kpis?.today ?? 0} />
-            <Stat label="In queue" value={kpis?.waiting ?? 0} tone="wait" />
+            <Stat label="Registered" value={kpis?.total ?? 0} tone="ok" />
             <Stat label="Seen" value={kpis?.seen ?? 0} tone="ok" />
           </div>
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-              Patients handled
+              Patients registered by this staff member
             </p>
             {patients.length ? (
               <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border bg-white">
@@ -148,15 +146,14 @@ export function StaffDetailPanel({
                         {p.full_name}
                       </p>
                       <p className="text-xs text-muted">
-                        {p.phone || "—"}
                         {p.created_at
-                            ? ` · ${new Date(p.created_at).toLocaleString("en-IN", {
+                          ? new Date(p.created_at).toLocaleString("en-IN", {
                                 hour: "2-digit",
                                 minute: "2-digit",
                                 day: "numeric",
                                 month: "short",
-                              })}`
-                            : ""}
+                              })
+                          : "Registration time unavailable"}
                       </p>
                     </div>
                     <Badge tone={queueTone(p.queue_status)}>
@@ -166,7 +163,7 @@ export function StaffDetailPanel({
                 ))}
               </ul>
             ) : (
-              <EmptyState>No patients handled yet.</EmptyState>
+              <EmptyState>No patients registered yet.</EmptyState>
             )}
           </div>
         </>

@@ -2,8 +2,9 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-The app tracks a queue. **The printed prescription is the clinical record** — no
-diagnosis, medicine or treatment data is stored. See
+The app tracks a queue. **The printed prescription remains the prescribing source
+of truth**; the separate Clinical Desk stores an operational transcription and
+immutable fulfilment/follow-up history. See
 [`docs/adr/0008-printing-queues-the-patient.md`](docs/adr/0008-printing-queues-the-patient.md).
 
 ## Camp flow
@@ -12,9 +13,13 @@ diagnosis, medicine or treatment data is stored. See
    - **Desk (staff):** Full name + age required; phone, Aadhaar last-4, gender, address optional. Scanning the card's QR fills the form and locks the identity fields.
    - **Self-registration (patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, patient QR, camp day, venue, status link) is the receipt. Queue status is **always `registered`**, never `waiting`. Needs only `AADHAAR_HASH_PEPPER`.
 2. **Print prescription** → scan the patient QR or type the reg number. **Printing is what puts them in the queue** (`registered` → `waiting`). Line order is by print time. A reprint keeps their original place and never re-queues them.
-3. The doctor writes on the printed form by hand. The app is not involved.
-4. **Mark seen** → scan, type, or tap the live queue. Records the time and the volunteer who scanned. A double scan is a no-op; a mis-scan can be undone for ten minutes.
-5. **Patient status (passwordless):** `/s/<token>` with no sign-in.
+3. The doctor writes on the printed form by hand.
+4. **Clinical Desk:** a separate Clinical Desk Operator may transcribe the
+   paper outcome and record Medicine, Specs, or OT fulfilment/follow-up history
+   for an eligible `seen` registration. This operational record never replaces
+   the paper prescription.
+5. **Mark seen** → scan, type, or tap the live queue. Records the time and the volunteer who scanned. A double scan is a no-op; a mis-scan can be undone for ten minutes.
+6. **Patient status (passwordless):** `/s/<token>` with no sign-in.
 
 Seat caps apply to **pre-registration only** — a walk-in at the desk is never turned away.
 
@@ -24,8 +29,10 @@ Seat caps apply to **pre-registration only** — a walk-in at the desk is never 
 
 ## Auth model
 
-**Staff** (admin, team lead, volunteer) sign in with email + password at `/login`.
-There is no doctor login role — see ADR 0008.
+**Registration Staff** (admin, team lead, volunteer) sign in with email + password
+at `/login`. A **Clinical Desk Operator** also signs in at `/login`, but has a
+separate least-privilege clinical surface and cannot register patients. There is
+no doctor login role — see ADR 0008.
 
 **Patients** do not authenticate. Self-registration needs no OTP and creates no
 account or session; the Aadhaar card QR is parsed offline and assumed authentic (see
@@ -208,6 +215,7 @@ seconds before treating the result as a capacity signal.
 | Admin | Camps, days, staff, search, counts, camp settings, the same desk as a volunteer |
 | Team Lead | Everything a volunteer does, plus creating volunteers on their team and seeing team KPIs |
 | Volunteer | Register, print prescription (queues the patient), mark seen, live queue |
+| Clinical Desk Operator | Eligible `seen` registration lookup, operational transcription, fulfilment and follow-up records; no registration-desk access |
 | Patient | No app login; self-registration by Aadhaar card scan; staff-scan QR; passwordless status at `/s/<token>` |
 
 ## Privacy
@@ -224,6 +232,10 @@ last four digits are stored.
 The scan is not cryptographically verified, so the data carries the same assurance as
 typing (ADR 0004). Set `AADHAAR_HASH_PEPPER` so scanned registrations can compute the
 Person duplicate key.
+The passwordless status page and status link contain only the registration number,
+queue state/position, camp/day and venue; they do not expose patient name, contact
+details, Aadhaar data, date of birth, or audit fields. Patients can use the public
+`/lookup` form to resolve a status link, but lookup is token resolution—not login.
 
 ### Registration SMS via MSG91 (optional)
 

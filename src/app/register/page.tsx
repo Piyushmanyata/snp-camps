@@ -4,15 +4,11 @@ import { getActiveCampSnapshotFresh } from "@/lib/camp";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SignOutButton } from "@/components/sign-out";
-import { SeatBoard } from "@/components/seat-board";
+import { RegisterSeatBoardLazy as SeatBoard } from "@/components/register-lazy";
 
 export default async function RegisterPage() {
-  const [session, camp] = await Promise.all([
-    getSessionProfile(),
-    getActiveCampSnapshotFresh(),
-  ]);
+  const session = await getSessionProfile();
   const { userId, profile } = session;
-  const days = camp?.days || [];
   const role = profile?.role;
 
   const staff = isStaff(role);
@@ -45,8 +41,14 @@ export default async function RegisterPage() {
       >
         <Card>
           <EmptyState>
-            Registration is at the camp desk only. Please go to a volunteer —
-            there is no public online registration or patient login.
+            Registration desk par hoti hai. Patient khud register karna chahein to{" "}
+            <Link
+              href="/self-register"
+              className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
+            >
+              self-registration
+            </Link>{" "}
+            kholen.
           </EmptyState>
           <Link
             href="/"
@@ -58,6 +60,9 @@ export default async function RegisterPage() {
       </Shell>
     );
   }
+
+  const camp = await getActiveCampSnapshotFresh();
+  const days = camp?.days || [];
 
   return (
     <Shell

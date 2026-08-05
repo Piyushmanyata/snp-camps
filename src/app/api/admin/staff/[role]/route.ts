@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { randomInt } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
+import { generateStaffPassword } from "@/lib/staff-password";
 
 export type StaffRole = "volunteer" | "team_lead" | "clinical_operator";
 
@@ -15,18 +15,23 @@ const STAFF_ROLES = new Set<string>([
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** Shareable temporary password: 14 chars, no ambiguous glyphs. */
-function generateTemporaryPassword(length = 14): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let out = "";
-  for (let i = 0; i < length; i++) out += alphabet.charAt(randomInt(alphabet.length));
-  return out;
-}
-
 function roleLabel(role: StaffRole): string {
   if (role === "team_lead") return "Team Lead";
   if (role === "clinical_operator") return "Clinical Desk Operator";
   return "Volunteer";
+}
+
+const SAFE_RECONCILIATION_CODE = "RECONCILIATION_REQUIRED";
+
+function reconciliationResponse(label: string) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: SAFE_RECONCILIATION_CODE,
+      error: `${label} account needs reconciliation before it can be retried.`,
+    },
+    { status: 503 },
+  );
 }
 
 async function parseRole(
@@ -166,7 +171,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
     return NextResponse.json({ error: "Invalid Team Lead" }, { status: 400 });
   }
 
-  const password = generateTemporaryPassword();
+  const password = generateStaffPassword();
 
   const admin = createServiceRoleClient();
   if (!admin) {
@@ -200,14 +205,109 @@ export async function POST(req: Request, { params }: RouteCtx) {
 
   if (createErr) {
     const msg = createErr.message.toLowerCase();
+    if (msg.includes("already")) {
+      const { data: existingProfile, error: existingProfileError } = await admin
+        .from("profiles")
+        .select("id, role, disabled_at")
+        .eq("email", email)
+        .maybeSingle();
+      if (existingProfileError) {
+        return NextResponse.json(
+          { error: `${label} account could not be checked. Try again.` },
+          { status: 502 },
+        );
+      }
+      if (existingProfile) {
+        return NextResponse.json(
+          {
+            error:
+              "That email is already registered. Share their existing login or use a different email.",
+          },
+          { status: 409 },
+        );
+      }
+
+      // An Auth user without a profile is the recoverable orphan left by a
+      // partial provisioning transaction. Reconcile only that exact email;
+      // never take over an account that has a usable profile.
+      const { data: users, error: usersError } = await admin.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000,
+      });
+      if (usersError) {
+        return NextResponse.json(
+          { error: `${label} account could not be reconciled. Try again.` },
+          { status: 502 },
+        );
+      }
+      const orphan = users.users.find(
+        (user) => user.email?.trim().toLowerCase() === email,
+      );
+      if (!orphan) {
+        return NextResponse.json(
+          {
+            error:
+              "That email is already registered. Share their existing login or use a different email.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const { error: updateOrphanError } = await admin.auth.admin.updateUserById(
+        orphan.id,
+        {
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+        },
+      );
+      if (updateOrphanError) {
+        console.error("[admin-staff] orphan Auth user update failed", {
+          authUserId: orphan.id,
+          code: updateOrphanError.code,
+        });
+        return reconciliationResponse(label);
+      }
+
+      const { error: reconciledProfileError } = await admin
+        .from("profiles")
+        .insert({
+          id: orphan.id,
+          role,
+          full_name: fullName,
+          email,
+          team_lead_id: assignedTeamLeadId,
+        });
+      if (reconciledProfileError) {
+        console.error("[admin-staff] orphan profile reconciliation failed", {
+          authUserId: orphan.id,
+          code: reconciledProfileError.code,
+        });
+        return reconciliationResponse(label);
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          reconciled: true,
+          temporaryPassword: password,
+          staff: {
+            id: orphan.id,
+            full_name: fullName,
+            email,
+            role,
+            team_lead_id: assignedTeamLeadId,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     return NextResponse.json(
       {
-        error: msg.includes("already")
-          ? "That email is already registered. Share their existing login or use a different email."
-          : mapDbError(createErr, {
-              context: `admin-staff.${role}.create-user`,
-              fallback: `${label} account could not be created. Try again.`,
-            }),
+        error: mapDbError(createErr, {
+          context: `admin-staff.${role}.create-user`,
+          fallback: `${label} account could not be created. Try again.`,
+        }),
       },
       { status: 400 },
     );
@@ -217,7 +317,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
     return NextResponse.json({ error: "No user created" }, { status: 400 });
   }
 
-  const { error: profileErr } = await admin.from("profiles").upsert({
+  const { error: profileErr } = await admin.from("profiles").insert({
     id: created.user.id,
     role,
     full_name: fullName,
@@ -226,7 +326,14 @@ export async function POST(req: Request, { params }: RouteCtx) {
   });
 
   if (profileErr) {
-    await admin.auth.admin.deleteUser(created.user.id);
+    const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);
+    if (rollbackError) {
+      console.error("[admin-staff] Auth rollback failed", {
+        authUserId: created.user.id,
+        code: rollbackError.code,
+      });
+      return reconciliationResponse(label);
+    }
     return NextResponse.json(
       { error: `${label} account could not be provisioned. Try again.` },
       { status: 500 },
@@ -363,7 +470,7 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
     );
   }
 
-  const temporaryPassword = generateTemporaryPassword();
+  const temporaryPassword = generateStaffPassword();
   const { error: resetError } = await admin.auth.admin.updateUserById(id, {
     password: temporaryPassword,
   });

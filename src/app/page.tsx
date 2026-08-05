@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getSessionProfile, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { ActionCard, Card, StepList } from "@/components/ui";
 import { SeatBoard } from "@/components/seat-board";
 
 export default async function HomePage() {
+  await connection();
   const [session, snapshot] = await Promise.all([
     getSessionProfile(),
     getActiveCampSnapshot(),

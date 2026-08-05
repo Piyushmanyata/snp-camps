@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  isPasswordLongEnough,
+  isStaffPasswordStrong,
   MIN_PASSWORD_LENGTH,
-} from "@/lib/patient-password";
+} from "@/lib/staff-password";
 import { mapAuthError } from "@/lib/public-error";
 import {
   Button,
@@ -37,8 +37,10 @@ export function ChangePasswordForm({
     setError(null);
     setSuccess(null);
 
-    if (!newPassword || !isPasswordLongEnough(newPassword)) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    if (!isStaffPasswordStrong(newPassword)) {
+      setError(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters with a lowercase letter, uppercase letter, number, and symbol.`,
+      );
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -83,7 +85,7 @@ export function ChangePasswordForm({
         autoComplete="new-password"
         value={newPassword}
         onChange={(e) => setNewPassword(e.target.value)}
-        hint={`At least ${MIN_PASSWORD_LENGTH} characters`}
+        hint={`At least ${MIN_PASSWORD_LENGTH} characters; include lowercase, uppercase, number, and symbol`}
         minLength={MIN_PASSWORD_LENGTH}
         required
       />

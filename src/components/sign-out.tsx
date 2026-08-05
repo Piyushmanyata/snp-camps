@@ -74,7 +74,7 @@ export function SignOutButton({ place = "block" }: SignOutButtonProps) {
         {error ? (
           <p
             role="alert"
-            className="max-w-[10rem] text-right text-[10px] font-medium text-red-700"
+            className="max-w-[10rem] text-right text-[0.8125rem] font-medium text-red-700"
           >
             {error}
           </p>

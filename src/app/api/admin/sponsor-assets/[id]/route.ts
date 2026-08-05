@@ -15,10 +15,10 @@ export async function GET(
   if (!admin) return new NextResponse(null, { status: 503 });
   const { data: asset } = await admin
     .from("sponsor_assets")
-    .select("object_key,mime_type")
+    .select("object_key,mime_type,state")
     .eq("id", id)
     .maybeSingle();
-  if (!asset) return new NextResponse(null, { status: 404 });
+  if (!asset || asset.state !== "ready") return new NextResponse(null, { status: 404 });
   const { data, error } = await admin.storage
     .from("prescription-sponsors")
     .download(asset.object_key);
@@ -42,48 +42,65 @@ export async function DELETE(
   if (!isPatientUuid(id)) return NextResponse.json({ error: "Asset not found." }, { status: 404 });
   const admin = createServiceRoleClient();
   if (!admin) return NextResponse.json({ error: "Asset service unavailable." }, { status: 503 });
+  const { data: beginData, error: beginError } = await admin.rpc(
+    "begin_sponsor_asset_deletion",
+    { p_asset_id: id },
+  );
+  if (beginError) {
+    const message = String(beginError.message ?? "");
+    if (/not found/i.test(message)) {
+      return NextResponse.json({ error: "Asset not found." }, { status: 404 });
+    }
+    if (/referenced by a template/i.test(message)) {
+      return NextResponse.json(
+        { error: "Remove this logo from every draft and published template first." },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: "Asset deletion could not start." }, { status: 409 });
+  }
 
-  const { data: asset, error: assetError } = await admin
-    .from("sponsor_assets")
-    .select("id,camp_id,object_key")
-    .eq("id", id)
-    .maybeSingle();
-  if (assetError || !asset) return NextResponse.json({ error: "Asset not found." }, { status: 404 });
-
-  const { data: versions, error: versionsError } = await admin
-    .from("prescription_template_versions")
-    .select("template,status")
-    .eq("camp_id", asset.camp_id)
-    .in("status", ["draft", "published"]);
-  if (versionsError) return NextResponse.json({ error: "Asset references could not be checked." }, { status: 500 });
-
-  const assetUrl = `/api/admin/sponsor-assets/${id}`;
-  const isReferenced = (versions ?? []).some((version) => {
-    const template = version.template as
-      | { sponsorLogos?: unknown; sponsorLogoUrl?: unknown }
-      | null;
-    const logos = template?.sponsorLogos;
-    return (
-      (Array.isArray(logos) && logos.includes(assetUrl)) ||
-      template?.sponsorLogoUrl === assetUrl
-    );
-  });
-  if (isReferenced) {
-    return NextResponse.json(
-      { error: "Remove this logo from every draft and published template first." },
-      { status: 409 },
-    );
+  const beginRow = (Array.isArray(beginData) ? beginData[0] : beginData) as
+    | { object_key?: string; state?: string }
+    | null;
+  if (!beginRow?.object_key || beginRow.state !== "deleting") {
+    return NextResponse.json({ error: "Asset deletion could not start." }, { status: 409 });
   }
 
   const { error: storageError } = await admin.storage
     .from("prescription-sponsors")
-    .remove([asset.object_key]);
-  if (storageError) return NextResponse.json({ error: "Asset storage could not be removed." }, { status: 500 });
+    .remove([beginRow.object_key]);
+  const storageNotFound =
+    storageError && /not found|not_found|404/i.test(String(storageError.message ?? storageError));
+  if (storageError && !storageNotFound) {
+    const { data: current } = await admin
+      .from("sponsor_assets")
+      .select("cleanup_attempts")
+      .eq("id", id)
+      .eq("state", "deleting")
+      .maybeSingle();
+    await admin
+      .from("sponsor_assets")
+      .update({
+        cleanup_attempts: Number(current?.cleanup_attempts ?? 0) + 1,
+        last_error_code: "STORAGE_DELETE_FAILED",
+      })
+      .eq("id", id)
+      .eq("state", "deleting");
+    return NextResponse.json(
+      { error: "Asset storage could not be removed. Retry deletion." },
+      { status: 502 },
+    );
+  }
 
-  const { error: deleteError } = await admin
-    .from("sponsor_assets")
-    .delete()
-    .eq("id", id);
-  if (deleteError) return NextResponse.json({ error: "Asset record could not be removed." }, { status: 500 });
+  const { error: finishError } = await admin.rpc("finish_sponsor_asset_deletion", {
+    p_asset_id: id,
+  });
+  if (finishError) {
+    return NextResponse.json(
+      { error: "Asset record could not be removed. Retry deletion." },
+      { status: 502 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }

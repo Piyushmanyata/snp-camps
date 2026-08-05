@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile, readJsonBody } from "@/lib/auth";
-import { validateHouseholdPhone } from "@/lib/phone";
-import { isPatientUuid } from "@/lib/qr";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import {
+  validateRegistrationIds,
+  validateRegistrationIdentity,
+  validateRegistrationPhone,
+} from "@/lib/registration-input";
 
 type Body = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -23,7 +26,7 @@ export async function POST(request: Request) {
   if (!body) return fail("Invalid JSON body");
   const attempts = Number(body.failedScanAttempts);
   const reason = text(body.reason).slice(0, 160);
-  const phone = validateHouseholdPhone(text(body.phone));
+  const phone = validateRegistrationPhone(body.phone);
   if (!Number.isInteger(attempts) || attempts < 3 || !reason || !phone.ok) {
     return fail(
       "Three failed scans, a reason, and a valid household phone are required.",
@@ -35,23 +38,24 @@ export async function POST(request: Request) {
   const fullName = text(body.fullName);
   const gender = text(body.gender).toUpperCase();
   const age = Number(body.age);
-  if (
-    !isPatientUuid(requestId) ||
-    !isPatientUuid(campId) ||
-    !isPatientUuid(campDayId)
-  ) {
+  const idValidation = validateRegistrationIds({
+    requestId,
+    campId,
+    campDayId,
+  });
+  const identityValidation = validateRegistrationIdentity({
+    fullName,
+    displayName: body.displayName,
+    address: body.address,
+    gender,
+    age,
+    dateOfBirth: body.dateOfBirth,
+    selfService: false,
+  });
+  if (!idValidation.ok || !identityValidation.ok) {
     return fail(
       "Registration session is invalid. Reload the desk and try again.",
     );
-  }
-  if (!fullName) {
-    return fail("Enter the patient's full name.");
-  }
-  if (!["M", "F", "O"].includes(gender)) {
-    return fail("Select M, F or O.");
-  }
-  if (!Number.isInteger(age) || age < 0 || age > 149) {
-    return fail("Enter an age between 0 and 149.");
   }
   const supabase = createServiceRoleClient();
   if (!supabase) return fail("Registration service unavailable.", 503);

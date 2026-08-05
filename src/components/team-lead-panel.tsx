@@ -60,13 +60,13 @@ export function TeamLeadPanel({
         </SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-xs font-semibold text-muted uppercase">{myTeamLeadRow?.metric_label ?? "Registered"}</p>
+            <p className="text-[0.8125rem] font-semibold uppercase text-muted">{myTeamLeadRow?.metric_label ?? "Registered"}</p>
             <p className="text-2xl font-extrabold text-brand tabular mt-1">
               {myTeamLeadRow?.distinct_patients ?? 0}
             </p>
           </div>
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-xs font-semibold text-muted uppercase">Team Headcount</p>
+            <p className="text-[0.8125rem] font-semibold uppercase text-muted">Team Headcount</p>
             <p className="text-2xl font-extrabold text-foreground tabular mt-1">
               {activeTeamSize}
             </p>
@@ -108,7 +108,7 @@ export function TeamLeadPanel({
             Team Lead leaderboard · outcomes
           </h3>
           {teamLeads.length === 0 ? (
-            <p className="text-xs text-muted">No team leads recorded.</p>
+            <p className="text-[0.8125rem] text-muted">No team leads recorded.</p>
           ) : (
             <div className="space-y-2">
               {teamLeads.map((tl, rank) => (
@@ -121,18 +121,18 @@ export function TeamLeadPanel({
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="w-6 text-center text-xs font-bold text-muted">
+                    <span className="w-6 text-center text-[0.8125rem] font-bold text-muted">
                       #{rank + 1}
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{tl.full_name}</p>
-                      <p className="text-[11px] text-muted">{tl.team_headcount} volunteers</p>
+                      <p className="text-[0.8125rem] text-muted">{tl.team_headcount} volunteers</p>
                     </div>
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular">
                     <span className="block text-base">{tl.distinct_patients}</span>
-                    <span className="block text-[11px]">{tl.metric_label}</span>
-                    <span className="block text-[10px] font-medium text-muted">Registered {tl.registered_count} · Seen {tl.seen_count}</span>
+                    <span className="block text-[0.8125rem]">{tl.metric_label}</span>
+                    <span className="block text-[0.8125rem] font-medium text-muted">Registered {tl.registered_count} · Seen {tl.seen_count}</span>
                   </span>
                 </div>
               ))}
@@ -146,7 +146,7 @@ export function TeamLeadPanel({
             Volunteer leaderboard · outcomes
           </h3>
           {volunteers.length === 0 ? (
-            <p className="text-xs text-muted">No volunteers recorded.</p>
+            <p className="text-[0.8125rem] text-muted">No volunteers recorded.</p>
           ) : (
             <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
               {volunteers.map((vol, rank) => (
@@ -155,7 +155,7 @@ export function TeamLeadPanel({
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-border bg-card p-3 text-foreground"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="w-6 text-center text-xs font-bold text-muted">
+                    <span className="w-6 text-center text-[0.8125rem] font-bold text-muted">
                       #{rank + 1}
                     </span>
                     <div className="min-w-0">
@@ -164,8 +164,8 @@ export function TeamLeadPanel({
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular text-brand">
                     <span className="block text-base">{vol.distinct_patients}</span>
-                    <span className="block text-[11px]">{vol.metric_label}</span>
-                    <span className="block text-[10px] font-medium text-muted">Registered {vol.registered_count} · Seen {vol.seen_count}</span>
+                    <span className="block text-[0.8125rem]">{vol.metric_label}</span>
+                    <span className="block text-[0.8125rem] font-medium text-muted">Registered {vol.registered_count} · Seen {vol.seen_count}</span>
                   </span>
                 </div>
               ))}

@@ -11,8 +11,7 @@ const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
-const KPI_SIGNATURE =
-  "public.staff_person_kpis(uuid,text,uuid,timestamp with time zone,text)";
+const KPI_SIGNATURE = "public.staff_person_kpis(uuid,text,uuid,text)";
 
 /** @type {pg.Client | null} */
 let client = null;
@@ -142,7 +141,7 @@ async function personKpis(callerId, targetId, role, campId) {
   return asUser(
     callerId,
     `select * from public.staff_person_kpis(
-       $1::uuid, $2::text, $3::uuid, now() - interval '1 hour', 'person'
+       $1::uuid, $2::text, $3::uuid, 'person'
      )`,
     [targetId, role, campId],
   );
@@ -154,13 +153,13 @@ async function leaderboard(callerId, campId) {
     `select staff_id, full_name, staff_role::text, distinct_patients,
             team_lead_id, team_headcount
      from public.staff_person_kpis(
-       null, null, $1::uuid, null, 'leaderboard'
+       null, null, $1::uuid, 'leaderboard'
      )`,
     [campId],
   );
 }
 
-test("catalog exposes one five-argument KPI contract and no leaderboard RPC", async (t) => {
+test("catalog exposes one four-argument KPI contract and no leaderboard RPC", async (t) => {
   if (skipIfNoDb(t)) return;
   const { rows } = await client.query(
     `select
@@ -169,9 +168,9 @@ test("catalog exposes one five-argument KPI contract and no leaderboard RPC", as
            and p.proname = 'staff_person_kpis'
        )::integer as overloads,
        to_regprocedure($1) is not null as final_signature,
-       to_regprocedure(
-         'public.staff_person_kpis(uuid,text,uuid,timestamptz)'
-       ) is null as old_signature_absent,
+        to_regprocedure(
+          'public.staff_person_kpis(uuid,text,uuid,timestamptz,text)'
+        ) is null as old_signature_absent,
        to_regprocedure(
          'public.staff_leaderboard(uuid,uuid)'
        ) is null as leaderboard_absent,

@@ -158,16 +158,19 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
    * terminal, because retrying will never help.
    */
   const handleOutcome = useCallback(
-    async (outcome: DecodeOutcome): Promise<boolean> => {
+    async (outcome: DecodeOutcome, token: number): Promise<boolean> => {
+      if (!sessionRef.current.isCurrent(token)) return true;
       if (outcome.status === "none") return false;
 
       if (outcome.status === "rejected") {
+        if (!sessionRef.current.isCurrent(token)) return true;
         setScanError(outcome.message);
         setScanDiagnostic(outcome.diagnostic);
         stop();
         return true;
       }
       if (outcome.status === "malformed") {
+        if (!sessionRef.current.isCurrent(token)) return true;
         setScanError(outcome.message);
         setScanDiagnostic(outcome.diagnostic);
         return false;
@@ -177,6 +180,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         outcome.parsed,
         outcome.diagnostic,
       );
+      if (!sessionRef.current.isCurrent(token)) return true;
       if (accepted) {
         setScanError(null);
         setScanDiagnostic(null);
@@ -233,9 +237,11 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         clientPromise,
         streamPromise,
       ]);
+      if (!sessionRef.current.isCurrent(token)) return;
       client.warmUpDecoder();
 
       if (!stream || !sessionRef.current.isCurrent(token)) {
+        if (!sessionRef.current.isCurrent(token)) return;
         setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
         setIsScanning(false);
         return;
@@ -244,11 +250,13 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       // Continuous autofocus is the single biggest factor in whether a dense
       // Aadhaar QR resolves at all.
       await applyBestEffortCameraConstraints(stream);
+      if (!sessionRef.current.isCurrent(token)) return;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
       }
+      if (!sessionRef.current.isCurrent(token)) return;
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -318,12 +326,13 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                 const outcome = await client.decodeFrame(image, thorough);
                 consecutiveDecodeErrors = 0;
                 if (!sessionRef.current.isCurrent(token)) return;
-                if (await handleOutcome(outcome)) return;
+                if (await handleOutcome(outcome, token)) return;
               }
             }
           } catch {
             consecutiveDecodeErrors += 1;
             if (consecutiveDecodeErrors >= 3) {
+              if (!sessionRef.current.isCurrent(token)) return;
               client.disposeDecoder();
               setScanError(
                 `Scanner could not start on this phone. Use an Aadhaar photo, or ${MANUAL_HINT.toLowerCase()}`,
@@ -347,6 +356,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         void processFrame();
       });
     } catch {
+      if (!sessionRef.current.isCurrent(token)) return;
       sessionRef.current.invalidate();
       setScanError(`Camera unavailable or permission denied. ${MANUAL_HINT}`);
       setIsScanning(false);
@@ -419,7 +429,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
           if (!sessionRef.current.isCurrent(token)) return;
           if (outcome.status !== "none") {
             setIsReadingPhoto(false);
-            await handleOutcome(outcome);
+            await handleOutcome(outcome, token);
             return;
           }
         }
@@ -449,16 +459,21 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         return;
       }
       stop();
+      const token = sessionRef.current.begin();
       setScanError(null);
       setScanDiagnostic(null);
       setIsReadingUsb(true);
       try {
         const client = await loadDecodeClient();
-        await handleOutcome(await client.decodePayload(payload));
+        if (!sessionRef.current.isCurrent(token)) return;
+        const outcome = await client.decodePayload(payload);
+        if (!sessionRef.current.isCurrent(token)) return;
+        await handleOutcome(outcome, token);
       } catch {
+        if (!sessionRef.current.isCurrent(token)) return;
         setScanError("USB scanner payload could not be read. Scan the card again.");
       } finally {
-        setIsReadingUsb(false);
+        if (sessionRef.current.isCurrent(token)) setIsReadingUsb(false);
       }
     },
     [handleOutcome, hasConsent, stop],

@@ -266,7 +266,7 @@ test("doctor cannot select unrelated patient PHI or status_token", async (t) => 
   assert.equal(token.length, 32);
 });
 
-test("volunteer can select active-camp desk fields but not status_token", async (t) => {
+test("non-admin staff cannot select patients directly, even on active camp", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
   const { patientId } = await seedActiveCampPatient();
@@ -280,9 +280,7 @@ test("volunteer can select active-camp desk fields but not status_token", async 
     );
     return r;
   });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].full_name, "Unrelated Patient");
-  assert.equal(rows[0].phone, "+919999000111");
+  assert.equal(rows.length, 0);
 
   await asAuthenticated(volunteerId, async (c) => {
     await assert.rejects(

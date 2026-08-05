@@ -88,7 +88,7 @@ test("rejects invalid gender without calling RPC", async () => {
   const res = await POST(request(validBody({ gender: "X" })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.equal(body.error.message, "Select M, F or O.");
+  assert.match(body.error.message, /Registration session is invalid/);
   assert.equal(rpcCalls, 0);
 });
 
@@ -104,6 +104,6 @@ test("rejects age 200 without calling RPC", async () => {
   const res = await POST(request(validBody({ age: 200 })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.equal(body.error.message, "Enter an age between 0 and 149.");
+  assert.match(body.error.message, /Registration session is invalid/);
   assert.equal(rpcCalls, 0);
 });

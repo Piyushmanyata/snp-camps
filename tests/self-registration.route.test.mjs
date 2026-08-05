@@ -18,6 +18,7 @@ import {
 const CAMP_ID = "11111111-1111-4111-8111-111111111111";
 const DAY_ID = "22222222-2222-4222-8222-222222222222";
 const PATIENT_ID = "33333333-3333-4333-8333-333333333333";
+const DEFAULT_REQUEST_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 
 const VALID_CARD = {
   fullName: "Ramesh Kumar",
@@ -105,7 +106,7 @@ function post(body) {
         "content-type": "application/json",
         "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250) + 1}`,
       },
-      body: JSON.stringify(body),
+       body: JSON.stringify({ requestId: DEFAULT_REQUEST_ID, ...body }),
     }),
   );
 }
@@ -193,6 +194,22 @@ test("a missing or short phone is refused before any write", async () => {
 
   assert.equal(response.status, 400);
   assert.equal(fake.calls.length, 0, "no RPC may run for an invalid phone");
+});
+
+test("a missing or invalid requestId is refused before any RPC", async () => {
+  const fake = fakeSupabase(okRpc);
+  __setServiceRoleClient(fake.client);
+
+  const response = await post({
+    requestId: "not-a-uuid",
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: VALID_CARD,
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(fake.calls.length, 0);
 });
 
 test("dummy repeated-digit phone is refused", async () => {

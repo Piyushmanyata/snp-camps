@@ -15,8 +15,7 @@ function env(name: string) {
 }
 
 async function gotoHydrated(page: Page, p: string) {
-  await page.goto(p);
-  await page.waitForLoadState("networkidle");
+  await page.goto(p, { waitUntil: "domcontentloaded" });
 }
 
 async function loginStaff(page: Page, role: "admin" | "volunteer") {
@@ -150,7 +149,6 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
   });
 
   await loginStaff(page, "volunteer");
-  await page.waitForLoadState("networkidle");
 
   // Critical controls available without waiting for optional decoder.
   await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
@@ -233,4 +231,3 @@ test("production: print route may load qrcode; volunteer initial must not", asyn
   const health = await request.get("/api/health");
   expect(health.ok()).toBeTruthy();
 });
-

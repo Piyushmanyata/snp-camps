@@ -125,6 +125,21 @@ function createStaffFake(seedProfiles = []) {
         });
         return Promise.resolve({ data: row, error: null });
       },
+      insert(row) {
+        if (profiles.has(row.id)) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "23505", message: "profile already exists" },
+          });
+        }
+        profiles.set(row.id, {
+          phone: null,
+          created_at: new Date().toISOString(),
+          disabled_at: null,
+          ...row,
+        });
+        return Promise.resolve({ data: row, error: null });
+      },
       update(payload) {
         updatePayload = payload;
         return api;
@@ -220,6 +235,9 @@ function createStaffFake(seedProfiles = []) {
           if (attrs.password) user.password = attrs.password;
           if (attrs.ban_duration) user.ban_duration = attrs.ban_duration;
           return { data: { user }, error: null };
+        },
+        async listUsers() {
+          return { data: { users: [...users.values()] }, error: null };
         },
         async deleteUser(id) {
           for (const [email, u] of users) {

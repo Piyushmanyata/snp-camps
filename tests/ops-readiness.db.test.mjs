@@ -175,3 +175,62 @@ test("readiness_catalog_probe reports single register RPC and closed persons", a
   assert.equal(facts.grants.persons_authenticated_select, false);
   assert.equal(facts.grants.persons_authenticated_write, false);
 });
+
+async function probeFacts() {
+  const { rows } = await admin.query(
+    `select public.readiness_catalog_probe() as facts`,
+  );
+  return rows[0].facts;
+}
+
+test("readiness turns red when one required RPC is missing", async (t) => {
+  if (skipIfNoDb(t)) return;
+  await admin.query("begin");
+  try {
+    await admin.query("drop function public.desk_waiting_queue(uuid, integer)");
+    const facts = await probeFacts();
+    assert.equal(facts.functions.desk_waiting_queue, false);
+    assert.equal(evaluateCatalogFacts(facts).schema_contract.ok, false);
+    assert.equal(evaluateCatalogFacts(facts).rpc_grants.ok, false);
+  } finally {
+    await admin.query("rollback");
+  }
+});
+
+test("readiness rejects a wrong-overload substitute", async (t) => {
+  if (skipIfNoDb(t)) return;
+  await admin.query("begin");
+  try {
+    await admin.query("drop function public.desk_waiting_queue(uuid, integer)");
+    await admin.query(`
+      create function public.desk_waiting_queue(uuid, text)
+      returns integer
+      language sql
+      immutable
+      as $$ select 0 $$
+    `);
+    const facts = await probeFacts();
+    assert.equal(facts.functions.desk_waiting_queue, false);
+    assert.equal(evaluateCatalogFacts(facts).schema_contract.ok, false);
+    assert.equal(evaluateCatalogFacts(facts).rpc_grants.ok, false);
+  } finally {
+    await admin.query("rollback");
+  }
+});
+
+test("readiness detects a revoked authenticated RPC grant", async (t) => {
+  if (skipIfNoDb(t)) return;
+  await admin.query("begin");
+  try {
+    await admin.query(
+      "revoke execute on function public.desk_waiting_queue(uuid, integer) from authenticated",
+    );
+    const facts = await probeFacts();
+    assert.equal(facts.functions.desk_waiting_queue, true);
+    assert.equal(facts.grants.desk_waiting_queue_authenticated_execute, false);
+    assert.equal(evaluateCatalogFacts(facts).schema_contract.ok, true);
+    assert.equal(evaluateCatalogFacts(facts).rpc_grants.ok, false);
+  } finally {
+    await admin.query("rollback");
+  }
+});

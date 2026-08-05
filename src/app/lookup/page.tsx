@@ -23,21 +23,35 @@ export default function PatientLookupPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ regNo: regNo.trim(), dateOfBirth: dateOfBirth.trim() }),
       });
-      const data = await res.json();
-      if (res.ok && data.ok && data.redirectUrl) {
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; redirectUrl?: string }
+        | null;
+      if (res.ok && data?.ok && data.redirectUrl) {
         router.push(data.redirectUrl);
         return;
       }
-      setError(data.error || "Ye registration number aur janm tithi match nahi hui.");
+      if (res.status === 429) {
+        setError("Bahut attempts ho gaye. Thodi der baad dobara try karein.");
+      } else if (res.status >= 500) {
+        setError("Server mein dikkat hai. Thodi der baad dobara try karein.");
+      } else if (!data) {
+        setError("Server ka jawab samajh nahi aaya. Dobara try karein.");
+      } else {
+        setError("Ye registration number aur janm tithi match nahi hui.");
+      }
     } catch {
-      setError("Ye registration number aur janm tithi match nahi hui.");
+      setError("Internet connection check karke dobara try karein.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main id="main" className="mx-auto max-w-md px-4 py-10 text-foreground">
+    <main
+      id="main"
+      lang="hi-Latn"
+      className="mx-auto max-w-md px-4 py-10 text-foreground"
+    >
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-brand">

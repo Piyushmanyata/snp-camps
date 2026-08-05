@@ -1,7 +1,28 @@
 "use client";
 
-import { Button } from "@/components/ui";
+import dynamic from "next/dynamic";
+import { Button, CollapsibleSection } from "@/components/ui";
 import type { AadhaarScanner } from "@/components/use-aadhaar-scanner";
+
+/** Keep the patient scanner flow out of the eager self-register route chunk. */
+export const SelfRegistrationFlowLazy = dynamic(
+  () =>
+    import("@/components/self-registration-flow").then(
+      (module) => ({ default: module.SelfRegistrationFlow }),
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <p
+        role="status"
+        aria-live="polite"
+        className="rounded-xl border border-border bg-background px-3 py-4 text-sm text-muted"
+      >
+        Registration load ho rahi hai…
+      </p>
+    ),
+  },
+);
 
 type Props = {
   scanner: AadhaarScanner;
@@ -23,6 +44,13 @@ const COPY = {
     gallery: "Choose existing photo",
     readingPhoto: "Reading photo…",
     aim: "Hold the Aadhaar QR inside the frame",
+    preview: "Aadhaar QR camera preview",
+    consentNote:
+      "Details are extracted for autofill only. Aadhaar identity is not verified.",
+    diagnosticTitle: "Card did not read fully — report this format",
+    diagnosticBody:
+      "This describes the QR's structure only. It contains no name, number, or address.",
+    copyDiagnostic: "Copy",
     consent:
       "The patient has consented to extracting Aadhaar card details for registration.",
   },
@@ -33,6 +61,12 @@ const COPY = {
     gallery: "Gallery se photo chunein",
     readingPhoto: "Photo padh rahe hain…",
     aim: "Aadhaar QR ko frame ke andar rakhein",
+    preview: "Aadhaar QR camera ka preview",
+    consentNote:
+      "Details sirf form bharne ke liye li ja rahi hain. Aadhaar identity verify nahi hoti.",
+    diagnosticTitle: "Card dobara scan karein",
+    diagnosticBody: "QR details poori nahi padh paayi.",
+    copyDiagnostic: "Copy",
     consent:
       "Main registration ke liye Aadhaar card ki details nikalne ki sahmati deta/deti hoon.",
   },
@@ -55,8 +89,9 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
   const shownDiagnostic = diagnostic ?? scanner.scanDiagnostic;
   const shownError =
     tone === "patient" && scanError
-      ? "QR nahi padha. Camera ya Aadhaar photo dobara try karein, ya details manually bharein."
+      ? "QR nahi padha. Dobara try karein ya camp desk par jaakar madad lein."
       : scanError;
+  const visibleDiagnostic = tone === "patient" ? null : shownDiagnostic;
 
   return (
     <div className="space-y-3">
@@ -71,7 +106,7 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
         <span>
           {copy.consent}
           <span className="mt-1 block text-xs font-normal text-muted">
-            Details are extracted for autofill only. Aadhaar identity is not verified.
+            {copy.consentNote}
           </span>
         </span>
       </label>
@@ -134,7 +169,7 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
             muted
             autoPlay
             className="h-full w-full object-cover"
-            aria-label="Aadhaar QR camera preview"
+            aria-label={copy.preview}
           />
           <div
             aria-hidden="true"
@@ -157,29 +192,22 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
         </div>
       ) : null}
 
-      {shownDiagnostic ? (
-        <details
-          data-testid="aadhaar-scan-diagnostic"
-          className="rounded-xl border border-border px-3 py-2 text-xs text-muted"
-        >
-          <summary className="cursor-pointer font-semibold">
-            Card did not read fully — report this format
-          </summary>
-          <p className="mt-2">
-            This describes the QR&apos;s structure only. It contains no name,
-            number, or address.
-          </p>
-          <code className="mt-2 block break-all font-mono text-[11px]">
-            {shownDiagnostic}
-          </code>
-          <button
-            type="button"
-            className="mt-2 min-h-12 rounded-xl border border-border px-3 font-semibold"
-            onClick={() => navigator.clipboard?.writeText(shownDiagnostic)}
-          >
-            Copy
-          </button>
-        </details>
+      {visibleDiagnostic ? (
+        <div data-testid="aadhaar-scan-diagnostic">
+          <CollapsibleSection title={copy.diagnosticTitle}>
+            <p className="text-sm text-muted">{copy.diagnosticBody}</p>
+            <code className="mt-2 block break-all font-mono text-[11px]">
+              {visibleDiagnostic}
+            </code>
+            <button
+              type="button"
+              className="mt-2 min-h-12 rounded-xl border border-border px-3 font-semibold"
+              onClick={() => navigator.clipboard?.writeText(visibleDiagnostic)}
+            >
+              {copy.copyDiagnostic}
+            </button>
+          </CollapsibleSection>
+        </div>
       ) : null}
     </div>
   );

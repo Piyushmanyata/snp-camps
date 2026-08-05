@@ -2,7 +2,7 @@
  * Behavioural coverage for registration idempotency / requestId outbound paths.
  * Exercises the same module PatientForm uses to call the staff RPC.
  * Deliberately does not grep component source for the string "requestId".
- * Public self-registration is retired (#45).
+ * Public self-registration uses its dedicated `/self-register` API boundary.
  */
 import assert from "node:assert/strict";
 import test from "node:test";

@@ -23,14 +23,23 @@ async function gotoReady(page: Page, path: string, ready: Locator) {
   await expect(ready).toBeVisible();
 }
 
-async function loginStaff(page: Page, role: "admin" | "volunteer") {
+async function loginStaff(
+  page: Page,
+  role: "admin" | "team_lead" | "volunteer" | "clinical_operator",
+) {
   await gotoReady(page, "/login", page.getByLabel("Email"));
   await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
     .getByLabel("Password")
     .fill(env(`E2E_${role.toUpperCase()}_PASSWORD`));
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(new RegExp(`/${role}$`));
+  const destination =
+    role === "team_lead"
+      ? "volunteer"
+      : role === "clinical_operator"
+        ? "clinical"
+        : role;
+  await expect(page).toHaveURL(new RegExp(`/${destination}$`));
 }
 
 async function blockRemoteRequests(page: Page) {
@@ -265,6 +274,7 @@ async function scanInteractiveTargets(page: Page, scopeLabel: string) {
       'input:not([type="hidden"]):not([disabled])',
       "select:not([disabled])",
       "textarea:not([disabled])",
+      "summary",
       '[role="button"]:not([aria-disabled="true"])',
       '[role="radio"]:not([aria-disabled="true"])',
     ].join(",");
@@ -729,6 +739,139 @@ test("lost-paper recovery: keyboard path and touch targets", async ({ page }) =>
   await scanInteractiveTargets(page, "volunteer recovery surfaces");
 });
 
+test("mandatory route/state matrix: patient, roles, clinical records, and A4", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
 
+  await gotoReady(
+    page,
+    "/self-register",
+    page.getByRole("heading", { name: "Khud registration karein" }),
+  );
+  await expect(page.locator("main")).toHaveAttribute("lang", "hi-Latn");
+  const consent = page.getByRole("checkbox", {
+    name: /Main registration ke liye Aadhaar card ki details/,
+  });
+  await expect(consent).toHaveAccessibleName(
+    /Main registration ke liye Aadhaar card ki details/,
+  );
+  await assertTouchTarget(
+    consent.locator("xpath=ancestor::label"),
+    "self-register Aadhaar consent",
+  );
+  const scan = page.getByRole("button", { name: "Live camera se try karein" });
+  await expect(scan).toHaveAccessibleName("Live camera se try karein");
+  await assertTouchTarget(scan, "self-register camera action");
+  await consent.check();
+  await assertFocusVisible(scan, "self-register camera action");
+  const selfRegisterPhoto = page.getByTestId("aadhaar-gallery-input");
+  await selfRegisterPhoto.setInputFiles(env("E2E_FAKE_AADHAAR_PHOTO_PATH"));
+  await expect(
+    page.getByRole("heading", { name: "Details confirm karein" }),
+  ).toBeVisible({ timeout: 20_000 });
+  const selfRegisterSubmit = page.getByRole("button", {
+    name: "Registration pakki karein",
+  });
+  await assertTouchTarget(selfRegisterSubmit, "self-register submit after scan");
+  await scanInteractiveTargets(page, "self-registration after scan");
 
+  await gotoReady(
+    page,
+    `/s/${env("E2E_STATUS_TOKEN")}`,
+    page.getByRole("heading", { name: "Aapka camp status" }),
+  );
+  await expect(page.locator("main")).toHaveAttribute("lang", "hi-Latn");
+  await scanInteractiveTargets(page, "patient status page");
 
+  await page.context().clearCookies();
+  await loginStaff(page, "team_lead");
+  await expect(
+    page.getByRole("heading", { name: "Volunteer desk" }),
+  ).toBeVisible();
+  await scanInteractiveTargets(page, "team lead volunteer desk");
+
+  await page.context().clearCookies();
+  await loginStaff(page, "clinical_operator");
+  await gotoReady(
+    page,
+    "/clinical",
+    page.getByLabel("Patient QR or registration number"),
+  );
+  await scanInteractiveTargets(page, "clinical operator surface");
+
+  await page.context().clearCookies();
+  await loginStaff(page, "admin");
+  await gotoReady(
+    page,
+    "/clinical",
+    page.getByLabel("Patient QR or registration number"),
+  );
+  const clinicalLookup = page.getByLabel("Patient QR or registration number");
+  await expect(clinicalLookup).toHaveAccessibleName(
+    "Patient QR or registration number",
+  );
+  await assertTouchTarget(clinicalLookup, "clinical exact lookup");
+  const seenRegistration = page.getByRole("button", {
+    name: "Open seen registration",
+  });
+  await assertTouchTarget(seenRegistration, "clinical seen registration");
+  await scanInteractiveTargets(page, "clinical surface");
+
+  await gotoReady(
+    page,
+    "/admin/clinical",
+    page.getByRole("heading", { name: "Clinical records" }),
+  );
+  const exportRecords = page.getByRole("button", {
+    name: "Export loaded records (CSV)",
+  });
+  await assertTouchTarget(exportRecords, "admin clinical export");
+  const includeArchived = page.getByRole("button", {
+    name: "Include archived",
+  });
+  await assertTouchTarget(includeArchived, "admin clinical archive filter");
+  await scanInteractiveTargets(page, "admin clinical records");
+
+  await gotoReady(
+    page,
+    `/print/${env("E2E_PATIENT_ID")}`,
+    page.getByTestId("prescription-sheet"),
+  );
+  await expect(page.getByTestId("prescription-sheet")).toHaveAttribute(
+    "data-print-format",
+    "prescription-a4",
+  );
+
+  await gotoReady(
+    page,
+    `/clinical/slip/${env("E2E_CLINICAL_SLIP_ID")}`,
+    page.locator('[data-print-format="clinical-slip-2-inch"]'),
+  );
+  const clinicalSlip = page.locator('[data-print-format="clinical-slip-2-inch"]');
+  await expect(clinicalSlip).toHaveAttribute("data-page-width-mm", "58");
+  const slipGeometry = await clinicalSlip.evaluate((element) => ({
+    widthPx: element.getBoundingClientRect().width,
+    css: document.querySelector("style")?.textContent ?? "",
+  }));
+  expect(slipGeometry.widthPx).toBeGreaterThan(210);
+  expect(slipGeometry.widthPx).toBeLessThan(230);
+  expect(slipGeometry.css).toContain("@page{size:58mm auto");
+
+  await page.emulateMedia({ media: "print" });
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  const pdfPath = join(EVIDENCE_DIR, "clinical-slip-2-inch.pdf");
+  const pdfBuffer = await page.pdf({
+    path: pdfPath,
+    printBackground: true,
+    preferCSSPageSize: true,
+  });
+  const mediaBox = pdfBuffer
+    .toString("latin1")
+    .match(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/);
+  expect(mediaBox, "clinical slip PDF must expose a MediaBox").not.toBeNull();
+  if (!mediaBox) return;
+  const widthPoints = Number(mediaBox[1]);
+  expect(widthPoints).toBeGreaterThan(160);
+  expect(widthPoints).toBeLessThan(169);
+});

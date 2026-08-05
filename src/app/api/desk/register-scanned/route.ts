@@ -7,7 +7,12 @@ import {
   parseLikelyDuplicateError,
 } from "@/lib/registration-request";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
-import { validateHouseholdPhone } from "@/lib/phone";
+import {
+  validateAadhaarLast4,
+  validateRegistrationIds,
+  validateRegistrationIdentity,
+  validateRegistrationPhone,
+} from "@/lib/registration-input";
 
 type ScannedDeskRegistrationBody = {
   requestId?: unknown;
@@ -61,24 +66,34 @@ export async function POST(request: Request) {
   const displayName = str(body.displayName);
   const gender = str(body.gender).toUpperCase();
   const address = str(body.address);
-  const phoneResult = validateHouseholdPhone(str(body.phone));
+  const phoneResult = validateRegistrationPhone(body.phone);
   const email = str(body.email);
-  const aadhaarLast4 = str(body.aadhaarLast4).replace(/\D/g, "").slice(-4);
+  const aadhaarLast4 = str(body.aadhaarLast4);
   const dateOfBirth = str(body.dateOfBirth);
   const age =
     typeof body.age === "number" && Number.isInteger(body.age) ? body.age : null;
   const aadhaarDuplicateOverride = body.aadhaarDuplicateOverride === true;
   const likelyDuplicateOverride = body.likelyDuplicateOverride === true;
 
+  const idValidation = validateRegistrationIds({
+    requestId,
+    campId,
+    campDayId,
+  });
+  const identityValidation = validateRegistrationIdentity({
+    fullName,
+    displayName,
+    address,
+    gender,
+    age,
+    email,
+    dateOfBirth,
+    selfService: false,
+  });
   if (
-    !requestId ||
-    !campId ||
-    !campDayId ||
-    !fullName ||
-    !dateOfBirth ||
-    aadhaarLast4.length !== 4 ||
-    !["M", "F", "O"].includes(gender) ||
-    age == null ||
+    !idValidation.ok ||
+    !identityValidation.ok ||
+    !validateAadhaarLast4(aadhaarLast4) ||
     !phoneResult.ok
   ) {
     return failure(
@@ -87,7 +102,6 @@ export async function POST(request: Request) {
       "INCOMPLETE_SCAN",
     );
   }
-
   let duplicateKey: string;
   try {
     duplicateKey = derivePersonDuplicateKey({

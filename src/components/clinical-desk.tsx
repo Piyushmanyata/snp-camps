@@ -98,6 +98,7 @@ export function ClinicalDesk({
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
   const [lastSlipId, setLastSlipId] = useState<string | null>(null);
   const slipReplaceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const slipReplaceDialogRef = useRef<HTMLDialogElement | null>(null);
   const lookupGenerationRef = useRef(0);
   const displayedPatientIdRef = useRef<string | null>(null);
 
@@ -493,13 +494,13 @@ export function ClinicalDesk({
   }
 
   useEffect(() => {
-    if (!slipReplace) return;
-    document.getElementById("slip-replace-date")?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeSlipReplace();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    const dialog = slipReplaceDialogRef.current;
+    if (!slipReplace) {
+      if (dialog?.open) dialog.close();
+      return;
+    }
+    if (dialog && !dialog.open) dialog.showModal();
+    requestAnimationFrame(() => document.getElementById("slip-replace-date")?.focus());
   }, [slipReplace]);
 
   function toggleDiagnosis(option: string) {
@@ -923,11 +924,15 @@ export function ClinicalDesk({
       ) : null}
 
       {slipReplace ? (
-        <div
-          role="dialog"
+        <dialog
+          ref={slipReplaceDialogRef}
           aria-modal="true"
           aria-labelledby="slip-replace-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-card p-0 text-foreground shadow-2xl backdrop:bg-black/40"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeSlipReplace();
+          }}
         >
           <Card className="w-full max-w-md space-y-3">
             <SectionTitle>
@@ -988,7 +993,7 @@ export function ClinicalDesk({
               </Button>
             </div>
           </Card>
-        </div>
+        </dialog>
       ) : null}
     </div>
   );

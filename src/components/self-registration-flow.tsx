@@ -37,6 +37,10 @@ type ScannedCard = {
   dateOfBirth: string;
 };
 
+type FieldErrors = Partial<
+  Record<"displayName" | "phone" | "dayId", string>
+>;
+
 /**
  * Patient self-registration by Aadhaar card scan (#113).
  *
@@ -55,7 +59,9 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   );
   const [deskReferral, setDeskReferral] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const stepHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const requestIdRef = useRef(createRequestId());
   const generationRef = useRef(0);
@@ -82,6 +88,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
     });
     setDisplayName("");
     setError(null);
+    setFieldErrors({});
     requestIdRef.current = createRequestId();
     return true;
   }, []);
@@ -94,27 +101,46 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
     if (card) stepHeadingRef.current?.focus();
   }, [card]);
 
+  useEffect(() => {
+    const firstInvalidId = ["display-name", "phone", "camp-day"].find(
+      (id) =>
+        (id === "display-name" && fieldErrors.displayName) ||
+        (id === "phone" && fieldErrors.phone) ||
+        (id === "camp-day" && fieldErrors.dayId),
+    );
+    if (firstInvalidId) {
+      document.getElementById(firstInvalidId)?.focus();
+    }
+  }, [fieldErrors]);
+
   async function register() {
-    if (!card || busy) return;
+    if (!card || busy || busyRef.current) return;
+
+    const nextFieldErrors: FieldErrors = {};
     if (!dayId) {
-      setError("Ek Camp Day chunna zaroori hai.");
-      return;
+      nextFieldErrors.dayId = "Camp ka din chunna zaroori hai.";
     }
     const phoneCheck = validateHouseholdPhone(phone);
     if (!phoneCheck.ok) {
-      setError(
-        "10-digit mobile number daalein (6–9 se shuru). Dummy numbers nahi chalenge.",
-      );
-      return;
+      nextFieldErrors.phone =
+        "10-digit mobile number daalein (6–9 se shuru). Dummy numbers nahi chalenge.";
     }
     if (needsLatinName && !displayName.trim()) {
-      setError("Apna naam English letters mein bhi likhein.");
+      nextFieldErrors.displayName = "Naam English letters mein likhna zaroori hai.";
+    }
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      setError(null);
       return;
     }
+    if (!phoneCheck.ok) return;
+    const normalizedPhone = phoneCheck.phone;
 
     const generation = ++generationRef.current;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     setDeskReferral(false);
     try {
       const response = await fetch("/api/self-registration", {
@@ -124,7 +150,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           requestId: requestIdRef.current,
           campId,
           campDayId: dayId,
-          phone: phoneCheck.phone,
+          phone: normalizedPhone,
           card: { ...card, displayName: displayName.trim() || null },
         }),
       });
@@ -149,7 +175,10 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       if (generation !== generationRef.current) return;
       setError("Network problem. Dobara try karein ya camp desk par milen.");
     } finally {
-      if (generation === generationRef.current) setBusy(false);
+      if (generation === generationRef.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -159,6 +188,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
     setCard(null);
     setDisplayName("");
     setError(null);
+    setFieldErrors({});
     setDeskReferral(false);
     requestIdRef.current = createRequestId();
     clearScanError();
@@ -184,14 +214,14 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       </h2>
 
       {error ? (
-        <div role="alert">
+        <>
           <ErrorBox message={error} />
           {deskReferral ? (
             <p className="mt-2 text-sm text-muted">
               Camp desk par volunteer aapki madad karega.
             </p>
           ) : null}
-        </div>
+        </>
       ) : null}
 
       {!card ? (
@@ -212,14 +242,22 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           </p>
         </>
       ) : (
-        <>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void register();
+          }}
+          noValidate
+          aria-busy={busy}
+          className="space-y-4"
+        >
           <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
             {(
               [
-                ["Name", card.fullName],
-                ["Age", String(card.age)],
-                ["Gender", card.gender],
-                ["Address", card.address],
+                ["Naam", card.fullName],
+                ["Umar", String(card.age)],
+                ["Ling", card.gender],
+                ["Pata", card.address],
                 ["Aadhaar", `xxxx xxxx ${card.aadhaarLast4}`],
               ] as const
             ).map(([label, value]) => (
@@ -239,6 +277,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
               id="display-name"
               label="Naam English letters mein"
               hint="Card par naam English mein nahi hai. Slip aur naam-search ke liye English spelling chahiye."
+              error={fieldErrors.displayName}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               required
@@ -247,8 +286,9 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
           <Input
             id="phone"
-            label="Mobile number"
+            label="Mobile number daalein"
             hint="Aadhaar QR mein number nahi hota, isliye khud daalein."
+            error={fieldErrors.phone}
             inputMode="numeric"
             autoComplete="tel"
             maxLength={10}
@@ -259,7 +299,14 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
           <Select
             id="camp-day"
-            label="Camp Day"
+            required
+            aria-invalid={fieldErrors.dayId ? true : undefined}
+            aria-describedby={
+              [fieldErrors.dayId ? "camp-day-error" : null, "camp-day-hint"]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
+            label="Camp ka din"
             hint={`Camp: ${venue || "venue TBA"}.`}
             value={dayId}
             onChange={(event) => setDayId(event.target.value)}
@@ -270,9 +317,18 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
               </option>
             ))}
           </Select>
+          {fieldErrors.dayId ? (
+            <p
+              id="camp-day-error"
+              role="alert"
+              className="-mt-2 text-[0.8125rem] font-medium text-danger"
+            >
+              {fieldErrors.dayId}
+            </p>
+          ) : null}
 
-          <Button type="button" disabled={busy} onClick={() => void register()}>
-            {busy ? "Register kar rahe hain…" : "Confirm registration"}
+          <Button type="submit" disabled={busy}>
+            {busy ? "Registration ho rahi hai…" : "Registration pakki karein"}
           </Button>
 
           <Button
@@ -283,7 +339,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           >
             Dobara scan karein
           </Button>
-        </>
+        </form>
       )}
     </section>
   );

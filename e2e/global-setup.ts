@@ -87,8 +87,41 @@ async function listUsers(admin: SupabaseClient) {
   }
 }
 
+async function removeClinicalFixtures(admin: SupabaseClient, patientId: string) {
+  const transcriptions = await admin
+    .from("prescription_transcriptions")
+    .select("id")
+    .eq("patient_id", patientId);
+  for (const transcription of transcriptions.data ?? []) {
+    const items = await admin
+      .from("fulfilment_items")
+      .select("id")
+      .eq("transcription_id", transcription.id);
+    for (const item of items.data ?? []) {
+      await admin.from("deferred_slips").delete().eq("item_id", item.id);
+      await admin.from("fulfilment_events").delete().eq("item_id", item.id);
+    }
+    await admin.from("fulfilment_items").delete().eq("transcription_id", transcription.id);
+    await admin
+      .from("prescription_corrections")
+      .delete()
+      .eq("transcription_id", transcription.id);
+    await admin
+      .from("prescription_transcriptions")
+      .delete()
+      .eq("id", transcription.id);
+  }
+}
+
 async function removeStaleFixtures(admin: SupabaseClient, existingUsers?: User[]) {
   try {
+    const stalePatients = await admin
+      .from("patients")
+      .select("id")
+      .like("full_name", `${PATIENT_PREFIX}%`);
+    for (const patient of stalePatients.data ?? []) {
+      await removeClinicalFixtures(admin, patient.id);
+    }
     await admin
       .from("patients")
       .delete()
@@ -139,9 +172,9 @@ async function removeStaleFixtures(admin: SupabaseClient, existingUsers?: User[]
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    // The prescriptions / treatment_orders tables were dropped with the doctor
-    // station (ADR 0008) — patients are the only per-camp child rows left.
-    void patientIds;
+    for (const patientId of patientIds) {
+      await removeClinicalFixtures(admin, patientId);
+    }
     const patients = await admin
       .from("patients")
       .delete()
@@ -196,6 +229,11 @@ export default async function globalSetup() {
   async function cleanup() {
     const errors: string[] = [];
     if (patientId) {
+      try {
+        await removeClinicalFixtures(admin, patientId);
+      } catch (error) {
+        errors.push(`clinical fixture: ${String(error)}`);
+      }
       const { error } = await admin.from("patients").delete().eq("id", patientId);
       if (error) errors.push(`patient: ${error.message}`);
     }
@@ -268,7 +306,9 @@ export default async function globalSetup() {
     const authUsers = await listUsers(admin);
     await removeStaleFixtures(admin, authUsers);
 
-    const createStaff = async (role: "admin" | "team_lead" | "volunteer") => {
+    const createStaff = async (
+      role: "admin" | "team_lead" | "volunteer" | "clinical_operator",
+    ) => {
       const email = `${USER_PREFIX}${role}@snp.local`;
       const secret = password();
       const meta = {
@@ -324,9 +364,10 @@ export default async function globalSetup() {
       return userId;
     };
 
-    await createStaff("admin");
+    const adminId = await createStaff("admin");
     const volunteerId = await createStaff("volunteer");
     const teamLeadId = await createStaff("team_lead");
+    await createStaff("clinical_operator");
     const assignment = await admin
       .from("profiles")
       .update({ team_lead_id: teamLeadId })
@@ -431,7 +472,7 @@ export default async function globalSetup() {
             queue_status: "registered",
             created_by: null,
           })
-          .select("id, reg_no, full_name")
+          .select("id, reg_no, full_name, status_token")
           .single();
         if (insertedPatient.error || !insertedPatient.data) {
           throw new Error(
@@ -440,6 +481,7 @@ export default async function globalSetup() {
         }
         patientId = insertedPatient.data.id;
         patientName = insertedPatient.data.full_name;
+        process.env.E2E_STATUS_TOKEN = insertedPatient.data.status_token;
 
         // Second waiting patient, used by the Mark seen mutation specs.
         secondRegNo = regNo + 1;
@@ -468,6 +510,56 @@ export default async function globalSetup() {
         secondPatientId = secondPatient.data.id;
         secondRegNo = secondPatient.data.reg_no;
         secondPatientName = secondPatient.data.full_name;
+
+        const transcription = await admin
+          .from("prescription_transcriptions")
+          .insert({
+            patient_id: patientId,
+            data: {},
+            paper_source: true,
+            created_by: adminId,
+            updated_by: adminId,
+          })
+          .select("id")
+          .single();
+        if (transcription.error || !transcription.data) {
+          throw new Error(
+            `E2E transcription creation failed: ${transcription.error?.message || "no row"}`,
+          );
+        }
+        const item = await admin
+          .from("fulfilment_items")
+          .insert({
+            transcription_id: transcription.data.id,
+            kind: "specs",
+            outcome: "deferred",
+            resolved_by: adminId,
+          })
+          .select("id")
+          .single();
+        if (item.error || !item.data) {
+          throw new Error(
+            `E2E fulfilment creation failed: ${item.error?.message || "no row"}`,
+          );
+        }
+        const slip = await admin
+          .from("deferred_slips")
+          .insert({
+            item_id: item.data.id,
+            reference: `E2E-${Date.now()}`,
+            version: 1,
+            service: "specs",
+            date_snapshot: dayDate,
+            venue_snapshot: MAX_PRINT_VENUE,
+            issued_by: adminId,
+            status: "active",
+          })
+          .select("id")
+          .single();
+        if (slip.error || !slip.data) {
+          throw new Error(`E2E slip creation failed: ${slip.error?.message || "no row"}`);
+        }
+        process.env.E2E_CLINICAL_SLIP_ID = slip.data.id;
     }
 
     // #59 — patients do not authenticate; no patient Auth/profile/user_id link.
@@ -485,4 +577,3 @@ export default async function globalSetup() {
     throw error;
   }
 }
-

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -9,7 +8,12 @@ import {
   parseAadhaarDuplicateError,
   parseLikelyDuplicateError,
 } from "@/lib/registration-request";
-import { validateHouseholdPhone } from "@/lib/phone";
+import {
+  validateAadhaarLast4,
+  validateRegistrationIds,
+  validateRegistrationIdentity,
+  validateRegistrationPhone,
+} from "@/lib/registration-input";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 /**
@@ -22,15 +26,19 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
  * mistyped digit would deliver a working medical status link to a stranger.
  */
 
-/** Public write endpoint: bound both per instance and durably across instances. */
-const SELF_REGISTRATION_RATE_LIMIT = {
-  scope: "self-registration",
-  limit: 10,
+/** Public write endpoint: a generous IP ceiling plus a durable subject gate. */
+const SELF_REGISTRATION_IP_RATE_LIMIT = {
+  scope: "self-registration-ip",
+  limit: 300,
   windowMs: 10 * 60_000,
+  keyType: "ip" as const,
 };
-
-const AGE_MIN = 0;
-const AGE_MAX = 149;
+const SELF_REGISTRATION_SUBJECT_RATE_LIMIT = {
+  scope: "self-registration-subject",
+  limit: 5,
+  windowMs: 10 * 60_000,
+  keyType: "subject" as const,
+};
 
 type ScannedCard = {
   fullName?: unknown;
@@ -57,19 +65,14 @@ function errorResponse(detail: string, status = 400) {
 
 const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
-}
-
 /** Same-origin status path only — never absolute external URLs. */
 function statusPath(token: string) {
   return `/s/${token}`;
 }
 
 export async function POST(request: Request) {
-  const rate = checkRateLimit(request, SELF_REGISTRATION_RATE_LIMIT);
+  // Instance-local abuse ceiling runs before body parsing by design.
+  const rate = checkRateLimit(request, SELF_REGISTRATION_IP_RATE_LIMIT);
   if (!rate.allowed) {
     return NextResponse.json(
       { ok: false, error: "Bahut zyada koshish. Thodi der baad try karein." },
@@ -78,33 +81,38 @@ export async function POST(request: Request) {
   }
 
   const body = await readJsonBody<SelfRegistrationBody>(request, 16_384);
-  const campId = str(body?.campId);
-  const campDayId = str(body?.campDayId);
-  if (!campId || !campDayId) {
-    return errorResponse("Ek Camp Day chunkar dobara try karein.");
+  if (!body) return errorResponse("Invalid JSON body.");
+  const campId = str(body.campId);
+  const campDayId = str(body.campDayId);
+  const requestId = str(body.requestId);
+  const idValidation = validateRegistrationIds({
+    requestId,
+    campId,
+    campDayId,
+  });
+  if (!idValidation.ok) {
+    return errorResponse(idValidation.message);
   }
 
-  const requestIdRaw = str(body?.requestId);
-  const requestId = isUuid(requestIdRaw) ? requestIdRaw : randomUUID();
-
-  const card = body?.card ?? {};
+  const card = body.card ?? {};
   const fullName = str(card.fullName);
   const gender = str(card.gender).toUpperCase();
   const address = str(card.address);
   const dateOfBirth = str(card.dateOfBirth);
-  const aadhaarLast4 = str(card.aadhaarLast4).replace(/\D/g, "").slice(-4);
+  const aadhaarLast4 = str(card.aadhaarLast4);
   const age = typeof card.age === "number" && Number.isInteger(card.age) ? card.age : null;
-  const phoneResult = validateHouseholdPhone(str(body?.phone));
+  const phoneResult = validateRegistrationPhone(body.phone);
 
-  if (
-    !fullName ||
-    !["M", "F", "O"].includes(gender) ||
-    !dateOfBirth ||
-    aadhaarLast4.length !== 4 ||
-    age == null ||
-    age < AGE_MIN ||
-    age > AGE_MAX
-  ) {
+  const identityValidation = validateRegistrationIdentity({
+    fullName,
+    displayName: card.displayName,
+    address,
+    gender,
+    age,
+    dateOfBirth,
+    selfService: true,
+  });
+  if (!identityValidation.ok || !validateAadhaarLast4(aadhaarLast4)) {
     return errorResponse(
       "Aadhaar card poora scan nahi hua. Kripya dobara scan karein ya camp desk par register karayein.",
     );
@@ -151,22 +159,42 @@ export async function POST(request: Request) {
     );
   }
 
-  const durableRate = await checkDistributedRateLimit(request, supabase, {
-    ...SELF_REGISTRATION_RATE_LIMIT,
-    identifier: duplicateKey,
-  });
-  if (!durableRate.allowed) {
+  const durableIpRate = await checkDistributedRateLimit(
+    request,
+    supabase,
+    SELF_REGISTRATION_IP_RATE_LIMIT,
+  );
+  if (!durableIpRate.allowed) {
     return NextResponse.json(
       {
         ok: false,
-        error: durableRate.unavailable
+        error: durableIpRate.unavailable
           ? "Self-registration abhi available nahi hai. Kripya camp desk par register karayein."
           : "Bahut zyada koshish. Thodi der baad try karein.",
       },
       {
-        status: durableRate.unavailable ? 503 : 429,
+        status: durableIpRate.unavailable ? 503 : 429,
+        headers: { "Retry-After": String(durableIpRate.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const durableSubjectRate = await checkDistributedRateLimit(request, supabase, {
+    ...SELF_REGISTRATION_SUBJECT_RATE_LIMIT,
+    identifier: duplicateKey,
+  });
+  if (!durableSubjectRate.allowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: durableSubjectRate.unavailable
+          ? "Self-registration abhi available nahi hai. Kripya camp desk par register karayein."
+          : "Bahut zyada koshish. Thodi der baad try karein.",
+      },
+      {
+        status: durableSubjectRate.unavailable ? 503 : 429,
         headers: {
-          "Retry-After": String(durableRate.retryAfterSeconds),
+          "Retry-After": String(durableSubjectRate.retryAfterSeconds),
         },
       },
     );

@@ -9,6 +9,13 @@ import {
 } from "@/lib/prescription-template";
 import { Button, Card, ErrorBox, Input, SectionTitle } from "@/components/ui";
 
+type SponsorAsset = {
+  id: string;
+  url: string;
+  state: "pending" | "ready" | "deleting";
+  cleanup_attempts: number;
+};
+
 export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
   const [template, setTemplate] = useState<PrescriptionTemplate>(
     DEFAULT_PRESCRIPTION_TEMPLATE,
@@ -16,6 +23,7 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [assets, setAssets] = useState<SponsorAsset[]>([]);
   const sectionHeight = template.sections
     .filter((section) => section.visible !== false)
     .reduce((sum, row) => sum + row.heightMm, 0);
@@ -30,6 +38,21 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
         if (!active) return;
         if (rpcError) setError("Saved template could not be loaded.");
         else if (data) setTemplate(resolvePrescriptionTemplate(data));
+      });
+    return () => { active = false; };
+  }, [campId]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch(`/api/admin/sponsor-assets?campId=${encodeURIComponent(campId)}`, {
+      cache: "no-store",
+    })
+      .then((response) => response.json())
+      .then((body) => {
+        if (active && Array.isArray(body.assets)) setAssets(body.assets as SponsorAsset[]);
+      })
+      .catch(() => {
+        if (active) setError("Sponsor assets could not be loaded.");
       });
     return () => { active = false; };
   }, [campId]);
@@ -90,9 +113,39 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
           ...current,
           sponsorLogos: [...current.sponsorLogos, body.url].slice(0, 8),
         }));
+        const assetsResponse = await fetch(
+          `/api/admin/sponsor-assets?campId=${encodeURIComponent(campId)}`,
+          { cache: "no-store" },
+        );
+        const assetsBody = await assetsResponse.json().catch(() => ({}));
+        if (Array.isArray(assetsBody.assets)) setAssets(assetsBody.assets as SponsorAsset[]);
       }
     } catch {
       setError("Upload failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reconcileAsset(asset: SponsorAsset) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/sponsor-assets/${asset.id}`, {
+        method: "DELETE",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(body.error ?? "Asset cleanup failed.");
+        return;
+      }
+      setAssets((current) => current.filter((item) => item.id !== asset.id));
+      setTemplate((current) => ({
+        ...current,
+        sponsorLogos: current.sponsorLogos.filter((logo) => logo !== asset.url),
+      }));
+    } catch {
+      setError("Asset cleanup failed. Try again.");
     } finally {
       setBusy(false);
     }
@@ -129,7 +182,7 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
         setError(
           /template sections/i.test(rpcError.message)
             ? "Each block needs a label and the visible blocks must total 42 mm or less."
-            : /sponsor assets/i.test(rpcError.message)
+             : /sponsor asset/i.test(rpcError.message)
               ? "One of the sponsor logos is not an uploaded asset. Remove it and upload again."
               : /admin only/i.test(rpcError.message)
                 ? "Only an admin can save the template."
@@ -175,6 +228,24 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
           </li>
         ))}
       </ul>
+      {assets.length ? (
+        <section aria-labelledby="sponsor-assets-heading" className="space-y-2">
+          <h3 id="sponsor-assets-heading" className="text-sm font-semibold">Sponsor asset cleanup</h3>
+          {assets.map((asset) => (
+            <div key={asset.id} className="flex items-center gap-2 rounded-xl border border-border p-2">
+              <span className="flex-1 text-sm">
+                {asset.state === "ready" ? "Ready" : asset.state === "pending" ? "Pending upload" : "Deletion pending"}
+                {asset.cleanup_attempts ? ` · ${asset.cleanup_attempts} attempt(s)` : ""}
+              </span>
+              {asset.state !== "ready" ? (
+                <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void reconcileAsset(asset)}>
+                  {asset.state === "pending" ? "Clean up upload" : "Retry deletion"}
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
       {(["diagnosisOptions", "vitalsFields"] as const).map((key) => (
         <fieldset key={key} className="space-y-2 rounded-xl border border-border p-3">
           <legend className="text-sm font-semibold">
@@ -256,12 +327,12 @@ export function PrescriptionTemplateEditor({ campId }: { campId: string }) {
           ))}
           <p className="mt-2 text-center text-[10px]">{template.sponsorLogos.length} sponsor logo(s)</p>
         </div>
-        <p className={`mt-2 text-sm font-semibold ${fitsOnePage ? "text-ok" : "text-danger"}`}>
+        <p className={`mt-2 text-sm font-semibold ${fitsOnePage ? "text-success" : "text-danger"}`}>
           {fitsOnePage ? "Fits one A4 page" : "Too tall to publish"}
         </p>
       </div>
       <ErrorBox message={error} />
-      {message ? <p role="status" className="text-sm font-semibold text-ok">{message}</p> : null}
+      {message ? <p role="status" className="text-sm font-semibold text-success">{message}</p> : null}
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="secondary" disabled={busy} onClick={() => void save(false)}>Save draft</Button>
         <Button type="button" disabled={busy || !fitsOnePage} onClick={() => void save(true)}>Publish</Button>

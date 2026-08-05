@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { encodeCsvCell } from "@/lib/clinical-csv";
-import { Button, Card, ErrorBox, SectionTitle } from "@/components/ui";
+import {
+  Button,
+  Card,
+  CollapsibleSection,
+  ErrorBox,
+  SectionTitle,
+} from "@/components/ui";
 
 type Item = {
   id: string;
@@ -42,6 +48,11 @@ export function AdminClinicalRecords({
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
+  const [reversalItem, setReversalItem] = useState<Item | null>(null);
+  const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reversalDialogRef = useRef<HTMLDialogElement | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement | null>(null);
   const supabase = createClient();
 
   async function refresh(
@@ -81,14 +92,47 @@ export function AdminClinicalRecords({
     setBusy(false);
   }
 
-  async function reverse(item: Item) {
-    const reason = window.prompt("Reason for reversing this later fulfilment:");
-    if (!reason?.trim()) return;
+  useEffect(() => {
+    if (!reversalItem) return;
+    const dialog = reversalDialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    reasonRef.current?.focus();
+  }, [reversalItem]);
+
+  function closeReversalDialog() {
+    const itemId = reversalItem?.id;
+    const dialog = reversalDialogRef.current;
+    if (dialog?.open) dialog.close();
+    setReversalItem(null);
+    setReason("");
+    setReasonError(null);
+    if (itemId) {
+      window.requestAnimationFrame(() => {
+        document.getElementById("reverse-fulfilment-" + itemId)?.focus();
+      });
+    }
+  }
+
+  function openReversalDialog(item: Item) {
+    setReason("");
+    setReasonError(null);
+    setReversalItem(item);
+  }
+
+  async function submitReversal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reversalItem || busy) return;
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setReasonError("Enter a reason before reversing this fulfilment.");
+      reasonRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: rpcError } = await supabase.rpc("admin_reverse_fulfilment", {
-      p_item_id: item.id,
-      p_reason: reason.trim(),
+      p_item_id: reversalItem.id,
+      p_reason: trimmedReason,
     });
     if (rpcError) {
       setError(
@@ -97,7 +141,10 @@ export function AdminClinicalRecords({
           : "Fulfilment could not be reversed.",
       );
     }
-    else await refresh();
+    else {
+      await refresh();
+      closeReversalDialog();
+    }
     setBusy(false);
   }
 
@@ -147,21 +194,23 @@ export function AdminClinicalRecords({
             </Button>
           </div>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs">{JSON.stringify(record.data, null, 2)}</pre>
-          <details className="rounded-xl border border-border p-3 text-sm">
-            <summary className="cursor-pointer font-semibold">Correction audit ({record.corrections.length})</summary>
+          <CollapsibleSection
+            title={"Correction audit (" + record.corrections.length + ")"}
+          >
             <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(record.corrections, null, 2)}</pre>
-          </details>
+          </CollapsibleSection>
           <div className="space-y-2">
             {record.items.map((item) => (
               <div key={item.id} className="space-y-2 rounded-xl border border-border p-2 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span><strong>{item.kind.toUpperCase()}</strong> · {item.outcome.replaceAll("_", " ")}</span>
-                  {item.outcome === "fulfilled" && item.events.some((event) => event.event === "fulfilled_later") ? <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void reverse(item)}>Reverse later fulfilment</Button> : null}
+                  {item.outcome === "fulfilled" && item.events.some((event) => event.event === "fulfilled_later") ? <Button id={"reverse-fulfilment-" + item.id} type="button" size="sm" variant="secondary" disabled={busy} onClick={() => openReversalDialog(item)}>Reverse later fulfilment</Button> : null}
                 </div>
-                <details>
-                  <summary className="cursor-pointer font-semibold">Event and slip audit ({item.events.length + item.slips.length})</summary>
+                <CollapsibleSection
+                  title={"Event and slip audit (" + (item.events.length + item.slips.length) + ")"}
+                >
                   <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify({ events: item.events, slips: item.slips }, null, 2)}</pre>
-                </details>
+                </CollapsibleSection>
               </div>
             ))}
           </div>
@@ -178,6 +227,68 @@ export function AdminClinicalRecords({
         </Button>
       ) : null}
       {!records.length ? <Card><p className="text-sm text-muted">No clinical records in this view.</p></Card> : null}
+      {reversalItem ? (
+        <dialog
+          ref={reversalDialogRef}
+          aria-labelledby="reverse-fulfilment-title"
+          aria-describedby="reverse-fulfilment-description"
+          aria-modal="true"
+          className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-card p-5 text-foreground shadow-2xl backdrop:bg-black/60 sm:p-6"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeReversalDialog();
+          }}
+        >
+          <h2 id="reverse-fulfilment-title" className="text-lg font-bold">
+            Reverse later fulfilment
+          </h2>
+          <p id="reverse-fulfilment-description" className="mt-1 text-sm text-muted">
+            Explain why this fulfilment needs an admin correction.
+          </p>
+          <form onSubmit={submitReversal} noValidate className="mt-4 space-y-3">
+            <label htmlFor="reverse-fulfilment-reason" className="block text-sm font-semibold">
+              Reason
+            </label>
+            <textarea
+              ref={reasonRef}
+              id="reverse-fulfilment-reason"
+              value={reason}
+              onChange={(event) => {
+                setReason(event.target.value);
+                if (reasonError) setReasonError(null);
+              }}
+              aria-invalid={reasonError ? true : undefined}
+              aria-describedby={reasonError ? "reverse-fulfilment-reason-error" : undefined}
+              rows={4}
+              maxLength={500}
+              required
+              className="w-full rounded-xl border border-border bg-card px-3.5 py-3 text-base text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            {reasonError ? (
+              <p
+                id="reverse-fulfilment-reason-error"
+                role="alert"
+                className="text-[0.8125rem] font-medium text-danger"
+              >
+                {reasonError}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={closeReversalDialog}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy} loading={busy}>
+                Reverse fulfilment
+              </Button>
+            </div>
+          </form>
+        </dialog>
+      ) : null}
     </div>
   );
 }

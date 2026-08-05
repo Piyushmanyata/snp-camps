@@ -4,13 +4,6 @@ import { loadSessionProfile, isAdmin, isCampCrew } from "@/lib/auth";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KOLKATA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Kolkata",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 /** Staff KPIs and recent handled patients for camp-crew desks and admin. */
 export async function GET(req: Request) {
   const { userId, profile } = await loadSessionProfile();
@@ -65,21 +58,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const kolkataDate = KOLKATA_DATE_FORMATTER.format(new Date());
-  const startOfDay = new Date(kolkataDate + "T00:00:00+05:30").toISOString();
   const campId = activeCamp?.id ?? null;
-
-  let patientsQuery = supabase
-    .from("patients")
-    .select(
-      "id, reg_no, full_name, phone, queue_status, seen_at, created_at",
-    )
-    .or(`created_by.eq.${id},checked_in_by.eq.${id}`)
-    .order("created_at", { ascending: false })
-    .limit(40);
-  if (campId) {
-    patientsQuery = patientsQuery.eq("camp_id", campId);
-  }
 
   const [
     { data: kpiRows, error: kpiErr },
@@ -89,35 +68,38 @@ export async function GET(req: Request) {
       p_user_id: id,
       p_role: role,
       p_camp_id: campId,
-      p_since: startOfDay,
+      p_scope: "person",
     }),
-    patientsQuery,
+    supabase.rpc("staff_registered_patients", {
+      p_staff_id: id,
+      p_limit: 50,
+    }),
   ]);
 
   if (kpiErr) {
-    return NextResponse.json({ error: kpiErr.message }, { status: 400 });
+    return NextResponse.json(
+      { error: "Staff statistics could not be loaded" },
+      { status: 502 },
+    );
   }
 
   if (patientsErr) {
-    return NextResponse.json({ error: patientsErr.message }, { status: 400 });
+    return NextResponse.json(
+      { error: "Registered patients could not be loaded" },
+      { status: 502 },
+    );
   }
 
   const kpiRow = (Array.isArray(kpiRows) ? kpiRows[0] : kpiRows) as {
     total?: number;
-    today?: number;
-    waiting?: number;
     seen?: number;
-    label?: string;
   } | null;
 
   return NextResponse.json({
     person,
     kpis: {
       total: Number(kpiRow?.total ?? 0),
-      today: Number(kpiRow?.today ?? 0),
-      waiting: Number(kpiRow?.waiting ?? 0),
       seen: Number(kpiRow?.seen ?? 0),
-      label: kpiRow?.label || "Patients handled",
     },
     patients: patients || [],
   });

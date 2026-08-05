@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 6;
+export const READINESS_CONTRACT_VERSION = 8;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260805090000";
+export const EXPECTED_MIGRATION_HEAD = "20260805100000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -46,6 +46,14 @@ export const REQUIRED_TABLES = [
   "profiles",
   "sms_deliveries",
   "public_rate_limit_buckets",
+  "prescription_transcriptions",
+  "prescription_corrections",
+  "fulfilment_items",
+  "fulfilment_events",
+  "deferred_slips",
+  "prescription_template_versions",
+  "sponsor_assets",
+  "aadhaar_extraction_events",
 ] as const;
 
 /** table → required columns (runtime-critical subset). */
@@ -100,10 +108,59 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "attempts",
     "expires_at",
   ],
+  prescription_transcriptions: [
+    "id", "patient_id", "data", "paper_source", "created_by", "created_at",
+    "updated_by", "updated_at", "locked_at", "archived_at",
+  ],
+  prescription_corrections: [
+    "id", "transcription_id", "reason", "correction_kind", "replacement_data",
+    "created_by", "created_at",
+  ],
+  fulfilment_items: [
+    "id", "transcription_id", "kind", "outcome", "current_version",
+    "resolved_by", "resolved_at",
+  ],
+  fulfilment_events: [
+    "id", "item_id", "event", "from_outcome", "to_outcome", "reason",
+    "created_by", "created_at",
+  ],
+  deferred_slips: [
+    "id", "item_id", "reference", "version", "service", "date_snapshot",
+    "venue_snapshot", "issued_by", "issued_at", "status", "replaced_by",
+  ],
+  prescription_template_versions: [
+    "id", "camp_id", "version", "status", "template", "created_by",
+    "created_at", "published_at",
+  ],
+  sponsor_assets: [
+    "id", "camp_id", "object_key", "mime_type", "byte_size", "created_by",
+    "created_at", "state", "state_changed_at", "cleanup_attempts", "last_error_code",
+  ],
+  aadhaar_extraction_events: [
+    "id", "patient_id", "consent_at", "method", "trust_level", "outcome",
+    "aadhaar_last4", "created_at",
+  ],
 };
 
-/** Functions that must exist (name only — signatures evolve; existence via pg_proc). */
+/** Runtime functions; the catalog probe verifies exact overload signatures. */
 export const REQUIRED_FUNCTIONS = [
+  "is_clinical_operator",
+  "assert_valid_clinical_data",
+  "clinical_lookup",
+  "clinical_save_transcription",
+  "clinical_add_correction",
+  "clinical_resolve_item",
+  "clinical_followup_fulfil",
+  "clinical_followup_lookup",
+  "clinical_slip_by_id",
+  "clinical_replace_slip",
+  "admin_prescription_template_editor",
+  "admin_save_prescription_template",
+  "admin_clinical_records",
+  "admin_archive_transcription",
+  "admin_reverse_fulfilment",
+  "published_prescription_template",
+  "audit_scanned_aadhaar_registration",
   "latest_applied_migration",
   "readiness_catalog_probe",
   "patient_status_by_token",
@@ -123,6 +180,11 @@ export const REQUIRED_FUNCTIONS = [
   "patient_registration_notify_fields",
   "camp_queue_counts",
   "search_desk_patients",
+  "desk_waiting_queue",
+  "print_patient",
+  "staff_registered_patients",
+  "begin_sponsor_asset_deletion",
+  "finish_sponsor_asset_deletion",
 ] as const;
 
 /** Catalog invariants that cannot be proven by table/column presence alone. */
@@ -143,6 +205,17 @@ export const REQUIRED_INVARIANTS = [
   "doctor_station_retired",
   "mark_seen_contract",
   "public_rate_limit_primary_key",
+  "transcription_patient_unique",
+  "fulfilment_kind_unique",
+  "deferred_one_active",
+  "template_one_published",
+  "template_one_draft",
+  "sponsor_object_key_unique",
+  "sponsor_state_check",
+  "aadhaar_event_patient_unique",
+  "clinical_rls_enabled",
+  "sponsor_bucket_private",
+  "sponsor_bucket_restrictions",
 ] as const;
 
 /**
@@ -193,6 +266,39 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   persons_authenticated_select: false,
   // persons is server-only: duplicate_key is the pepper-derived Person key.
   persons_authenticated_write: false,
+  patients_authenticated_select: true,
+  prescription_transcriptions_authenticated_write: false,
+  prescription_corrections_authenticated_write: false,
+  fulfilment_items_authenticated_write: false,
+  fulfilment_events_authenticated_write: false,
+  deferred_slips_authenticated_write: false,
+  prescription_template_versions_authenticated_write: false,
+  sponsor_assets_authenticated_write: false,
+  aadhaar_extraction_events_authenticated_write: false,
+  aadhaar_extraction_events_authenticated_access: false,
+  prescription_transcriptions_anon_access: false,
+  prescription_corrections_anon_access: false,
+  fulfilment_items_anon_access: false,
+  fulfilment_events_anon_access: false,
+  deferred_slips_anon_access: false,
+  prescription_template_versions_anon_access: false,
+  sponsor_assets_anon_access: false,
+  aadhaar_extraction_events_anon_access: false,
+  clinical_callable_authenticated_execute: true,
+  clinical_callable_service_role_execute: true,
+  clinical_internal_anon_execute: false,
+  clinical_callable_public_execute: false,
+  assert_valid_clinical_data_authenticated_execute: false,
+  assert_valid_clinical_data_anon_execute: false,
+  assert_valid_clinical_data_service_role_execute: true,
+  audit_scanned_aadhaar_authenticated_execute: false,
+  audit_scanned_aadhaar_anon_execute: false,
+  audit_scanned_aadhaar_service_role_execute: true,
+  desk_waiting_queue_authenticated_execute: true,
+  print_patient_authenticated_execute: true,
+  staff_registered_patients_authenticated_execute: true,
+  begin_sponsor_asset_deletion_authenticated_execute: true,
+  finish_sponsor_asset_deletion_authenticated_execute: true,
 };
 
 /** patients must NOT be in supabase_realtime after #56. */

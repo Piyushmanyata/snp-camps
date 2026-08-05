@@ -18,7 +18,7 @@ async function loginVolunteer(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/volunteer$/);
   await page.goto("/register");
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { name: "Register", exact: true })).toBeVisible();
 }
 
 async function cleanupTimingIdentity() {

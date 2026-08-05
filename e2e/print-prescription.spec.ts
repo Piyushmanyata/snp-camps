@@ -12,8 +12,7 @@ function env(name: string) {
 }
 
 async function gotoHydrated(page: Page, pathName: string) {
-  await page.goto(pathName);
-  await page.waitForLoadState("networkidle");
+  await page.goto(pathName, { waitUntil: "domcontentloaded" });
 }
 
 async function loginStaff(page: Page, role: "admin" | "volunteer") {

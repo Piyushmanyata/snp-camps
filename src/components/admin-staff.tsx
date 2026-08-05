@@ -398,7 +398,7 @@ export function AdminStaff({
                     onClick={() => setSelectedId(open ? null : person.id)}
                     aria-expanded={open}
                     aria-controls={detailId}
-                    className="min-w-0 flex-1 text-left"
+                    className="pressable inline-flex min-h-12 min-w-0 flex-1 items-center rounded-lg px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-brand"
                   >
                     <p className="truncate font-medium text-foreground">
                       {person.full_name || "—"}

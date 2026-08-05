@@ -177,7 +177,7 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
 
         <ErrorBox message={error} />
         {success && (
-          <p className="text-xs font-semibold text-ok">
+          <p className="text-xs font-semibold text-success">
             ✓ Admin settings updated successfully.
           </p>
         )}

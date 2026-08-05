@@ -124,7 +124,8 @@ export type RegistrationSubmitResult = {
 /**
  * Outbound registration call used by PatientForm.
  * Staff path only → RPC `register_patient_idempotent`.
- * Public self-registration is retired (#45).
+ * The public `/self-register` flow uses its dedicated API boundary; this helper
+ * remains the staff desk submission path used by `PatientForm`.
  * Does not rotate the attempt — caller rotates only after success / resetForm.
  */
 export async function submitRegistrationOutbound(options: {

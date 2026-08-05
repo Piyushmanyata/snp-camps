@@ -67,30 +67,14 @@ export function isSectionKey(value: string): value is SectionKey {
   return (SECTION_KEYS as readonly string[]).includes(value);
 }
 
-function kolkataStartOfDayIso(): string {
-  const kolkataDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return new Date(kolkataDate + "T00:00:00+05:30").toISOString();
-}
-
 export async function loadQueueSection(
   campId: string,
 ): Promise<SectionResult<QueueSectionData>> {
   const supabase = await createClient();
-  const fetchLimit = DESK_LIVE_WAITING_LIMIT + 1;
-  const { data, error } = await supabase
-    .from("patients")
-    .select("id, reg_no, full_name, phone, queued_at")
-    .eq("camp_id", campId)
-    .eq("queue_status", "waiting")
-    .order("queued_at", { ascending: true, nullsFirst: false })
-    .order("reg_no", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(fetchLimit);
+  const { data, error } = await supabase.rpc("desk_waiting_queue", {
+    p_camp_id: campId,
+    p_limit: DESK_LIVE_WAITING_LIMIT + 1,
+  });
 
   if (error) {
     return {
@@ -102,23 +86,9 @@ export async function loadQueueSection(
     };
   }
 
-  const rows = (data || []) as WaitingRow[];
-  const overLimit = rows.length > DESK_LIVE_WAITING_LIMIT;
-  const waiting = overLimit
-    ? rows.slice(0, DESK_LIVE_WAITING_LIMIT)
-    : rows;
-
-  let waitingTotal = waiting.length;
-  if (overLimit) {
-    const { count, error: countError } = await supabase
-      .from("patients")
-      .select("id", { count: "exact", head: true })
-      .eq("camp_id", campId)
-      .eq("queue_status", "waiting");
-    if (!countError && typeof count === "number") {
-      waitingTotal = count;
-    }
-  }
+  const rows = (data || []) as Array<WaitingRow & { waiting_total?: number }>;
+  const waiting = rows.slice(0, DESK_LIVE_WAITING_LIMIT);
+  const waitingTotal = Number(rows[0]?.waiting_total ?? rows.length);
 
   return {
     ok: true,
@@ -163,7 +133,7 @@ export async function loadVolunteerKpisSection(
     p_user_id: userId,
     p_role: role,
     p_camp_id: campId,
-    p_since: kolkataStartOfDayIso(),
+    p_scope: "person",
   });
 
   if (error) {
@@ -214,7 +184,6 @@ export async function loadStaffLeaderboardSection(
     p_user_id: null,
     p_role: null,
     p_camp_id: campId,
-    p_since: null,
     p_scope: "leaderboard",
   });
 

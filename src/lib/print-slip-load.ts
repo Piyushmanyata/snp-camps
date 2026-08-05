@@ -30,26 +30,14 @@ type PatientRow = {
   address: string | null;
   phone: string | null;
   queue_status: QueueStatus;
-  camps:
-    | { id: string; name: string; venue: string | null; prescription_template?: unknown }
-    | { id: string; name: string; venue: string | null; prescription_template?: unknown }[]
-    | null;
-  camp_days: { day_date: string } | { day_date: string }[] | null;
+  camp_id: string;
+  camp_name: string;
+  venue: string | null;
+  prescription_template: unknown;
+  day_date: string;
 };
 
-function campFromRow(row: PatientRow) {
-  const campRel = row.camps;
-  return Array.isArray(campRel) ? campRel[0] ?? null : campRel;
-}
-
-function campDayFromRow(row: PatientRow): string | null {
-  const dayRel = row.camp_days;
-  if (Array.isArray(dayRel)) return dayRel[0]?.day_date ?? null;
-  return dayRel?.day_date ?? null;
-}
-
 function toLoaded(row: PatientRow, origin: string, published?: unknown): LoadedPrintPatient {
-  const camp = campFromRow(row);
   return {
     patient: {
       id: row.id,
@@ -60,11 +48,11 @@ function toLoaded(row: PatientRow, origin: string, published?: unknown): LoadedP
       address: row.address,
       phone: row.phone,
     },
-    camp: camp ? { name: camp.name, venue: camp.venue } : null,
-    campDayDate: campDayFromRow(row),
+    camp: { name: row.camp_name, venue: row.venue },
+    campDayDate: row.day_date,
     qrValue: patientScanUrl(row.id, origin),
     queueStatus: row.queue_status,
-    prescriptionTemplate: published ?? camp?.prescription_template ?? null,
+    prescriptionTemplate: published ?? row.prescription_template ?? null,
   };
 }
 
@@ -87,33 +75,23 @@ export async function loadPrintSlips(
   }
   if (clean.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("patients")
-    .select(
-      "id, reg_no, full_name, age, gender, address, phone, queue_status, camps(id, name, venue, prescription_template), camp_days(day_date)",
-    )
-    .in("id", clean);
-
-  if (error || !data) return [];
-
-  const byId = new Map<string, PatientRow>();
-  for (const row of data as PatientRow[]) {
-    byId.set(row.id.toLowerCase(), row);
-  }
-
   const out: LoadedPrintPatient[] = [];
   const templates = new Map<string, unknown>();
   for (const id of clean) {
-    const row = byId.get(id);
+    const { data, error } = await supabase.rpc("print_patient", {
+      p_patient_id: id,
+    });
+    if (error || !data) continue;
+    const row = (Array.isArray(data) ? data[0] : data) as PatientRow | null;
     if (!row) continue;
-    const camp = campFromRow(row);
-    let published = camp ? templates.get(camp.id) : undefined;
-    if (camp && !templates.has(camp.id)) {
+
+    let published = templates.get(row.camp_id);
+    if (!templates.has(row.camp_id)) {
       const result = await supabase.rpc("published_prescription_template", {
-        p_camp_id: camp.id,
+        p_camp_id: row.camp_id,
       });
       published = result.data ?? null;
-      templates.set(camp.id, published);
+      templates.set(row.camp_id, published);
     }
     out.push(toLoaded(row, origin, published));
   }

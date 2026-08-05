@@ -6,6 +6,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GET as rateLimitResponse } from "../src/app/api/status-rate-limit/route.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pagePath = path.join(root, "src", "app", "s", "[token]", "page.tsx");
@@ -57,6 +58,15 @@ test("status page validates token format before consuming separate IP/token limi
   );
   assert.match(src, /status-rate-limit\?retry=/);
   assert.match(src, /Retry-After/);
+});
+
+test("status throttling endpoint returns a retryable 429 response", async () => {
+  const response = rateLimitResponse(
+    new Request("http://localhost/api/status-rate-limit?retry=17"),
+  );
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "17");
+  assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
 });
 
 test("status page uses patient_status_by_token RPC only", () => {

@@ -40,7 +40,12 @@ export default async function ClinicalSlipPage({
   if (error || !data) notFound();
   const slip = data as Slip;
   return (
-    <main className="slip mx-auto bg-white p-[3mm] text-black">
+    <main
+      id="main"
+      className="slip mx-auto bg-white p-[3mm] text-black"
+      data-print-format="clinical-slip-2-inch"
+      data-page-width-mm="58"
+    >
       <style>{`
         .slip{width:58mm;font-family:Arial,sans-serif}
         @page{size:58mm auto;margin:2mm}

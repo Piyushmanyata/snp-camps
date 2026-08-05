@@ -126,6 +126,8 @@ When governing documentation conflicts, resolve in this order:
 * **Polling**: Queue, seat board, and desk updates use manual Refresh or fixed polling — zero public WebSocket channels on patient rows.
 * **Least Privilege**: Desk operations run under SQL role predicates. `is_staff()` — and its alias `is_camp_crew()` — gate every desk RPC. Patients do not sign in and hold no Supabase Auth sessions.
 * **Status Token Boundary**: Passwordless `/s/<token>` provides public status tracking via the `patient_status_by_token` RPC, which is **service-role only** and returns non-sensitive queue metrics with PII, phone, address and Aadhaar details stripped.
+* **Public rate boundaries**: Valid status tokens allow at most 12 requests per minute per token and 1,200 requests per minute per IP; throttling returns a retryable 429. Self-registration allows 300 attempts per 10 minutes per IP and 5 attempts per 10 minutes per derived Person key; durable subject-gate failure is fail-closed.
+* **Staff password baseline**: Staff passwords require at least 12 characters with lowercase, uppercase, digit, and symbol classes; secure password-change protection remains enabled. Temporary staff passwords default to 16 characters.
 
 ## Testing & Evidence Governance
 
