@@ -30,6 +30,7 @@ export type ExportAuditRow = {
   event: string;
   from_outcome: string | null;
   to_outcome: string | null;
+  slip_reference?: string | null;
   reason: string | null;
   actor_name: string | null;
   created_at: string;
@@ -60,9 +61,13 @@ export function buildCampRecordsCsv(
   campName: string,
   diagnosisOptions: string[],
   rows: ExportRecordRow[],
+  retiredDiagnosisOptions: string[] = [],
 ): string {
-  const diagnosisHeaders = diagnosisOptions.map(
-    (option) => `diagnosis: ${option}`,
+  const retired = new Set(retiredDiagnosisOptions);
+  const diagnosisHeaders = diagnosisOptions.map((option) =>
+    retired.has(option)
+      ? `diagnosis: ${option} (retired)`
+      : `diagnosis: ${option}`,
   );
   const headers = [
     "registration_number",
@@ -102,7 +107,10 @@ export function buildCampRecordsCsv(
 
   const body = rows.map((row) => {
     const data = (row.data ?? null) as Record<string, unknown> | null;
-    const diagnoses = normalizeDiagnoses(data?.diagnoses, diagnosisOptions);
+    // Template options only for legacy split — retired labels must not absorb free text.
+    // Explicit {options,other} shape still returns stored options (including retired) as-is.
+    const templateOnly = diagnosisOptions.filter((option) => !retired.has(option));
+    const diagnoses = normalizeDiagnoses(data?.diagnoses, templateOnly);
     const selected = new Set(diagnoses.options);
     const specs =
       data?.specs && typeof data.specs === "object" && !Array.isArray(data.specs)
@@ -168,6 +176,7 @@ export function buildClinicalAuditCsv(
     "event",
     "from_outcome",
     "to_outcome",
+    "slip_reference",
     "reason",
     "actor",
     "timestamp",
@@ -178,6 +187,7 @@ export function buildClinicalAuditCsv(
     encodeCsvCell(textField(row.event)),
     encodeCsvCell(textField(row.from_outcome ?? "")),
     encodeCsvCell(textField(row.to_outcome ?? "")),
+    encodeCsvCell(textField(row.slip_reference ?? "")),
     encodeCsvCell(textField(row.reason ?? "")),
     encodeCsvCell(textField(row.actor_name ?? "")),
     encodeCsvCell(formatIstTimestamp(row.created_at)),
@@ -185,12 +195,22 @@ export function buildClinicalAuditCsv(
   return buildCsvDocument([headers.map(encodeCsvCell), ...body]);
 }
 
+/** Asia/Kolkata calendar date (YYYY-MM-DD) for export filenames. */
+export function formatIstDate(when: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(when);
+}
+
 export function exportFilename(
   kind: "records" | "audit",
   campName: string,
   when = new Date(),
 ): string {
-  const date = when.toISOString().slice(0, 10);
+  const date = formatIstDate(when);
   const slug = slugForFilename(campName);
   return kind === "records"
     ? `camp-records-${slug}-${date}.csv`

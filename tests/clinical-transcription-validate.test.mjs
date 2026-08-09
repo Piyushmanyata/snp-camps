@@ -132,6 +132,22 @@ test("isSameTranscription ignores key order and legacy↔explicit diagnoses shap
     ),
     true,
   );
+  // Multi free-text legacy vs semicolon-joined Other: equal, no false correction.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["note one", "note two"] },
+      { diagnoses: { options: [], other: "note one; note two" } },
+    ),
+    true,
+  );
+  // Genuinely changed content is not equal.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["note one", "note two"] },
+      { diagnoses: { options: [], other: "note one; note three" } },
+    ),
+    false,
+  );
 });
 
 test("unavailable medicines bounds", () => {

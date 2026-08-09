@@ -1,5 +1,6 @@
 import {
   diagnosesEqual,
+  flattenDiagnoses,
   normalizeDiagnoses,
 } from "@/lib/clinical-diagnoses";
 
@@ -202,17 +203,10 @@ function normalizeTranscriptionForCompare(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const record = { ...(value as Record<string, unknown>) };
   if ("diagnoses" in record) {
-    // Compare flattened content so legacy array ↔ {options,other} is not a change.
-    record.diagnoses = flattenSorted(record.diagnoses);
+    // Shared flattener so legacy array ↔ {options,other} is not a change.
+    record.diagnoses = flattenDiagnoses(record.diagnoses);
   }
   return record;
-}
-
-function flattenSorted(raw: unknown): string[] {
-  const normalized = normalizeDiagnoses(raw);
-  const items = [...normalized.options];
-  if (normalized.other) items.push(normalized.other);
-  return items.map((item) => item.trim()).filter(Boolean).sort();
 }
 
 function sortKeys(value: unknown): unknown {

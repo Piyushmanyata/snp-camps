@@ -10,10 +10,12 @@ import {
 import {
   buildCampRecordsCsv,
   buildClinicalAuditCsv,
+  exportFilename,
 } from "../src/lib/clinical-export.ts";
 import {
   encodeCsvCell,
   encodeCsvNumber,
+  encodeCsvPhone,
   buildCsvDocument,
 } from "../src/lib/clinical-csv.ts";
 
@@ -167,11 +169,101 @@ test("audit CSV is one row per event without patient name", () => {
   assert.match(csv, /not_available/);
 });
 
+test("phone encoder emits plain digits; hostile values keep formula guard", () => {
+  assert.equal(encodeCsvPhone("9876543210"), '"9876543210"');
+  assert.equal(encodeCsvPhone("  9876543210  "), '"9876543210"');
+  assert.equal(encodeCsvPhone(""), '""');
+  assert.equal(encodeCsvPhone(null), '""');
+  assert.equal(encodeCsvPhone("=1+1"), encodeCsvCell("=1+1"));
+  assert.doesNotMatch(encodeCsvPhone("9876543210"), /'/);
+  assert.doesNotMatch(encodeCsvPhone("9876543210"), /\t/);
+});
+
+test("retired diagnosis columns follow template columns with retired label", () => {
+  const csv = buildCampRecordsCsv(
+    "Sikar Camp",
+    ["REFRACTION", "OLD_DX"],
+    [
+      {
+        reg_no: 1,
+        patient_name: "Pat",
+        age: 40,
+        gender: "M",
+        phone: "9876543210",
+        address: "A",
+        camp_name: "Sikar Camp",
+        transcription_at: null,
+        data: {
+          diagnoses: { options: ["REFRACTION", "OLD_DX"], other: null },
+        },
+        medicine_outcome: null,
+        specs_outcome: null,
+        ot_outcome: null,
+        unavailable_medicines: null,
+      },
+    ],
+    ["OLD_DX"],
+  );
+  const header = csv.split("\r\n")[0];
+  const refractionAt = header.indexOf("diagnosis: REFRACTION");
+  const retiredAt = header.indexOf("diagnosis: OLD_DX (retired)");
+  assert.ok(refractionAt >= 0);
+  assert.ok(retiredAt > refractionAt);
+  assert.match(csv, /"yes".*"yes"/s);
+});
+
+test("audit CSV carries slip_reference after to_outcome", () => {
+  const csv = buildClinicalAuditCsv("Sikar Camp", [
+    {
+      reg_no: 7,
+      entity: "deferred_slip",
+      event: "issued",
+      from_outcome: null,
+      to_outcome: "specs",
+      slip_reference: "SLIP-1 v1",
+      reason: null,
+      actor_name: "Op",
+      created_at: "2026-08-09T14:30:00.000Z",
+    },
+  ]);
+  const header = csv.split("\r\n")[0].replace(/^\uFEFF/, "");
+  assert.match(header, /to_outcome","slip_reference","reason"/);
+  assert.match(csv, /SLIP-1 v1/);
+});
+
+test("export filename uses Asia/Kolkata date when UTC disagrees", () => {
+  // 2026-08-09 00:30 IST = 2026-08-08 19:00 UTC
+  const when = new Date("2026-08-08T19:00:00.000Z");
+  const name = exportFilename("records", "Sikar Camp", when);
+  assert.match(name, /camp-records-Sikar-Camp-2026-08-09\.csv/);
+  assert.doesNotMatch(name, /2026-08-08/);
+});
+
+test("export headers never include aadhaar, date of birth, or email", () => {
+  const records = buildCampRecordsCsv("Camp", ["A"], []);
+  const audit = buildClinicalAuditCsv("Camp", []);
+  for (const csv of [records, audit]) {
+    const header = csv.split("\r\n")[0].toLowerCase();
+    assert.doesNotMatch(header, /aadhaar/);
+    assert.doesNotMatch(header, /date.?of.?birth|dob/);
+    assert.doesNotMatch(header, /email/);
+  }
+});
+
 test("export route rejects non-admin", async () => {
   signInOperator();
   mockExportClient(async () => ({ data: null, error: null }));
   const response = await GET(exportRequest({ format: "records" }));
   assert.equal(response.status, 403);
+  const body = await response.text();
+  assert.doesNotMatch(body, /registration_number|\uFEFF/);
+});
+
+test("export route rejects unauthenticated with no CSV bytes", async () => {
+  const response = await GET(exportRequest({ format: "records" }));
+  assert.equal(response.status, 401);
+  const body = await response.text();
+  assert.doesNotMatch(body, /registration_number|\uFEFF/);
 });
 
 test("export route errors when no camp is active", async () => {
@@ -234,6 +326,10 @@ test("export route returns CSV attachment for records", async () => {
   assert.equal(bytes[2], 0xbf);
   const text = new TextDecoder().decode(bytes);
   assert.match(text, /Test/);
+  // Household phone is quoted digits only — no apostrophe or tab.
+  assert.match(text, /"9876543210"/);
+  assert.doesNotMatch(text, /'.*9876543210/);
+  assert.doesNotMatch(text, /\t9876543210/);
 });
 
 test("buildCsvDocument always uses CRLF and BOM", () => {

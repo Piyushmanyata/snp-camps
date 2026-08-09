@@ -14,6 +14,7 @@ type ExportPayload = {
   camp_id: string;
   camp_name: string;
   diagnosis_options?: string[];
+  retired_diagnosis_options?: string[];
   rows: ExportRecordRow[] | ExportAuditRow[];
 };
 
@@ -84,6 +85,7 @@ export async function GET(request: Request) {
           payload.camp_name,
           payload.diagnosis_options ?? [],
           (payload.rows ?? []) as ExportRecordRow[],
+          payload.retired_diagnosis_options ?? [],
         )
       : buildClinicalAuditCsv(
           payload.camp_name,

@@ -19,17 +19,26 @@ export default async function AdminClinicalPage() {
     .order("is_active", { ascending: false })
     .order("name");
   const camps = (campRows ?? []) as ClinicalCampOption[];
-  const activeCampId = camps.find((camp) => camp.is_active)?.id ?? camps[0]?.id ?? null;
-  const { data, error } = await supabase.rpc("admin_clinical_records", {
-    p_camp_id: activeCampId,
-    p_include_archived: false,
-    p_limit: 50,
-    p_offset: 0,
-  });
-  const page = (data ?? { records: [], total: 0 }) as {
-    records: ClinicalRecord[];
-    total: number;
+  // Preselect the active camp only — never fall back to first alphabetically.
+  const activeCampId = camps.find((camp) => camp.is_active)?.id ?? null;
+  let page: { records: ClinicalRecord[]; total: number } = {
+    records: [],
+    total: 0,
   };
+  let loadError: string | null = null;
+  if (activeCampId) {
+    const { data, error } = await supabase.rpc("admin_clinical_records", {
+      p_camp_id: activeCampId,
+      p_include_archived: false,
+      p_limit: 50,
+      p_offset: 0,
+    });
+    page = (data ?? { records: [], total: 0 }) as {
+      records: ClinicalRecord[];
+      total: number;
+    };
+    loadError = error ? "Clinical records could not be loaded." : null;
+  }
   return (
     <Shell
       title="Clinical records"
@@ -41,7 +50,7 @@ export default async function AdminClinicalPage() {
       <AdminClinicalRecords
         initial={page.records}
         initialTotal={page.total}
-        initialError={error ? "Clinical records could not be loaded." : null}
+        initialError={loadError}
         camps={camps}
         activeCampId={activeCampId}
       />

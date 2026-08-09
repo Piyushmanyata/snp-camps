@@ -80,9 +80,11 @@ export function ClinicalDesk({
     DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions,
   );
   const [diagnosisSelected, setDiagnosisSelected] = useState<string[]>([]);
+  const [retiredDiagnoses, setRetiredDiagnoses] = useState<string[]>([]);
   const [diagnosisOther, setDiagnosisOther] = useState("");
   const [diagnosisOtherOriginal, setDiagnosisOtherOriginal] = useState<string[]>([]);
   const [diagnosisOtherEdited, setDiagnosisOtherEdited] = useState(false);
+  const [medicineIntent, setMedicineIntent] = useState<string | null>(null);
   const [bloodSugar, setBloodSugar] = useState("");
   const [bloodPressure, setBloodPressure] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -116,7 +118,10 @@ export function ClinicalDesk({
 
   function applySavedDiagnoses(saved: Record<string, unknown>, options = diagnosisOptions) {
     const normalized = normalizeDiagnoses(saved.diagnoses, options);
+    const template = new Set(options);
+    const retired = normalized.options.filter((option) => !template.has(option));
     setDiagnosisSelected(normalized.options);
+    setRetiredDiagnoses(retired);
     setDiagnosisOther(normalized.other ?? "");
     setDiagnosisOtherOriginal(normalized.other ? [normalized.other] : []);
     setDiagnosisOtherEdited(false);
@@ -130,6 +135,9 @@ export function ClinicalDesk({
     setCorrectionReason("");
     setLastSlipId(null);
     setFieldErrors({});
+    setUnavailableMedicines("");
+    setMedicineIntent(null);
+    setRetiredDiagnoses([]);
   }
 
   async function lookup(value = exact) {
@@ -510,6 +518,7 @@ export function ClinicalDesk({
   }, [slipReplace]);
 
   function toggleDiagnosis(option: string) {
+    if (retiredDiagnoses.includes(option)) return;
     setDiagnosisSelected((current) =>
       current.includes(option)
         ? current.filter((item) => item !== option)
@@ -623,6 +632,15 @@ export function ClinicalDesk({
                     </label>
                   );
                 })}
+                {retiredDiagnoses.map((option) => (
+                  <label
+                    key={`retired-${option}`}
+                    className="flex min-h-12 items-center gap-2 rounded-xl border border-border bg-slate-50 px-3 text-sm text-muted"
+                  >
+                    <input type="checkbox" checked disabled readOnly />
+                    {option} (retired)
+                  </label>
+                ))}
               </div>
               <Input
                 id="clinical-diagnosis-other"
@@ -792,7 +810,10 @@ export function ClinicalDesk({
                   <p className="text-sm text-muted">
                     Current: {current?.outcome ?? "unresolved"}
                   </p>
-                  {canMutate && kind === "medicine" && !current ? (
+                  {canMutate &&
+                  kind === "medicine" &&
+                  !current &&
+                  medicineIntent === "not_available" ? (
                     <Input
                       id="unavailable-medicines"
                       label="Unavailable medicines (required if not available)"
@@ -811,6 +832,14 @@ export function ClinicalDesk({
                             busy || Boolean(current) || !hasTranscription
                           }
                           onClick={() => {
+                            if (kind === "medicine" && outcome === "not_available") {
+                              if (medicineIntent !== "not_available") {
+                                setMedicineIntent("not_available");
+                                return;
+                              }
+                            } else if (kind === "medicine") {
+                              setMedicineIntent(null);
+                            }
                             const printTarget =
                               outcome === "deferred"
                                 ? acquireDeskPrintTarget((url, target, features) =>

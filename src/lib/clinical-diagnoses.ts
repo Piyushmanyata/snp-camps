@@ -58,11 +58,21 @@ export function normalizeDiagnoses(
   };
 }
 
-/** Flatten diagnoses to a multiset for equality across legacy/new shapes. */
+/**
+ * Flatten diagnoses to a sorted multiset for equality across legacy/new shapes.
+ * The `other` free-text field is split on semicolons so a joined legacy list
+ * compares equal to the individual entries. Equality only — storage and the
+ * export `diagnosis_other` column still use the stored string verbatim.
+ */
 export function flattenDiagnoses(raw: unknown): string[] {
   const normalized = normalizeDiagnoses(raw);
   const items = [...normalized.options];
-  if (normalized.other) items.push(normalized.other);
+  if (normalized.other) {
+    for (const part of normalized.other.split(";")) {
+      const trimmed = part.trim();
+      if (trimmed) items.push(trimmed);
+    }
+  }
   return items.map((item) => item.trim()).filter(Boolean).sort();
 }
 

@@ -8,6 +8,7 @@ import {
   CollapsibleSection,
   ErrorBox,
   SectionTitle,
+  Select,
 } from "@/components/ui";
 
 type Item = {
@@ -58,7 +59,7 @@ export function AdminClinicalRecords({
   const [error, setError] = useState<string | null>(initialError);
   const [exportError, setExportError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [campId, setCampId] = useState(activeCampId ?? camps[0]?.id ?? "");
+  const [campId, setCampId] = useState(activeCampId ?? "");
   const [reversalItem, setReversalItem] = useState<Item | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -72,9 +73,15 @@ export function AdminClinicalRecords({
     append = false,
     selectedCampId = campId,
   ) {
+    if (!selectedCampId) {
+      setRecords([]);
+      setTotal(0);
+      setError(null);
+      return;
+    }
     setBusy(true);
     const { data, error: rpcError } = await supabase.rpc("admin_clinical_records", {
-      p_camp_id: selectedCampId || null,
+      p_camp_id: selectedCampId,
       p_include_archived: includeArchived,
       p_limit: 50,
       p_offset: offset,
@@ -167,53 +174,82 @@ export function AdminClinicalRecords({
     return `/api/admin/exports/clinical.csv?${params.toString()}`;
   }
 
-  function downloadExport(format: "records" | "audit") {
+  async function downloadExport(format: "records" | "audit") {
     setExportError(null);
-    if (!campId && !camps.some((camp) => camp.is_active)) {
+    if (!campId) {
       setExportError("Select a camp, or activate a camp, before exporting.");
       return;
     }
-    window.location.assign(exportUrl(format));
+    setBusy(true);
+    try {
+      const response = await fetch(exportUrl(format));
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setExportError(body?.error?.trim() || "Export failed. Try again.");
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const matched = /filename="([^"]+)"/i.exec(disposition);
+      const filename =
+        matched?.[1] ||
+        (format === "records" ? "camp-records.csv" : "clinical-audit.csv");
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setExportError("Export failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[12rem] flex-col gap-1 text-sm font-semibold">
-          Camp
-          <select
-            className="rounded-xl border border-border bg-card px-3 py-2.5 text-base font-normal outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        <div className="min-w-[12rem]">
+          <Select
+            label="Camp"
+            aria-label="Camp for clinical records and export"
             value={campId}
             onChange={(event) => {
               const next = event.target.value;
               setCampId(next);
               void refresh(showArchived, 0, false, next);
             }}
-            aria-label="Camp for clinical records and export"
           >
-            {!campId ? <option value="">Select a camp</option> : null}
+            <option value="">Select a camp</option>
             {camps.map((camp) => (
               <option key={camp.id} value={camp.id}>
                 {camp.name}
                 {camp.is_active ? " (active)" : ""}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </div>
         <Button
           type="button"
-          onClick={() => downloadExport("records")}
+          disabled={!campId || busy}
+          onClick={() => void downloadExport("records")}
         >
           Download Camp Records (CSV)
         </Button>
         <Button
           type="button"
           variant="secondary"
-          onClick={() => downloadExport("audit")}
+          disabled={!campId || busy}
+          onClick={() => void downloadExport("audit")}
         >
           Download Clinical Audit (CSV)
         </Button>
-        <Button type="button" variant="secondary" disabled={busy} onClick={() => {
+        <Button type="button" variant="secondary" disabled={busy || !campId} onClick={() => {
           const next = !showArchived;
           setShowArchived(next);
           void refresh(next);
@@ -221,7 +257,15 @@ export function AdminClinicalRecords({
       </div>
       <ErrorBox message={error || exportError} />
       {error ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void refresh()}>Retry loading records</Button> : null}
-      {records.map((record) => (
+      {!campId ? (
+        <Card>
+          <p className="text-sm text-muted">
+            Choose a camp to view clinical records and download exports.
+          </p>
+        </Card>
+      ) : null}
+      {campId
+        ? records.map((record) => (
         <Card key={record.transcription_id} className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -254,8 +298,9 @@ export function AdminClinicalRecords({
             ))}
           </div>
         </Card>
-      ))}
-      {records.length < total ? (
+      ))
+        : null}
+      {campId && records.length < total ? (
         <Button
           type="button"
           variant="secondary"
@@ -265,7 +310,11 @@ export function AdminClinicalRecords({
           Load more
         </Button>
       ) : null}
-      {!records.length ? <Card><p className="text-sm text-muted">No clinical records in this view.</p></Card> : null}
+      {campId && !records.length ? (
+        <Card>
+          <p className="text-sm text-muted">No clinical records in this view.</p>
+        </Card>
+      ) : null}
       {reversalItem ? (
         <dialog
           ref={reversalDialogRef}

@@ -23,13 +23,18 @@ export function encodeCsvNumber(value: unknown): string {
   return text;
 }
 
-/** Force household phone to text so Excel cannot reformat or truncate it. */
+/**
+ * Emit a plain household phone as quoted digits only. Valid phones are 4–15
+ * digits after trim (no tab, no formula-guard apostrophe). Hostile or non-digit
+ * values fall through to the ordinary text encoder so the formula guard still
+ * applies.
+ */
 export function encodeCsvPhone(value: string | null | undefined): string {
   if (value == null || value === "") return '""';
   const digits = String(value).trim();
   if (!digits) return '""';
-  // Leading tab forces text in Excel while remaining visible as digits.
-  return encodeCsvCell(`\t${digits}`);
+  if (/^\d{4,15}$/.test(digits)) return `"${digits}"`;
+  return encodeCsvCell(digits);
 }
 
 /** Asia/Kolkata date-time for export cells (never ISO UTC). */
