@@ -1,3 +1,8 @@
+import {
+  diagnosesEqual,
+  normalizeDiagnoses,
+} from "@/lib/clinical-diagnoses";
+
 export type ClinicalFieldError = { field: string; message: string };
 
 type ClinicalValidation = { ok: true } | { ok: false; errors: ClinicalFieldError[] };
@@ -17,6 +22,62 @@ function add(
   errors.push({ field, message });
 }
 
+function validateDiagnosesField(
+  raw: unknown,
+  errors: ClinicalFieldError[],
+) {
+  // Explicit stored shape
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const value = raw as Record<string, unknown>;
+    if ("options" in value || "other" in value) {
+      const options = Array.isArray(value.options) ? value.options : null;
+      if (
+        !options ||
+        options.some(
+          (item) =>
+            typeof item !== "string" ||
+            item.trim().length < 1 ||
+            item.trim().length > 120,
+        )
+      ) {
+        add(errors, "diagnoses", "Select 1–12 diagnoses, each 1–120 characters.");
+        return;
+      }
+      const other = value.other;
+      if (
+        other != null &&
+        (typeof other !== "string" || other.trim().length > 120)
+      ) {
+        add(errors, "diagnoses.other", "Other diagnosis must be 1–120 characters.");
+        return;
+      }
+      const otherTrimmed =
+        typeof other === "string" && other.trim() ? other.trim() : null;
+      const total = options.length + (otherTrimmed ? 1 : 0);
+      if (total < 1 || total > 12) {
+        add(errors, "diagnoses", "Select 1–12 diagnoses, each 1–120 characters.");
+      }
+      return;
+    }
+  }
+
+  // Legacy flat array
+  const diagnoses = raw;
+  if (
+    !Array.isArray(diagnoses) ||
+    diagnoses.length < 1 ||
+    diagnoses.length > 12 ||
+    diagnoses.some(
+      (diagnosis) =>
+        typeof diagnosis !== "string" ||
+        diagnosis.trim().length < 1 ||
+        diagnosis.trim().length > 120,
+    )
+  ) {
+    add(errors, "diagnoses", "Select 1–12 diagnoses, each 1–120 characters.");
+  }
+}
+
 export function validateClinicalTranscription(
   data: Record<string, unknown>,
 ): ClinicalValidation {
@@ -31,20 +92,7 @@ export function validateClinicalTranscription(
     add(errors, "data", "Clinical data is too large.");
   }
 
-  const diagnoses = data.diagnoses;
-  if (
-    !Array.isArray(diagnoses) ||
-    diagnoses.length < 1 ||
-    diagnoses.length > 12 ||
-    diagnoses.some(
-      (diagnosis) =>
-        typeof diagnosis !== "string" ||
-        diagnosis.trim().length < 1 ||
-        diagnosis.trim().length > 120,
-    )
-  ) {
-    add(errors, "diagnoses", "Select 1–12 diagnoses, each 1–120 characters.");
-  }
+  validateDiagnosesField(data.diagnoses, errors);
 
   for (const field of ["remarks", "medicines"] as const) {
     if (stringValue(data[field]).length > 2000) {
@@ -102,13 +150,15 @@ export function validateClinicalTranscription(
         if (!nonNegativeNumeric.test(sphere) && !numeric.test(sphere)) {
           add(errors, `specs.${side}.sphere`, "Enter a numeric sphere value.");
         }
+        // Clinical Desk sends `near` (not nearAddition). Validate near; still
+        // accept legacy nearAddition if present so old rows remain readable.
         for (const field of ["sphere", "cylinder", "near", "nearAddition"] as const) {
           const fieldValue = stringValue(eyeData[field]).trim();
           if (
             fieldValue &&
             (!numeric.test(fieldValue) || Number(fieldValue) < -30 || Number(fieldValue) > 30)
           ) {
-            add(errors, `specs.${side}.${field}`, "Use a number from −30 to 30.");
+            add(errors, `specs.${side}.${field === "nearAddition" ? "near" : field}`, "Use a number from −30 to 30.");
           }
         }
         const axis = stringValue(eyeData.axis).trim();
@@ -148,6 +198,23 @@ export function validateClinicalTranscription(
   return errors.length ? { ok: false, errors } : { ok: true };
 }
 
+function normalizeTranscriptionForCompare(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = { ...(value as Record<string, unknown>) };
+  if ("diagnoses" in record) {
+    // Compare flattened content so legacy array ↔ {options,other} is not a change.
+    record.diagnoses = flattenSorted(record.diagnoses);
+  }
+  return record;
+}
+
+function flattenSorted(raw: unknown): string[] {
+  const normalized = normalizeDiagnoses(raw);
+  const items = [...normalized.options];
+  if (normalized.other) items.push(normalized.other);
+  return items.map((item) => item.trim()).filter(Boolean).sort();
+}
+
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (!value || typeof value !== "object") return value;
@@ -159,5 +226,10 @@ function sortKeys(value: unknown): unknown {
 }
 
 export function isSameTranscription(a: unknown, b: unknown): boolean {
-  return JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+  return (
+    JSON.stringify(sortKeys(normalizeTranscriptionForCompare(a))) ===
+    JSON.stringify(sortKeys(normalizeTranscriptionForCompare(b)))
+  );
 }
+
+export { diagnosesEqual, normalizeDiagnoses };

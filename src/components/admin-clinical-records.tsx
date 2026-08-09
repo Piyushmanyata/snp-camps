@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { encodeCsvCell } from "@/lib/clinical-csv";
 import {
   Button,
   Card,
@@ -32,22 +31,34 @@ export type ClinicalRecord = {
   items: Item[];
 };
 
+export type ClinicalCampOption = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
 type RecordsPage = { records: ClinicalRecord[]; total: number };
 
 export function AdminClinicalRecords({
   initial,
   initialTotal = initial.length,
   initialError = null,
+  camps = [],
+  activeCampId = null,
 }: {
   initial: ClinicalRecord[];
   initialTotal?: number;
   initialError?: string | null;
+  camps?: ClinicalCampOption[];
+  activeCampId?: string | null;
 }) {
   const [records, setRecords] = useState(initial);
   const [total, setTotal] = useState(initialTotal);
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [campId, setCampId] = useState(activeCampId ?? camps[0]?.id ?? "");
   const [reversalItem, setReversalItem] = useState<Item | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -59,10 +70,11 @@ export function AdminClinicalRecords({
     includeArchived = showArchived,
     offset = 0,
     append = false,
+    selectedCampId = campId,
   ) {
     setBusy(true);
     const { data, error: rpcError } = await supabase.rpc("admin_clinical_records", {
-      p_camp_id: null,
+      p_camp_id: selectedCampId || null,
       p_include_archived: includeArchived,
       p_limit: 50,
       p_offset: offset,
@@ -148,39 +160,66 @@ export function AdminClinicalRecords({
     setBusy(false);
   }
 
-  function exportCsv() {
-    const rows = [
-      ["registration", "patient", "camp", "created_at", "archived_at", "effective_transcription", "corrections", "items_with_events_and_slips"],
-      ...records.map((record) => [
-        String(record.reg_no), record.patient_name, record.camp_name, record.created_at,
-        record.archived_at ?? "", JSON.stringify(record.data), JSON.stringify(record.corrections),
-        JSON.stringify(record.items),
-      ]),
-    ];
-    const csv = rows.map((row) => row.map(encodeCsvCell).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `clinical-records-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      link.remove();
-      URL.revokeObjectURL(url);
-    }, 0);
+  function exportUrl(format: "records" | "audit") {
+    const params = new URLSearchParams({ format });
+    if (campId) params.set("campId", campId);
+    if (showArchived) params.set("includeArchived", "1");
+    return `/api/admin/exports/clinical.csv?${params.toString()}`;
+  }
+
+  function downloadExport(format: "records" | "audit") {
+    setExportError(null);
+    if (!campId && !camps.some((camp) => camp.is_active)) {
+      setExportError("Select a camp, or activate a camp, before exporting.");
+      return;
+    }
+    window.location.assign(exportUrl(format));
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={exportCsv}>Export loaded records (CSV)</Button>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-[12rem] flex-col gap-1 text-sm font-semibold">
+          Camp
+          <select
+            className="rounded-xl border border-border bg-card px-3 py-2.5 text-base font-normal outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            value={campId}
+            onChange={(event) => {
+              const next = event.target.value;
+              setCampId(next);
+              void refresh(showArchived, 0, false, next);
+            }}
+            aria-label="Camp for clinical records and export"
+          >
+            {!campId ? <option value="">Select a camp</option> : null}
+            {camps.map((camp) => (
+              <option key={camp.id} value={camp.id}>
+                {camp.name}
+                {camp.is_active ? " (active)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          type="button"
+          onClick={() => downloadExport("records")}
+        >
+          Download Camp Records (CSV)
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => downloadExport("audit")}
+        >
+          Download Clinical Audit (CSV)
+        </Button>
         <Button type="button" variant="secondary" disabled={busy} onClick={() => {
           const next = !showArchived;
           setShowArchived(next);
           void refresh(next);
         }}>{showArchived ? "Hide archived" : "Include archived"}</Button>
       </div>
-      <ErrorBox message={error} />
+      <ErrorBox message={error || exportError} />
       {error ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void refresh()}>Retry loading records</Button> : null}
       {records.map((record) => (
         <Card key={record.transcription_id} className="space-y-3">

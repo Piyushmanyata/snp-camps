@@ -824,9 +824,13 @@ test("mandatory route/state matrix: patient, roles, clinical records, and A4", a
     page.getByRole("heading", { name: "Clinical records" }),
   );
   const exportRecords = page.getByRole("button", {
-    name: "Export loaded records (CSV)",
+    name: "Download Camp Records (CSV)",
   });
-  await assertTouchTarget(exportRecords, "admin clinical export");
+  await assertTouchTarget(exportRecords, "admin clinical export records");
+  const exportAudit = page.getByRole("button", {
+    name: "Download Clinical Audit (CSV)",
+  });
+  await assertTouchTarget(exportAudit, "admin clinical export audit");
   const includeArchived = page.getByRole("button", {
     name: "Include archived",
   });
