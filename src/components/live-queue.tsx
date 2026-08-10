@@ -11,7 +11,7 @@ import {
   Spinner,
 } from "@/components/ui";
 import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
-import { Toast } from "@/components/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/toast-bus";
 import {
   markSeenWithRetries,
   undoMarkSeenWithRetries,
@@ -37,8 +37,11 @@ export function LiveQueue({
   campId: string | null;
   initialLoadKnown?: boolean;
 }) {
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const setError = (message: string | null) => {
+    setErrorState(message);
+    if (message) showErrorToast(message);
+  };
   const [busyId, setBusyId] = useState<string | null>(null);
   // Last patient marked seen from this list — the undo target (D25).
   const [undoable, setUndoable] = useState<LiveQueuePatient | null>(null);
@@ -61,7 +64,6 @@ export function LiveQueue({
   });
 
   function manualRefresh() {
-    setToastMsg(null);
     setError(null);
     refresh();
   }
@@ -124,7 +126,7 @@ export function LiveQueue({
       /* ignore */
     }
 
-    setToastMsg(`#${patient.reg_no} ${patient.full_name} marked seen`);
+    showSuccessToast(`#${patient.reg_no} ${patient.full_name} marked seen`);
     setUndoable(patient);
     refresh();
     setBusyId(null);
@@ -148,7 +150,7 @@ export function LiveQueue({
     }
 
     setUndoable(null);
-    setToastMsg(`#${patient.reg_no} back in the queue`);
+    showSuccessToast(`#${patient.reg_no} back in the queue`);
     clearRemoved(patient.id);
     refresh();
     setBusyId(null);
@@ -181,9 +183,6 @@ export function LiveQueue({
         onRetry={manualRefresh}
         hasKnownData={waitingKnown}
       />
-      {toastMsg ? (
-        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      ) : null}
       {undoable ? (
         <div
           className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2"
@@ -310,3 +309,4 @@ export function LiveQueue({
     </div>
   );
 }
+

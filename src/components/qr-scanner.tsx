@@ -27,7 +27,7 @@ import {
   type MarkSeenRow,
 } from "@/lib/desk-ops";
 import { Button, ErrorBox, Input } from "@/components/ui";
-import { Toast } from "@/components/toast";
+import { showErrorToast, showSuccessToast } from "@/lib/toast-bus";
 
 type LookupOrigin = "camera" | "manual";
 
@@ -78,8 +78,11 @@ export function QrScanner({
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const reviewHeadingId = `qr-review-heading-${uid}`;
-  const [error, setError] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const setError = (message: string | null) => {
+    setErrorState(message);
+    if (message) showErrorToast(message);
+  };
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [manual, setManual] = useState("");
@@ -215,7 +218,7 @@ export function QrScanner({
       // Clear the input so the next patient can be typed straight away; the
       // result card above keeps the Undo affordance for the one just done.
       setManual("");
-      setToastMsg(
+      showSuccessToast(
         row.already_seen
           ? `#${row.reg_no} was already seen`
           : `#${row.reg_no} marked seen`,
@@ -290,7 +293,7 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
       } else {
-        setToastMsg("Undone — back in the queue");
+        showSuccessToast("Undone — back in the queue");
         readyForNext();
         router.refresh();
       }
@@ -1091,10 +1094,8 @@ export function QrScanner({
         </div>
       ) : null}
 
-      {toastMsg ? (
-        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      ) : null}
     </div>
   );
 }
+
 

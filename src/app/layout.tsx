@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ToastHost } from "@/components/toast-host";
 
 const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
@@ -59,7 +60,10 @@ export default function RootLayout({
           Skip to content
         </a>
         {children}
+
+        <ToastHost />
       </body>
     </html>
   );
 }
+
