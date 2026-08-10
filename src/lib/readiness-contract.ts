@@ -16,7 +16,7 @@ export const READINESS_CONTRACT_VERSION = 9;
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260809140000";
+export const EXPECTED_MIGRATION_HEAD = "20260810120000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -56,7 +56,7 @@ export const REQUIRED_TABLES = [
   "aadhaar_extraction_events",
 ] as const;
 
-/** table → required columns (runtime-critical subset). */
+/** table ΓåÆ required columns (runtime-critical subset). */
 export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   patients: [
     "id",
@@ -319,8 +319,8 @@ export const SMS_DELIVERY_STATES = [
 
 /**
  * Only the two kinds the app still sends (D28). The `spectacles_deferral` and
- * `surgery_deferral` labels remain in the Postgres enum — a value cannot be
- * dropped from an enum type — but nothing produces them any more.
+ * `surgery_deferral` labels remain in the Postgres enum ΓÇö a value cannot be
+ * dropped from an enum type ΓÇö but nothing produces them any more.
  */
 export const SMS_DELIVERY_KINDS = ["registration", "reminder"] as const;
 

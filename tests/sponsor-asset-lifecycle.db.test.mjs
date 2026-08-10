@@ -67,17 +67,10 @@ test.after(async () => {
 
 test("publish waits for deletion lock and rejects the now-deleting asset", async (t) => {
   if (skipIfNoDb(t)) return;
-  const { rows: camps } = await admin.query(
-    "select id from public.camps where is_active limit 1",
-  );
-  const { rows: profiles } = await admin.query(
-    "select id from public.profiles where role = 'admin' and disabled_at is null limit 1",
-  );
-  if (!camps[0]?.id || !profiles[0]?.id) {
-    t.skip("active camp and admin profile fixture required");
-    return;
-  }
 
+  // Self-contained fixtures: other suites leave no guaranteed active camp/admin.
+  const campId = randomUUID();
+  const adminId = randomUUID();
   const assetId = randomUUID();
   const objectKey = `lifecycle-test/${assetId}.png`;
   const publisher = new pg.Client({ connectionString: DATABASE_URL });
@@ -85,15 +78,33 @@ test("publish waits for deletion lock and rejects the now-deleting asset", async
   await publisher.connect();
   await deleter.connect();
   try {
+    // Exclusive active camp for this case (unique active-camp invariant).
+    await admin.query(`update public.camps set is_active = false where is_active = true`);
+    await admin.query(
+      `insert into auth.users (
+         id, email, confirmation_token, recovery_token,
+         email_change_token_new, email_change
+       ) values ($1, $2, '', '', '', '')`,
+      [adminId, `${adminId}@sponsor-lifecycle.test`],
+    );
+    await admin.query(
+      `insert into public.profiles (id, full_name, role) values ($1, 'Sponsor Lifecycle Admin', 'admin')`,
+      [adminId],
+    );
+    await admin.query(
+      `insert into public.camps (id, name, venue, is_active)
+       values ($1, $2, $3, true)`,
+      [campId, `Sponsor lifecycle ${campId.slice(0, 8)}`, `Venue ${campId.slice(0, 8)}`],
+    );
     await admin.query(
       `insert into public.sponsor_assets
          (id,camp_id,object_key,mime_type,byte_size,created_by,state)
        values ($1,$2,$3,'image/png',12,$4,'ready')`,
-      [assetId, camps[0].id, objectKey, profiles[0].id],
+      [assetId, campId, objectKey, adminId],
     );
 
     await deleter.query("begin");
-    await asAdmin(deleter, profiles[0].id);
+    await asAdmin(deleter, adminId);
     const { rows: beginRows } = await deleter.query(
       "select * from public.begin_sponsor_asset_deletion($1)",
       [assetId],
@@ -101,23 +112,39 @@ test("publish waits for deletion lock and rejects the now-deleting asset", async
     assert.equal(beginRows[0].state, "deleting");
 
     await publisher.query("begin");
-    await asAdmin(publisher, profiles[0].id);
-    const publishAttempt = publisher.query(
-      `select public.admin_save_prescription_template($1,$2::jsonb,true)`,
-      [
-        camps[0].id,
-        JSON.stringify({
-          sections: [{ key: "remarks", label: "Remarks", heightMm: 10 }],
-          sponsorLogos: [`/api/admin/sponsor-assets/${assetId}`],
-        }),
-      ],
-    );
+    await asAdmin(publisher, adminId);
+    // Start publish while deletion holds FOR UPDATE; it must wait, then fail.
+    // Attach handlers immediately so node:test does not treat the rejection as unhandled.
+    const publishOutcome = publisher
+      .query(
+        `select public.admin_save_prescription_template($1,$2::jsonb,true)`,
+        [
+          campId,
+          JSON.stringify({
+            sections: [{ key: "remarks", label: "Remarks", heightMm: 10 }],
+            sponsorLogos: [`/api/admin/sponsor-assets/${assetId}`],
+          }),
+        ],
+      )
+      .then(
+        () => ({ ok: true }),
+        (err) => ({ ok: false, err }),
+      );
 
-    // The publisher must be blocked behind the deleter's FOR UPDATE lock.
     await new Promise((resolve) => setTimeout(resolve, 50));
     await deleter.query("commit");
-    await assert.rejects(publishAttempt, /sponsor asset is not ready/i);
-    await publisher.query("rollback");
+
+    const outcome = await publishOutcome;
+    assert.equal(outcome.ok, false, "publish must reject after deletion commits");
+    assert.match(
+      String(outcome.err?.message ?? outcome.err),
+      /sponsor asset is not ready/i,
+    );
+    try {
+      await publisher.query("rollback");
+    } catch {
+      // Transaction already aborted after the expected raise.
+    }
   } finally {
     try {
       await publisher.query("rollback");
@@ -131,6 +158,9 @@ test("publish waits for deletion lock and rejects the now-deleting asset", async
     }
     await publisher.end();
     await deleter.end();
-    await admin.query("delete from public.sponsor_assets where id = $1", [assetId]);
+    await admin.query("delete from public.sponsor_assets where id = $1", [assetId]).catch(() => {});
+    await admin.query("delete from public.camps where id = $1", [campId]).catch(() => {});
+    await admin.query("delete from public.profiles where id = $1", [adminId]).catch(() => {});
+    await admin.query("delete from auth.users where id = $1", [adminId]).catch(() => {});
   }
 });
