@@ -182,10 +182,10 @@ export default async function VolunteerPage() {
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
-            Active camp
+            Chalu camp
           </p>
           <p className="text-lg font-bold tracking-tight sm:text-2xl">
-            {camp?.name || "None"}
+            {camp?.name || "Koi nahi"}
           </p>
           {camp?.venue ? (
             <p className="text-sm text-muted sm:text-[0.9375rem]">{camp.venue}</p>
@@ -209,7 +209,7 @@ export default async function VolunteerPage() {
           noCampReason={
             camp
               ? undefined
-              : "No active camp. Ask an admin to activate a camp first."
+              : "Koi active camp nahi. Admin se camp chalu karwayein."
           }
           scanTitle="Marij scan karein"
           scanHint="QR scan karein, ya number/naam likhein"

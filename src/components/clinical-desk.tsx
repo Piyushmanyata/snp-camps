@@ -248,7 +248,7 @@ export function ClinicalDesk({
           setError(NOT_FOUND_MESSAGE);
         }
       } else {
-        setError("Exact registration lookup failed.");
+        setError("Registration lookup fail ho gaya. Dobara koshish karein.");
         setBusy(false);
       }
       return;
@@ -340,7 +340,7 @@ export function ClinicalDesk({
     });
     if (!isCurrentLookup(generation)) return "stale";
     if (rpcError) {
-      setError("Follow-up lookup failed.");
+      setError("Follow-up lookup fail ho gaya. Dobara koshish karein.");
       setBusy(false);
       return "error";
     }
@@ -421,7 +421,7 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      setError("Slip could not be replaced. Try again.");
+      setError("Slip badal nahi payi. Dobara koshish karein.");
     } else {
       const replacement = data as { id: string };
       closeSlipReplace();
@@ -555,7 +555,7 @@ export function ClinicalDesk({
       printTarget?.abandon();
       const rpcMessage = rpcError.message;
       const matched = RESOLVE_ERRORS.find(([pattern]) => pattern.test(rpcMessage));
-      let mapped = matched?.[1] ?? "Could not record this outcome. Try again.";
+      let mapped = matched?.[1] ?? "Faisla save nahi hua. Dobara koshish karein.";
       if (matched && /date and venue/i.test(rpcMessage)) {
         mapped = `Admin se is camp ke liye ${KIND_HEADINGS[kind]} collection date aur venue set karwayein, phir defer karein.`;
       }
@@ -733,7 +733,7 @@ export function ClinicalDesk({
                   setDiagnosisOtherEdited(true);
                 }}
                 disabled={!canMutate}
-                hint="Free text — not split on commas"
+                hint="Free text — commas se alag nahi hoga"
                 error={fieldErrors.diagnoses}
               />
             </fieldset>

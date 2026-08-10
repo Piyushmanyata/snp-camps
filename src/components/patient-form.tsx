@@ -539,7 +539,7 @@ export function PatientForm({
       if (outcome.aadhaarDuplicateRegNo) {
         setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
         setLikelyDuplicateRegNo(null);
-        const dupMsg = `Name + Aadhaar last 4 already belong to registration #${outcome.aadhaarDuplicateRegNo}. Review that patient first. Override only for a different person.`;
+        const dupMsg = `Yeh naam aur Aadhaar ke aakhri 4 digit registration #${outcome.aadhaarDuplicateRegNo} ke hain.`;
         setError(dupMsg);
         showErrorToast(dupMsg);
         setPhase("idle");

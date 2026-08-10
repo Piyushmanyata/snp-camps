@@ -17,7 +17,7 @@ const TeamLeadPanel = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Loading team…
+        Team load ho rahi hai…
       </p>
     ),
   },
@@ -32,7 +32,7 @@ const SeatBoard = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Loading seats…
+        Seats load ho rahi hain…
       </p>
     ),
   },
@@ -47,7 +47,7 @@ const VolunteerKpisSection = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Loading points…
+        Points load ho rahe hain…
       </p>
     ),
   },
@@ -164,7 +164,7 @@ function MoreIslands({
       {campId && kpisInitial ? (
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-            Active-camp KPIs
+            Aaj ke camp ke numbers
           </p>
           <VolunteerKpisSection campId={campId} initial={kpisInitial} />
         </div>
