@@ -32,7 +32,7 @@ export function DeskScanQueue({
         <Suspense
           fallback={
             <p role="status" className="py-6 text-center text-sm text-muted">
-              Loading scanner…
+              Scanner load ho raha hai…
             </p>
           }
         >

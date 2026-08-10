@@ -185,7 +185,7 @@ function MoreIslands({
     return (
       <p role="status" className="inline-flex items-center gap-1.5 py-4 text-xs text-muted">
         <Spinner className="h-3.5 w-3.5" />
-        Loading…
+        Load ho raha hai…
       </p>
     );
   }
@@ -273,7 +273,7 @@ export function VolunteerDeskMore({
           />
         ) : (
           <p role="status" className="py-4 text-xs text-muted">
-            Open to load points, seats, and team…
+            Points, seats, team load karne ke liye kholen…
           </p>
         )
       }
