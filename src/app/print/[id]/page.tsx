@@ -68,8 +68,6 @@ export default async function PrintPage({
   }
 
   const deskHref = profile.role === "admin" ? "/admin" : "/volunteer";
-  const deskLabel =
-    profile.role === "admin" ? "Admin dashboard" : "Volunteer desk";
 
   return (
     <main id="main" className="mx-auto max-w-[220mm] px-3 py-4 sm:px-4 sm:py-6">
@@ -84,7 +82,6 @@ export default async function PrintPage({
           },
         ]}
         deskHref={deskHref}
-        deskLabel={deskLabel}
         autoPrint={autoPrint}
       />
       <ScaleToFit>

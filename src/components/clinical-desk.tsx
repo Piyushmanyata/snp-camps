@@ -71,7 +71,13 @@ const OUTCOME_LABELS: Record<string, string> = {
   deferred: "Baad mein milega",
 };
 
-const RESOLVE_ERRORS: Array<[RegExp, string]> = [
+const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
+
+type ResolveKind = keyof typeof KIND_HEADINGS;
+
+const RESOLVE_ERRORS: Array<
+  [RegExp, string | ((kind: ResolveKind) => string)]
+> = [
   [
     /unavailable medicines/i,
     "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.",
@@ -90,12 +96,10 @@ const RESOLVE_ERRORS: Array<[RegExp, string]> = [
   ],
   [
     /date and venue/i,
-    "Admin se is camp ke liye collection date aur venue set karwayein, phir defer karein.",
+    (kind) =>
+      `Admin se is camp ke liye ${KIND_HEADINGS[kind]} collection date aur venue set karwayein, phir defer karein.`,
   ],
-  [
-    /seen transcription required/i,
-    "Pehle record save karein, phir faisla likhein.",
-  ],
+  [/seen transcription required/i, SAVE_FIRST],
   [
     /outcome conflict/i,
     "Is item ka pehle se alag faisla hai. Admin se reverse karwayein.",
@@ -519,7 +523,7 @@ export function ClinicalDesk({
   ) {
     if (!record || !canMutate) return;
     if (!record.transcription?.id) {
-      setError("Pehle record save karein, phir faisla likhein.");
+      setError(SAVE_FIRST);
       return;
     }
     let unavailableList: string[] | null = null;
@@ -551,10 +555,11 @@ export function ClinicalDesk({
       printTarget?.abandon();
       const rpcMessage = rpcError.message;
       const matched = RESOLVE_ERRORS.find(([pattern]) => pattern.test(rpcMessage));
-      let mapped = matched?.[1] ?? "Faisla save nahi hua. Dobara koshish karein.";
-      if (matched && /date and venue/i.test(rpcMessage)) {
-        mapped = `Admin se is camp ke liye ${KIND_HEADINGS[kind]} collection date aur venue set karwayein, phir defer karein.`;
-      }
+      const entry = matched?.[1];
+      const mapped =
+        typeof entry === "function"
+          ? entry(kind)
+          : (entry ?? "Faisla save nahi hua. Dobara koshish karein.");
       setError(mapped);
     } else {
       const slip = (data as { slip?: { id?: string } } | null)?.slip;
@@ -960,9 +965,7 @@ export function ClinicalDesk({
                       ))
                     : null}
                   {!hasTranscription && canMutate ? (
-                    <p className="text-xs text-muted">
-                      Pehle record save karein, phir faisla likhein.
-                    </p>
+                    <p className="text-xs text-muted">{SAVE_FIRST}</p>
                   ) : null}
                   {current?.slip ? (
                     <div className="flex flex-wrap gap-2">

@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
-import { OpenOnToggle, Spinner } from "@/components/ui";
+import { Spinner } from "@/components/ui";
+import { OpenOnToggle } from "@/components/open-on-toggle";
 import { SectionLoadError } from "@/components/section-load-error";
 import { fetchDeskSection } from "@/lib/section-client";
 import type { StaffPerson } from "@/components/staff-detail";

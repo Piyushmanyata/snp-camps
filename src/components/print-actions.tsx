@@ -16,17 +16,33 @@ export type PrintActionPatient = {
 /**
  * Print controls for the patient's paper prescription.
  */
+const PRINT_STATUS_COPY: Record<
+  QueueStatus,
+  { printLabel: string; heading: string }
+> = {
+  seen: {
+    printLabel: "Puri ho chuki parchi print karein",
+    heading: "Print · dekha hua marij",
+  },
+  waiting: {
+    printLabel: "Dobara print karein (1 page)",
+    heading: "Dobara print · pehle se line mein",
+  },
+  registered: {
+    printLabel: "Print karein",
+    heading: "Print ke liye taiyaar · line mein aa jayega",
+  },
+};
+
 export function PrintActions({
   className = "",
   patients,
   deskHref,
-  deskLabel: _deskLabel,
   autoPrint = false,
 }: {
   className?: string;
   patients: PrintActionPatient[];
   deskHref: "/admin" | "/volunteer";
-  deskLabel: "Admin dashboard" | "Volunteer desk";
   /** When true (desk register flow), open the print dialog once on mount. */
   autoPrint?: boolean;
 }) {
@@ -46,6 +62,8 @@ export function PrintActions({
   const primaryStatus = primary
     ? statuses[primary.id] ?? primary.queueStatus
     : "registered";
+  const statusCopy =
+    PRINT_STATUS_COPY[primaryStatus] ?? PRINT_STATUS_COPY.registered;
 
   async function markPrinted(patientId: string): Promise<{
     ok: boolean;
@@ -79,7 +97,7 @@ export function PrintActions({
 
   async function handlePrint() {
     if (patients.length === 0) {
-      const text = "Print taiyaar nahi ho paya. Dobara try karein.";
+      const text = "Is sheet par koi marij nahi.";
       setMessage({ tone: "error", text });
       showErrorToast(text);
       return;
@@ -144,20 +162,6 @@ export function PrintActions({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only
   }, [autoPrint]);
 
-  const printLabel =
-    primaryStatus === "seen"
-      ? "Puri ho chuki parchi print karein"
-      : primaryStatus === "waiting"
-        ? "Dobara print karein (1 page)"
-        : "Print karein";
-
-  const heading =
-    primaryStatus === "seen"
-      ? "Print · dekha hua marij"
-      : primaryStatus === "waiting"
-        ? "Dobara print · pehle se line mein"
-        : "Print ke liye taiyaar · line mein aa jayega";
-
   return (
     <div
       className={`flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between ${className}`}
@@ -166,7 +170,7 @@ export function PrintActions({
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-          {heading}
+          {statusCopy.heading}
         </p>
         <p className="truncate text-base font-semibold">
           {`${primary?.regNo != null ? `#${primary.regNo}` : "Parchi"}${
@@ -200,7 +204,7 @@ export function PrintActions({
           onClick={handlePrint}
           data-testid="print-sheet-button"
         >
-          {isPrinting ? "Print taiyaar…" : printLabel}
+          {isPrinting ? "Print taiyaar…" : statusCopy.printLabel}
         </Button>
         <Link
           href={deskHref}

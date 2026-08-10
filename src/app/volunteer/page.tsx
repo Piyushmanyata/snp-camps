@@ -211,10 +211,6 @@ export default async function VolunteerPage() {
               ? undefined
               : "Koi active camp nahi. Admin se camp chalu karwayein."
           }
-          scanTitle="Marij scan karein"
-          scanHint="QR scan karein, ya number/naam likhein"
-          queueTitle="Line (queue)"
-          queueHint="Pehle aao, pehle pao · live"
         />
 
         <VolunteerDeskMore

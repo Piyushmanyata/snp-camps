@@ -7,10 +7,6 @@ import {
   useId,
 } from "react";
 
-// Client-only collapsible: keep hooks out of this shared module so Server
-// Components can import Shell/Button without a client boundary.
-export { OpenOnToggle } from "@/components/open-on-toggle";
-
 const shellWidths = {
   sm: "max-w-lg",
   md: "max-w-2xl",

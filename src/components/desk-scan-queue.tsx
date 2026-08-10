@@ -16,25 +16,19 @@ export function DeskScanQueue({
   waitingTotal,
   queueKnown,
   noCampReason,
-  scanTitle = "Scan patient",
-  scanHint = "Scan a QR, or enter a registration number or name",
-  queueTitle = "Queue",
-  queueHint = "Arrival order · live",
 }: {
   campId: string | null;
   waiting: LiveQueuePatient[];
   waitingTotal: number;
   queueKnown: boolean;
   noCampReason?: string;
-  scanTitle?: string;
-  scanHint?: string;
-  queueTitle?: string;
-  queueHint?: string;
 }) {
   return (
     <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
       <Card id="scan" className="!p-4 sm:!p-5">
-        <SectionTitle hint={scanHint}>{scanTitle}</SectionTitle>
+        <SectionTitle hint="QR scan karein, ya number/naam likhein">
+          Marij scan karein
+        </SectionTitle>
         <Suspense
           fallback={
             <p role="status" className="py-6 text-center text-sm text-muted">
@@ -48,7 +42,9 @@ export function DeskScanQueue({
 
       <Card padding="sm" id="queue">
         <div className="px-1 pt-1">
-          <SectionTitle hint={queueHint}>{queueTitle}</SectionTitle>
+          <SectionTitle hint="Pehle aao, pehle pao · live">
+            Line (queue)
+          </SectionTitle>
         </div>
         <LiveQueue
           initial={waiting}
