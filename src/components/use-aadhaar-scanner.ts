@@ -355,8 +355,12 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                       const outcome = await client.decodePayload(raw);
                       if (!sessionRef.current.isCurrent(token)) return;
                       consecutiveDecodeErrors = 0;
-                      handledNative = true;
-                      if (await handleOutcome(outcome, token)) return;
+                      // Only suppress WASM when decode produced a real outcome
+                      // (matches photo path). Non-Aadhaar / partial text falls through.
+                      if (outcome.status !== "none") {
+                        handledNative = true;
+                        if (await handleOutcome(outcome, token)) return;
+                      }
                     }
                   } catch {
                     detector = null;
