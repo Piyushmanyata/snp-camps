@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-route gzipped EAGER/initial client JS budgets (bytes). #71: budgets measure only sync-reachable production chunks; async islands (scanner decoder and optional admin UI) are excluded. Ratcheted 2026-07-26 from the measured baseline (budgetFromMeasured ≈ ceil(gzip*1.03/1000)*1000). Never raise to hide a regression. /lookup and /team-lead were later added as new routes; clinical routes were registered from their measured 2026-07-30 baseline. The pre-feature /s/[token] and /self-register limits remain unchanged.",
+  "_comment": "Per-route gzipped EAGER/initial client JS budgets (bytes). #71: budgets measure only sync-reachable production chunks; async islands (scanner decoder and optional admin UI) are excluded. Ratcheted 2026-08-10 Phase 11: for routes with measured gzip below budget, set min(old, ceil(gzip*1.03/1000)*1000). Never raise. /lookup and /team-lead were later added as new routes; clinical routes were registered from their measured 2026-07-30 baseline. The pre-feature /s/[token] and /self-register limits remain unchanged.",
   "measureMode": "eager-initial-vs-async-deferred",
   "routes": {
     "/": 209000,
@@ -9,16 +9,16 @@
     "/admin/clinical": 405000,
     "/admin/clinical-operators": 408000,
     "/admin/patients": 406000,
-    "/clinical": 408000,
+    "/clinical": 407000,
     "/clinical/slip/[id]": 200000,
     "/login": 273000,
     "/lookup": 206000,
     "/p/[id]": 199000,
-    "/print/[id]": 212000,
-    "/register": 411000,
+    "/print/[id]": 209000,
+    "/register": 410000,
     "/self-register": 205000,
     "/s/[token]": 199000,
     "/team-lead": 409000,
-    "/volunteer": 418000
+    "/volunteer": 417000
   }
 }
