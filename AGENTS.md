@@ -26,6 +26,8 @@ When governing documentation conflicts, resolve in this order:
 2. **`CONTEXT.md`** — ubiquitous language, domain context, lifecycle invariants, role boundaries, accepted design-system rules.
 3. **`README.md`** — operations, deployment setup, build/verify gates, auth model reference, MSG91 configuration.
 
+A spec under `docs/specs/` is a work order, not a governing document. An accepted spec that changes a rule in this list must amend that document in the same branch — an unamended conflict resolves against the spec.
+
 ## Production Safety
 
 * **Production is NEVER assumed to be empty.** Running `db reset` or re-applying baseline SQL against production is strictly prohibited. Schema changes must use append-only incremental migrations validated via clean replay on a disposable database (`npm run test:db:replay`).
@@ -45,7 +47,7 @@ When governing documentation conflicts, resolve in this order:
 
 * UI must meet WCAG 2.2 AA for field legibility under bright outdoor light: high contrast, 44×44 minimum touch targets, visible focus rings, text scaling, tactile press scaling (`scale(0.98)`), clear solid status badges, and `prefers-reduced-motion` compliance.
 * Retired visual guidance (glow typography, glassmorphism, glowing status badges) is removed and superseded by the design-system rules in `CONTEXT.md`.
-* Patients read Hinglish; staff read English. Leaks in either direction are bugs.
+* Patients and field staff read Hinglish; admin reads English. Mixing the two inside one surface is a bug.
 
 ## Testing & Evidence Governance
 

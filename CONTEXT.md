@@ -88,8 +88,9 @@ operational transcription and immutable fulfilment history. See
 
 A deliberate split, and leaks in either direction are bugs:
 
-* **Patients read Hinglish** — the self-registration flow, the status page, SMS.
-* **Staff read English** — every desk, admin and error surface.
+* **Patients and field staff read Hinglish** — the self-registration flow, the status page, SMS, the public home page, and every field desk surface: register, volunteer desk, clinical desk, queue, scanner, print actions.
+* **Admin reads English** — `/admin/**`, staff management, exports, and every admin-facing banner.
+* Mixing the two inside one surface is a bug. Where a string's meaning would have to be guessed, keep it English rather than invent Hinglish.
 
 No i18n framework. There are exactly two audiences and they never share a screen.
 
@@ -120,6 +121,8 @@ When governing documentation conflicts, resolve in this order:
 1. **`docs/adr/`** — architectural decision records. [ADR 0008](docs/adr/0008-printing-queues-the-patient.md) defines the live desk and queue; [ADR 0009](docs/adr/0009-clinical-desk-operational-records.md) defines the post-doctor Clinical Desk.
 2. **`CONTEXT.md`** — ubiquitous language, domain context, lifecycle invariants, role boundaries, design-system rules.
 3. **`README.md`** — operations, deployment, build/verify gates, auth model, MSG91 configuration.
+
+A spec under `docs/specs/` is a work order, not a governing document. An accepted spec that changes a rule in this list must amend that document in the same branch — an unamended conflict resolves against the spec.
 
 ## Production Safety & Realtime Boundaries
 
