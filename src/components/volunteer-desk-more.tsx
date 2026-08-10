@@ -1,12 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { OpenOnToggle, Spinner } from "@/components/ui";
+import { SectionLoadError } from "@/components/section-load-error";
 import { fetchDeskSection } from "@/lib/section-client";
 import type { StaffPerson } from "@/components/staff-detail";
 import type { CampDayStats } from "@/lib/types";
 import type { StaffKpiRow } from "@/lib/section-reads";
+
+const SECTION_FAIL = "Ye hissa load nahi hua.";
+const SECTION_RETRY = "Dobara koshish karein";
 
 const TeamLeadPanel = dynamic(
   () =>
@@ -81,14 +85,79 @@ function MoreIslands({
   const [days, setDays] = useState<CampDayStats[]>([]);
   const [seatsKnown, setSeatsKnown] = useState(false);
   const [leaderboard, setLeaderboard] = useState<StaffKpiRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [seatsError, setSeatsError] = useState<string | null>(null);
+  const [kpisError, setKpisError] = useState<string | null>(null);
+  const [boardError, setBoardError] = useState<string | null>(null);
+
+  const loadSeats = useCallback(async () => {
+    if (!campId) {
+      setDays([]);
+      setSeatsKnown(true);
+      setSeatsError(null);
+      return;
+    }
+    const seatsRes = await fetchDeskSection<{ days: CampDayStats[] }>("seats", {
+      campId,
+    });
+    if (seatsRes.ok) {
+      setDays(seatsRes.data.days ?? []);
+      setSeatsKnown(true);
+      setSeatsError(null);
+    } else {
+      setDays([]);
+      setSeatsKnown(false);
+      setSeatsError(seatsRes.error || SECTION_FAIL);
+    }
+  }, [campId]);
+
+  const loadKpis = useCallback(async () => {
+    if (!campId) {
+      setKpisInitial(null);
+      setKpisError(null);
+      return;
+    }
+    const kpisRes = await fetchDeskSection<{
+      total: number;
+      today: number;
+      waiting: number;
+      seen: number;
+    }>("volunteer-kpis", { campId });
+    if (kpisRes.ok) {
+      setKpisInitial({ ok: true, data: kpisRes.data });
+      setKpisError(null);
+    } else {
+      setKpisInitial(null);
+      setKpisError(kpisRes.error || SECTION_FAIL);
+    }
+  }, [campId]);
+
+  const loadBoard = useCallback(async () => {
+    if (!campId) {
+      setLeaderboard([]);
+      setBoardError(null);
+      return;
+    }
+    const boardRes = await fetchDeskSection<StaffKpiRow[]>(
+      "staff-leaderboard",
+      { campId },
+    );
+    if (boardRes.ok) {
+      setLeaderboard(boardRes.data ?? []);
+      setBoardError(null);
+    } else {
+      setLeaderboard([]);
+      setBoardError(boardRes.error || SECTION_FAIL);
+    }
+  }, [campId]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function loadAll() {
       setLoading(true);
-      setError(null);
+      setSeatsError(null);
+      setKpisError(null);
+      setBoardError(null);
 
       if (!campId) {
         if (!cancelled) {
@@ -101,49 +170,15 @@ function MoreIslands({
         return;
       }
 
-      const [seatsRes, kpisRes, boardRes] = await Promise.all([
-        fetchDeskSection<{ days: CampDayStats[] }>("seats", { campId }),
-        fetchDeskSection<{
-          total: number;
-          today: number;
-          waiting: number;
-          seen: number;
-        }>("volunteer-kpis", { campId }),
-        fetchDeskSection<StaffKpiRow[]>("staff-leaderboard", { campId }),
-      ]);
-
-      if (cancelled) return;
-
-      if (seatsRes.ok) {
-        setDays(seatsRes.data.days ?? []);
-        setSeatsKnown(true);
-      } else {
-        setDays([]);
-        setSeatsKnown(false);
-        setError(seatsRes.error);
-      }
-
-      if (kpisRes.ok) {
-        setKpisInitial({ ok: true, data: kpisRes.data });
-      } else {
-        setKpisInitial({ ok: false, error: kpisRes.error });
-      }
-
-      if (boardRes.ok) {
-        setLeaderboard(boardRes.data ?? []);
-      } else {
-        setLeaderboard([]);
-        setError((prev) => prev ?? boardRes.error);
-      }
-
-      setLoading(false);
+      await Promise.all([loadSeats(), loadKpis(), loadBoard()]);
+      if (!cancelled) setLoading(false);
     }
 
-    void load();
+    void loadAll();
     return () => {
       cancelled = true;
     };
-  }, [campId]);
+  }, [campId, loadSeats, loadKpis, loadBoard]);
 
   if (loading) {
     return (
@@ -156,35 +191,58 @@ function MoreIslands({
 
   return (
     <div className="space-y-4">
-      {error ? (
-        <p role="status" className="text-sm text-muted">
-          {error}
-        </p>
-      ) : null}
-      {campId && kpisInitial ? (
+      {campId ? (
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
             Aaj ke camp ke numbers
           </p>
-          <VolunteerKpisSection campId={campId} initial={kpisInitial} />
+          {kpisError ? (
+            <SectionLoadError
+              message={SECTION_FAIL}
+              onRetry={loadKpis}
+              retryLabel={SECTION_RETRY}
+            />
+          ) : kpisInitial ? (
+            <VolunteerKpisSection campId={campId} initial={kpisInitial} />
+          ) : null}
         </div>
       ) : null}
-      <TeamLeadPanel
-        currentUserId={currentUserId}
-        initialLeaderboard={leaderboard}
-        teamVolunteers={teamVolunteers}
-        hasActiveCamp={hasActiveCamp}
-      />
+      <div>
+        {boardError ? (
+          <SectionLoadError
+            message={SECTION_FAIL}
+            onRetry={loadBoard}
+            retryLabel={SECTION_RETRY}
+          />
+        ) : (
+          <TeamLeadPanel
+            currentUserId={currentUserId}
+            initialLeaderboard={leaderboard}
+            teamVolunteers={teamVolunteers}
+            hasActiveCamp={hasActiveCamp}
+          />
+        )}
+      </div>
       {campId ? (
-        <SeatBoard
-          days={days}
-          campId={campId}
-          title="Seat board"
-          compact
-          pollMs={0}
-          live
-          initialLoadKnown={seatsKnown}
-        />
+        <div>
+          {seatsError ? (
+            <SectionLoadError
+              message={SECTION_FAIL}
+              onRetry={loadSeats}
+              retryLabel={SECTION_RETRY}
+            />
+          ) : (
+            <SeatBoard
+              days={days}
+              campId={campId}
+              title="Seat board"
+              compact
+              pollMs={0}
+              live
+              initialLoadKnown={seatsKnown}
+            />
+          )}
+        </div>
       ) : null}
     </div>
   );
