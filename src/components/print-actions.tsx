@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
+import { showErrorToast } from "@/lib/toast-bus";
 import type { QueueStatus } from "@/lib/types";
 
 export type PrintActionPatient = {
@@ -19,7 +20,7 @@ export function PrintActions({
   className = "",
   patients,
   deskHref,
-  deskLabel,
+  deskLabel: _deskLabel,
   autoPrint = false,
 }: {
   className?: string;
@@ -66,7 +67,7 @@ export function PrintActions({
     if (!response.ok || !payload.ok) {
       return {
         ok: false,
-        error: payload.error || "Could not prepare print.",
+        error: payload.error || "Print taiyaar nahi ho paya. Dobara try karein.",
       };
     }
     return {
@@ -78,7 +79,9 @@ export function PrintActions({
 
   async function handlePrint() {
     if (patients.length === 0) {
-      setMessage({ tone: "error", text: "No patients on this sheet." });
+      const text = "Print taiyaar nahi ho paya. Dobara try karein.";
+      setMessage({ tone: "error", text });
+      showErrorToast(text);
       return;
     }
     setIsPrinting(true);
@@ -93,7 +96,8 @@ export function PrintActions({
         const result = await markPrinted(p.id);
         if (!result.ok) {
           anyFail = true;
-          failText = result.error || "Could not prepare print.";
+          failText =
+            result.error || "Print taiyaar nahi ho paya. Dobara try karein.";
           continue;
         }
         const nextStatus =
@@ -110,13 +114,9 @@ export function PrintActions({
         throw new Error(failText);
       }
 
-      const st = nextStatuses[primary!.id];
       setMessage({
         tone: "success",
-        text:
-          st === "seen"
-            ? "Completed consultation confirmed. The print dialog is open."
-            : "Patient is in line. The print dialog is open.",
+        text: "Marij line mein hai. Print dialog khul gaya hai.",
       });
       window.print();
     } catch (error) {
@@ -125,11 +125,12 @@ export function PrintActions({
         error.message &&
         !/postgres|supabase|postgrest|stack|at\s+\w+/i.test(error.message)
           ? error.message
-          : "Could not prepare the print. Please try again.";
+          : "Print taiyaar nahi ho paya. Dobara try karein.";
       setMessage({
         tone: "error",
         text,
       });
+      showErrorToast(text);
     } finally {
       setIsPrinting(false);
     }
@@ -143,6 +144,20 @@ export function PrintActions({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only
   }, [autoPrint]);
 
+  const printLabel =
+    primaryStatus === "seen"
+      ? "Puri ho chuki parchi print karein"
+      : primaryStatus === "waiting"
+        ? "Dobara print karein (1 page)"
+        : "Print karein";
+
+  const heading =
+    primaryStatus === "seen"
+      ? "Print · dekha hua marij"
+      : primaryStatus === "waiting"
+        ? "Dobara print · pehle se line mein"
+        : "Print ke liye taiyaar · line mein aa jayega";
+
   return (
     <div
       className={`flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between ${className}`}
@@ -151,23 +166,12 @@ export function PrintActions({
     >
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
-          {primaryStatus === "seen"
-            ? "Ready to print · consultation complete"
-            : primaryStatus === "waiting"
-              ? "Ready to reprint · already in queue"
-              : "Ready to print · joins the queue"}
+          {heading}
         </p>
         <p className="truncate text-base font-semibold">
-          {`${primary?.regNo != null ? `#${primary.regNo}` : "Prescription"}${
+          {`${primary?.regNo != null ? `#${primary.regNo}` : "Parchi"}${
             primary?.name ? ` · ${primary.name}` : ""
           }`}
-        </p>
-        <p className="text-xs text-muted">
-          {primaryStatus === "seen"
-            ? "Reprinting keeps the completed consultation status unchanged."
-            : primaryStatus === "waiting"
-              ? "The patient is already in the queue."
-              : "Printing is what puts a pre-registered patient in the line."}
         </p>
         {message ? (
           <p
@@ -196,25 +200,13 @@ export function PrintActions({
           onClick={handlePrint}
           data-testid="print-sheet-button"
         >
-          {isPrinting
-            ? "Preparing print…"
-            : primaryStatus === "seen"
-              ? "Print completed form"
-              : primaryStatus === "waiting"
-                ? "Reprint (1 page)"
-                : "Print prescription"}
+          {isPrinting ? "Print taiyaar…" : printLabel}
         </Button>
         <Link
           href={deskHref}
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-brand-soft px-4 text-sm font-semibold text-brand transition hover:bg-white"
         >
-          {deskLabel}
-        </Link>
-        <Link
-          href="/register"
-          className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-foreground transition hover:bg-brand-soft"
-        >
-          Register next
+          Desk par wapas
         </Link>
       </div>
     </div>
