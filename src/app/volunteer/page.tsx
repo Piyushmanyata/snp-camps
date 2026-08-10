@@ -14,24 +14,14 @@ import {
   ErrorBox,
   NavLink,
   Shell,
-  Stat,
 } from "@/components/ui";
 import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
-import type { CampDayStats } from "@/lib/types";
-import {
-  loadQueueSection,
-  loadSeatsSection,
-  loadStaffLeaderboardSection,
-  loadVolunteerKpisSection,
-  type StaffKpiRow,
-} from "@/lib/section-reads";
+import { loadQueueSection } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { VolunteerKpisSection } from "@/components/section-data";
 import { DeskScanQueue } from "@/components/desk-scan-queue";
-import { SeatBoard } from "@/components/seat-board";
 import { AdminStaff } from "@/components/admin-staff";
-import { TeamLeadPanel } from "@/components/team-lead-panel";
+import { VolunteerDeskMore } from "@/components/volunteer-desk-more";
 import type { StaffPerson } from "@/components/staff-detail";
 
 export default async function VolunteerPage() {
@@ -139,22 +129,6 @@ export default async function VolunteerPage() {
   let waiting: LiveQueuePatient[] = [];
   let waitingCount = 0;
   let queueKnown = false;
-  let days: CampDayStats[] = [];
-  let seatsKnown = false;
-  let kpisInitial:
-    | {
-        ok: true;
-        data: {
-          total: number;
-          today: number;
-          waiting: number;
-          seen: number;
-        };
-      }
-    | { ok: false; error: string }
-    | null = null;
-  let leaderboard: StaffKpiRow[] = [];
-  let leaderboardError: string | null = null;
   let teamVolunteers: StaffPerson[] = [];
   let rosterError: string | null = null;
 
@@ -176,35 +150,13 @@ export default async function VolunteerPage() {
     }
   }
 
-  if (camp && userId) {
-    // Independent loads — one failure must not blank the rest of the desk.
-    const [queueRes, seatsRes, kpisRes, leaderboardRes] = await Promise.all([
-      loadQueueSection(camp.id),
-      loadSeatsSection(camp.id),
-      loadVolunteerKpisSection(
-        camp.id,
-        userId,
-        teamLead ? "team_lead" : "volunteer",
-      ),
-      loadStaffLeaderboardSection(camp.id),
-    ]);
-
+  // Queue only — seats / KPIs / leaderboard load behind Aur dekhein.
+  if (camp) {
+    const queueRes = await loadQueueSection(camp.id);
     if (queueRes.ok) {
       waiting = queueRes.data.waiting as LiveQueuePatient[];
       waitingCount = queueRes.data.waitingTotal;
       queueKnown = true;
-    }
-
-    if (seatsRes.ok) {
-      days = seatsRes.data.days;
-      seatsKnown = true;
-    }
-
-    kpisInitial = kpisRes;
-    if (leaderboardRes.ok) {
-      leaderboard = leaderboardRes.data;
-    } else {
-      leaderboardError = leaderboardRes.error;
     }
   }
 
@@ -226,93 +178,28 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
-        {camp || teamLead ? (
-          <>
-            {leaderboardError ? <ErrorBox message={leaderboardError} /> : null}
-            {rosterError ? <ErrorBox message={rosterError} /> : null}
-            <TeamLeadPanel
-              currentUserId={userId ?? ""}
-              initialLeaderboard={leaderboard}
-              teamVolunteers={teamLead ? teamVolunteers : undefined}
-              hasActiveCamp={Boolean(camp)}
-            />
-          </>
-        ) : null}
+        {rosterError ? <ErrorBox message={rosterError} /> : null}
+
         <Card className="bg-brand-soft !p-4 sm:!p-5">
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
-                Active camp
-              </p>
-              <p className="text-lg font-bold tracking-tight sm:text-2xl">
-                {camp?.name || "None"}
-              </p>
-              {camp?.venue ? (
-                <p className="text-sm text-muted sm:text-[0.9375rem]">
-                  {camp.venue}
-                </p>
-              ) : null}
-            </div>
-            {camp && kpisInitial ? (
-              <VolunteerKpisSection campId={camp.id} initial={kpisInitial} />
-            ) : (
-              <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-                <Stat label="You handled" value={0} tone="ok" />
-                <Stat label="Handled today" value={0} />
-                <Stat label="In queue" value={0} tone="wait" />
-                <Stat label="Seen" value={0} tone="ok" />
-              </div>
-            )}
-            {!camp ? (
-              <p className="mt-2 text-sm text-muted" role="status">
-                No active camp — these numbers stay at zero until an admin
-                activates one. They are not a career total.
-              </p>
-            ) : null}
-          </div>
-
-          {/* Always visible on phone — desk-inline-actions is desktop-only */}
-          <div className="mt-3 space-y-2 lg:hidden">
-            <ActionCard
-              href="/register"
-              title="Register"
-              description={
-                camp
-                  ? "New patient · name, phone, day"
-                  : "Needs an active camp first"
-              }
-              variant="primary"
-              disabled={!camp}
-              disabledReason="No active camp. Ask admin to activate one."
-            />
-            <div className="jump-chip-row" aria-label="Jump to section">
-              <a href="#scan" className="jump-chip">
-                Scan patient
-              </a>
-              <a href="#queue" className="jump-chip">
-                Live queue
-              </a>
-            </div>
-          </div>
-
-          <div className="desk-inline-actions mt-4">
-            <NavLink href="/register" variant="primary">
-              Register
-            </NavLink>
-          </div>
+          <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
+            Active camp
+          </p>
+          <p className="text-lg font-bold tracking-tight sm:text-2xl">
+            {camp?.name || "None"}
+          </p>
+          {camp?.venue ? (
+            <p className="text-sm text-muted sm:text-[0.9375rem]">{camp.venue}</p>
+          ) : null}
         </Card>
 
-        {camp ? (
-          <SeatBoard
-            days={days}
-            campId={camp.id}
-            title="Seat board"
-            compact
-            pollMs={0}
-            live
-            initialLoadKnown={seatsKnown}
-          />
-        ) : null}
+        <ActionCard
+          href="/register"
+          title="Naya marij register karein"
+          description="Naam, phone, Aadhaar — phir parchi print"
+          variant="primary"
+          disabled={!camp}
+          disabledReason="Koi active camp nahi. Admin se camp chalu karwayein."
+        />
 
         <DeskScanQueue
           campId={camp?.id ?? null}
@@ -324,9 +211,19 @@ export default async function VolunteerPage() {
               ? undefined
               : "No active camp. Ask an admin to activate a camp first."
           }
+          scanTitle="Marij scan karein"
+          scanHint="QR scan karein, ya number/naam likhein"
+          queueTitle="Line (queue)"
+          queueHint="Pehle aao, pehle pao · live"
+        />
+
+        <VolunteerDeskMore
+          campId={camp?.id ?? null}
+          currentUserId={userId ?? ""}
+          teamVolunteers={teamLead ? teamVolunteers : undefined}
+          hasActiveCamp={Boolean(camp)}
         />
       </div>
     </Shell>
   );
 }
-
