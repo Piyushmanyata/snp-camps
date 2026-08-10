@@ -89,8 +89,8 @@ test("D22 desk offers exactly the two actions, and refuses an already-seen patie
   const deskOps = read("src/lib/desk-ops.ts");
 
   // Print (which queues) and Mark seen — no doctor selection anywhere.
-  assert.match(scanner, /Print prescription/);
-  assert.match(scanner, /Mark seen/);
+  assert.match(scanner, /Parchi print karein/);
+  assert.match(scanner, /Dekha hua karein/);
   assert.doesNotMatch(scanner, /assign doctor/i);
   assert.doesNotMatch(scanner, /doctors\b/);
 

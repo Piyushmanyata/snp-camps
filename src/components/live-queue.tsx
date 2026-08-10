@@ -126,7 +126,7 @@ export function LiveQueue({
       /* ignore */
     }
 
-    showSuccessToast(`#${patient.reg_no} ${patient.full_name} marked seen`);
+    showSuccessToast(`#${patient.reg_no} dekha hua ho gaya`);
     setUndoable(patient);
     refresh();
     setBusyId(null);
@@ -150,7 +150,7 @@ export function LiveQueue({
     }
 
     setUndoable(null);
-    showSuccessToast(`#${patient.reg_no} back in the queue`);
+    showSuccessToast(`#${patient.reg_no} Wapas line mein aa gaya`);
     clearRemoved(patient.id);
     refresh();
     setBusyId(null);
@@ -203,7 +203,7 @@ export function LiveQueue({
               disabled={busyId !== null}
               onClick={() => void undoSeen(undoable)}
             >
-              Undo
+              Wapas line mein
             </Button>
             <Button
               type="button"
@@ -284,7 +284,7 @@ export function LiveQueue({
                   data-testid="mark-seen"
                   className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
                 >
-                  {busyId === p.id ? "…" : "Mark seen"}
+                  {busyId === p.id ? "…" : "Dekha hua karein"}
                 </button>
               </div>
             </div>

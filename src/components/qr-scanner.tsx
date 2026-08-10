@@ -220,8 +220,8 @@ export function QrScanner({
       setManual("");
       showSuccessToast(
         row.already_seen
-          ? `#${row.reg_no} was already seen`
-          : `#${row.reg_no} marked seen`,
+          ? `#${row.reg_no} pehle se dekha hua tha`
+          : `#${row.reg_no} dekha hua ho gaya`,
       );
       handledRef.current = true;
       await stopScanner();
@@ -293,7 +293,7 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
       } else {
-        showSuccessToast("Undone — back in the queue");
+        showSuccessToast("Wapas line mein aa gaya");
         readyForNext();
         router.refresh();
       }
@@ -863,7 +863,7 @@ export function QrScanner({
               disabled={Boolean(disabledReason) || assigning || looking || starting}
               onClick={() => void start()}
             >
-              {starting ? "Opening camera…" : "Open camera"}
+              {starting ? "Opening camera…" : "Camera kholein"}
             </Button>
           ) : (
             <Button
@@ -872,7 +872,7 @@ export function QrScanner({
               disabled={assigning || looking}
               onClick={() => void stopScanner()}
             >
-              Stop camera
+              Camera band karein
             </Button>
           )}
         </div>
@@ -886,7 +886,7 @@ export function QrScanner({
             Enter their registration number or type their name.
           </p>
           <Input
-            label="Registration number or name"
+            label="Registration number ya naam"
             enterKeyHint="go"
             placeholder="e.g. 1001 or Ramesh"
             disabled={Boolean(disabledReason) || assigning || looking}
@@ -941,7 +941,7 @@ export function QrScanner({
               type="submit"
               disabled={looking || assigning || Boolean(disabledReason)}
             >
-              {looking ? "Searching…" : "Search"}
+              {looking ? "Searching…" : "Dhundein"}
             </Button>
           </div>
         </form>
@@ -988,7 +988,7 @@ export function QrScanner({
                 disabled={assigning}
                 onClick={() => void undoSeen(seen.id)}
               >
-                Undo
+                Wapas line mein
               </Button>
             ) : null}
             <Button
@@ -1060,9 +1060,7 @@ export function QrScanner({
               data-testid="print-prescription"
               onClick={() => void printAndQueue(lookup)}
             >
-              {lookup.queue_status === "registered"
-                ? "Print prescription"
-                : "Reprint prescription"}
+              Parchi print karein
             </Button>
 
             {/* Action 2 — only meaningful once they are actually in the line. */}
@@ -1076,7 +1074,7 @@ export function QrScanner({
                 data-testid="mark-seen"
                 onClick={() => void markSeen({ id: lookup.id })}
               >
-                {assigning ? "Marking seen…" : "Mark seen"}
+                {assigning ? "Marking seen…" : "Dekha hua karein"}
               </Button>
             ) : null}
 
