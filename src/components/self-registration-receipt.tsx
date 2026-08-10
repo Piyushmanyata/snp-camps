@@ -74,9 +74,9 @@ export function SelfRegistrationReceipt({
       </p>
 
       <div>
-        <p className="mb-1.5 text-sm font-semibold">Status link</p>
         {result.statusUrl ? (
           <>
+            <p className="mb-1.5 text-sm font-semibold">Status link</p>
             <a
               className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline"
               href={result.statusUrl}
