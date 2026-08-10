@@ -34,7 +34,7 @@ import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
 import { AadhaarUsbInput } from "@/components/aadhaar-usb-input";
 import { validateHouseholdPhone } from "@/lib/phone";
-import { showErrorToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 
 /** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
@@ -82,7 +82,7 @@ export function PatientForm({
   const phoneValidation = validateHouseholdPhone(phone);
   const [failedScanAttempts, setFailedScanAttempts] = useState(0);
   const [manualReason, setManualReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [aadhaarDuplicateRegNo, setAadhaarDuplicateRegNo] = useState<
     number | null
@@ -288,7 +288,6 @@ export function PatientForm({
   ) {
     setFieldErrors({ [field]: message });
     setError(message);
-    showErrorToast(message);
     setLoading(false);
     requestAnimationFrame(() => {
       document.getElementById(elementId)?.focus();
@@ -541,13 +540,11 @@ export function PatientForm({
         setLikelyDuplicateRegNo(null);
         const dupMsg = `Yeh naam aur Aadhaar ke aakhri 4 digit registration #${outcome.aadhaarDuplicateRegNo} ke hain.`;
         setError(dupMsg);
-        showErrorToast(dupMsg);
         setPhase("idle");
       } else {
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
         setError(outcome.error);
-        showErrorToast(outcome.error);
         // Explicit Try Again only for exhausted transient (#47 / #62).
         setPhase(outcome.showTryAgain ? "failed-retryable" : "idle");
       }
@@ -607,7 +604,6 @@ export function PatientForm({
     if (!outcome.ok) {
       // Preserve likely-duplicate selection + form state for Try Again (#61).
       setError(outcome.error);
-      showErrorToast(outcome.error);
       setLoading(false);
       return;
     }

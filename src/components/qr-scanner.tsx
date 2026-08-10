@@ -27,7 +27,8 @@ import {
   type MarkSeenRow,
 } from "@/lib/desk-ops";
 import { Button, ErrorBox, Input } from "@/components/ui";
-import { showErrorToast, showSuccessToast } from "@/lib/toast-bus";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 
 type LookupOrigin = "camera" | "manual";
 
@@ -78,11 +79,7 @@ export function QrScanner({
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const reviewHeadingId = `qr-review-heading-${uid}`;
-  const [error, setErrorState] = useState<string | null>(null);
-  const setError = (message: string | null) => {
-    setErrorState(message);
-    if (message) showErrorToast(message);
-  };
+  const [error, setError] = useToastedError(null);
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [manual, setManual] = useState("");

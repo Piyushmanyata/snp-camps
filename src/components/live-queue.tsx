@@ -11,7 +11,8 @@ import {
   Spinner,
 } from "@/components/ui";
 import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
-import { showErrorToast, showSuccessToast } from "@/lib/toast-bus";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 import {
   markSeenWithRetries,
   undoMarkSeenWithRetries,
@@ -37,11 +38,7 @@ export function LiveQueue({
   campId: string | null;
   initialLoadKnown?: boolean;
 }) {
-  const [error, setErrorState] = useState<string | null>(null);
-  const setError = (message: string | null) => {
-    setErrorState(message);
-    if (message) showErrorToast(message);
-  };
+  const [error, setError] = useToastedError(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Last patient marked seen from this list — the undo target (D25).
   const [undoable, setUndoable] = useState<LiveQueuePatient | null>(null);

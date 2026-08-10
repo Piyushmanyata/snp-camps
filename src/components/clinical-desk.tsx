@@ -19,7 +19,8 @@ import {
   normalizeDiagnoses,
   validateUnavailableMedicines,
 } from "@/lib/clinical-diagnoses";
-import { showErrorToast, showSuccessToast } from "@/lib/toast-bus";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 import { ClinicalRecordView } from "@/components/clinical-record-view";
 
@@ -171,7 +172,7 @@ export function ClinicalDesk({
   const [otNotes, setOtNotes] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setErrorState] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessageState] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
@@ -181,11 +182,6 @@ export function ClinicalDesk({
   const slipReplaceDialogRef = useRef<HTMLDialogElement | null>(null);
   const lookupGenerationRef = useRef(0);
   const displayedPatientIdRef = useRef<string | null>(null);
-
-  const setError = (next: string | null) => {
-    setErrorState(next);
-    if (next) showErrorToast(next);
-  };
 
   const setMessage = (next: string | null) => {
     setMessageState(next);
@@ -649,7 +645,7 @@ export function ClinicalDesk({
         </form>
       </Card>
       {error ? (
-        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-900">
+        <p role="alert" className="sr-only">
           {error}
         </p>
       ) : null}
