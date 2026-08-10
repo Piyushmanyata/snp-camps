@@ -60,20 +60,21 @@ export function normalizeDiagnoses(
 
 /**
  * Flatten diagnoses to a sorted multiset for equality across legacy/new shapes.
- * The `other` free-text field is split on semicolons so a joined legacy list
- * compares equal to the individual entries. Equality only — storage and the
- * export `diagnosis_other` column still use the stored string verbatim.
+ * Every entry is split on semicolons — a legacy array holds its free text as
+ * separate items while the same content re-saved holds it joined in `other`, so
+ * both sides must split identically or an untouched re-save reads as a
+ * correction. Equality only — storage and the export `diagnosis_other` column
+ * still use the stored string verbatim.
  */
 export function flattenDiagnoses(raw: unknown): string[] {
   const normalized = normalizeDiagnoses(raw);
   const items = [...normalized.options];
-  if (normalized.other) {
-    for (const part of normalized.other.split(";")) {
-      const trimmed = part.trim();
-      if (trimmed) items.push(trimmed);
-    }
-  }
-  return items.map((item) => item.trim()).filter(Boolean).sort();
+  if (normalized.other) items.push(normalized.other);
+  return items
+    .flatMap((item) => item.split(";"))
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort();
 }
 
 export function diagnosesEqual(a: unknown, b: unknown): boolean {

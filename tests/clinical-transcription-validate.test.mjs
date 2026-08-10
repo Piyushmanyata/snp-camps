@@ -148,6 +148,23 @@ test("isSameTranscription ignores key order and legacy↔explicit diagnoses shap
     ),
     false,
   );
+  // A single legacy free-text entry that itself contains a semicolon splits the
+  // same way on both sides, so re-saving it unchanged is not a correction.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["Diabetes; Type 2"] },
+      { diagnoses: { options: [], other: "Diabetes; Type 2" } },
+    ),
+    true,
+  );
+  // The same holds alongside a checked template option.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["REFRACTION", "Diabetes; Type 2"] },
+      { diagnoses: { options: ["REFRACTION"], other: "Diabetes; Type 2" } },
+    ),
+    true,
+  );
 });
 
 test("unavailable medicines bounds", () => {
