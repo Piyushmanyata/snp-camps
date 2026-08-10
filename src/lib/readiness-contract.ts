@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 8;
+export const READINESS_CONTRACT_VERSION = 9;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260805100000";
+export const EXPECTED_MIGRATION_HEAD = "20260809140000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -118,7 +118,7 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   ],
   fulfilment_items: [
     "id", "transcription_id", "kind", "outcome", "current_version",
-    "resolved_by", "resolved_at",
+    "resolved_by", "resolved_at", "unavailable_medicines",
   ],
   fulfilment_events: [
     "id", "item_id", "event", "from_outcome", "to_outcome", "reason",
@@ -157,6 +157,7 @@ export const REQUIRED_FUNCTIONS = [
   "admin_prescription_template_editor",
   "admin_save_prescription_template",
   "admin_clinical_records",
+  "admin_clinical_export",
   "admin_archive_transcription",
   "admin_reverse_fulfilment",
   "published_prescription_template",
@@ -266,7 +267,8 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   persons_authenticated_select: false,
   // persons is server-only: duplicate_key is the pepper-derived Person key.
   persons_authenticated_write: false,
-  patients_authenticated_select: true,
+  // Patients list is not open to every authenticated role; desks use RPCs.
+  patients_authenticated_select: false,
   prescription_transcriptions_authenticated_write: false,
   prescription_corrections_authenticated_write: false,
   fulfilment_items_authenticated_write: false,

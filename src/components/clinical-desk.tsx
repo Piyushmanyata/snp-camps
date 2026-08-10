@@ -15,6 +15,10 @@ import {
   isSameTranscription,
   validateClinicalTranscription,
 } from "@/lib/clinical-transcription-validate";
+import {
+  normalizeDiagnoses,
+  validateUnavailableMedicines,
+} from "@/lib/clinical-diagnoses";
 import { Button, Card, ErrorBox, Input, SectionTitle } from "@/components/ui";
 import { PatientQrCamera } from "@/components/patient-qr-camera";
 
@@ -76,9 +80,11 @@ export function ClinicalDesk({
     DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions,
   );
   const [diagnosisSelected, setDiagnosisSelected] = useState<string[]>([]);
+  const [retiredDiagnoses, setRetiredDiagnoses] = useState<string[]>([]);
   const [diagnosisOther, setDiagnosisOther] = useState("");
   const [diagnosisOtherOriginal, setDiagnosisOtherOriginal] = useState<string[]>([]);
   const [diagnosisOtherEdited, setDiagnosisOtherEdited] = useState(false);
+  const [medicineIntent, setMedicineIntent] = useState<string | null>(null);
   const [bloodSugar, setBloodSugar] = useState("");
   const [bloodPressure, setBloodPressure] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -97,6 +103,7 @@ export function ClinicalDesk({
   const [message, setMessage] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
   const [lastSlipId, setLastSlipId] = useState<string | null>(null);
+  const [unavailableMedicines, setUnavailableMedicines] = useState("");
   const slipReplaceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const slipReplaceDialogRef = useRef<HTMLDialogElement | null>(null);
   const lookupGenerationRef = useRef(0);
@@ -110,22 +117,13 @@ export function ClinicalDesk({
   }
 
   function applySavedDiagnoses(saved: Record<string, unknown>, options = diagnosisOptions) {
-    const raw = saved.diagnoses;
-    const list = Array.isArray(raw)
-      ? raw.map(String)
-      : typeof raw === "string" && raw
-        ? [raw]
-        : [];
-    const known = new Set(options);
-    const selected: string[] = [];
-    const otherParts: string[] = [];
-    for (const item of list) {
-      if (known.has(item)) selected.push(item);
-      else if (item.trim()) otherParts.push(item.trim());
-    }
-    setDiagnosisSelected(selected);
-    setDiagnosisOther(otherParts.join("; "));
-    setDiagnosisOtherOriginal(otherParts);
+    const normalized = normalizeDiagnoses(saved.diagnoses, options);
+    const template = new Set(options);
+    const retired = normalized.options.filter((option) => !template.has(option));
+    setDiagnosisSelected(normalized.options);
+    setRetiredDiagnoses(retired);
+    setDiagnosisOther(normalized.other ?? "");
+    setDiagnosisOtherOriginal(normalized.other ? [normalized.other] : []);
     setDiagnosisOtherEdited(false);
   }
 
@@ -137,6 +135,9 @@ export function ClinicalDesk({
     setCorrectionReason("");
     setLastSlipId(null);
     setFieldErrors({});
+    setUnavailableMedicines("");
+    setMedicineIntent(null);
+    setRetiredDiagnoses([]);
   }
 
   async function lookup(value = exact) {
@@ -276,20 +277,16 @@ export function ClinicalDesk({
   }
 
   function transcriptionData() {
-    const diagnoses = [
-      ...diagnosisSelected,
-      ...(diagnosisOtherEdited
-        ? diagnosisOther.trim()
-          ? [diagnosisOther.trim()]
-          : []
-        : diagnosisOtherOriginal.length
-          ? diagnosisOtherOriginal
-          : diagnosisOther.trim()
-            ? [diagnosisOther.trim()]
-            : []),
-    ];
+    const other = diagnosisOtherEdited
+      ? diagnosisOther.trim() || null
+      : diagnosisOtherOriginal.length
+        ? diagnosisOtherOriginal.join("; ")
+        : diagnosisOther.trim() || null;
     return {
-      diagnoses,
+      diagnoses: {
+        options: diagnosisSelected,
+        other,
+      },
       bloodSugar: bloodSugar.trim() || null,
       bloodPressure: bloodPressure.trim() || null,
       remarks: remarks.trim() || null,
@@ -436,6 +433,20 @@ export function ClinicalDesk({
       setError("Save a transcription before resolving fulfilment outcomes.");
       return;
     }
+    let unavailableList: string[] | null = null;
+    if (kind === "medicine" && outcome === "not_available") {
+      const parsed = unavailableMedicines
+        .split(/[\n,;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const validated = validateUnavailableMedicines(parsed);
+      if (!validated.ok) {
+        printTarget?.abandon();
+        setError(validated.message);
+        return;
+      }
+      unavailableList = validated.medicines;
+    }
     const patientId = record.patient.id;
     const generation = lookupGenerationRef.current;
     setBusy(true);
@@ -444,13 +455,16 @@ export function ClinicalDesk({
       p_patient_id: patientId,
       p_kind: kind,
       p_outcome: outcome,
+      p_unavailable_medicines: unavailableList,
     });
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
       const message = rpcError.message;
       setError(
-        /medicine detail/i.test(message)
+        /unavailable medicines/i.test(message)
+          ? "List the unavailable medicines before recording not available."
+          : /medicine detail/i.test(message)
           ? "Enter the medicines from the paper before recording this outcome."
           : /Specs measurements/i.test(message)
             ? "Enter the Specs measurements before recording this outcome."
@@ -504,6 +518,7 @@ export function ClinicalDesk({
   }, [slipReplace]);
 
   function toggleDiagnosis(option: string) {
+    if (retiredDiagnoses.includes(option)) return;
     setDiagnosisSelected((current) =>
       current.includes(option)
         ? current.filter((item) => item !== option)
@@ -617,6 +632,15 @@ export function ClinicalDesk({
                     </label>
                   );
                 })}
+                {retiredDiagnoses.map((option) => (
+                  <label
+                    key={`retired-${option}`}
+                    className="flex min-h-12 items-center gap-2 rounded-xl border border-border bg-slate-50 px-3 text-sm text-muted"
+                  >
+                    <input type="checkbox" checked disabled readOnly />
+                    {option} (retired)
+                  </label>
+                ))}
               </div>
               <Input
                 id="clinical-diagnosis-other"
@@ -786,6 +810,18 @@ export function ClinicalDesk({
                   <p className="text-sm text-muted">
                     Current: {current?.outcome ?? "unresolved"}
                   </p>
+                  {canMutate &&
+                  kind === "medicine" &&
+                  !current &&
+                  medicineIntent === "not_available" ? (
+                    <Input
+                      id="unavailable-medicines"
+                      label="Unavailable medicines (required if not available)"
+                      value={unavailableMedicines}
+                      onChange={(event) => setUnavailableMedicines(event.target.value)}
+                      placeholder="One medicine per line or separated by commas"
+                    />
+                  ) : null}
                   {canMutate
                     ? OUTCOMES[kind].map((outcome) => (
                         <Button
@@ -796,6 +832,14 @@ export function ClinicalDesk({
                             busy || Boolean(current) || !hasTranscription
                           }
                           onClick={() => {
+                            if (kind === "medicine" && outcome === "not_available") {
+                              if (medicineIntent !== "not_available") {
+                                setMedicineIntent("not_available");
+                                return;
+                              }
+                            } else if (kind === "medicine") {
+                              setMedicineIntent(null);
+                            }
                             const printTarget =
                               outcome === "deferred"
                                 ? acquireDeskPrintTarget((url, target, features) =>

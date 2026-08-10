@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   isSameTranscription,
   validateClinicalTranscription,
+  normalizeDiagnoses,
 } from "../src/lib/clinical-transcription-validate.ts";
+import { validateUnavailableMedicines } from "../src/lib/clinical-diagnoses.ts";
 
 function draft(overrides = {}) {
   return {
@@ -70,7 +72,47 @@ test("clinical validation mirrors the SQL boundary cases", () => {
   }
 });
 
-test("isSameTranscription ignores object key order but preserves values", () => {
+test("stored diagnoses {options, other} validates; legacy flat array still validates", () => {
+  assert.equal(
+    validateClinicalTranscription(
+      draft({ diagnoses: { options: ["REFRACTION"], other: "Free text" } }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClinicalTranscription(
+      draft({ diagnoses: { options: [], other: null } }),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    validateClinicalTranscription(
+      draft({ diagnoses: { options: ["REFRACTION"], other: "x".repeat(121) } }),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    validateClinicalTranscription(draft({ diagnoses: ["CATARACT"] })).ok,
+    true,
+  );
+});
+
+test("normalizeDiagnoses is stable for both shapes and template-splits legacy", () => {
+  assert.deepEqual(normalizeDiagnoses({ options: ["A"], other: "B" }), {
+    options: ["A"],
+    other: "B",
+  });
+  assert.deepEqual(normalizeDiagnoses(["A", "free"], ["A", "C"]), {
+    options: ["A"],
+    other: "free",
+  });
+  assert.deepEqual(normalizeDiagnoses(["A", "C"]), {
+    options: ["A", "C"],
+    other: null,
+  });
+});
+
+test("isSameTranscription ignores key order and legacy↔explicit diagnoses shape", () => {
   assert.equal(
     isSameTranscription(
       { diagnoses: ["REFRACTION"], specs: { pd: "62", type: "distance" } },
@@ -83,4 +125,55 @@ test("isSameTranscription ignores object key order but preserves values", () => 
     false,
   );
   assert.equal(isSameTranscription({ remarks: null }, { remarks: "" }), false);
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["REFRACTION", "custom note"] },
+      { diagnoses: { options: ["REFRACTION"], other: "custom note" } },
+    ),
+    true,
+  );
+  // Multi free-text legacy vs semicolon-joined Other: equal, no false correction.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["note one", "note two"] },
+      { diagnoses: { options: [], other: "note one; note two" } },
+    ),
+    true,
+  );
+  // Genuinely changed content is not equal.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["note one", "note two"] },
+      { diagnoses: { options: [], other: "note one; note three" } },
+    ),
+    false,
+  );
+  // A single legacy free-text entry that itself contains a semicolon splits the
+  // same way on both sides, so re-saving it unchanged is not a correction.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["Diabetes; Type 2"] },
+      { diagnoses: { options: [], other: "Diabetes; Type 2" } },
+    ),
+    true,
+  );
+  // The same holds alongside a checked template option.
+  assert.equal(
+    isSameTranscription(
+      { diagnoses: ["REFRACTION", "Diabetes; Type 2"] },
+      { diagnoses: { options: ["REFRACTION"], other: "Diabetes; Type 2" } },
+    ),
+    true,
+  );
+});
+
+test("unavailable medicines bounds", () => {
+  assert.equal(validateUnavailableMedicines(null).ok, false);
+  assert.equal(validateUnavailableMedicines([]).ok, false);
+  assert.equal(validateUnavailableMedicines(["Lubricant"]).ok, true);
+  assert.equal(validateUnavailableMedicines(["x".repeat(121)]).ok, false);
+  assert.equal(
+    validateUnavailableMedicines(Array.from({ length: 13 }, () => "a")).ok,
+    false,
+  );
 });
