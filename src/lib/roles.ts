@@ -15,14 +15,19 @@ export function isStaff(role?: UserRole | string | null) {
 }
 
 /**
- * Camp crew — every non-patient operational role at a camp.
- * Identical to {@link isStaff} now that doctors hold no login role.
- * Matches SQL `is_camp_crew()`.
+ * Clinical Desk Operator — a station-only role that is NOT Registration Staff.
+ * Never widen {@link isCampCrew} to cover it; its clinical writes are gated
+ * separately by SQL `is_clinical_operator()`.
  */
 export function isClinicalOperator(role?: UserRole | string | null) {
   return role === "clinical_operator";
 }
 
+/**
+ * Camp crew — every non-patient operational role at a camp.
+ * Identical to {@link isStaff} now that doctors hold no login role.
+ * Matches SQL `is_camp_crew()`.
+ */
 export function isCampCrew(role?: UserRole | string | null) {
   return isStaff(role);
 }

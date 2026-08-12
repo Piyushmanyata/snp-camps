@@ -33,7 +33,7 @@ test.after(async () => {
   await client?.end().catch(() => {});
 });
 
-function requireDb(t) {
+function requireDb() {
   if (!dbAvailable) {
     assert.fail(
       "Database unavailable — clinical export DB tests must not be skipped",
@@ -72,8 +72,8 @@ async function asUser(userId, sql, params = []) {
   return result;
 }
 
-test("export includes seen untranscribed patients and applies latest clinical correction", async (t) => {
-  requireDb(t);
+test("export includes seen untranscribed patients and applies latest clinical correction", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
@@ -218,8 +218,8 @@ test("export includes seen untranscribed patients and applies latest clinical co
   }
 });
 
-test("retired diagnosis options appear after template options; no published template uses retired only", async (t) => {
-  requireDb(t);
+test("retired diagnosis options appear after template options; no published template uses retired only", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
@@ -335,8 +335,8 @@ test("retired diagnosis options appear after template options; no published temp
   }
 });
 
-test("slip audit is issued-only; replacement reason lives on prescription correction", async (t) => {
-  requireDb(t);
+test("slip audit is issued-only; replacement reason lives on prescription correction", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
@@ -422,8 +422,8 @@ test("slip audit is issued-only; replacement reason lives on prescription correc
   }
 });
 
-test("legacy array diagnoses produce no retired option columns", async (t) => {
-  requireDb(t);
+test("legacy array diagnoses produce no retired option columns", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
@@ -488,8 +488,8 @@ test("legacy array diagnoses produce no retired option columns", async (t) => {
   }
 });
 
-test("slip issued then fulfilled later then reversed keeps one issue event", async (t) => {
-  requireDb(t);
+test("slip issued then fulfilled later then reversed keeps one issue event", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
@@ -575,8 +575,8 @@ test("slip issued then fulfilled later then reversed keeps one issue event", asy
   }
 });
 
-test("medicine not_available requires unavailable medicines list", async (t) => {
-  requireDb(t);
+test("medicine not_available requires unavailable medicines list", async () => {
+  requireDb();
   await client.query("begin");
   try {
     const operator = await profile("clinical_operator");
