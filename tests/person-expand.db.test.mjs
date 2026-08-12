@@ -201,12 +201,12 @@ test("New patient registration automatically creates and links a Person", async 
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Person Test Camp', 'Venue', '2026-08-01', true)`,
+     values ($1, 'Person Test Camp', 'Venue', '2099-08-01', true)`,
     [campId],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-08-01', 50)`,
+     values ($1, $2, '2099-08-01', 50)`,
     [dayId, campId],
   );
 
