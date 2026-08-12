@@ -26,13 +26,13 @@ export function DeskScanQueue({
   return (
     <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-start">
       <Card id="scan" className="!p-4 sm:!p-5">
-        <SectionTitle hint="Scan a QR, or enter a registration number or name">
-          Scan patient
+        <SectionTitle hint="QR scan karein, ya number/naam likhein">
+          Marij scan karein
         </SectionTitle>
         <Suspense
           fallback={
             <p role="status" className="py-6 text-center text-sm text-muted">
-              Loading scanner…
+              Scanner load ho raha hai…
             </p>
           }
         >
@@ -42,7 +42,9 @@ export function DeskScanQueue({
 
       <Card padding="sm" id="queue">
         <div className="px-1 pt-1">
-          <SectionTitle hint="Arrival order · live">Queue</SectionTitle>
+          <SectionTitle hint="Pehle aao, pehle pao · live">
+            Line (queue)
+          </SectionTitle>
         </div>
         <LiveQueue
           initial={waiting}

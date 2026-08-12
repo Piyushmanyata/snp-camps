@@ -84,4 +84,11 @@
   .skip-link {
     display: none !important;
   }
+
+  .print-scale-wrap,
+  .print-scale-wrap > div {
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
 }

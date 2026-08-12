@@ -117,7 +117,7 @@ async function mockRegisterSuccess(
 
 async function fillMinimalRegistration(page: Page, _fullName: string) {
   void _fullName;
-  const phone = page.getByLabel(/Household mobile number/i);
+  const phone = page.getByLabel(/Ghar ka mobile number/i);
   await expect(async () => {
     await phone.fill("9876543210");
     await page.waitForTimeout(250);
@@ -145,7 +145,7 @@ test("mobile photo fallback reads Aadhaar locally and fills the shared desk form
   await loginStaff(page, "volunteer");
   await gotoHydrated(page, "/register");
 
-  await page.getByLabel(/Household mobile number/i).fill("9876543210");
+  await page.getByLabel(/Ghar ka mobile number/i).fill("9876543210");
   const photoInput = page.getByTestId("aadhaar-photo-input");
   await expect(photoInput).toBeDisabled();
   await page.getByTestId("aadhaar-consent").check();
@@ -412,21 +412,31 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
     page,
     `Codex E2E Patient Retry Preserve ${Date.now()}`,
   );
-  await page.getByLabel(/Mobile number/i).fill("9876543210");
+  await page.getByLabel(/Ghar ka mobile number|Mobile number/i).fill("9876543210");
 
   await page.getByTestId("desk-register-submit").click();
 
   await expect(page.getByTestId("desk-register-try-again")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(/Could not save.*Try Again/i)).toBeVisible();
+  // Visible toast (button role=alert) — sr-only twin also carries the text.
+  await expect(
+    page
+      .locator('[role="alert"]')
+      .filter({ hasText: /Could not save|connection|try again/i })
+      .first(),
+  ).toBeVisible();
   // Three attempts (1 + 2 retries).
   expect(rpcCalls).toBe(3);
 
-  // Fields preserved — form not reset.
-  await expect(page.getByLabel(/Full name/i)).toHaveValue("Timing Patient");
-  await expect(page.getByLabel(/^Age/i)).toHaveValue(/[0-9]+/);
-  await expect(page.getByLabel(/Mobile number/i)).toHaveValue("9876543210");
+  // Fields preserved — form not reset (fillMinimal always uses Timing Patient).
+  await expect(page.getByLabel(/Full name|Poora naam/i)).toHaveValue(
+    "Timing Patient",
+  );
+  await expect(page.getByLabel(/^Age|Umar/i)).toHaveValue(/[0-9]+/);
+  await expect(
+    page.getByLabel(/Ghar ka mobile number|Mobile number/i),
+  ).toHaveValue("9876543210");
 
   // Same request id on every attempt.
   const ids = requestBodies.map((body) => {
@@ -490,8 +500,11 @@ test("terminal business error is not auto-retried and has no connectivity Try Ag
   );
   await page.getByTestId("desk-register-submit").click();
 
+  // Toast is the visible error channel; sr-only alert also carries the same text.
   await expect(
-    page.getByText("That camp day is full. Choose another day."),
+    page.locator('[role="alert"]').filter({
+      hasText: "That camp day is full. Choose another day.",
+    }).first(),
   ).toBeVisible({
     timeout: 10_000,
   });

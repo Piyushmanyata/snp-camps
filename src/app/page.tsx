@@ -48,8 +48,8 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
-                Multi-day eye camp with limited seats. Self-register online, then
-                collect your printed prescription at the desk.
+                Aankhon ka camp — seats limited hain. Online khud register
+                karein, desk par parchi milegi.
               </p>
             </div>
           </div>
@@ -71,58 +71,60 @@ export default async function HomePage() {
             </Card>
           ) : (
             <p className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-5 text-sm text-muted">
-              No active camp right now. Check back later, or ask staff.
+              Abhi koi active camp nahi. Baad mein dekhein, ya staff se poochein.
             </p>
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <ActionCard
               href="/self-register"
-              title="Register yourself"
+              title="Khud register karein"
               description={
                 !camp
-                  ? "No active camp"
+                  ? "Abhi koi camp nahi"
                   : anyOpen
-                    ? "Aadhaar card scan · no queue at the desk"
-                    : "All days full"
+                    ? "Aadhaar card se · desk par line nahi"
+                    : "Sab din full hain — baad mein dekhein"
               }
               variant="primary"
               disabled={!camp || !anyOpen}
               disabledReason={
-                !camp ? "No active camp" : "All days are full — try again later"
+                !camp
+                  ? "Abhi koi camp nahi"
+                  : "Sab din full hain — baad mein dekhein"
               }
             />
 
             <ActionCard
               href="/login"
               title="Staff login"
-              description="Admin · team leads · volunteers"
+              description="Admin · team lead · volunteer"
               variant="soft"
             />
           </div>
 
           <p className="text-center text-xs text-muted lg:text-left">
-            First-time staff? Ask an admin to create your account. Patients: scan
-            your Aadhaar card to self-register — no patient login required.
+            Naye staff? Admin se account banwayein. Marij: Aadhaar card se khud
+            register karein — login nahi chahiye.
           </p>
 
           <div className="pt-1 text-left">
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-              How it works
+              Kaise hota hai
             </p>
             <StepList
               steps={[
                 {
-                  title: "Self registration",
-                  detail: "Scan your Aadhaar card · get your reg number",
+                  title: "Khud registration",
+                  detail: "Aadhaar scan karein · reg number milega",
                 },
                 {
-                  title: "Print joins the queue",
-                  detail: "Desk prints your prescription · FCFS order",
+                  title: "Print se line mein",
+                  detail: "Desk parchi print karega · pehle aao pehle pao",
                 },
                 {
-                  title: "Consultation",
-                  detail: "Staff scan your QR to mark you seen",
+                  title: "Doctor se milna",
+                  detail: "Staff QR scan karke seen karega",
                 },
               ]}
             />

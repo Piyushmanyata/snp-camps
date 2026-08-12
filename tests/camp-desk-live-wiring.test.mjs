@@ -89,8 +89,9 @@ test("D22 desk offers exactly the two actions, and refuses an already-seen patie
   const deskOps = read("src/lib/desk-ops.ts");
 
   // Print (which queues) and Mark seen — no doctor selection anywhere.
-  assert.match(scanner, /Print prescription/);
-  assert.match(scanner, /Mark seen/);
+  // Stable seam: testids, not Hinglish label copy (renames must not break the gate).
+  assert.match(scanner, /data-testid="print-prescription"/);
+  assert.match(scanner, /data-testid="mark-seen"/);
   assert.doesNotMatch(scanner, /assign doctor/i);
   assert.doesNotMatch(scanner, /doctors\b/);
 
@@ -141,7 +142,7 @@ test("#56 no staff copy instructs manual-only refresh on live desks", () => {
   const scanQueue = read("src/components/desk-scan-queue.tsx");
   assert.doesNotMatch(volunteer, /refresh manually/i);
   assert.doesNotMatch(admin, /auto-refresh/i);
-  assert.match(scanQueue, /Arrival order · live/);
+  assert.match(scanQueue, /Pehle aao, pehle pao/);
 });
 
 test("#26 no unstable_cache in src/", () => {

@@ -169,7 +169,10 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         patientId: String(body.patientId),
         registrationNumber: Number(body.registrationNumber),
         dayDate: typeof body.dayDate === "string" ? body.dayDate : null,
-        statusUrl: String(body.statusUrl),
+        statusUrl:
+          typeof body.statusUrl === "string" && body.statusUrl
+            ? body.statusUrl
+            : null,
       });
     } catch {
       if (generation !== generationRef.current) return;

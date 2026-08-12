@@ -26,7 +26,7 @@ operational transcription and immutable fulfilment history. See
 * **Clinical Desk Operator**: A trained, station-only operational login role that transcribes the doctor's paper prescription into the app and records whether Specs or OT is fulfilled or deferred. The operator is attributed as the data-entry author and is not represented as the prescribing clinician. Clinical Desk Operators cannot register patients, print the original A4 prescription, mark patients seen, manage staff, or access leaderboards; Registration Staff cannot access clinical records.
   _Avoid_: Doctor, Counter Operator.
 * **Team**: A Team Lead plus the volunteers linked to them. Implicit — there is no team entity, only a lead reference on a volunteer. Team membership is optional; a volunteer with no lead is **Unassigned** and still counts in camp totals and on the volunteer leaderboard.
-* **Patient QR**: A unique patient identification QR code containing payload `/p/{uuid}` (or compact `snp:{uuid}`) for staff scanning (not for login). Printed top-right on the prescription, beside the Reg. No. box.
+* **Patient QR**: A unique patient identification QR code containing payload `/p/{uuid}` (or compact `snp:{uuid}`) for staff scanning (not for login). Printed top-right on the prescription, beside the Reg. No. box. Volunteers scan it with a phone camera; the Clinical Desk reads it with a USB wedge scanner or a typed registration number — the Clinical Desk has no camera.
 * **Status token / status link**: Un-guessable token on the patient row; open `/s/<token>` with no sign-in to see day, queue status, and position. Used in registration SMS. Not the staff-scan QR.
 * **Patient queue states** (strict order): **`registered` → `waiting` → `seen`**. There is no fourth state, and adding one is the wrong answer to any new requirement (ADR 0007).
   * **`registered`**: Recorded with a registration number, **not physically present**, **not in the FCFS Queue**. Used for pre-registration on a future Camp Day.
@@ -63,7 +63,7 @@ operational transcription and immutable fulfilment history. See
 * **Deferred fulfilment slip**: One of two separate 2-inch instruction slips — **Specs** or **OT** — printed by a Clinical Desk Operator only after the corresponding fulfilment item is deferred. It carries camp name, service heading, patient name, registration number, age/gender, matching admin-configured date/venue, Patient QR, issue timestamp, and slip reference/version. It excludes address, Aadhaar, prescription measurements, and full phone. A patient with both items deferred receives two slips.
 * **Active slip version**: The one valid printable version of a Deferred fulfilment slip. Reprinting is idempotent and reuses it; a reasoned correction cancels it and issues a replacement, while the cancelled version remains audit-only and cannot be printed as valid.
 * **Deferred follow-up fulfilment**: The later transition of a deferred Specs or OT item to fulfilled, attributed to the Clinical Desk Operator and timestamp. The original deferral and slip remain in history, active-slip reprinting stops, and reversal requires an admin correction.
-* **Clinical follow-up mode**: A narrow Clinical Desk surface for exact Patient QR or registration-number lookup of unresolved items from inactive Camps. It reveals only that Person's deferred Specs/OT and not-available Medicine items and permits later fulfilment, not editing of the historical Prescription Transcription. Medicine follow-up prints no slip.
+* **Clinical follow-up mode**: The Clinical Desk behaviour for unresolved items from inactive Camps, reached through the single clinical search — the operator never chooses a mode: the search resolves a current-camp `seen` Registration first, then falls back automatically to unresolved follow-ups. It reveals only that Person's deferred Specs/OT and not-available Medicine items and permits later fulfilment, not editing of the historical Prescription Transcription. Medicine follow-up prints no slip.
 * **Slip instruction snapshot**: The deferred date and venue copied into an issued slip version. Later Camp-setting changes affect only future deferrals; an issued patient's instructions change only through a reasoned correction and replacement slip.
 * **Clinical eligibility**: A Clinical Desk Operator may look up and mutate clinical records only for a Registration already in `seen`. The database enforces this boundary; scanning or typing an ineligible patient returns a clear refusal without exposing clinical data.
 * **Deferral readiness**: A fulfilment item may be deferred only when its matching admin-configured date and venue are both present. Missing configuration blocks that deferral and its slip without blocking transcription saving, fulfilment, or the other item.
@@ -88,8 +88,9 @@ operational transcription and immutable fulfilment history. See
 
 A deliberate split, and leaks in either direction are bugs:
 
-* **Patients read Hinglish** — the self-registration flow, the status page, SMS.
-* **Staff read English** — every desk, admin and error surface.
+* **Patients and field staff read Hinglish** — the self-registration flow, the status page, SMS, the public home page, and every field desk surface: register, volunteer desk, clinical desk, queue, scanner, print actions.
+* **Admin reads English** — `/admin/**`, staff management, exports, and every admin-facing banner.
+* Mixing the two inside one surface is a bug. Where a string's meaning would have to be guessed, keep it English rather than invent Hinglish.
 
 No i18n framework. There are exactly two audiences and they never share a screen.
 
@@ -120,6 +121,8 @@ When governing documentation conflicts, resolve in this order:
 1. **`docs/adr/`** — architectural decision records. [ADR 0008](docs/adr/0008-printing-queues-the-patient.md) defines the live desk and queue; [ADR 0009](docs/adr/0009-clinical-desk-operational-records.md) defines the post-doctor Clinical Desk.
 2. **`CONTEXT.md`** — ubiquitous language, domain context, lifecycle invariants, role boundaries, design-system rules.
 3. **`README.md`** — operations, deployment, build/verify gates, auth model, MSG91 configuration.
+
+A spec under `docs/specs/` is a work order, not a governing document. An accepted spec that changes a rule in this list must amend that document in the same branch — an unamended conflict resolves against the spec.
 
 ## Production Safety & Realtime Boundaries
 

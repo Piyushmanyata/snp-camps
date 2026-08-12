@@ -40,7 +40,7 @@ const COPY = {
   desk: {
     scan: "Live camera fallback",
     stop: "Stop scanner",
-    photo: "Take full-resolution photo",
+    photo: "Photo khinch kar scan karein",
     gallery: "Choose existing photo",
     readingPhoto: "Reading photo…",
     aim: "Hold the Aadhaar QR inside the frame",

@@ -168,6 +168,7 @@ const e2ePublicEnv = {
 // with the E2E Supabase project (local Docker / keys) so sign-in hits the same
 // host global-setup provisioned — not a remote URL from .env.local.
 if (useProduction && !reuseExistingServer) {
+  // Node on Windows returns EINVAL for spawnSync("npm.cmd", …) without a shell.
   const build = spawnSync(
     process.platform === "win32" ? "npm.cmd" : "npm",
     ["run", "build"],
@@ -175,6 +176,7 @@ if (useProduction && !reuseExistingServer) {
       cwd: process.cwd(),
       env: { ...process.env, ...e2ePublicEnv },
       stdio: "inherit",
+      shell: process.platform === "win32",
     },
   );
   if (build.status !== 0) {

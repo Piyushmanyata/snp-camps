@@ -67,7 +67,16 @@ async function localAppliedHead() {
       `select version from supabase_migrations.schema_migrations
        order by version desc limit 1`,
     );
-    return rows[0]?.version ?? null;
+    // The ledger advances on its own; the readiness probe only advances when a
+    // migration remembers to bump it. Read both so a lagging probe is caught
+    // offline instead of at deploy time.
+    const { rows: probe } = await client.query(
+      `select public.latest_applied_migration() as version`,
+    );
+    return {
+      ledger: rows[0]?.version ?? null,
+      probe: probe[0]?.version ?? null,
+    };
   } finally {
     try {
       await client.end();
@@ -124,11 +133,16 @@ async function main() {
     console.log("OK: contract head matches repository head");
   }
 
+  let local = null;
   let localHead = null;
+  let localProbe = null;
   let localError = null;
   try {
-    localHead = await localAppliedHead();
+    local = await localAppliedHead();
+    localHead = local.ledger;
+    localProbe = local.probe;
     console.log(`local_applied:   ${localHead ?? "(empty ledger)"}`);
+    console.log(`local_probe:     ${localProbe ?? "(no probe)"}`);
   } catch (err) {
     localError = err instanceof Error ? err.message : String(err);
     // Do not print connection strings that might appear in driver messages.
@@ -143,6 +157,14 @@ async function main() {
     } else {
       console.error(
         `FAIL: local applied head (${localHead}) != repo head (${repo.head})`,
+      );
+      exit = 1;
+    }
+    if (localProbe === repo.head) {
+      console.log("OK: readiness probe head matches repository head");
+    } else {
+      console.error(
+        `FAIL: latest_applied_migration() (${localProbe}) != repo head (${repo.head}). The head migration must bump the probe.`,
       );
       exit = 1;
     }

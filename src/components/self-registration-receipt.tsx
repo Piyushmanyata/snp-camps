@@ -8,7 +8,7 @@ export type SelfRegistrationReceiptData = {
   patientId: string;
   registrationNumber: number;
   dayDate: string | null;
-  statusUrl: string;
+  statusUrl: string | null;
 };
 
 export function SelfRegistrationReceipt({
@@ -74,16 +74,24 @@ export function SelfRegistrationReceipt({
       </p>
 
       <div>
-        <p className="mb-1.5 text-sm font-semibold">Status link</p>
-        <a
-          className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline"
-          href={result.statusUrl}
-        >
-          {result.statusUrl}
-        </a>
-        <p className="mt-1.5 text-sm text-muted">
-          Yeh link save kar lein — SMS nahi bheja jaata.
-        </p>
+        {result.statusUrl ? (
+          <>
+            <p className="mb-1.5 text-sm font-semibold">Status link</p>
+            <a
+              className="flex min-h-12 items-center break-all rounded-xl border border-border p-3 text-sm font-semibold text-brand underline"
+              href={result.statusUrl}
+            >
+              {result.statusUrl}
+            </a>
+            <p className="mt-1.5 text-sm text-muted">
+              Yeh link save kar lein — SMS nahi bheja jaata.
+            </p>
+          </>
+        ) : (
+          <p className="rounded-xl border border-border p-3 text-sm text-muted">
+            Status link desk par milega.
+          </p>
+        )}
       </div>
     </section>
   );

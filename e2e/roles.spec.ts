@@ -167,9 +167,9 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   ).toBeVisible();
 
   await page
-    .getByLabel("Registration number or name")
+    .getByLabel("Registration number ya naam")
     .fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Dhundein" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
@@ -186,9 +186,9 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
 
   await page.getByRole("button", { name: "Wrong patient" }).click();
   await page
-    .getByLabel("Registration number or name")
+    .getByLabel("Registration number ya naam")
     .fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Dhundein" }).click();
   await expect(review).toBeVisible();
 
   expect(await review.getByTestId("print-prescription").innerText()).toBe(
@@ -207,6 +207,8 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
   await expect(
     page.getByRole("heading", { name: "Volunteer desk" }),
   ).toBeVisible();
+  // Team/leaderboard live in the collapsible "Aur dekhein" island (Phase 6).
+  await page.locator("summary").filter({ hasText: /Aur dekhein/i }).click();
   await expect(page.getByText("Team Lead Overview", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Team Headcount", { exact: true }),
@@ -223,7 +225,10 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
       .filter({ hasText: "Codex E2E volunteer" })
       .getByText(/\d+ distinct patients/),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Register/ }).first()).toBeVisible();
+  // Primary desk CTA (inline card; desktop Register NavLink was intentionally removed).
+  await expect(
+    page.getByRole("link", { name: /Naya marij register|Register/i }).first(),
+  ).toBeVisible();
   // Every dock link must be reachable for this role — no link may bounce them.
   await expect(page.getByRole("link", { name: /Counter/ })).toHaveCount(0);
 });
@@ -288,9 +293,9 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
 }) => {
   await loginStaff(page, "volunteer");
   await page
-    .getByLabel("Registration number or name")
+    .getByLabel("Registration number ya naam")
     .fill("not-a-patient!!!!!" + "x".repeat(200));
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Dhundein" }).click();
   // Desk stays usable; review panel for the e2e patient must not appear
   await expect(
     page.getByRole("region", {
@@ -314,8 +319,8 @@ test("volunteer marks a waiting patient seen, and a re-scan is refused", async (
   const name = env("E2E_SECOND_PATIENT_NAME");
 
   await loginStaff(page, "volunteer");
-  await page.getByLabel("Registration number or name").fill(reg);
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("Registration number ya naam").fill(reg);
+  await page.getByRole("button", { name: "Dhundein" }).click();
 
   const review = page.getByRole("region", { name: `#${reg} ${name}` });
   await expect(review).toBeVisible({ timeout: 15_000 });
@@ -326,16 +331,18 @@ test("volunteer marks a waiting patient seen, and a re-scan is refused", async (
   const result = page.getByTestId("seen-result");
   await expect(result).toBeVisible();
   await expect(result.getByText(`#${reg}`)).toBeVisible();
-  await expect(page.getByLabel("Registration number or name")).toBeEnabled();
-  await expect(page.getByLabel("Registration number or name")).toHaveValue("");
+  await expect(page.getByLabel("Registration number ya naam")).toBeEnabled();
+  await expect(page.getByLabel("Registration number ya naam")).toHaveValue("");
 
   // A mis-scan is recoverable within the server-side window (D25).
-  await expect(result.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect(
+    result.getByRole("button", { name: /Wapas line mein/i }),
+  ).toBeVisible();
 
   // Re-scan is refused, says so, and offers no second Mark seen.
   await page.getByRole("button", { name: "Scan next" }).click();
-  await page.getByLabel("Registration number or name").fill(reg);
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("Registration number ya naam").fill(reg);
+  await page.getByRole("button", { name: "Dhundein" }).click();
   const again = page.getByRole("region", { name: `#${reg} ${name}` });
   await expect(again).toBeVisible({ timeout: 15_000 });
   await expect(again.getByText(/Already seen/)).toBeVisible();

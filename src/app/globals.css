@@ -448,32 +448,6 @@ h3 {
   transform: scale(0.985);
 }
 
-/* Toast notification — appear only, no motion */
-.toast {
-  position: fixed;
-  bottom: calc(var(--dock-height) + var(--safe-bottom) + 0.75rem);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 60;
-  background: var(--foreground);
-  color: var(--card);
-  font-size: var(--text-small);
-  font-weight: 600;
-  padding: 0.65rem 1.35rem;
-  border-radius: 2rem;
-  border: 1px solid rgb(255 255 255 / 16%);
-  pointer-events: none;
-  max-width: calc(100vw - 1rem);
-  overflow-wrap: anywhere;
-  text-align: center;
-}
-
-@media (min-width: 1024px) {
-  .toast {
-    bottom: 1.5rem;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -497,3 +471,4 @@ h3 {
  * interactive desk routes do not load @page / multi-up geometry rules.
  * .no-print is a marker class; print.css hides it under @media print.
  */
+

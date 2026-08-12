@@ -10,6 +10,7 @@ import {
   SectionTitle,
   Select,
 } from "@/components/ui";
+import { ClinicalRecordView } from "@/components/clinical-record-view";
 
 type Item = {
   id: string;
@@ -276,11 +277,36 @@ export function AdminClinicalRecords({
               {record.archived_at ? "Restore" : "Archive"}
             </Button>
           </div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs">{JSON.stringify(record.data, null, 2)}</pre>
+          <div className="max-h-64 overflow-auto rounded-xl bg-slate-50 p-3">
+            <ClinicalRecordView data={record.data} />
+          </div>
           <CollapsibleSection
             title={"Correction audit (" + record.corrections.length + ")"}
           >
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(record.corrections, null, 2)}</pre>
+            <ul className="mt-2 max-h-64 space-y-1 overflow-auto text-sm">
+              {record.corrections.map((correction, index) => {
+                const createdAt =
+                  typeof correction.created_at === "string"
+                    ? new Date(correction.created_at).toLocaleString("en-IN")
+                    : "";
+                const reason =
+                  typeof correction.reason === "string" ? correction.reason : "";
+                const author =
+                  typeof correction.author_name === "string"
+                    ? correction.author_name
+                    : typeof correction.created_by_name === "string"
+                      ? correction.created_by_name
+                      : typeof correction.name === "string"
+                        ? correction.name
+                        : "";
+                const parts = [createdAt, reason, author].filter(Boolean);
+                return (
+                  <li key={String(correction.id ?? `${createdAt}-${index}`)}>
+                    {parts.join(" · ") || "Correction"}
+                  </li>
+                );
+              })}
+            </ul>
           </CollapsibleSection>
           <div className="space-y-2">
             {record.items.map((item) => (
@@ -292,7 +318,56 @@ export function AdminClinicalRecords({
                 <CollapsibleSection
                   title={"Event and slip audit (" + (item.events.length + item.slips.length) + ")"}
                 >
-                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify({ events: item.events, slips: item.slips }, null, 2)}</pre>
+                  <div className="mt-2 max-h-64 space-y-3 overflow-auto text-sm">
+                    {item.events.length ? (
+                      <ul className="space-y-1">
+                        {item.events.map((event, index) => {
+                          const stamp =
+                            typeof event.created_at === "string"
+                              ? new Date(event.created_at).toLocaleString("en-IN")
+                              : "";
+                          return (
+                            <li key={String(event.id ?? `${event.event}-${index}`)}>
+                              {event.event}
+                              {stamp ? ` · ${stamp}` : ""}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                    {item.slips.length ? (
+                      <ul className="space-y-1">
+                        {item.slips.map((slip, index) => {
+                          const date =
+                            typeof slip.date === "string" ? slip.date : "";
+                          const venue =
+                            typeof slip.venue === "string" ? slip.venue : "";
+                          const stamp =
+                            typeof slip.issued_at === "string"
+                              ? new Date(slip.issued_at).toLocaleString("en-IN")
+                              : typeof slip.created_at === "string"
+                                ? new Date(slip.created_at).toLocaleString("en-IN")
+                                : "";
+                          const status =
+                            typeof slip.status === "string"
+                              ? slip.status.toLowerCase()
+                              : "";
+                          const cancelled =
+                            status === "cancelled" ||
+                            status === "superseded" ||
+                            status === "replaced" ||
+                            Boolean(slip.replaced_by);
+                          const line = [date, venue, stamp].filter(Boolean).join(" · ");
+                          return (
+                            <li key={String(slip.id ?? `${date}-${index}`)}>
+                              {line || "Slip"}
+                              {cancelled ? " · cancelled" : ""}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </div>
                 </CollapsibleSection>
               </div>
             ))}

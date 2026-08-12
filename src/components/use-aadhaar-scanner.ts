@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
-import { applyBestEffortCameraConstraints } from "@/lib/qr-detector";
+import {
+  applyBestEffortCameraConstraints,
+  canUseNativeQrDetector,
+  getBarcodeDetectorConstructor,
+  type BarcodeDetectorInstance,
+} from "@/lib/qr-detector";
 import {
   AADHAAR_PROBES,
   probeSurface,
@@ -83,6 +88,19 @@ export type AadhaarScanner = {
 };
 
 const MANUAL_HINT = "Please type the details manually.";
+
+/** Probe once per session; try/catch → null if unsupported or construct fails. */
+async function createNativeQrDetector(): Promise<BarcodeDetectorInstance | null> {
+  try {
+    const ok = await canUseNativeQrDetector();
+    if (!ok) return null;
+    const Ctor = getBarcodeDetectorConstructor();
+    if (!Ctor) return null;
+    return new Ctor({ formats: ["qr_code"] });
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The single Aadhaar camera + decode entry point, shared by the Volunteer Desk
@@ -211,7 +229,9 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
     try {
       // Camera permission and decoder loading are independent. Starting both
       // together removes a full network/worker round trip from time-to-preview.
+      // Native BarcodeDetector is a first-chance path; WASM worker stays fallback.
       const clientPromise = loadDecodeClient();
+      const nativePromise = createNativeQrDetector();
       const streamPromise = sessionRef.current.acquireFirstAvailable(
         token,
         (c) => navigator.mediaDevices.getUserMedia(c),
@@ -233,12 +253,14 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
           { video: true, audio: false },
         ],
       );
-      const [client, stream] = await Promise.all([
+      const [client, stream, nativeDetector] = await Promise.all([
         clientPromise,
         streamPromise,
+        nativePromise,
       ]);
       if (!sessionRef.current.isCurrent(token)) return;
       client.warmUpDecoder();
+      let detector: BarcodeDetectorInstance | null = nativeDetector;
 
       if (!stream || !sessionRef.current.isCurrent(token)) {
         if (!sessionRef.current.isCurrent(token)) return;
@@ -323,10 +345,33 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                   AADHAAR_PROBES[frameTick % AADHAAR_PROBES.length],
                 );
               if (image) {
-                const outcome = await client.decodeFrame(image, thorough);
-                consecutiveDecodeErrors = 0;
-                if (!sessionRef.current.isCurrent(token)) return;
-                if (await handleOutcome(outcome, token)) return;
+                let handledNative = false;
+                if (detector) {
+                  try {
+                    const hits = await detector.detect(canvas);
+                    if (!sessionRef.current.isCurrent(token)) return;
+                    const raw = hits[0]?.rawValue;
+                    if (raw) {
+                      const outcome = await client.decodePayload(raw);
+                      if (!sessionRef.current.isCurrent(token)) return;
+                      consecutiveDecodeErrors = 0;
+                      // Only suppress WASM when decode produced a real outcome
+                      // (matches photo path). Non-Aadhaar / partial text falls through.
+                      if (outcome.status !== "none") {
+                        handledNative = true;
+                        if (await handleOutcome(outcome, token)) return;
+                      }
+                    }
+                  } catch {
+                    detector = null;
+                  }
+                }
+                if (!handledNative) {
+                  const outcome = await client.decodeFrame(image, thorough);
+                  consecutiveDecodeErrors = 0;
+                  if (!sessionRef.current.isCurrent(token)) return;
+                  if (await handleOutcome(outcome, token)) return;
+                }
               }
             }
           } catch {
@@ -386,6 +431,10 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         let width: number;
         let height: number;
 
+        // Native detector probe runs in parallel with image load when possible.
+        let detector = await createNativeQrDetector();
+        if (!sessionRef.current.isCurrent(token)) return;
+
         if (typeof createImageBitmap === "function") {
           bitmap = await createImageBitmap(file, {
             imageOrientation: "from-image",
@@ -413,6 +462,35 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         }
 
         const client = await loadDecodeClient();
+        if (!sessionRef.current.isCurrent(token)) return;
+
+        // Full-resolution native pass first — ML Kit handles dense QRs well.
+        if (detector) {
+          try {
+            const full = document.createElement("canvas");
+            full.width = width;
+            full.height = height;
+            const fctx = full.getContext("2d");
+            if (fctx) {
+              fctx.drawImage(source, 0, 0);
+              const hits = await detector.detect(full);
+              if (!sessionRef.current.isCurrent(token)) return;
+              const raw = hits[0]?.rawValue;
+              if (raw) {
+                const outcome = await client.decodePayload(raw);
+                if (!sessionRef.current.isCurrent(token)) return;
+                if (outcome.status !== "none") {
+                  setIsReadingPhoto(false);
+                  await handleOutcome(outcome, token);
+                  return;
+                }
+              }
+            }
+          } catch {
+            detector = null;
+          }
+        }
+
         for (const probe of AADHAAR_PROBES) {
           if (!sessionRef.current.isCurrent(token)) return;
           const surface = probeSurface(width, height, probe);
@@ -422,6 +500,26 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
           canvas.height = dh;
           ctx.imageSmoothingEnabled = dw < cw;
           ctx.drawImage(source, sx, sy, cw, ch, 0, 0, dw, dh);
+
+          if (detector) {
+            try {
+              const hits = await detector.detect(canvas);
+              if (!sessionRef.current.isCurrent(token)) return;
+              const raw = hits[0]?.rawValue;
+              if (raw) {
+                const outcome = await client.decodePayload(raw);
+                if (!sessionRef.current.isCurrent(token)) return;
+                if (outcome.status !== "none") {
+                  setIsReadingPhoto(false);
+                  await handleOutcome(outcome, token);
+                  return;
+                }
+              }
+            } catch {
+              detector = null;
+            }
+          }
+
           const outcome = await client.decodeFrame(
             ctx.getImageData(0, 0, dw, dh),
             true,

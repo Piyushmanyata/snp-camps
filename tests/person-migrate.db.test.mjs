@@ -109,12 +109,12 @@ test("authenticated browsers cannot submit a chosen scanned Person key", async (
     await client.query("update public.camps set is_active = false where is_active = true");
     await client.query(
       `insert into public.camps (id, name, venue, camp_date, is_active)
-       values ($1, 'Trusted Boundary Camp', 'Venue', '2026-08-09', true)`,
+       values ($1, 'Trusted Boundary Camp', 'Venue', '2099-08-09', true)`,
       [campId],
     );
     await client.query(
       `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, '2026-08-09', 50)`,
+       values ($1, $2, '2099-08-09', 50)`,
       [dayId, campId],
     );
     await client.query("set local role authenticated");
@@ -166,12 +166,12 @@ test("Scanning an unseen card creates one Person and one Registration", async ()
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Migrate Camp 1', 'Venue 1', '2026-08-10', true)`,
+     values ($1, 'Migrate Camp 1', 'Venue 1', '2099-08-10', true)`,
     [campId],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-08-10', 50)`,
+     values ($1, $2, '2099-08-10', 50)`,
     [dayId, campId],
   );
 
@@ -234,12 +234,12 @@ test("trusted scanned registration preserves the Team Lead creator", async () =>
     await client.query("update public.camps set is_active = false where is_active = true");
     await client.query(
       `insert into public.camps (id, name, venue, camp_date, is_active)
-       values ($1, 'Team Lead Registration Camp', 'Venue TL', '2026-08-12', true)`,
+       values ($1, 'Team Lead Registration Camp', 'Venue TL', '2099-08-12', true)`,
       [campId],
     );
     await client.query(
       `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, '2026-08-12', 50)`,
+       values ($1, $2, '2099-08-12', 50)`,
       [dayId, campId],
     );
 
@@ -276,6 +276,17 @@ test("trusted scanned registration preserves the Team Lead creator", async () =>
 
     assert.equal(rows.length, 1);
     assert.equal(rows[0].queue_status, "registered");
+
+    // The point of this test: attribution survives the trusted scanned path.
+    const { rows: stored } = await client.query(
+      `select created_by from public.patients where id = $1`,
+      [rows[0].id],
+    );
+    assert.equal(
+      stored[0].created_by,
+      teamLeadId,
+      "Team Lead stays the original registrar",
+    );
   } finally {
     await client.query("rollback");
   }
@@ -293,12 +304,12 @@ test("Scanning a card already registered in active Camp returns existing Registr
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Migrate Camp Same', 'Venue Same', '2026-08-11', true)`,
+     values ($1, 'Migrate Camp Same', 'Venue Same', '2099-08-11', true)`,
     [campId],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-08-11', 50)`,
+     values ($1, $2, '2099-08-11', 50)`,
     [dayId, campId],
   );
 
@@ -395,12 +406,12 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Camp 2026', 'Venue A', '2026-01-10', true)`,
+     values ($1, 'Camp 2026', 'Venue A', '2099-01-10', true)`,
     [camp1],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-01-10', 50)`,
+     values ($1, $2, '2099-01-10', 50)`,
     [day1, camp1],
   );
 
@@ -446,12 +457,12 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Camp 2027', 'Venue B', '2027-02-15', true)`,
+     values ($1, 'Camp 2027', 'Venue B', '2099-02-15', true)`,
     [camp2],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2027-02-15', 50)`,
+     values ($1, $2, '2099-02-15', 50)`,
     [day2, camp2],
   );
 
@@ -560,12 +571,12 @@ test("Two concurrent scans of the same card produce exactly one Person", async (
   await setupClient.query("update public.camps set is_active = false where is_active = true");
   await setupClient.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Concurrent Camp', 'Venue C', '2026-09-01', true)`,
+     values ($1, 'Concurrent Camp', 'Venue C', '2099-09-01', true)`,
     [campId],
   );
   await setupClient.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-09-01', 50)`,
+     values ($1, $2, '2099-09-01', 50)`,
     [dayId, campId],
   );
   await setupClient.end();

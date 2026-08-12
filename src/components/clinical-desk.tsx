@@ -19,8 +19,10 @@ import {
   normalizeDiagnoses,
   validateUnavailableMedicines,
 } from "@/lib/clinical-diagnoses";
-import { Button, Card, ErrorBox, Input, SectionTitle } from "@/components/ui";
-import { PatientQrCamera } from "@/components/patient-qr-camera";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
+import { Button, Card, Input, SectionTitle } from "@/components/ui";
+import { ClinicalRecordView } from "@/components/clinical-record-view";
 
 type Patient = {
   id: string;
@@ -56,12 +58,74 @@ const OUTCOMES = {
   ot: ["fulfilled", "deferred", "not_required"],
 } as const;
 
+const KIND_HEADINGS: Record<keyof typeof OUTCOMES, string> = {
+  medicine: "DAWAI",
+  specs: "CHASHMA",
+  ot: "OPERATION (OT)",
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  fulfilled: "De diya",
+  not_available: "Available nahi",
+  not_required: "Zaroorat nahi",
+  deferred: "Baad mein milega",
+};
+
+const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
+
+type ResolveKind = keyof typeof KIND_HEADINGS;
+
+const RESOLVE_ERRORS: Array<
+  [RegExp, string | ((kind: ResolveKind) => string)]
+> = [
+  [
+    /unavailable medicines/i,
+    "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.",
+  ],
+  [
+    /medicine detail/i,
+    "Pehle parchi ki dawaiyan likhein, phir faisla save karein.",
+  ],
+  [
+    /Specs measurements/i,
+    "Pehle chashme ka number bharein, phir faisla save karein.",
+  ],
+  [
+    /OT detail/i,
+    "Pehle OT ki aankh aur procedure likhein, phir faisla save karein.",
+  ],
+  [
+    /date and venue/i,
+    (kind) =>
+      `Admin se is camp ke liye ${KIND_HEADINGS[kind]} collection date aur venue set karwayein, phir defer karein.`,
+  ],
+  [/seen transcription required/i, SAVE_FIRST],
+  [
+    /outcome conflict/i,
+    "Is item ka pehle se alag faisla hai. Admin se reverse karwayein.",
+  ],
+  [
+    /clinical operator only/i,
+    "Sirf Clinical Desk Operator faisla save kar sakta hai.",
+  ],
+];
+
+const NOT_FOUND_MESSAGE =
+  "Yeh number kisi dekhe hue marij ka nahi mila. Number check karke dobara try karein.";
+
+const BLOCKED_SLIP_SUFFIX =
+  'Slip window browser ne rok di — "Slip kholein" link dabayen.';
+
 type SlipReplaceState = {
   slip: { id: string; date: string; venue: string };
   date: string;
   venue: string;
   reason: string;
 };
+
+function outcomeLabel(outcome: string): string {
+  return OUTCOME_LABELS[outcome] ?? outcome.replaceAll("_", " ");
+}
 
 export function ClinicalDesk({
   canMutate = true,
@@ -75,7 +139,9 @@ export function ClinicalDesk({
   const supabase = createClient();
   const [exact, setExact] = useState(initialScan ?? "");
   const [record, setRecord] = useState<Lookup | null>(null);
-  const [followup, setFollowup] = useState<Array<{ id: string; kind: string; outcome: string; camp_name: string }>>([]);
+  const [followup, setFollowup] = useState<
+    Array<{ id: string; kind: string; outcome: string; camp_name: string }>
+  >([]);
   const [diagnosisOptions, setDiagnosisOptions] = useState(
     DEFAULT_PRESCRIPTION_TEMPLATE.diagnosisOptions,
   );
@@ -90,17 +156,29 @@ export function ClinicalDesk({
   const [remarks, setRemarks] = useState("");
   const [medicines, setMedicines] = useState("");
   const [specType, setSpecType] = useState("");
-  const [specRight, setSpecRight] = useState({ sphere: "", cylinder: "", axis: "", vision: "", near: "" });
-  const [specLeft, setSpecLeft] = useState({ sphere: "", cylinder: "", axis: "", vision: "", near: "" });
+  const [specRight, setSpecRight] = useState({
+    sphere: "",
+    cylinder: "",
+    axis: "",
+    vision: "",
+    near: "",
+  });
+  const [specLeft, setSpecLeft] = useState({
+    sphere: "",
+    cylinder: "",
+    axis: "",
+    vision: "",
+    near: "",
+  });
   const [specPd, setSpecPd] = useState("");
   const [otEye, setOtEye] = useState("");
   const [otProcedure, setOtProcedure] = useState("");
   const [otNotes, setOtNotes] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessageState] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
   const [lastSlipId, setLastSlipId] = useState<string | null>(null);
   const [unavailableMedicines, setUnavailableMedicines] = useState("");
@@ -108,6 +186,11 @@ export function ClinicalDesk({
   const slipReplaceDialogRef = useRef<HTMLDialogElement | null>(null);
   const lookupGenerationRef = useRef(0);
   const displayedPatientIdRef = useRef<string | null>(null);
+
+  const setMessage = (next: string | null) => {
+    setMessageState(next);
+    if (next) showSuccessToast(next);
+  };
 
   function isCurrentLookup(generation: number, patientId?: string | null) {
     return (
@@ -149,7 +232,7 @@ export function ClinicalDesk({
     const patientId = parsePatientIdFromQr(value);
     const regNo = patientId ? null : parseRegistrationNumber(value);
     if (!patientId && !regNo) {
-      setError("Scan a Patient QR or enter the exact registration number.");
+      setError("Patient QR scan karein ya sahi registration number likhein.");
       setBusy(false);
       return;
     }
@@ -160,9 +243,12 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation)) return;
     if (rpcError) {
       if (/registration not found|not been seen/i.test(rpcError.message)) {
-        await lookupFollowup(value);
+        const followupResult = await lookupFollowup(value);
+        if (followupResult === "empty") {
+          setError(NOT_FOUND_MESSAGE);
+        }
       } else {
-        setError("Exact registration lookup failed.");
+        setError("Registration lookup fail ho gaya. Dobara koshish karein.");
         setBusy(false);
       }
       return;
@@ -227,11 +313,16 @@ export function ClinicalDesk({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link
   }, [initialScan]);
 
-  useEffect(() => () => {
-    lookupGenerationRef.current += 1;
-  }, []);
+  useEffect(
+    () => () => {
+      lookupGenerationRef.current += 1;
+    },
+    [],
+  );
 
-  async function lookupFollowup(value = exact) {
+  async function lookupFollowup(
+    value = exact,
+  ): Promise<"found" | "empty" | "error" | "stale"> {
     const generation = ++lookupGenerationRef.current;
     clearRecordState();
     setBusy(true);
@@ -239,24 +330,24 @@ export function ClinicalDesk({
     const patientId = parsePatientIdFromQr(value);
     const regNo = patientId ? null : parseRegistrationNumber(value);
     if (!patientId && !regNo) {
-      setError("Scan a Patient QR or enter the exact registration number.");
+      setError("Patient QR scan karein ya sahi registration number likhein.");
       setBusy(false);
-      return false;
+      return "error";
     }
     const { data, error: rpcError } = await supabase.rpc("clinical_followup_lookup", {
       p_patient_id: patientId,
       p_reg_no: regNo,
     });
-    if (!isCurrentLookup(generation)) return false;
+    if (!isCurrentLookup(generation)) return "stale";
     if (rpcError) {
-      setError("Follow-up lookup failed.");
+      setError("Follow-up lookup fail ho gaya. Dobara koshish karein.");
       setBusy(false);
-      return false;
+      return "error";
     }
     const items = (data ?? []) as typeof followup;
     setFollowup(items);
     setBusy(false);
-    return items.length > 0;
+    return items.length > 0 ? "found" : "empty";
   }
 
   async function fulfilFollowup(id: string) {
@@ -269,7 +360,7 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation)) return;
     if (rpcError) setError("Follow-up fulfilment conflicted with current state.");
     else {
-      setMessage("Follow-up item fulfilled; original history preserved.");
+      setMessage("Item pura ho gaya; purana record surakshit hai.");
       await lookupFollowup();
       return;
     }
@@ -330,18 +421,16 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      setError("Slip could not be replaced. Try again.");
-    }
-    else {
+      setError("Slip badal nahi payi. Dobara koshish karein.");
+    } else {
       const replacement = data as { id: string };
       closeSlipReplace();
-      const navigated = printTarget?.navigate(`/clinical/slip/${replacement.id}`) ?? false;
+      const navigated =
+        printTarget?.navigate(`/clinical/slip/${replacement.id}`) ?? false;
       if (printTarget && !navigated) printTarget.abandon();
       setLastSlipId(replacement.id);
       setMessage(
-        navigated
-          ? "Replacement slip saved."
-          : "Replacement slip saved. Your browser blocked the slip window.",
+        navigated ? "Nayi slip ban gayi." : `Nayi slip ban gayi. ${BLOCKED_SLIP_SUFFIX}`,
       );
       await lookup();
       return;
@@ -354,7 +443,9 @@ export function ClinicalDesk({
     const data = transcriptionData();
     const validation = validateClinicalTranscription(data);
     if (!validation.ok) {
-      setFieldErrors(Object.fromEntries(validation.errors.map((item) => [item.field, item.message])));
+      setFieldErrors(
+        Object.fromEntries(validation.errors.map((item) => [item.field, item.message])),
+      );
       setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
       return;
     }
@@ -370,7 +461,7 @@ export function ClinicalDesk({
       });
       if (rpcError) throw rpcError;
       if (!isCurrentLookup(generation, patientId)) return;
-      setMessage("Operational transcription saved from paper.");
+      setMessage("Record save ho gaya.");
       await lookup();
     } catch {
       if (isCurrentLookup(generation, patientId)) {
@@ -390,7 +481,9 @@ export function ClinicalDesk({
     const data = transcriptionData();
     const validation = validateClinicalTranscription(data);
     if (!validation.ok) {
-      setFieldErrors(Object.fromEntries(validation.errors.map((item) => [item.field, item.message])));
+      setFieldErrors(
+        Object.fromEntries(validation.errors.map((item) => [item.field, item.message])),
+      );
       setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
       return;
     }
@@ -412,7 +505,7 @@ export function ClinicalDesk({
       if (rpcError) throw rpcError;
       if (!isCurrentLookup(generation, patientId)) return;
       setCorrectionReason("");
-      setMessage("Reasoned correction appended; original record preserved.");
+      setMessage("Correction jud gaya; purana record surakshit hai.");
       await lookup();
     } catch {
       if (isCurrentLookup(generation, patientId)) {
@@ -430,7 +523,7 @@ export function ClinicalDesk({
   ) {
     if (!record || !canMutate) return;
     if (!record.transcription?.id) {
-      setError("Save a transcription before resolving fulfilment outcomes.");
+      setError(SAVE_FIRST);
       return;
     }
     let unavailableList: string[] | null = null;
@@ -460,42 +553,33 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      const message = rpcError.message;
-      setError(
-        /unavailable medicines/i.test(message)
-          ? "List the unavailable medicines before recording not available."
-          : /medicine detail/i.test(message)
-          ? "Enter the medicines from the paper before recording this outcome."
-          : /Specs measurements/i.test(message)
-            ? "Enter the Specs measurements before recording this outcome."
-            : /OT detail/i.test(message)
-              ? "Enter the OT eye and procedure before recording this outcome."
-              : /date and venue/i.test(message)
-                ? `Ask an admin to set the ${kind.toUpperCase()} collection date and venue for this camp before deferring.`
-                : /seen transcription required/i.test(message)
-                  ? "Save a transcription before resolving fulfilment outcomes."
-                  : /outcome conflict/i.test(message)
-                    ? "This item already has a different outcome. Ask an admin to reverse it."
-                    : /clinical operator only/i.test(message)
-                      ? "Only a Clinical Desk Operator can record outcomes."
-                      : "Could not record this outcome. Try again.",
-      );
+      const rpcMessage = rpcError.message;
+      const matched = RESOLVE_ERRORS.find(([pattern]) => pattern.test(rpcMessage));
+      const entry = matched?.[1];
+      const mapped =
+        typeof entry === "function"
+          ? entry(kind)
+          : (entry ?? "Faisla save nahi hua. Dobara koshish karein.");
+      setError(mapped);
     } else {
       const slip = (data as { slip?: { id?: string } } | null)?.slip;
-      const navigated = slip?.id && printTarget
-        ? printTarget.navigate(`/clinical/slip/${slip.id}`)
-        : false;
+      const navigated =
+        slip?.id && printTarget
+          ? printTarget.navigate(`/clinical/slip/${slip.id}`)
+          : false;
       if (printTarget && (!slip?.id || !navigated)) printTarget.abandon();
+      const heading = KIND_HEADINGS[kind];
+      const base = `${heading} ka faisla save ho gaya.`;
       if (slip?.id) {
         setLastSlipId(slip.id);
         setMessage(
-          `${kind.toUpperCase()} saved.${
-            printTarget && !navigated ? " Your browser blocked the slip window." : ""
-          }`,
+          printTarget && !navigated ? `${base} ${BLOCKED_SLIP_SUFFIX}` : base,
         );
       } else {
-        setMessage(`${kind.toUpperCase()} saved.`);
+        setMessage(base);
       }
+      setMedicineIntent(null);
+      setUnavailableMedicines("");
       await lookup();
       return;
     }
@@ -542,35 +626,34 @@ export function ClinicalDesk({
         </p>
       ) : null}
       <Card className="space-y-3">
-        <SectionTitle>Exact patient lookup</SectionTitle>
-        <Input
-          id="clinical-exact-lookup"
-          label="Patient QR or registration number"
-          value={exact}
-          onChange={(event) => {
-            lookupGenerationRef.current += 1;
-            setExact(event.target.value);
+        <SectionTitle>Marij dhundein</SectionTitle>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void lookup();
           }}
-          placeholder="Scan QR or type exact number"
-        />
-        <PatientQrCamera
-          disabled={busy}
-          onScan={(raw) => {
-            lookupGenerationRef.current += 1;
-            setExact(raw);
-            void lookup(raw);
-          }}
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" disabled={busy} onClick={() => void lookup()}>
-            Open seen registration
+        >
+          <Input
+            id="clinical-exact-lookup"
+            label="Patient QR ya registration number"
+            value={exact}
+            onChange={(event) => {
+              lookupGenerationRef.current += 1;
+              setExact(event.target.value);
+            }}
+            placeholder="USB scanner se scan karein ya number type karein"
+          />
+          <Button type="submit" disabled={busy}>
+            Dhundein
           </Button>
-          <Button type="button" variant="secondary" disabled={busy} onClick={() => void lookupFollowup()}>
-            Find unresolved follow-up
-          </Button>
-        </div>
+        </form>
       </Card>
-      <ErrorBox message={error} />
+      {error ? (
+        <p role="alert" className="sr-only">
+          {error}
+        </p>
+      ) : null}
       {message ? (
         <p role="status" className="rounded-xl bg-brand-soft p-3 text-sm font-semibold text-brand">
           {message}
@@ -581,7 +664,7 @@ export function ClinicalDesk({
               rel="noopener"
               className="ml-2 text-brand font-semibold underline"
             >
-              Open the slip
+              Slip kholein
             </a>
           ) : null}
         </p>
@@ -600,12 +683,12 @@ export function ClinicalDesk({
             {canMutate && record.transcription?.locked_at ? (
               <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <p>
-                  Original locked after the first outcome. Edit the fields below and
-                  append a correction with a reason — the original is preserved.
+                  Pehla record lock ho gaya hai. Neeche fields badlein aur reason ke
+                  saath correction jodein — purana record surakshit rehta hai.
                 </p>
                 <Input
                   id="clinical-correction-reason"
-                  label="Correction reason"
+                  label="Correction ka reason"
                   value={correctionReason}
                   onChange={(event) => setCorrectionReason(event.target.value)}
                 />
@@ -644,15 +727,15 @@ export function ClinicalDesk({
               </div>
               <Input
                 id="clinical-diagnosis-other"
-                label="Other diagnosis (optional)"
-                 value={diagnosisOther}
-                 onChange={(e) => {
-                   setDiagnosisOther(e.target.value);
-                   setDiagnosisOtherEdited(true);
-                 }}
-                 disabled={!canMutate}
-                 hint="Free text — not split on commas"
-                 error={fieldErrors.diagnoses}
+                label="Anya diagnosis (optional)"
+                value={diagnosisOther}
+                onChange={(e) => {
+                  setDiagnosisOther(e.target.value);
+                  setDiagnosisOtherEdited(true);
+                }}
+                disabled={!canMutate}
+                hint="Free text — commas se alag nahi hoga"
+                error={fieldErrors.diagnoses}
               />
             </fieldset>
 
@@ -678,7 +761,7 @@ export function ClinicalDesk({
             </div>
             <Input
               id="clinical-remarks"
-              label="Remarks / advice"
+              label="Remarks / salaah"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               disabled={!canMutate}
@@ -686,16 +769,16 @@ export function ClinicalDesk({
             />
             <Input
               id="clinical-medicines"
-              label="Medicines from paper"
+              label="Parchi ki dawaiyan"
               value={medicines}
               onChange={(e) => setMedicines(e.target.value)}
               disabled={!canMutate}
               error={fieldErrors.medicines}
             />
             <Card className="space-y-3">
-              <SectionTitle>Specs measurements</SectionTitle>
+              <SectionTitle>Chashme ka number (Specs)</SectionTitle>
               <label className="block text-sm font-semibold">
-                Approved type
+                Chashme ka type
                 <select
                   className={selectClass}
                   value={specType}
@@ -720,10 +803,10 @@ export function ClinicalDesk({
                         <Input
                           key={field}
                           id={`spec-${side}-${field}`}
-                           label={`${side === "right" ? "RE" : "LE"} ${field === "near" ? "Near add (D)" : field}`}
-                           value={eye[field]}
-                           disabled={!canMutate}
-                           error={fieldErrors[`specs.${side}.${field}`]}
+                          label={`${side === "right" ? "RE" : "LE"} ${field === "near" ? "Near add (D)" : field}`}
+                          value={eye[field]}
+                          disabled={!canMutate}
+                          error={fieldErrors[`specs.${side}.${field}`]}
                           onChange={(event) =>
                             update((current) => ({
                               ...current,
@@ -747,9 +830,9 @@ export function ClinicalDesk({
               />
             </Card>
             <Card className="space-y-3">
-              <SectionTitle>OT detail</SectionTitle>
+              <SectionTitle>Operation (OT) detail</SectionTitle>
               <label className="block text-sm font-semibold">
-                Eye
+                Aankh
                 <select
                   className={selectClass}
                   value={otEye}
@@ -787,7 +870,7 @@ export function ClinicalDesk({
                   disabled={busy || Boolean(record.transcription?.locked_at)}
                   onClick={() => void save()}
                 >
-                  Save transcription
+                  Record save karein
                 </Button>
                 {record.transcription?.locked_at ? (
                   <Button
@@ -795,7 +878,7 @@ export function ClinicalDesk({
                     disabled={busy || !correctionReason.trim()}
                     onClick={() => void addCorrection()}
                   >
-                    Append correction
+                    Correction jodein
                   </Button>
                 ) : null}
               </>
@@ -804,40 +887,68 @@ export function ClinicalDesk({
           <div className="grid gap-3 md:grid-cols-3">
             {(Object.keys(OUTCOMES) as Array<keyof typeof OUTCOMES>).map((kind) => {
               const current = record.items.find((item) => item.kind === kind);
+              const medicineNotAvailableOpen =
+                kind === "medicine" &&
+                !current &&
+                medicineIntent === "not_available";
               return (
                 <Card key={kind} className="space-y-3">
-                  <SectionTitle>{kind.toUpperCase()}</SectionTitle>
+                  <SectionTitle>{KIND_HEADINGS[kind]}</SectionTitle>
                   <p className="text-sm text-muted">
-                    Current: {current?.outcome ?? "unresolved"}
+                    {current?.outcome
+                      ? `Abhi tak: ${outcomeLabel(current.outcome)}`
+                      : "Abhi tak: koi faisla nahi"}
                   </p>
-                  {canMutate &&
-                  kind === "medicine" &&
-                  !current &&
-                  medicineIntent === "not_available" ? (
-                    <Input
-                      id="unavailable-medicines"
-                      label="Unavailable medicines (required if not available)"
-                      value={unavailableMedicines}
-                      onChange={(event) => setUnavailableMedicines(event.target.value)}
-                      placeholder="One medicine per line or separated by commas"
-                    />
+                  {canMutate && medicineNotAvailableOpen ? (
+                    <div className="space-y-3">
+                      <label
+                        htmlFor="unavailable-medicines"
+                        className="block text-sm font-semibold"
+                      >
+                        Kaunsi dawaiyan available nahi thin?
+                        <textarea
+                          id="unavailable-medicines"
+                          className="mt-1 min-h-24 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+                          value={unavailableMedicines}
+                          onChange={(event) =>
+                            setUnavailableMedicines(event.target.value)
+                          }
+                          placeholder="One medicine per line or separated by commas"
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        disabled={busy || !hasTranscription}
+                        onClick={() => void resolve("medicine", "not_available")}
+                      >
+                        Save karein: dawai available nahi
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => {
+                          setMedicineIntent(null);
+                          setUnavailableMedicines("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   ) : null}
-                  {canMutate
+                  {canMutate && !medicineNotAvailableOpen
                     ? OUTCOMES[kind].map((outcome) => (
                         <Button
                           key={outcome}
                           type="button"
                           variant="secondary"
-                          disabled={
-                            busy || Boolean(current) || !hasTranscription
-                          }
+                          disabled={busy || Boolean(current) || !hasTranscription}
                           onClick={() => {
                             if (kind === "medicine" && outcome === "not_available") {
-                              if (medicineIntent !== "not_available") {
-                                setMedicineIntent("not_available");
-                                return;
-                              }
-                            } else if (kind === "medicine") {
+                              setMedicineIntent("not_available");
+                              return;
+                            }
+                            if (kind === "medicine") {
                               setMedicineIntent(null);
                             }
                             const printTarget =
@@ -849,14 +960,12 @@ export function ClinicalDesk({
                             void resolve(kind, outcome, printTarget);
                           }}
                         >
-                          {outcome.replace("_", " ")}
+                          {outcomeLabel(outcome)}
                         </Button>
                       ))
                     : null}
                   {!hasTranscription && canMutate ? (
-                    <p className="text-xs text-muted">
-                      Save a transcription before resolving.
-                    </p>
+                    <p className="text-xs text-muted">{SAVE_FIRST}</p>
                   ) : null}
                   {current?.slip ? (
                     <div className="flex flex-wrap gap-2">
@@ -868,7 +977,7 @@ export function ClinicalDesk({
                           window.open(`/clinical/slip/${current.slip!.id}`, "_blank")
                         }
                       >
-                        Reprint active slip
+                        Slip dobara print karein
                       </Button>
                       {canMutate ? (
                         <Button
@@ -879,14 +988,14 @@ export function ClinicalDesk({
                           onClick={(event) => {
                             slipReplaceTriggerRef.current = event.currentTarget;
                             setSlipReplace({
-                                slip: current.slip!,
-                                date: current.slip!.date,
-                                venue: current.slip!.venue,
-                                reason: "",
-                              });
+                              slip: current.slip!,
+                              date: current.slip!.date,
+                              venue: current.slip!.venue,
+                              reason: "",
+                            });
                           }}
                         >
-                          Replace slip
+                          Slip badlein
                         </Button>
                       ) : null}
                     </div>
@@ -897,7 +1006,7 @@ export function ClinicalDesk({
           </div>
           {record.history.length ? (
             <Card className="space-y-3">
-              <SectionTitle>Prior clinical history · read-only</SectionTitle>
+              <SectionTitle>Pichhle camps ka record · sirf padhne ke liye</SectionTitle>
               {record.history.map((entry) => (
                 <div
                   key={`${entry.camp_id}-${entry.created_at}`}
@@ -907,15 +1016,13 @@ export function ClinicalDesk({
                     {entry.camp_name} ·{" "}
                     {new Date(entry.created_at).toLocaleDateString("en-IN")}
                   </p>
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-xs">
-                    {JSON.stringify(entry.data, null, 2)}
-                  </pre>
+                  <ClinicalRecordView data={entry.data} />
                   <p className="mt-2 text-xs text-muted">
                     {entry.items.length
                       ? entry.items
                           .map(
                             (item) =>
-                              `${item.kind}: ${item.outcome.replaceAll("_", " ")}`,
+                              `${item.kind}: ${outcomeLabel(item.outcome)}`,
                           )
                           .join(" · ")
                       : "No fulfilment outcomes recorded."}
@@ -942,15 +1049,15 @@ export function ClinicalDesk({
       ) : null}
       {followup.length ? (
         <Card className="space-y-3">
-          <SectionTitle>Unresolved historical items</SectionTitle>
+          <SectionTitle>Purane camp ke baaki kaam</SectionTitle>
           {followup.map((item) => (
             <div
               key={item.id}
               className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <p className="text-sm">
-                <strong>{item.kind.toUpperCase()}</strong> ·{" "}
-                {item.outcome.replace("_", " ")} · {item.camp_name}
+                <strong>{KIND_HEADINGS[item.kind as keyof typeof OUTCOMES] ?? item.kind.toUpperCase()}</strong>{" "}
+                · {outcomeLabel(item.outcome)} · {item.camp_name}
               </p>
               {canMutate ? (
                 <Button
@@ -959,7 +1066,7 @@ export function ClinicalDesk({
                   disabled={busy}
                   onClick={() => void fulfilFollowup(item.id)}
                 >
-                  Mark fulfilled
+                  De diya — pura karein
                 </Button>
               ) : null}
             </div>
@@ -980,11 +1087,11 @@ export function ClinicalDesk({
         >
           <Card className="w-full max-w-md space-y-3">
             <SectionTitle>
-              <span id="slip-replace-title">Replace deferred slip</span>
+              <span id="slip-replace-title">Deferred slip badlein</span>
             </SectionTitle>
             <Input
               id="slip-replace-date"
-              label="Replacement date"
+              label="Nayi date"
               type="date"
               value={slipReplace.date}
               onChange={(e) =>
@@ -995,7 +1102,7 @@ export function ClinicalDesk({
             />
             <Input
               id="slip-replace-venue"
-              label="Replacement venue"
+              label="Nayi jagah (venue)"
               value={slipReplace.venue}
               onChange={(e) =>
                 setSlipReplace((current) =>
@@ -1005,7 +1112,7 @@ export function ClinicalDesk({
             />
             <Input
               id="slip-replace-reason"
-              label="Reason for replace"
+              label="Badalne ka reason"
               value={slipReplace.reason}
               onChange={(e) =>
                 setSlipReplace((current) =>

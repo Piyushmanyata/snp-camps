@@ -112,9 +112,9 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
   // Budget gate writes the artifact during verify; rebuild path may regenerate it.
   if (!map?.routes?.["/volunteer"]) {
     await loginStaff(page, "volunteer");
-    await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Camera kholein/i })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Search" }),
+      page.getByRole("button", { name: "Dhundein" }),
     ).toBeVisible();
     return;
   }
@@ -151,23 +151,23 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
   await loginStaff(page, "volunteer");
 
   // Critical controls available without waiting for optional decoder.
-  await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Camera kholein/i })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Search" }),
+    page.getByRole("button", { name: "Dhundein" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Registration number or name")).toBeVisible();
+  await expect(page.getByLabel("Registration number ya naam")).toBeVisible();
 
   const jsqrPaths = jsqrChunks.map(chunkUrlPath);
   const beforeOpen = new Set(chunkPaths);
   for (const p of jsqrPaths) {
     expect(
       [...beforeOpen].some((u) => u === p || u.endsWith(p)),
-      `jsqr chunk ${p} must not load before Open camera`,
+      `jsqr chunk ${p} must not load before Camera kholein`,
     ).toBeFalsy();
   }
 
-  // jsqr loads on Open camera when native detector is unavailable (before getUserMedia).
-  await page.getByRole("button", { name: /Open camera/i }).click();
+  // jsqr loads on Camera kholein when native detector is unavailable (before getUserMedia).
+  await page.getByRole("button", { name: /Camera kholein/i }).click();
   await page.waitForTimeout(2000);
 
   if (jsqrPaths.length > 0) {
@@ -176,7 +176,7 @@ test("production: jsqr deferred until camera open; scanner is a real split", asy
     );
     expect(
       loadedJsqr,
-      `expected jsqr chunk(s) after Open camera: ${jsqrPaths.join(", ")}; seen=${chunkPaths.filter((u) => !beforeOpen.has(u)).join(", ")}`,
+      `expected jsqr chunk(s) after Camera kholein: ${jsqrPaths.join(", ")}; seen=${chunkPaths.filter((u) => !beforeOpen.has(u)).join(", ")}`,
     ).toBeTruthy();
   } else {
     expect(
@@ -224,8 +224,8 @@ test("production: print route may load qrcode; volunteer initial must not", asyn
   // Volunteer critical controls before optional admin tools.
   await loginStaff(page, "volunteer");
   await expect(page.getByRole("link", { name: /Register/i }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open camera/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Camera kholein/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dhundein" })).toBeVisible();
 
   // Health of production server
   const health = await request.get("/api/health");

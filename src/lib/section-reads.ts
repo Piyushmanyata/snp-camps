@@ -59,6 +59,7 @@ export const SECTION_KEYS = [
   "seats",
   "volunteer-kpis",
   "admin-analytics",
+  "staff-leaderboard",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -300,6 +301,8 @@ export async function loadSection(
     case "admin-analytics":
       if (!campId) return { ok: false, error: "Camp required." };
       return loadAdminQueueCountsSection(campId);
+    case "staff-leaderboard":
+      return loadStaffLeaderboardSection(campId);
     default: {
       const _exhaustive: never = section;
       return { ok: false, error: `Unknown section: ${_exhaustive}` };

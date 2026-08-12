@@ -11,7 +11,8 @@ import {
   Spinner,
 } from "@/components/ui";
 import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
-import { Toast } from "@/components/toast";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 import {
   markSeenWithRetries,
   undoMarkSeenWithRetries,
@@ -37,8 +38,7 @@ export function LiveQueue({
   campId: string | null;
   initialLoadKnown?: boolean;
 }) {
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Last patient marked seen from this list — the undo target (D25).
   const [undoable, setUndoable] = useState<LiveQueuePatient | null>(null);
@@ -61,7 +61,6 @@ export function LiveQueue({
   });
 
   function manualRefresh() {
-    setToastMsg(null);
     setError(null);
     refresh();
   }
@@ -124,7 +123,7 @@ export function LiveQueue({
       /* ignore */
     }
 
-    setToastMsg(`#${patient.reg_no} ${patient.full_name} marked seen`);
+    showSuccessToast(`#${patient.reg_no} dekha hua ho gaya`);
     setUndoable(patient);
     refresh();
     setBusyId(null);
@@ -148,7 +147,7 @@ export function LiveQueue({
     }
 
     setUndoable(null);
-    setToastMsg(`#${patient.reg_no} back in the queue`);
+    showSuccessToast(`#${patient.reg_no} Wapas line mein aa gaya`);
     clearRemoved(patient.id);
     refresh();
     setBusyId(null);
@@ -181,9 +180,6 @@ export function LiveQueue({
         onRetry={manualRefresh}
         hasKnownData={waitingKnown}
       />
-      {toastMsg ? (
-        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      ) : null}
       {undoable ? (
         <div
           className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2"
@@ -204,7 +200,7 @@ export function LiveQueue({
               disabled={busyId !== null}
               onClick={() => void undoSeen(undoable)}
             >
-              Undo
+              Wapas line mein
             </Button>
             <Button
               type="button"
@@ -285,7 +281,7 @@ export function LiveQueue({
                   data-testid="mark-seen"
                   className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
                 >
-                  {busyId === p.id ? "…" : "Mark seen"}
+                  {busyId === p.id ? "…" : "Dekha hua karein"}
                 </button>
               </div>
             </div>
@@ -310,3 +306,4 @@ export function LiveQueue({
     </div>
   );
 }
+

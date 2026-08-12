@@ -24,7 +24,6 @@ import { checkInPatientWithRetries } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
-  ErrorBox,
   Input,
   SegmentedControl,
   WarningBox,
@@ -35,6 +34,7 @@ import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
 import { AadhaarUsbInput } from "@/components/aadhaar-usb-input";
 import { validateHouseholdPhone } from "@/lib/phone";
+import { useToastedError } from "@/lib/use-toasted-error";
 
 /** Recoverable print action after a successful registration (#62 / #64). */
 type PrintRecovery = {
@@ -82,8 +82,7 @@ export function PatientForm({
   const phoneValidation = validateHouseholdPhone(phone);
   const [failedScanAttempts, setFailedScanAttempts] = useState(0);
   const [manualReason, setManualReason] = useState("");
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [aadhaarDuplicateRegNo, setAadhaarDuplicateRegNo] = useState<
     number | null
@@ -191,7 +190,7 @@ export function PatientForm({
         });
         setPartialScanDiagnostic(diagnostic);
         setScannedBanner(
-          "Aadhaar card scan is incomplete. Scan again and ask a Team Lead after three failures.",
+          "Aadhaar scan poora nahi hua. Dobara scan karein. 3 baar fail ho to Team Lead se kahein.",
         );
         return false;
       }
@@ -212,7 +211,7 @@ export function PatientForm({
       // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
       if (parsed.source === "legacy_xml") {
         setLegacyQrWarning(
-          "Old Aadhaar QR — details extracted but not digitally verified. Compare with the physical card before registering.",
+          "Purana Aadhaar QR — details bina digital verify ke aayi hain. Card se milaan karein.",
         );
       } else {
         setLegacyQrWarning(null);
@@ -220,7 +219,7 @@ export function PatientForm({
 
       setPartialScanDiagnostic(null);
       setScannedBanner(
-        "Aadhaar card scanned and autofilled. Identity fields locked.",
+        "Aadhaar scan ho gaya — details bhar gayi aur lock ho gayi.",
       );
       return true;
   };
@@ -326,7 +325,7 @@ export function PatientForm({
         age,
         address,
         phone,
-        email,
+        email: "",
         aadhaar,
       },
       days,
@@ -354,7 +353,6 @@ export function PatientForm({
       setAge("");
       setAddress("");
       setPhone(defaultPhone);
-      setEmail("");
       setAadhaar("");
       setProvenance("self_declared");
       setScannedIdentity(null);
@@ -388,7 +386,7 @@ export function PatientForm({
         age: validated.values.age,
         address: validated.values.address,
         phone: validated.values.phone,
-        email: validated.values.email,
+        email: null,
         aadhaarLast4: validated.values.aadhaarLast4,
         // The Person key is derived only by the trusted server route.
         duplicateKey: null,
@@ -540,9 +538,8 @@ export function PatientForm({
       if (outcome.aadhaarDuplicateRegNo) {
         setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
         setLikelyDuplicateRegNo(null);
-        setError(
-          `Name + Aadhaar last 4 already belong to registration #${outcome.aadhaarDuplicateRegNo}. Review that patient first. Override only for a different person.`,
-        );
+        const dupMsg = `Yeh naam aur Aadhaar ke aakhri 4 digit registration #${outcome.aadhaarDuplicateRegNo} ke hain.`;
+        setError(dupMsg);
         setPhase("idle");
       } else {
         setAadhaarDuplicateRegNo(null);
@@ -650,7 +647,6 @@ export function PatientForm({
     setAge("");
     setAddress("");
     setPhone(defaultPhone);
-    setEmail("");
     setAadhaar("");
     setProvenance("self_declared");
     setScannedIdentity(null);
@@ -725,12 +721,12 @@ export function PatientForm({
       noValidate
     >
       <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
-        Desk · only full name and age are required
+        Desk · sirf naam aur umar zaroori hai
       </div>
 
       <Input
         id="patient-phone"
-        label="Household mobile number *"
+        label="Ghar ka mobile number *"
         error={fieldErrors.phone}
         inputMode="numeric"
         autoComplete="tel"
@@ -738,7 +734,7 @@ export function PatientForm({
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         placeholder="10 digit mobile"
-        hint="Contact only — family members may share the same number."
+        hint="Sirf contact ke liye — ghar ke log same number de sakte hain."
       />
 
       {/* Aadhaar capture stays closed until the household contact is valid. */}
@@ -746,11 +742,11 @@ export function PatientForm({
       <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
         <div>
           <p className="text-sm font-semibold text-brand">
-            Aadhaar Scan-and-Fill
+            Aadhaar se form bharein
           </p>
           <p className="text-xs text-muted">
-            Scan the QR printed on the Aadhaar card. Details fill in
-            automatically — only the mobile number is typed.
+            Aadhaar card ka QR scan karein — details apne aap bhar jaayengi. Sirf
+            mobile number type karna hai.
           </p>
         </div>
 
@@ -790,21 +786,21 @@ export function PatientForm({
             className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
             onClick={() => setManualEntry(true)}
           >
-            Use audited manual exception
+            Team Lead manual entry (audit hoti hai)
           </button>
         ) : null}
         {!identityVisible && failedScanAttempts >= 3 && userRole === "volunteer" ? (
           <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
-            Ask Team Lead — manual identity entry is not available to volunteers.
+            Team Lead ko bulayein — volunteer manual entry nahi kar sakte.
           </p>
         ) : null}
         <p className="text-xs font-semibold text-muted">
-          Failed scan attempts: {failedScanAttempts}/3
+          Fail scan: {failedScanAttempts}/3
         </p>
       </div>
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-          Enter a valid household mobile number to open the Aadhaar scanner.
+          Pehle sahi mobile number daalein, tab Aadhaar scanner khulega.
         </p>
       )}
       {flash ? (
@@ -1086,20 +1082,14 @@ export function PatientForm({
         enterKeyHint="next"
       />
 
-      <Input
-        id="patient-email"
-        label="Email (optional)"
-        error={fieldErrors.email}
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Optional"
-      />
         </>
       ) : null}
 
-      <ErrorBox message={error} />
+      {error ? (
+        <p className="sr-only" role="alert">
+          {error}
+        </p>
+      ) : null}
       {phase === "failed-retryable" && error ? (
         <Button
           type="button"
@@ -1191,7 +1181,7 @@ export function PatientForm({
             wantPrintRef.current = false;
           }}
         >
-          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Register"}
+          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Sirf register"}
         </Button>
         <Button
           type="submit"
@@ -1213,7 +1203,7 @@ export function PatientForm({
         >
           {loading && likelyDuplicateRegNo == null
             ? "Saving…"
-            : "Register & print"}
+            : "Register + Print"}
         </Button>
       </div>
     </form>

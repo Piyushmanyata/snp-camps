@@ -52,6 +52,12 @@ export async function GET(request: Request) {
       { status: 403, headers: NO_STORE },
     );
   }
+  if (section === "staff-leaderboard" && !isStaff(profile?.role)) {
+    return NextResponse.json(
+      { error: "Staff access required" },
+      { status: 403, headers: NO_STORE },
+    );
+  }
 
   const campIdRaw = url.searchParams.get("campId")?.trim() ?? "";
   const campId =

@@ -27,7 +27,8 @@ import {
   type MarkSeenRow,
 } from "@/lib/desk-ops";
 import { Button, ErrorBox, Input } from "@/components/ui";
-import { Toast } from "@/components/toast";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
 
 type LookupOrigin = "camera" | "manual";
 
@@ -78,8 +79,7 @@ export function QrScanner({
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
   const reviewHeadingId = `qr-review-heading-${uid}`;
-  const [error, setError] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [error, setError] = useToastedError(null);
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [manual, setManual] = useState("");
@@ -108,6 +108,14 @@ export function QrScanner({
   const animFrameRef = useRef<number | null>(null);
   const reviewRef = useRef<HTMLDivElement | null>(null);
   const firstNameMatchRef = useRef<HTMLButtonElement | null>(null);
+
+  // Move focus to the first result once the list is actually in the DOM. A
+  // requestAnimationFrame right after setState can run before React commits,
+  // leaving the ref null and focus where it was — while the sr-only status
+  // still announces "Focus moved to the first result."
+  useEffect(() => {
+    if (nameMatches.length > 0) firstNameMatchRef.current?.focus();
+  }, [nameMatches]);
   const assigningRef = useRef(false);
 
   const cancelAnimation = useCallback(() => {
@@ -215,10 +223,10 @@ export function QrScanner({
       // Clear the input so the next patient can be typed straight away; the
       // result card above keeps the Undo affordance for the one just done.
       setManual("");
-      setToastMsg(
+      showSuccessToast(
         row.already_seen
-          ? `#${row.reg_no} was already seen`
-          : `#${row.reg_no} marked seen`,
+          ? `#${row.reg_no} pehle se dekha hua tha`
+          : `#${row.reg_no} dekha hua ho gaya`,
       );
       handledRef.current = true;
       await stopScanner();
@@ -227,7 +235,7 @@ export function QrScanner({
       setAssigning(false);
       return row;
     },
-    [deskRpc, router, stopScanner],
+    [deskRpc, router, setError, stopScanner],
   );
 
   /**
@@ -270,7 +278,7 @@ export function QrScanner({
       await stopScanner();
       router.push(`/print/${row.id}?auto=1`);
     },
-    [deskRpc, router, stopScanner],
+    [deskRpc, router, setError, stopScanner],
   );
 
   /** Undo a mis-scan within the server-side window (D25). */
@@ -290,7 +298,7 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
       } else {
-        setToastMsg("Undone — back in the queue");
+        showSuccessToast("Wapas line mein aa gaya");
         readyForNext();
         router.refresh();
       }
@@ -298,7 +306,7 @@ export function QrScanner({
       assigningRef.current = false;
       setAssigning(false);
     },
-    [deskRpc, readyForNext, router],
+    [deskRpc, readyForNext, router, setError],
   );
 
   const resolvePatient = useCallback(
@@ -365,7 +373,7 @@ export function QrScanner({
       handledRef.current = true;
       return row;
     },
-    [stopScanner],
+    [setError, stopScanner],
   );
 
   useEffect(() => {
@@ -409,7 +417,7 @@ export function QrScanner({
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [resolvePatient]);
+  }, [resolvePatient, setError]);
 
   function onDecodedText(decoded: string) {
     if (handledRef.current) return;
@@ -771,7 +779,6 @@ export function QrScanner({
       } else {
         setNameMatches(outcome.rows);
         setLooking(false);
-        requestAnimationFrame(() => firstNameMatchRef.current?.focus());
         return;
       }
       setLooking(false);
@@ -860,7 +867,7 @@ export function QrScanner({
               disabled={Boolean(disabledReason) || assigning || looking || starting}
               onClick={() => void start()}
             >
-              {starting ? "Opening camera…" : "Open camera"}
+              {starting ? "Opening camera…" : "Camera kholein"}
             </Button>
           ) : (
             <Button
@@ -869,7 +876,7 @@ export function QrScanner({
               disabled={assigning || looking}
               onClick={() => void stopScanner()}
             >
-              Stop camera
+              Camera band karein
             </Button>
           )}
         </div>
@@ -883,7 +890,7 @@ export function QrScanner({
             Enter their registration number or type their name.
           </p>
           <Input
-            label="Registration number or name"
+            label="Registration number ya naam"
             enterKeyHint="go"
             placeholder="e.g. 1001 or Ramesh"
             disabled={Boolean(disabledReason) || assigning || looking}
@@ -938,7 +945,7 @@ export function QrScanner({
               type="submit"
               disabled={looking || assigning || Boolean(disabledReason)}
             >
-              {looking ? "Searching…" : "Search"}
+              {looking ? "Searching…" : "Dhundein"}
             </Button>
           </div>
         </form>
@@ -985,7 +992,7 @@ export function QrScanner({
                 disabled={assigning}
                 onClick={() => void undoSeen(seen.id)}
               >
-                Undo
+                Wapas line mein
               </Button>
             ) : null}
             <Button
@@ -1057,9 +1064,7 @@ export function QrScanner({
               data-testid="print-prescription"
               onClick={() => void printAndQueue(lookup)}
             >
-              {lookup.queue_status === "registered"
-                ? "Print prescription"
-                : "Reprint prescription"}
+              Parchi print karein
             </Button>
 
             {/* Action 2 — only meaningful once they are actually in the line. */}
@@ -1073,7 +1078,7 @@ export function QrScanner({
                 data-testid="mark-seen"
                 onClick={() => void markSeen({ id: lookup.id })}
               >
-                {assigning ? "Marking seen…" : "Mark seen"}
+                {assigning ? "Marking seen…" : "Dekha hua karein"}
               </Button>
             ) : null}
 
@@ -1091,10 +1096,8 @@ export function QrScanner({
         </div>
       ) : null}
 
-      {toastMsg ? (
-        <Toast message={toastMsg} onClose={() => setToastMsg(null)} />
-      ) : null}
     </div>
   );
 }
+
 

@@ -109,12 +109,12 @@ test("Card verification sets aadhaar_locked_at and name_locked_at on Person", as
   await client.query("update public.camps set is_active = false where is_active = true");
   await client.query(
     `insert into public.camps (id, name, venue, camp_date, is_active)
-     values ($1, 'Lock Test Camp', 'Venue L', '2026-08-15', true)`,
+     values ($1, 'Lock Test Camp', 'Venue L', '2099-08-15', true)`,
     [campId],
   );
   await client.query(
     `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2026-08-15', 50)`,
+     values ($1, $2, '2099-08-15', 50)`,
     [dayId, campId],
   );
 

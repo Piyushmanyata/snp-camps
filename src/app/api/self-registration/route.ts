@@ -300,7 +300,15 @@ export async function POST(request: Request) {
     .eq("id", row.id)
     .maybeSingle();
   if (patient.error || !patient.data?.status_token) {
-    return errorResponse("Registration ho gaya. Status link ke liye desk se poochein.", 200);
+    return NextResponse.json({
+      ok: true,
+      patientId: row.id,
+      registrationNumber: row.reg_no,
+      campDayId: row.camp_day_id,
+      dayDate: row.day_date,
+      queueStatus: "registered",
+      statusUrl: null,
+    });
   }
 
   return NextResponse.json({
