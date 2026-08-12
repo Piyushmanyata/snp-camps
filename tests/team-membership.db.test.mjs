@@ -162,7 +162,7 @@ test("every active camp-crew role sees only the two distinct-patient leaderboard
       const { rows } = await client.query(
         `select staff_id, staff_role::text, distinct_patients, team_headcount
          from public.staff_person_kpis(
-           null, null, $1, null, 'leaderboard'
+           null, null, $1, 'leaderboard'
          )`,
         [campId],
       );
@@ -196,7 +196,7 @@ test("every active camp-crew role sees only the two distinct-patient leaderboard
       () =>
         client.query(
           `select * from public.staff_person_kpis(
-             null, null, $1, null, 'leaderboard'
+             null, null, $1, 'leaderboard'
            )`,
           [campId],
         ),

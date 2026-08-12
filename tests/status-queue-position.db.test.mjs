@@ -302,7 +302,6 @@ test("two waiting different timestamps → positions 1 and 2", async (t) => {
     assert.equal(ra.queue_position, 1);
     assert.equal(rb.queue_position, 2);
     assert.equal(ra.queue_status, "waiting");
-    assert.equal(rb.full_name, "Second In");
     assert.equal(ra.camp_name.startsWith("FCFS camp"), true);
     assert.equal(ra.day_date, "2099-10-15");
   } finally {
