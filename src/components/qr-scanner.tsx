@@ -108,6 +108,14 @@ export function QrScanner({
   const animFrameRef = useRef<number | null>(null);
   const reviewRef = useRef<HTMLDivElement | null>(null);
   const firstNameMatchRef = useRef<HTMLButtonElement | null>(null);
+
+  // Move focus to the first result once the list is actually in the DOM. A
+  // requestAnimationFrame right after setState can run before React commits,
+  // leaving the ref null and focus where it was — while the sr-only status
+  // still announces "Focus moved to the first result."
+  useEffect(() => {
+    if (nameMatches.length > 0) firstNameMatchRef.current?.focus();
+  }, [nameMatches]);
   const assigningRef = useRef(false);
 
   const cancelAnimation = useCallback(() => {
@@ -227,7 +235,7 @@ export function QrScanner({
       setAssigning(false);
       return row;
     },
-    [deskRpc, router, stopScanner],
+    [deskRpc, router, setError, stopScanner],
   );
 
   /**
@@ -270,7 +278,7 @@ export function QrScanner({
       await stopScanner();
       router.push(`/print/${row.id}?auto=1`);
     },
-    [deskRpc, router, stopScanner],
+    [deskRpc, router, setError, stopScanner],
   );
 
   /** Undo a mis-scan within the server-side window (D25). */
@@ -298,7 +306,7 @@ export function QrScanner({
       assigningRef.current = false;
       setAssigning(false);
     },
-    [deskRpc, readyForNext, router],
+    [deskRpc, readyForNext, router, setError],
   );
 
   const resolvePatient = useCallback(
@@ -365,7 +373,7 @@ export function QrScanner({
       handledRef.current = true;
       return row;
     },
-    [stopScanner],
+    [setError, stopScanner],
   );
 
   useEffect(() => {
@@ -409,7 +417,7 @@ export function QrScanner({
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [resolvePatient]);
+  }, [resolvePatient, setError]);
 
   function onDecodedText(decoded: string) {
     if (handledRef.current) return;
@@ -771,7 +779,6 @@ export function QrScanner({
       } else {
         setNameMatches(outcome.rows);
         setLooking(false);
-        requestAnimationFrame(() => firstNameMatchRef.current?.focus());
         return;
       }
       setLooking(false);
