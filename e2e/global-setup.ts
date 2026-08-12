@@ -446,24 +446,16 @@ export default async function globalSetup() {
     let secondRegNo = regNo + 1;
     let secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
     {
-      const latestPatient = await admin
-          .from("patients")
-          .select("reg_no")
-          .order("reg_no", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestPatient.error) {
-          throw new Error(
-            `E2E registration number lookup failed: ${latestPatient.error.message}`,
-          );
-        }
-        regNo = Number(latestPatient.data?.reg_no ?? 999) + 1;
+        // Never hand-allocate reg_no. patients.reg_no and persons.reg_no share
+        // one sequence (patient_reg_no_seq); picking max(patients.reg_no)+1
+        // leaves the sequence behind, so a later scanned registration draws a
+        // number this fixture already used and dies on persons_reg_no_key.
+        // Let the column default allocate, then read the number back.
         const insertedPatient = await admin
           .from("patients")
           .insert({
             camp_id: camp.id,
             camp_day_id: day.id,
-            reg_no: regNo,
             full_name: patientName,
             gender: "O",
             age: 30,
@@ -481,17 +473,16 @@ export default async function globalSetup() {
         }
         patientId = insertedPatient.data.id;
         patientName = insertedPatient.data.full_name;
+        regNo = insertedPatient.data.reg_no;
         process.env.E2E_STATUS_TOKEN = insertedPatient.data.status_token;
 
         // Second waiting patient, used by the Mark seen mutation specs.
-        secondRegNo = regNo + 1;
         secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
         const secondPatient = await admin
           .from("patients")
           .insert({
             camp_id: camp.id,
             camp_day_id: day.id,
-            reg_no: secondRegNo,
             full_name: secondPatientName,
             gender: "O",
             age: 40,
