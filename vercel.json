@@ -1,0 +1,9 @@
+{
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/cron/reminder-sms",
+      "schedule": "30 2 * * *"
+    }
+  ]
+}

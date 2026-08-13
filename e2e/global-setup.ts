@@ -1,0 +1,570 @@
+import { randomBytes, randomInt } from "node:crypto";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+
+const USER_PREFIX = "codex-e2e-";
+const PATIENT_PREFIX = "Codex E2E Patient";
+const CAMP_PREFIX = "Codex E2E Camp";
+const MAX_PRINT_NAME = `${PATIENT_PREFIX} ${"N".repeat(80)}`.slice(0, 80);
+const MAX_PRINT_ADDRESS = "A".repeat(120);
+const MAX_PRINT_VENUE = "V".repeat(80);
+const MAX_PRINT_TEMPLATE = {
+  letterheadUrl: "/brand/letterhead.png",
+  sponsorLogoUrl: "/brand/rupa-logo.png",
+  sponsorLabel: "S".repeat(80),
+  diagnosisOptions: Array.from({ length: 6 }, (_, index) =>
+    `Diagnosis ${index + 1} ${"X".repeat(68)}`,
+  ),
+  vitalsFields: Array.from({ length: 4 }, (_, index) =>
+    `Vital ${index + 1} ${"X".repeat(72)}`,
+  ),
+  sections: [
+    { key: "section-1", label: "A".repeat(80), heightMm: 11 },
+    { key: "section-2", label: "B".repeat(80), heightMm: 11 },
+    { key: "section-3", label: "C".repeat(80), heightMm: 10 },
+    { key: "section-4", label: "D".repeat(80), heightMm: 10 },
+  ],
+  operationLabel: "O".repeat(80),
+  showGlassesTable: true,
+  glassesTableTitle: "G".repeat(80),
+  footerNote: "Maximum bounded footer text ".repeat(8).slice(0, 180),
+  signatureLabel: "Signature ".repeat(10).slice(0, 80),
+};
+
+function required(name: string) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for local E2E setup.`);
+  return value;
+}
+
+export function serializeAuthError(error: unknown) {
+  const candidate =
+    error && typeof error === "object"
+      ? (error as {
+          name?: unknown;
+          status?: unknown;
+          code?: unknown;
+          message?: unknown;
+        })
+      : {};
+  return {
+    name: typeof candidate.name === "string" ? candidate.name : "Error",
+    status: typeof candidate.status === "number" ? candidate.status : null,
+    code: typeof candidate.code === "string" ? candidate.code : null,
+    message:
+      typeof candidate.message === "string" ? candidate.message : "Unknown Auth error",
+  };
+}
+
+export function authSetupError(action: string, error: unknown) {
+  const details = serializeAuthError(error);
+  return new Error(
+    `E2E Auth ${action} failed: ${JSON.stringify(details)}. ` +
+      "Start the local Supabase stack with `npx supabase start` and rerun E2E.",
+  );
+}
+
+function password() {
+  return `${randomBytes(18).toString("base64url")}Aa1!`;
+}
+
+async function listUsers(admin: SupabaseClient) {
+  const users: User[] = [];
+  try {
+    for (let page = 1; ; page += 1) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw authSetupError("listUsers", error);
+      if (!data?.users) {
+        throw authSetupError("listUsers", new Error("No users returned"));
+      }
+      users.push(...data.users);
+      if (data.users.length < 1000) return users;
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("E2E Auth listUsers failed:")) {
+      throw error;
+    }
+    throw authSetupError("listUsers", error);
+  }
+}
+
+async function removeClinicalFixtures(admin: SupabaseClient, patientId: string) {
+  const transcriptions = await admin
+    .from("prescription_transcriptions")
+    .select("id")
+    .eq("patient_id", patientId);
+  for (const transcription of transcriptions.data ?? []) {
+    const items = await admin
+      .from("fulfilment_items")
+      .select("id")
+      .eq("transcription_id", transcription.id);
+    for (const item of items.data ?? []) {
+      await admin.from("deferred_slips").delete().eq("item_id", item.id);
+      await admin.from("fulfilment_events").delete().eq("item_id", item.id);
+    }
+    await admin.from("fulfilment_items").delete().eq("transcription_id", transcription.id);
+    await admin
+      .from("prescription_corrections")
+      .delete()
+      .eq("transcription_id", transcription.id);
+    await admin
+      .from("prescription_transcriptions")
+      .delete()
+      .eq("id", transcription.id);
+  }
+}
+
+async function removeStaleFixtures(admin: SupabaseClient, existingUsers?: User[]) {
+  try {
+    const stalePatients = await admin
+      .from("patients")
+      .select("id")
+      .like("full_name", `${PATIENT_PREFIX}%`);
+    for (const patient of stalePatients.data ?? []) {
+      await removeClinicalFixtures(admin, patient.id);
+    }
+    await admin
+      .from("patients")
+      .delete()
+      .like("full_name", `${PATIENT_PREFIX}%`);
+    await admin
+      .from("profiles")
+      .delete()
+      .like("email", `${USER_PREFIX}%`);
+  } catch {
+    // Ignore cleanup error if database is offline
+  }
+
+  for (const user of existingUsers ?? (await listUsers(admin))) {
+    if (
+      user.email?.startsWith(USER_PREFIX) ||
+      user.user_metadata?.e2e_suite === "snp-camps"
+    ) {
+      try {
+        await admin.auth.admin.deleteUser(user.id);
+      } catch {
+        // Safe cleanup fallback
+      }
+    }
+  }
+
+  const staleCamps = await admin
+    .from("camps")
+    .select("id")
+    .like("name", `${CAMP_PREFIX}%`);
+  if (staleCamps.error) {
+    throw new Error(`E2E stale Camp lookup failed: ${staleCamps.error.message}`);
+  }
+  for (const camp of staleCamps.data ?? []) {
+    const patientRows = await admin
+      .from("patients")
+      .select("id, person_id")
+      .eq("camp_id", camp.id);
+    if (patientRows.error) {
+      throw new Error(
+        `E2E stale patient lookup failed: ${patientRows.error.message}`,
+      );
+    }
+    const patientIds = (patientRows.data ?? []).map((row) => row.id);
+    const personIds = [
+      ...new Set(
+        (patientRows.data ?? [])
+          .map((row) => row.person_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    for (const patientId of patientIds) {
+      await removeClinicalFixtures(admin, patientId);
+    }
+    const patients = await admin
+      .from("patients")
+      .delete()
+      .eq("camp_id", camp.id);
+    if (patients.error) {
+      throw new Error(`E2E stale patient cleanup failed: ${patients.error.message}`);
+    }
+    const days = await admin.from("camp_days").delete().eq("camp_id", camp.id);
+    if (days.error) {
+      throw new Error(`E2E stale day cleanup failed: ${days.error.message}`);
+    }
+    const campDelete = await admin.from("camps").delete().eq("id", camp.id);
+    if (campDelete.error) {
+      throw new Error(`E2E stale Camp cleanup failed: ${campDelete.error.message}`);
+    }
+    for (const personId of personIds) {
+      const registrations = await admin
+        .from("patients")
+        .select("id", { count: "exact", head: true })
+        .eq("person_id", personId);
+      if (registrations.error) {
+        throw new Error(
+          `E2E stale Person check failed: ${registrations.error.message}`,
+        );
+      }
+      if ((registrations.count ?? 0) === 0) {
+        const person = await admin.from("persons").delete().eq("id", personId);
+        if (person.error) {
+          throw new Error(
+            `E2E stale Person cleanup failed: ${person.error.message}`,
+          );
+        }
+      }
+    }
+  }
+}
+
+export default async function globalSetup() {
+  const supabaseURL = required("E2E_SUPABASE_URL");
+
+  const serviceKey = required("E2E_SUPABASE_SERVICE_ROLE_KEY");
+  const admin = createClient(supabaseURL, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const userIds: string[] = [];
+  let patientId: string | null = null;
+  let secondPatientId: string | null = null;
+  let createdDayId: string | null = null;
+  let createdCampId: string | null = null;
+  let previousActiveCampId: string | null = null;
+
+  async function cleanup() {
+    const errors: string[] = [];
+    if (patientId) {
+      try {
+        await removeClinicalFixtures(admin, patientId);
+      } catch (error) {
+        errors.push(`clinical fixture: ${String(error)}`);
+      }
+      const { error } = await admin.from("patients").delete().eq("id", patientId);
+      if (error) errors.push(`patient: ${error.message}`);
+    }
+    if (secondPatientId) {
+      const { error } = await admin
+        .from("patients")
+        .delete()
+        .eq("id", secondPatientId);
+      if (error) errors.push(`second patient: ${error.message}`);
+    }
+    // Desk register-print E2E may create extra patients on the fixture day/camp (#62).
+    // Remove them (and any leftover prefix rows) before deleting day/camp FKs.
+    try {
+      const { error } = await admin
+        .from("patients")
+        .delete()
+        .like("full_name", `${PATIENT_PREFIX}%`);
+      if (error) errors.push(`prefix patients: ${error.message}`);
+    } catch {
+      // offline
+    }
+    if (createdDayId) {
+      const { error: dayPatientsErr } = await admin
+        .from("patients")
+        .delete()
+        .eq("camp_day_id", createdDayId);
+      if (dayPatientsErr) errors.push(`day patients: ${dayPatientsErr.message}`);
+    }
+    if (createdCampId) {
+      const { error: campPatientsErr } = await admin
+        .from("patients")
+        .delete()
+        .eq("camp_id", createdCampId);
+      if (campPatientsErr) {
+        errors.push(`camp patients: ${campPatientsErr.message}`);
+      }
+    }
+    for (const userId of userIds.reverse()) {
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error && !/not found/i.test(error.message)) {
+        errors.push(`Auth user ${userId}: ${error.message}`);
+      }
+    }
+    if (createdDayId) {
+      const { error } = await admin.from("camp_days").delete().eq("id", createdDayId);
+      if (error) errors.push(`camp day: ${error.message}`);
+    }
+    if (createdCampId) {
+      const { error } = await admin.from("camps").delete().eq("id", createdCampId);
+      if (error) errors.push(`camp: ${error.message}`);
+    }
+    if (previousActiveCampId) {
+      const { error } = await admin
+        .from("camps")
+        .update({ is_active: true })
+        .eq("id", previousActiveCampId);
+      if (error) errors.push(`restore active camp: ${error.message}`);
+    }
+    if (errors.length) {
+      // Disposable fixtures only — JWT/keyfunc flakes on delete must not fail a green suite.
+      const fatal = errors.filter((e) => !/invalid JWT|unrecognized JWT|token is unverifiable/i.test(e));
+      if (fatal.length) throw new Error(`E2E cleanup failed: ${fatal.join("; ")}`);
+      console.warn(`E2E cleanup warnings (non-fatal): ${errors.join("; ")}`);
+    }
+  }
+
+  try {
+    // Preflight Auth before any fixture cleanup or creation so gateway failures
+    // stop with safe diagnostics instead of producing misleading fixture errors.
+    const authUsers = await listUsers(admin);
+    await removeStaleFixtures(admin, authUsers);
+
+    const createStaff = async (
+      role: "admin" | "team_lead" | "volunteer" | "clinical_operator",
+    ) => {
+      const email = `${USER_PREFIX}${role}@snp.local`;
+      const secret = password();
+      const meta = {
+        full_name: `Codex E2E ${role}`,
+        e2e_suite: "snp-camps",
+      };
+
+      const created = await admin.auth.admin.createUser({
+        email,
+        password: secret,
+        email_confirm: true,
+        user_metadata: meta,
+      });
+
+      let userId = created.data?.user?.id ?? null;
+
+      // Auth listUsers can 500; recover via profiles email when user already exists.
+      if (!userId && /already|registered|exists/i.test(created.error?.message || "")) {
+        const { data: existing } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (existing?.id) {
+          const updated = await admin.auth.admin.updateUserById(existing.id, {
+            password: secret,
+            email_confirm: true,
+            user_metadata: meta,
+          });
+          if (updated.error || !updated.data?.user) {
+            throw authSetupError(
+              `createStaff(${role}) reset`,
+              updated.error ?? new Error("No user returned"),
+            );
+          }
+          userId = updated.data.user.id;
+        }
+      }
+
+      if (!userId) {
+        throw authSetupError(
+          `createStaff(${role})`,
+          created.error ?? new Error("No user returned"),
+        );
+      }
+
+      userIds.push(userId);
+      await admin
+        .from("profiles")
+        .upsert({ id: userId, role, full_name: `Codex E2E ${role}`, email });
+      process.env[`E2E_${role.toUpperCase()}_EMAIL`] = email;
+      process.env[`E2E_${role.toUpperCase()}_PASSWORD`] = secret;
+      return userId;
+    };
+
+    const adminId = await createStaff("admin");
+    const volunteerId = await createStaff("volunteer");
+    const teamLeadId = await createStaff("team_lead");
+    await createStaff("clinical_operator");
+    const assignment = await admin
+      .from("profiles")
+      .update({ team_lead_id: teamLeadId })
+      .eq("id", volunteerId);
+    if (assignment.error) {
+      throw new Error(
+        `E2E Team Lead assignment failed: ${assignment.error.message}`,
+      );
+    }
+
+    const activeCamp = await admin
+      .from("camps")
+      .select("id")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (activeCamp.error) {
+      throw new Error(`E2E active Camp lookup failed: ${activeCamp.error.message}`);
+    }
+    previousActiveCampId = activeCamp.data?.id ?? null;
+    if (previousActiveCampId) {
+      const deactivated = await admin
+        .from("camps")
+        .update({ is_active: false })
+        .eq("id", previousActiveCampId);
+      if (deactivated.error) {
+        throw new Error(
+          `E2E active Camp isolation failed: ${deactivated.error.message}`,
+        );
+      }
+    }
+
+    const createdCamp = await admin
+      .from("camps")
+      .insert({
+        name: `${CAMP_PREFIX} ${Date.now()}`,
+        venue: MAX_PRINT_VENUE,
+        is_active: true,
+        prescription_template: MAX_PRINT_TEMPLATE,
+      })
+      .select("id")
+      .single();
+    if (createdCamp.error || !createdCamp.data) {
+      throw new Error(
+        `E2E Camp creation failed: ${createdCamp.error?.message || "no row"}`,
+      );
+    }
+    const camp = createdCamp.data;
+    createdCampId = camp.id;
+    process.env.E2E_CAMP_ID = camp.id;
+
+    const dayDate = new Date(Date.now() + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const createdDay = await admin
+      .from("camp_days")
+      .insert({
+        camp_id: camp.id,
+        day_date: dayDate,
+        seat_limit: 100,
+      })
+      .select("id")
+      .single();
+    if (createdDay.error || !createdDay.data) {
+      throw new Error(
+        `E2E Camp day creation failed: ${createdDay.error?.message || "no row"}`,
+      );
+    }
+    const day = createdDay.data;
+    createdDayId = day.id;
+    process.env.E2E_CAMP_DAY_ID = day.id;
+
+    const phone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
+    const secondPatientPhone = `9${String(randomInt(0, 1_000_000_000)).padStart(9, "0")}`;
+    let regNo = 1001;
+    let patientName = MAX_PRINT_NAME;
+    let secondRegNo = regNo + 1;
+    let secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
+    {
+        // Never hand-allocate reg_no. patients.reg_no and persons.reg_no share
+        // one sequence (patient_reg_no_seq); picking max(patients.reg_no)+1
+        // leaves the sequence behind, so a later scanned registration draws a
+        // number this fixture already used and dies on persons_reg_no_key.
+        // Let the column default allocate, then read the number back.
+        const insertedPatient = await admin
+          .from("patients")
+          .insert({
+            camp_id: camp.id,
+            camp_day_id: day.id,
+            full_name: patientName,
+            gender: "O",
+            age: 30,
+            address: MAX_PRINT_ADDRESS,
+            phone: `+91${phone}`,
+            queue_status: "registered",
+            created_by: null,
+          })
+          .select("id, reg_no, full_name, status_token")
+          .single();
+        if (insertedPatient.error || !insertedPatient.data) {
+          throw new Error(
+            `E2E patient creation failed: ${insertedPatient.error?.message || "no row"}`,
+          );
+        }
+        patientId = insertedPatient.data.id;
+        patientName = insertedPatient.data.full_name;
+        regNo = insertedPatient.data.reg_no;
+        process.env.E2E_STATUS_TOKEN = insertedPatient.data.status_token;
+
+        // Second waiting patient, used by the Mark seen mutation specs.
+        secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
+        const secondPatient = await admin
+          .from("patients")
+          .insert({
+            camp_id: camp.id,
+            camp_day_id: day.id,
+            full_name: secondPatientName,
+            gender: "O",
+            age: 40,
+            phone: `+91${secondPatientPhone}`,
+            queue_status: "waiting",
+            queued_at: new Date().toISOString(),
+            created_by: null,
+          })
+          .select("id, reg_no, full_name")
+          .single();
+        if (secondPatient.error || !secondPatient.data) {
+          throw new Error(
+            `E2E second patient creation failed: ${secondPatient.error?.message || "no row"}`,
+          );
+        }
+        secondPatientId = secondPatient.data.id;
+        secondRegNo = secondPatient.data.reg_no;
+        secondPatientName = secondPatient.data.full_name;
+
+        const transcription = await admin
+          .from("prescription_transcriptions")
+          .insert({
+            patient_id: patientId,
+            data: {},
+            paper_source: true,
+            created_by: adminId,
+            updated_by: adminId,
+          })
+          .select("id")
+          .single();
+        if (transcription.error || !transcription.data) {
+          throw new Error(
+            `E2E transcription creation failed: ${transcription.error?.message || "no row"}`,
+          );
+        }
+        const item = await admin
+          .from("fulfilment_items")
+          .insert({
+            transcription_id: transcription.data.id,
+            kind: "specs",
+            outcome: "deferred",
+            resolved_by: adminId,
+          })
+          .select("id")
+          .single();
+        if (item.error || !item.data) {
+          throw new Error(
+            `E2E fulfilment creation failed: ${item.error?.message || "no row"}`,
+          );
+        }
+        const slip = await admin
+          .from("deferred_slips")
+          .insert({
+            item_id: item.data.id,
+            reference: `E2E-${Date.now()}`,
+            version: 1,
+            service: "specs",
+            date_snapshot: dayDate,
+            venue_snapshot: MAX_PRINT_VENUE,
+            issued_by: adminId,
+            status: "active",
+          })
+          .select("id")
+          .single();
+        if (slip.error || !slip.data) {
+          throw new Error(`E2E slip creation failed: ${slip.error?.message || "no row"}`);
+        }
+        process.env.E2E_CLINICAL_SLIP_ID = slip.data.id;
+    }
+
+    // #59 — patients do not authenticate; no patient Auth/profile/user_id link.
+
+    process.env.E2E_PATIENT_REG_NO = String(regNo);
+    process.env.E2E_PATIENT_NAME = patientName;
+    if (patientId) process.env.E2E_PATIENT_ID = patientId;
+    process.env.E2E_SECOND_PATIENT_REG_NO = String(secondRegNo);
+    process.env.E2E_SECOND_PATIENT_NAME = secondPatientName;
+    if (secondPatientId) process.env.E2E_SECOND_PATIENT_ID = secondPatientId;
+
+    return cleanup;
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}

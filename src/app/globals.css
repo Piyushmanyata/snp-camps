@@ -1,0 +1,474 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  /* Outdoor glare: brand/danger tuned for ≥4.5:1 body text on light surfaces */
+  --brand: #047857;
+  --brand-dark: #065f46;
+  --brand-soft: #d1fae5;
+  --brand-mid: #10b981;
+  --accent: #0284c7;
+  --card: #ffffff;
+  /* Outdoor glare: high-contrast slate muted text */
+  --muted: #475569;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --success: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --radius: 1rem;
+  --print-ink: #0f172a;
+  --ring: #047857;
+  --ring-offset: 2px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Sticky mobile dock height (actions + padding + home indicator) */
+  --dock-height: 4.75rem;
+  /* Field type scale — outdoor glare legibility */
+  --text-body: 1.0625rem; /* 17px */
+  --text-small: 0.9375rem; /* 15px */
+  --text-caption: 0.8125rem; /* 13px */
+  --touch-min: 3rem; /* 48px */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-mid: var(--brand-mid);
+  --color-accent: var(--accent);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  /* Reserve space so anchored content clears the sticky header */
+  scroll-padding-top: 0.75rem;
+  /* 200% text zoom / large rem roots: prefer vertical scroll only (#69) */
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: color-mix(in srgb, var(--brand) 12%, transparent);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Prevent rem-scaled grids/chips from forcing horizontal page scroll */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+.mobile-dock-item {
+  overflow-wrap: anywhere;
+}
+
+/* Bump root slightly more on very small phones for outdoor use */
+@media (max-width: 380px) {
+  :root {
+    --text-body: 1.075rem;
+  }
+}
+
+/* Clean scrollbars for scrollable lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 22%, white);
+  color: var(--foreground);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: var(--ring-offset);
+  border-radius: 0.25rem;
+}
+
+/* Native controls (select/checkbox) must keep a visible keyboard ring even when
+   component styles set outline-none on the element itself. */
+select:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="radio"]:focus-visible,
+[role="checkbox"]:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: var(--ring-offset);
+}
+
+:focus-visible,
+:target {
+  scroll-margin-top: 5rem;
+  scroll-margin-bottom: 2rem;
+}
+
+/* Skip link — keyboard only */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  z-index: 100;
+  transform: translateY(-120%);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0.75rem);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Utility: screen-reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Number columns stay aligned */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Comfortable prose for help text */
+.prose-help {
+  max-width: 40rem;
+  text-wrap: pretty;
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  line-height: 1.25;
+}
+
+/* Sticky bottom action dock (mobile desk pages) */
+.mobile-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  padding:
+    0.5rem
+    max(0.6rem, var(--safe-right))
+    calc(0.45rem + var(--safe-bottom))
+    max(0.6rem, var(--safe-left));
+}
+
+.mobile-dock-inner {
+  display: grid;
+  /* auto-fit reflows when rem-based type grows (200% text zoom, #69) */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.25rem), 1fr));
+  gap: 0.4rem;
+  max-width: 28rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.mobile-dock a,
+.mobile-dock button,
+.mobile-dock-item {
+  min-width: 0;
+  min-height: var(--touch-min);
+  padding-inline: 0.35rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Reserve space so content is not hidden under the dock */
+.has-mobile-dock {
+  padding-bottom: calc(var(--dock-height) + var(--safe-bottom) + 1.5rem) !important;
+}
+
+@media (min-width: 1024px) {
+  .mobile-dock {
+    display: none;
+  }
+
+  .has-mobile-dock {
+    padding-bottom: calc(2.5rem + var(--safe-bottom)) !important;
+  }
+}
+
+/* Hide desktop-only CTAs that duplicate dock actions on small screens */
+.desk-inline-actions {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desk-inline-actions {
+    display: grid;
+  }
+}
+
+/* In-page jump chips (phone desk) */
+.jump-chip-row {
+  display: grid;
+  /* minmax floor in px so 200% rem text zoom still reflows (#69) */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
+  gap: 0.45rem;
+}
+
+.jump-chip {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--touch-min);
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--brand);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.jump-chip:focus-visible,
+.day-chip:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Camp day picker chips (registration) */
+.day-chip-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 380px) {
+  .day-chip-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) {
+  .day-chip-row {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  }
+}
+
+.day-chip {
+  display: flex;
+  min-height: 3.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  border-radius: 0.9rem;
+  border: 1.5px solid var(--border-strong);
+  background: var(--card);
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.day-chip:disabled,
+.day-chip-full {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.day-chip-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.day-chip-date {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+
+.day-chip-meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.day-chip-active .day-chip-meta {
+  color: var(--brand);
+}
+
+/* Sticky save bar for desk registration on phone */
+.sticky-submit {
+  position: sticky;
+  bottom: 0.35rem;
+  z-index: 25;
+  margin-left: -0.15rem;
+  margin-right: -0.15rem;
+  padding: 0.55rem 0.15rem 0.15rem;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+
+.has-mobile-dock .sticky-submit {
+  bottom: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .sticky-submit {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border-top: none;
+  }
+}
+
+/* Anchor scroll offset for sticky dock + header */
+#scan,
+#queue,
+#seen,
+#register-action {
+  scroll-margin-top: 0.75rem;
+  scroll-margin-bottom: calc(var(--dock-height) + 1rem);
+}
+
+/* Defer rendering of below-fold sections on capable browsers */
+@supports (content-visibility: auto) {
+  #queue,
+  #seen {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
+  }
+}
+
+/* Scanner viewport: larger hit target on phone cameras */
+#scan [id^="qr-reader"] {
+  min-height: 14rem;
+}
+
+@media (max-width: 640px) {
+  #scan [id^="qr-reader"] video,
+  #scan [id^="qr-reader"] canvas {
+    border-radius: 0.75rem;
+  }
+}
+
+/* Cards that should feel pressable */
+.pressable {
+  transition:
+    transform 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/*
+ * Desk-slip print styles live under src/app/print/print.css (#64) so
+ * interactive desk routes do not load @page / multi-up geometry rules.
+ * .no-print is a marker class; print.css hides it under @media print.
+ */
+

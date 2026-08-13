@@ -1,0 +1,28 @@
+# Enforce LF in the repository for all text files.
+#
+# Without this, a Windows checkout rewrites every file with CRLF and git reports
+# the whole tree as modified, which buries real changes in thousands of lines of
+# line-ending noise. Normalising here means the line ending is a property of the
+# repo, not of whoever happened to check it out.
+* text=auto eol=lf
+
+# Binary files: never touch these.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.avif  binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.wasm  binary
+*.zip   binary
+*.mp4   binary
+*.webm  binary
+
+# Generated lockfile: keep it out of diffs and merge noise.
+package-lock.json -diff linguist-generated=true

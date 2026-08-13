@@ -1,0 +1,94 @@
+/**
+ * Route-scoped prescription print styles.
+ * Imported only under /print/* so interactive desk routes do not pay the cost.
+ *
+ * The whole form prints on every sheet, on plain A4 (D16). Physical size comes
+ * from `@page` — under print media the sheet is deliberately width:100% and the
+ * page box does the sizing, so measuring its CSS width in an emulated print
+ * viewport tells you nothing about the paper.
+ */
+
+/* Screen preview chrome only — removed in print. */
+.print-preview {
+  border: 1px solid var(--border, #e2e8f0);
+}
+
+/* Long names / venues wrap — never clip silently */
+.prescription-name,
+.prescription-venue {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+@page {
+  size: A4;
+  /* Keep the complete configurable prescription on one physical sheet. */
+  margin: 8mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 100%;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  .print-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: var(--print-ink, #0f172a) !important;
+    overflow: visible !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ruled writing areas must keep their lines on paper. */
+  .ruled-lines {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .skip-link {
+    display: none !important;
+  }
+
+  .print-scale-wrap,
+  .print-scale-wrap > div {
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+}

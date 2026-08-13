@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "snp-camps-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "snp-camps-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--", "-p", "3200"],
+      "port": 3200
+    }
+  ]
+}

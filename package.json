@@ -1,0 +1,64 @@
+{
+  "name": "snp-camps",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "npm run wasm:copy && next dev",
+    "wasm:copy": "node scripts/copy-wasm.mjs",
+    "prebuild": "node scripts/copy-wasm.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "pretest": "npm run wasm:copy",
+    "test": "node scripts/run-unit-tests.mjs",
+    "test:db": "node scripts/run-db-tests.mjs",
+    "test:db:replay": "npx supabase db reset --yes && npm run test:db",
+    "compare:migrations": "node scripts/compare-migration-heads.mjs",
+    "test:e2e": "node e2e/run-local.mjs",
+    "check:js-budget": "node scripts/check-js-budget.mjs",
+    "check:env": "node scripts/check-env.mjs",
+    "capture:evidence": "node scripts/capture-evidence.mjs",
+    "validate:evidence": "node scripts/validate-evidence.mjs",
+    "test:evidence": "node --no-warnings --import ./tests/route-loader.mjs --test tests/evidence-tooling.test.mjs",
+    "verify": "npm run lint && npx tsc --noEmit && npm test && npm run test:db && npm run build && npm run check:js-budget && npm run test:e2e && npm run check:env",
+    "load:smoke": "node scripts/load-test.mjs",
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.3",
+    "@supabase/supabase-js": "^2.110.8",
+    "@undecaf/zbar-wasm": "^0.11.0",
+    "comlink": "^4.4.2",
+    "fast-xml-parser": "^5.10.1",
+    "jsqr": "^1.4.0",
+    "next": "16.2.11",
+    "pako": "^3.0.1",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1",
+    "zod": "^4.4.3",
+    "zxing-wasm": "^3.1.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@zxing/library": "^0.23.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.11",
+    "pg": "^8.22.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "^8.5.25",
+    "sharp": "^0.35.3"
+  }
+}
