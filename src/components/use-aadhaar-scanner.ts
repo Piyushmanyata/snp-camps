@@ -14,7 +14,10 @@ import {
   type Probe,
 } from "@/lib/qr-decode-geometry";
 import { QrCameraSession } from "@/lib/qr-camera-session";
-import type { DecodeOutcome } from "@/lib/aadhaar-decode-client";
+import {
+  attemptAadhaarDecode,
+  type DecodeOutcome,
+} from "@/lib/aadhaar-attempt";
 
 /**
  * The decode client is an optional island, loaded only once the operator
@@ -345,33 +348,27 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                   AADHAAR_PROBES[frameTick % AADHAAR_PROBES.length],
                 );
               if (image) {
-                let handledNative = false;
+                let nativeText: string | null = null;
                 if (detector) {
                   try {
                     const hits = await detector.detect(canvas);
                     if (!sessionRef.current.isCurrent(token)) return;
-                    const raw = hits[0]?.rawValue;
-                    if (raw) {
-                      const outcome = await client.decodePayload(raw);
-                      if (!sessionRef.current.isCurrent(token)) return;
-                      consecutiveDecodeErrors = 0;
-                      // Only suppress WASM when decode produced a real outcome
-                      // (matches photo path). Non-Aadhaar / partial text falls through.
-                      if (outcome.status !== "none") {
-                        handledNative = true;
-                        if (await handleOutcome(outcome, token)) return;
-                      }
-                    }
+                    nativeText = hits[0]?.rawValue ?? null;
                   } catch {
                     detector = null;
                   }
                 }
-                if (!handledNative) {
-                  const outcome = await client.decodeFrame(image, thorough);
-                  consecutiveDecodeErrors = 0;
-                  if (!sessionRef.current.isCurrent(token)) return;
-                  if (await handleOutcome(outcome, token)) return;
-                }
+                // One attempt, one outcome: the native text is a hint, and
+                // only a parsed card suppresses the binary reader (ADR 0014).
+                const outcome = await attemptAadhaarDecode({
+                  image,
+                  nativeText,
+                  client,
+                  thorough,
+                });
+                consecutiveDecodeErrors = 0;
+                if (!sessionRef.current.isCurrent(token)) return;
+                if (await handleOutcome(outcome, token)) return;
               }
             }
           } catch {
@@ -464,7 +461,10 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         const client = await loadDecodeClient();
         if (!sessionRef.current.isCurrent(token)) return;
 
-        // Full-resolution native pass first — ML Kit handles dense QRs well.
+        // Full-resolution native pass first — ML Kit handles dense QRs well,
+        // and the probe surfaces below are bounded to MAX_DECODE_EDGE. Its
+        // answer is still only a hint: anything short of a parsed card falls
+        // through to the probe sweep rather than ending the attempt (ADR 0014).
         if (detector) {
           try {
             const full = document.createElement("canvas");
@@ -477,11 +477,13 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
               if (!sessionRef.current.isCurrent(token)) return;
               const raw = hits[0]?.rawValue;
               if (raw) {
-                const outcome = await client.decodePayload(raw);
+                const outcome = await attemptAadhaarDecode({
+                  nativeText: raw,
+                  client,
+                });
                 if (!sessionRef.current.isCurrent(token)) return;
-                if (outcome.status !== "none") {
+                if (await handleOutcome(outcome, token)) {
                   setIsReadingPhoto(false);
-                  await handleOutcome(outcome, token);
                   return;
                 }
               }
@@ -501,29 +503,25 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
           ctx.imageSmoothingEnabled = dw < cw;
           ctx.drawImage(source, sx, sy, cw, ch, 0, 0, dw, dh);
 
+          let nativeText: string | null = null;
           if (detector) {
             try {
               const hits = await detector.detect(canvas);
               if (!sessionRef.current.isCurrent(token)) return;
-              const raw = hits[0]?.rawValue;
-              if (raw) {
-                const outcome = await client.decodePayload(raw);
-                if (!sessionRef.current.isCurrent(token)) return;
-                if (outcome.status !== "none") {
-                  setIsReadingPhoto(false);
-                  await handleOutcome(outcome, token);
-                  return;
-                }
-              }
+              nativeText = hits[0]?.rawValue ?? null;
             } catch {
               detector = null;
             }
           }
 
-          const outcome = await client.decodeFrame(
-            ctx.getImageData(0, 0, dw, dh),
-            true,
-          );
+          // Same one-attempt sequencing as the camera (ADR 0014), so photo-first
+          // on phones (ADR 0012) is not a second decode stack.
+          const outcome = await attemptAadhaarDecode({
+            image: ctx.getImageData(0, 0, dw, dh),
+            nativeText,
+            client,
+            thorough: true,
+          });
           if (!sessionRef.current.isCurrent(token)) return;
           if (outcome.status !== "none") {
             setIsReadingPhoto(false);
@@ -564,7 +562,11 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       try {
         const client = await loadDecodeClient();
         if (!sessionRef.current.isCurrent(token)) return;
-        const outcome = await client.decodePayload(payload);
+        // The wedge carries text only — same attempt, no picture (ADR 0014).
+        const outcome = await attemptAadhaarDecode({
+          nativeText: payload,
+          client,
+        });
         if (!sessionRef.current.isCurrent(token)) return;
         await handleOutcome(outcome, token);
       } catch {
