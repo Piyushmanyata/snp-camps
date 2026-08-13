@@ -11,10 +11,7 @@ import {
   acquireDeskPrintTarget,
   type DeskPrintTarget,
 } from "@/lib/desk-register-flow";
-import {
-  isSameTranscription,
-  validateClinicalTranscription,
-} from "@/lib/clinical-transcription-validate";
+import { isSameTranscription } from "@/lib/clinical-transcription-validate";
 import {
   normalizeDiagnoses,
   validateUnavailableMedicines,
@@ -75,9 +72,51 @@ const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
 
 type ResolveKind = keyof typeof KIND_HEADINGS;
 
-const RESOLVE_ERRORS: Array<
+/**
+ * The database is the no (ADR 0015). These entries only translate a refusal the
+ * database already made into Hinglish; an unmatched refusal is shown verbatim
+ * rather than swallowed behind "try again", because the operator needs to know
+ * whether they forgot Specs numbers, a date/venue, or hit a lock.
+ */
+const CLINICAL_ERRORS: Array<
   [RegExp, string | ((kind: ResolveKind) => string)]
 > = [
+  [
+    /diagnos/i,
+    "Kam se kam ek diagnosis chunein (zyada se zyada 12).",
+  ],
+  [
+    /blood sugar/i,
+    "Blood sugar 20 se 1000 mg/dL ke beech likhein.",
+  ],
+  [
+    /blood pressure/i,
+    "Blood pressure systolic/diastolic likhein, jaise 120/80.",
+  ],
+  [
+    /\bpd\b|pupillary/i,
+    "PD 30 se 80 mm ke beech likhein.",
+  ],
+  [
+    /sphere|cylinder|axis|spectacle|specs type/i,
+    "Chashme ka number poora aur sahi range mein bharein.",
+  ],
+  [
+    /ot (eye|procedure)|procedure/i,
+    "OT ki aankh aur procedure likhein.",
+  ],
+  [
+    /locked|lock/i,
+    "Yeh record lock ho chuka hai. Reason ke saath correction jodein.",
+  ],
+  [
+    /reason/i,
+    "Correction ke liye reason likhein.",
+  ],
+  [
+    /too large|32768|payload/i,
+    "Record bahut bada hai. Remarks aur dawaiyan chhota karein.",
+  ],
   [
     /unavailable medicines/i,
     "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.",
@@ -109,6 +148,26 @@ const RESOLVE_ERRORS: Array<
     "Sirf Clinical Desk Operator faisla save kar sakta hai.",
   ],
 ];
+
+/**
+ * Map one database refusal to operator Hinglish. Never returns a generic retry
+ * line for a refusal the database explained: an unmatched message is passed
+ * through as-is (ADR 0015). Only a failure with no message at all — a dropped
+ * connection — gets the transport sentence.
+ */
+function clinicalRefusal(
+  message: string | null | undefined,
+  kind?: ResolveKind,
+): string {
+  const text = message?.trim();
+  if (!text) {
+    return "Network nahi mila. Internet check karke dobara try karein.";
+  }
+  const matched = CLINICAL_ERRORS.find(([pattern]) => pattern.test(text));
+  const entry = matched?.[1];
+  if (typeof entry === "function") return kind ? entry(kind) : text;
+  return entry ?? text;
+}
 
 const NOT_FOUND_MESSAGE =
   "Yeh number kisi dekhe hue marij ka nahi mila. Number check karke dobara try karein.";
@@ -177,7 +236,6 @@ export function ClinicalDesk({
   const [correctionReason, setCorrectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useToastedError(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessageState] = useState<string | null>(null);
   const [slipReplace, setSlipReplace] = useState<SlipReplaceState | null>(null);
   const [lastSlipId, setLastSlipId] = useState<string | null>(null);
@@ -217,7 +275,6 @@ export function ClinicalDesk({
     setSlipReplace(null);
     setCorrectionReason("");
     setLastSlipId(null);
-    setFieldErrors({});
     setUnavailableMedicines("");
     setMedicineIntent(null);
     setRetiredDiagnoses([]);
@@ -441,19 +498,10 @@ export function ClinicalDesk({
   async function save() {
     if (!record || !canMutate) return;
     const data = transcriptionData();
-    const validation = validateClinicalTranscription(data);
-    if (!validation.ok) {
-      setFieldErrors(
-        Object.fromEntries(validation.errors.map((item) => [item.field, item.message])),
-      );
-      setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
-      return;
-    }
     const patientId = record.patient.id;
     const generation = lookupGenerationRef.current;
     setBusy(true);
     setError(null);
-    setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_save_transcription", {
         p_patient_id: patientId,
@@ -463,9 +511,14 @@ export function ClinicalDesk({
       if (!isCurrentLookup(generation, patientId)) return;
       setMessage("Record save ho gaya.");
       await lookup();
-    } catch {
+    } catch (thrown) {
       if (isCurrentLookup(generation, patientId)) {
-        setError("Could not save transcription. Try again.");
+        // The database said why; do not replace that with "try again".
+        setError(
+          clinicalRefusal(
+            thrown instanceof Error ? thrown.message : null,
+          ),
+        );
       }
     } finally {
       if (isCurrentLookup(generation, patientId)) setBusy(false);
@@ -475,27 +528,20 @@ export function ClinicalDesk({
   async function addCorrection() {
     if (!canMutate) return;
     if (!record || !correctionReason.trim()) {
-      setError("Enter a correction reason.");
+      setError("Correction ke liye reason likhein.");
       return;
     }
     const data = transcriptionData();
-    const validation = validateClinicalTranscription(data);
-    if (!validation.ok) {
-      setFieldErrors(
-        Object.fromEntries(validation.errors.map((item) => [item.field, item.message])),
-      );
-      setError(validation.errors[0]?.message ?? "Enter valid clinical data.");
-      return;
-    }
+    // The one refusal the database deliberately does not make: an amendment
+    // that changes nothing is a screen hint, not a SQL equality check.
     if (isSameTranscription(data, record.effective_data)) {
-      setError("Change at least one field before appending a correction.");
+      setError("Pehle koi field badlein, tabhi correction jud sakta hai.");
       return;
     }
     const patientId = record.patient.id;
     const generation = lookupGenerationRef.current;
     setBusy(true);
     setError(null);
-    setFieldErrors({});
     try {
       const { error: rpcError } = await supabase.rpc("clinical_add_correction", {
         p_patient_id: patientId,
@@ -507,9 +553,13 @@ export function ClinicalDesk({
       setCorrectionReason("");
       setMessage("Correction jud gaya; purana record surakshit hai.");
       await lookup();
-    } catch {
+    } catch (thrown) {
       if (isCurrentLookup(generation, patientId)) {
-        setError("Could not append correction. Try again.");
+        setError(
+          clinicalRefusal(
+            thrown instanceof Error ? thrown.message : null,
+          ),
+        );
       }
     } finally {
       if (isCurrentLookup(generation, patientId)) setBusy(false);
@@ -553,14 +603,7 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      const rpcMessage = rpcError.message;
-      const matched = RESOLVE_ERRORS.find(([pattern]) => pattern.test(rpcMessage));
-      const entry = matched?.[1];
-      const mapped =
-        typeof entry === "function"
-          ? entry(kind)
-          : (entry ?? "Faisla save nahi hua. Dobara koshish karein.");
-      setError(mapped);
+      setError(clinicalRefusal(rpcError.message, kind));
     } else {
       const slip = (data as { slip?: { id?: string } } | null)?.slip;
       const navigated =
@@ -695,6 +738,21 @@ export function ClinicalDesk({
               </div>
             ) : null}
 
+            {/* Empty boxes and obvious shapes are the browser's job; every
+                other refusal comes from the database (ADR 0015). Save and
+                Correction are submit buttons so those hints actually block. */}
+            <form
+              className="space-y-4"
+              noValidate={false}
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (record.transcription?.locked_at) {
+                  void addCorrection();
+                } else {
+                  void save();
+                }
+              }}
+            >
             <fieldset className="space-y-2">
               <legend className="text-sm font-semibold text-foreground">Diagnosis</legend>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -735,7 +793,7 @@ export function ClinicalDesk({
                 }}
                 disabled={!canMutate}
                 hint="Free text — commas se alag nahi hoga"
-                error={fieldErrors.diagnoses}
+                maxLength={120}
               />
             </fieldset>
 
@@ -747,7 +805,9 @@ export function ClinicalDesk({
                 onChange={(e) => setBloodSugar(e.target.value)}
                 disabled={!canMutate}
                 hint="mg/dL, 20–1000"
-                error={fieldErrors.bloodSugar}
+                inputMode="decimal"
+                pattern="[0-9]+([.][0-9]+)?"
+                maxLength={32}
               />
               <Input
                 id="clinical-bp"
@@ -756,7 +816,9 @@ export function ClinicalDesk({
                 onChange={(e) => setBloodPressure(e.target.value)}
                 disabled={!canMutate}
                 hint="systolic/diastolic, e.g. 120/80"
-                error={fieldErrors.bloodPressure}
+                inputMode="numeric"
+                pattern="[0-9]{2,3}/[0-9]{2,3}"
+                maxLength={32}
               />
             </div>
             <Input
@@ -765,7 +827,7 @@ export function ClinicalDesk({
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               disabled={!canMutate}
-              error={fieldErrors.remarks}
+              maxLength={2000}
             />
             <Input
               id="clinical-medicines"
@@ -773,7 +835,7 @@ export function ClinicalDesk({
               value={medicines}
               onChange={(e) => setMedicines(e.target.value)}
               disabled={!canMutate}
-              error={fieldErrors.medicines}
+              maxLength={2000}
             />
             <Card className="space-y-3">
               <SectionTitle>Chashme ka number (Specs)</SectionTitle>
@@ -806,7 +868,8 @@ export function ClinicalDesk({
                           label={`${side === "right" ? "RE" : "LE"} ${field === "near" ? "Near add (D)" : field}`}
                           value={eye[field]}
                           disabled={!canMutate}
-                          error={fieldErrors[`specs.${side}.${field}`]}
+                          inputMode={field === "vision" ? undefined : "decimal"}
+                          maxLength={32}
                           onChange={(event) =>
                             update((current) => ({
                               ...current,
@@ -826,7 +889,9 @@ export function ClinicalDesk({
                 disabled={!canMutate}
                 onChange={(event) => setSpecPd(event.target.value)}
                 hint="Required when a spectacle type is selected · 30–80 mm"
-                error={fieldErrors["specs.pd"]}
+                required={Boolean(specType)}
+                inputMode="decimal"
+                pattern="[0-9]+([.][0-9]+)?"
               />
             </Card>
             <Card className="space-y-3">
@@ -852,7 +917,8 @@ export function ClinicalDesk({
                 disabled={!canMutate}
                 onChange={(event) => setOtProcedure(event.target.value)}
                 hint="Required when an OT eye is selected"
-                error={fieldErrors["ot.procedure"]}
+                required={Boolean(otEye)}
+                maxLength={200}
               />
               <Input
                 id="ot-notes"
@@ -860,29 +926,28 @@ export function ClinicalDesk({
                 value={otNotes}
                 disabled={!canMutate}
                 onChange={(event) => setOtNotes(event.target.value)}
-                error={fieldErrors["ot.notes"]}
+                maxLength={1000}
               />
             </Card>
             {canMutate ? (
               <>
                 <Button
-                  type="button"
+                  type="submit"
                   disabled={busy || Boolean(record.transcription?.locked_at)}
-                  onClick={() => void save()}
                 >
                   Record save karein
                 </Button>
                 {record.transcription?.locked_at ? (
                   <Button
-                    type="button"
+                    type="submit"
                     disabled={busy || !correctionReason.trim()}
-                    onClick={() => void addCorrection()}
                   >
                     Correction jodein
                   </Button>
                 ) : null}
               </>
             ) : null}
+            </form>
           </Card>
           <div className="grid gap-3 md:grid-cols-3">
             {(Object.keys(OUTCOMES) as Array<keyof typeof OUTCOMES>).map((kind) => {

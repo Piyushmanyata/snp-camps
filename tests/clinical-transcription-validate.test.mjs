@@ -1,100 +1,30 @@
+/**
+ * The browser no longer mirrors assert_valid_clinical_data (ADR 0015): the
+ * database is the no, and the SQL boundary cases are proved against Postgres
+ * in issue-124-clinical.db.test.mjs rather than against a TypeScript replica
+ * that could disagree with it.
+ *
+ * What remains here is the screen-level no-op-correction hint, which the
+ * database deliberately does not make.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isSameTranscription,
-  validateClinicalTranscription,
   normalizeDiagnoses,
 } from "../src/lib/clinical-transcription-validate.ts";
 import { validateUnavailableMedicines } from "../src/lib/clinical-diagnoses.ts";
 
-function draft(overrides = {}) {
-  return {
-    diagnoses: ["REFRACTION"],
-    bloodSugar: null,
-    bloodPressure: null,
-    remarks: null,
-    medicines: null,
-    specs: null,
-    ot: null,
-    ...overrides,
-  };
-}
-
-function validSpecs(overrides = {}) {
-  return {
-    type: "distance",
-    right: { sphere: "-1.0" },
-    left: { sphere: "-1.5" },
-    pd: "62",
-    ...overrides,
-  };
-}
-
-test("clinical validation mirrors the SQL boundary cases", () => {
-  const cases = [
-    ["empty diagnoses", draft({ diagnoses: [] }), false],
-    ["13 diagnoses", draft({ diagnoses: Array.from({ length: 13 }, () => "x") }), false],
-    ["121-character diagnosis", draft({ diagnoses: ["x".repeat(121)] }), false],
-    ["blood sugar 19", draft({ bloodSugar: "19" }), false],
-    ["blood sugar 20", draft({ bloodSugar: "20" }), true],
-    ["blood sugar 1000", draft({ bloodSugar: "1000" }), true],
-    ["blood sugar 1001", draft({ bloodSugar: "1001" }), false],
-    ["blood sugar non-numeric", draft({ bloodSugar: "high" }), false],
-    ["blood pressure 120/80", draft({ bloodPressure: "120/80" }), true],
-    ["blood pressure wrong separator", draft({ bloodPressure: "120-80" }), false],
-    ["blood pressure systolic too low", draft({ bloodPressure: "39/80" }), false],
-    ["blood pressure diastolic too high", draft({ bloodPressure: "120/201" }), false],
-    ["Specs blank PD", draft({ specs: validSpecs({ pd: "" }) }), false],
-    ["Specs PD 29", draft({ specs: validSpecs({ pd: "29" }) }), false],
-    ["Specs PD 30", draft({ specs: validSpecs({ pd: "30" }) }), true],
-    ["Specs PD 80", draft({ specs: validSpecs({ pd: "80" }) }), true],
-    ["Specs PD 81", draft({ specs: validSpecs({ pd: "81" }) }), false],
-    ["Specs non-numeric sphere", draft({ specs: validSpecs({ right: { sphere: "N6" } }) }), false],
-    ["Specs axis 181", draft({ specs: validSpecs({ right: { sphere: "-1", axis: "181" } }) }), false],
-    ["OT blank procedure", draft({ ot: { eye: "right", procedure: "" } }), false],
-    [
-      "fully valid payload",
-      draft({
-        diagnoses: ["REFRACTION", "Other note"],
-        bloodSugar: "200.5",
-        bloodPressure: "120/80",
-        remarks: "Read paper",
-        medicines: "Drops",
-        specs: validSpecs({ right: { sphere: "-1", cylinder: "0", axis: "90", near: "1" } }),
-        ot: { eye: "both", procedure: "Cataract review", notes: "Bring reports" },
-      }),
-      true,
-    ],
-  ];
-
-  for (const [name, payload, expected] of cases) {
-    assert.equal(validateClinicalTranscription(payload).ok, expected, name);
-  }
-});
-
-test("stored diagnoses {options, other} validates; legacy flat array still validates", () => {
-  assert.equal(
-    validateClinicalTranscription(
-      draft({ diagnoses: { options: ["REFRACTION"], other: "Free text" } }),
-    ).ok,
-    true,
+test("the browser keeps no copy of the SQL save rules", async () => {
+  const validator = await import(
+    "../src/lib/clinical-transcription-validate.ts"
   );
   assert.equal(
-    validateClinicalTranscription(
-      draft({ diagnoses: { options: [], other: null } }),
-    ).ok,
-    false,
+    validator.validateClinicalTranscription,
+    undefined,
+    "a second source of truth for save/correct must not come back (ADR 0015)",
   );
-  assert.equal(
-    validateClinicalTranscription(
-      draft({ diagnoses: { options: ["REFRACTION"], other: "x".repeat(121) } }),
-    ).ok,
-    false,
-  );
-  assert.equal(
-    validateClinicalTranscription(draft({ diagnoses: ["CATARACT"] })).ok,
-    true,
-  );
+  assert.equal(validator.validateDiagnosesField, undefined);
 });
 
 test("normalizeDiagnoses is stable for both shapes and template-splits legacy", () => {
@@ -110,6 +40,30 @@ test("normalizeDiagnoses is stable for both shapes and template-splits legacy", 
     options: ["A", "C"],
     other: null,
   });
+});
+
+test("a stored split survives the live template, retired labels included", () => {
+  // ADR 0011/0015: desk, history and Camp Records Export all read the stored
+  // {options, other} split. knownOptions exists only to split *legacy flat
+  // arrays*; it must never re-split a stored split against today's template,
+  // or a later template edit would rewrite history.
+  const stored = { options: ["RETIRED_DX", "REFRACTION"], other: "free text" };
+  const todaysTemplate = ["REFRACTION", "CATARACT"];
+
+  assert.deepEqual(normalizeDiagnoses(stored), {
+    options: ["RETIRED_DX", "REFRACTION"],
+    other: "free text",
+  });
+  assert.deepEqual(
+    normalizeDiagnoses(stored, todaysTemplate),
+    normalizeDiagnoses(stored),
+    "the template must not move a retired stored option into Other",
+  );
+  assert.deepEqual(
+    normalizeDiagnoses(stored, []),
+    normalizeDiagnoses(stored),
+    "an empty template must not empty a stored split either",
+  );
 });
 
 test("isSameTranscription ignores key order and legacy↔explicit diagnoses shape", () => {
