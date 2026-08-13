@@ -34,7 +34,7 @@ export async function POST(
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .rpc("mark_patient_printed", { p_id: id })
+    .rpc("mark_patient_printed", { p_patient_id: id, p_reg_no: null })
     .maybeSingle();
 
   if (error) {
@@ -45,10 +45,10 @@ export async function POST(
     if (message.includes("inactive camp")) {
       return json({ error: "This patient's camp is no longer active" }, 409);
     }
-    return json({ error: "Could not add the patient to the queue" }, 409);
+    return json({ error: "Could not record this print" }, 409);
   }
   const result = data as PrintResult | null;
-  if (!result) return json({ error: "Patient queue state was not returned" }, 500);
+  if (!result) return json({ error: "Patient print state was not returned" }, 500);
 
   return json({
     ok: true,

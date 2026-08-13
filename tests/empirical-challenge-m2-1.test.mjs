@@ -498,7 +498,7 @@ test("STRESS #61: Trigram ranking edge cases (typos, exact prefix, case-insensit
   );
 });
 
-test("STRESS #61: Lost-slip patient check-in updates status to waiting with queued_at", async (t) => {
+test("STRESS #61: printing for a lost-slip patient records presence once", async (t) => {
   if (skipIfNoDb(t)) return;
 
   const staffId = await seedVolunteer();
@@ -514,24 +514,24 @@ test("STRESS #61: Lost-slip patient check-in updates status to waiting with queu
 
   assert.equal(regPatient.queue_status, "registered");
 
-  // Execute check-in via search / check-in RPC
-  const checkInRes = await asStaff(staffId, async () => {
+  // Recovering a lost slip = print the prescription again.
+  const printRes = await asStaff(staffId, async () => {
     const { rows } = await client.query(
-      `select * from public.check_in_patient($1, null)`,
+      `select * from public.mark_patient_printed($1, null)`,
       [regPatient.id]
     );
     return rows[0];
   });
 
-  assert.equal(checkInRes.queue_status, "waiting");
-  assert.equal(checkInRes.already_waiting, false);
+  assert.equal(printRes.queue_status, "registered");
+  assert.equal(printRes.already_printed, false);
 
-  // Verify in database that queued_at is populated
   const { rows: dbRows } = await client.query(
-    `select queue_status, queued_at from public.patients where id = $1`,
+    `select queue_status, queued_at, printed_at from public.patients where id = $1`,
     [regPatient.id]
   );
 
-  assert.equal(dbRows[0].queue_status, "waiting");
-  assert.ok(dbRows[0].queued_at !== null, "queued_at timestamp must be set on check-in");
+  assert.equal(dbRows[0].queue_status, "registered");
+  assert.ok(dbRows[0].printed_at !== null, "printed_at must be set on print");
+  assert.equal(dbRows[0].queued_at, null, "printing writes no line time");
 });

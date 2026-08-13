@@ -100,7 +100,7 @@ async function mockRegisterSuccess(
             id: patientId,
             reg_no: regNo,
             full_name: name,
-            queue_status: "waiting",
+            queue_status: "registered",
           },
         ],
         error: null,
@@ -277,7 +277,7 @@ test("register-only saves with no print window", async ({ page }) => {
   await page.getByTestId("desk-register-only").click();
 
   await expect(page.getByTestId("desk-register-flash")).toContainText(
-    /register ho gaya|line mein|Print later/i,
+    /register ho gaya|registered|Print later/i,
     { timeout: 15_000 },
   );
   expect(mock.getCalls()).toBe(1);

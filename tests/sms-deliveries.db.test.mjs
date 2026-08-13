@@ -233,7 +233,9 @@ test("same-day desk walk-in never creates or exposes a registration SMS", async 
       return result;
     });
 
-    assert.equal(rows[0].queue_status, "waiting");
+    // A same-day walk-in stays registered until their prescription is printed
+    // (ADR 0013); the SMS suppression is about the same visit, not a line.
+    assert.equal(rows[0].queue_status, "registered");
     const delivery = await admin.query(
       `select 1 from public.sms_deliveries where patient_id = $1`,
       [rows[0].id],

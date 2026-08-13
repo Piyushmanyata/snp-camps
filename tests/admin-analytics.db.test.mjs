@@ -99,23 +99,24 @@ test.before(async () => {
     [dayId, campId],
   );
 
+  // Two states only (ADR 0013). printedAgo stands in for arrival; it is
+  // presence, not a line position, and no metric derives a wait from it.
   const rows = [
     ["registered", null, null, userIds.admin, "self_declared"],
     ["registered", null, null, null, "card_scanned"],
-    ["waiting", "30 minutes", null, userIds.admin, "card_scanned"],
-    ["waiting", "90 minutes", null, null, "self_declared"],
+    ["registered", "30 minutes", null, userIds.admin, "card_scanned"],
+    ["registered", "90 minutes", null, null, "self_declared"],
     ["seen", "10 minutes", "0 minutes", userIds.admin, "self_declared"],
     ["seen", "20 minutes", "0 minutes", userIds.admin, "card_scanned"],
     ["seen", "30 minutes", "0 minutes", null, "self_declared"],
     ["seen", "40 minutes", "0 minutes", null, "self_declared"],
-    // Negative duration: counted as seen/throughput, excluded from percentiles.
     ["seen", "0 minutes", "5 minutes", userIds.admin, "self_declared"],
   ];
 
-  for (const [status, queuedAgo, seenBeforeNow, createdBy, provenance] of rows) {
+  for (const [status, printedAgo, seenBeforeNow, createdBy, provenance] of rows) {
     await client.query(
       `insert into public.patients (
-         camp_id, camp_day_id, full_name, queue_status, queued_at, seen_at,
+         camp_id, camp_day_id, full_name, queue_status, printed_at, seen_at,
          seen_by, created_by, provenance
        )
        values (
@@ -136,7 +137,7 @@ test.before(async () => {
         dayId,
         `Analytics ${status} ${randomUUID().slice(0, 8)}`,
         status,
-        queuedAgo,
+        printedAgo,
         seenBeforeNow,
         createdBy,
         provenance,
@@ -176,25 +177,20 @@ test("admin analytics returns deterministic aggregate-only active-camp metrics",
   );
   assert.equal(rows.length, 1);
   const row = rows[0];
-  assert.equal(Number(row.registered_count), 2);
-  assert.equal(Number(row.waiting_count), 2);
+  assert.equal(Number(row.registered_count), 4);
   assert.equal(Number(row.seen_count), 5);
   assert.equal(Number(row.total_count), 9);
-  assert.ok(Number(row.current_longest_wait_minutes) >= 89);
-  assert.equal(Number(row.completed_wait_median_minutes), 25);
-  assert.equal(Number(row.completed_wait_p90_minutes), 37);
   assert.equal(Number(row.completed_today_count), 5);
   assert.equal(Number(row.desk_registration_count), 5);
   assert.equal(Number(row.self_registration_count), 4);
   assert.equal(Number(row.scanned_registration_count), 3);
   assert.equal(Number(row.self_declared_count), 6);
+  // No queue depth and no wait percentiles: both derived from queued_at, which
+  // nothing writes once presence is printed_at (ADR 0013).
   assert.deepEqual(
     Object.keys(row).sort(),
     [
       "completed_today_count",
-      "completed_wait_median_minutes",
-      "completed_wait_p90_minutes",
-      "current_longest_wait_minutes",
       "desk_registration_count",
       "registered_count",
       "scanned_registration_count",
@@ -202,7 +198,6 @@ test("admin analytics returns deterministic aggregate-only active-camp metrics",
       "self_declared_count",
       "self_registration_count",
       "total_count",
-      "waiting_count",
     ].sort(),
   );
 });
@@ -222,12 +217,9 @@ test("inactive camps return the defined zero analytics state", async (t) => {
     );
     assert.equal(rows.length, 1);
     assert.equal(Number(rows[0].registered_count), 0);
-    assert.equal(Number(rows[0].waiting_count), 0);
     assert.equal(Number(rows[0].seen_count), 0);
     assert.equal(Number(rows[0].total_count), 0);
-    assert.equal(rows[0].current_longest_wait_minutes, null);
-    assert.equal(rows[0].completed_wait_median_minutes, null);
-    assert.equal(rows[0].completed_wait_p90_minutes, null);
+    assert.equal(Number(rows[0].completed_today_count), 0);
   } finally {
     await client.query(`update public.camps set is_active = true where id = $1`, [
       campId,

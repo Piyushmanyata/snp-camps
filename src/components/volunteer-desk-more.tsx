@@ -64,7 +64,6 @@ type KpisInitial =
       data: {
         total: number;
         today: number;
-        waiting: number;
         seen: number;
       };
     }
@@ -120,7 +119,6 @@ function MoreIslands({
     const kpisRes = await fetchDeskSection<{
       total: number;
       today: number;
-      waiting: number;
       seen: number;
     }>("volunteer-kpis", { campId });
     if (kpisRes.ok) {

@@ -4,7 +4,6 @@
  * Client retry hits one section only via /api/desk/section.
  */
 
-import { DESK_LIVE_WAITING_LIMIT } from "@/lib/desk-live";
 import { mapDbError } from "@/lib/public-error";
 import { createClient } from "@/lib/supabase/server";
 import type { CampDayStats } from "@/lib/types";
@@ -13,19 +12,6 @@ export type SectionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-export type WaitingRow = {
-  id: string;
-  reg_no: number;
-  full_name: string;
-  phone: string | null;
-  queued_at?: string | null;
-};
-
-export type QueueSectionData = {
-  waiting: WaitingRow[];
-  waitingTotal: number;
-};
-
 export type SeatsSectionData = {
   days: CampDayStats[];
 };
@@ -33,19 +19,14 @@ export type SeatsSectionData = {
 export type KpisSectionData = {
   total: number;
   today: number;
-  waiting: number;
   seen: number;
 };
 
 
 export type AdminAnalyticsData = {
   registered: number;
-  inQueue: number;
   seen: number;
   total: number;
-  currentLongestWaitMinutes: number | null;
-  completedWaitMedianMinutes: number | null;
-  completedWaitP90Minutes: number | null;
   completedToday: number;
   deskRegistrations: number;
   selfRegistrations: number;
@@ -55,7 +36,6 @@ export type AdminAnalyticsData = {
 
 
 export const SECTION_KEYS = [
-  "queue",
   "seats",
   "volunteer-kpis",
   "admin-analytics",
@@ -66,38 +46,6 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export function isSectionKey(value: string): value is SectionKey {
   return (SECTION_KEYS as readonly string[]).includes(value);
-}
-
-export async function loadQueueSection(
-  campId: string,
-): Promise<SectionResult<QueueSectionData>> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("desk_waiting_queue", {
-    p_camp_id: campId,
-    p_limit: DESK_LIVE_WAITING_LIMIT + 1,
-  });
-
-  if (error) {
-    return {
-      ok: false,
-      error: mapDbError(error, {
-        context: "section.queue",
-        fallback: "Queue could not be loaded — retry.",
-      }),
-    };
-  }
-
-  const rows = (data || []) as Array<WaitingRow & { waiting_total?: number }>;
-  const waiting = rows.slice(0, DESK_LIVE_WAITING_LIMIT);
-  const waitingTotal = Number(rows[0]?.waiting_total ?? rows.length);
-
-  return {
-    ok: true,
-    data: {
-      waiting,
-      waitingTotal,
-    },
-  };
 }
 
 export async function loadSeatsSection(
@@ -153,7 +101,6 @@ export async function loadVolunteerKpisSection(
     data: {
       total: Number(row?.total ?? 0),
       today: Number(row?.today ?? 0),
-      waiting: Number(row?.waiting ?? 0),
       seen: Number(row?.seen ?? 0),
     },
   };
@@ -241,25 +188,13 @@ export async function loadAdminQueueCountsSection(
     string,
     unknown
   > | null;
-  const optionalNumber = (value: unknown): number | null =>
-    value != null && !Number.isNaN(Number(value)) ? Number(value) : null;
 
   return {
     ok: true,
     data: {
       registered: Number(row?.registered_count ?? 0),
-      inQueue: Number(row?.waiting_count ?? 0),
       seen: Number(row?.seen_count ?? 0),
       total: Number(row?.total_count ?? 0),
-      currentLongestWaitMinutes: optionalNumber(
-        row?.current_longest_wait_minutes,
-      ),
-      completedWaitMedianMinutes: optionalNumber(
-        row?.completed_wait_median_minutes,
-      ),
-      completedWaitP90Minutes: optionalNumber(
-        row?.completed_wait_p90_minutes,
-      ),
       completedToday: Number(row?.completed_today_count ?? 0),
       deskRegistrations: Number(row?.desk_registration_count ?? 0),
       selfRegistrations: Number(row?.self_registration_count ?? 0),
@@ -283,9 +218,6 @@ export async function loadSection(
   const userId = params.userId ?? null;
 
   switch (section) {
-    case "queue":
-      if (!campId) return { ok: false, error: "Camp required." };
-      return loadQueueSection(campId);
     case "seats":
       if (!campId) return { ok: false, error: "Camp required." };
       return loadSeatsSection(campId);

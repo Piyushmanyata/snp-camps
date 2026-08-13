@@ -119,8 +119,8 @@ export default async function HomePage() {
                   detail: "Aadhaar scan karein · reg number milega",
                 },
                 {
-                  title: "Print se line mein",
-                  detail: "Desk parchi print karega · pehle aao pehle pao",
+                  title: "Desk par parchi",
+                  detail: "Desk aapki parchi print karega",
                 },
                 {
                   title: "Doctor se milna",

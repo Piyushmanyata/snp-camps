@@ -176,11 +176,11 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   await expect(review).toBeVisible();
   await expect(review.getByTestId("print-prescription")).toBeVisible();
 
-  // A lookup must never change queue state — only Print does (ADR 0008).
+  // A lookup must never record presence — only Print does (ADR 0013).
   // Asserted as an invariant rather than against an absolute status, because
   // other specs share this fixture patient: whatever the desk offered the
   // first time, it must offer exactly the same thing the second time. If a
-  // lookup silently queued the patient, "Print" would become "Reprint" here.
+  // lookup silently recorded presence, Mark seen would appear here.
   const firstLabel = await review.getByTestId("print-prescription").innerText();
   const firstHadMarkSeen = await review.getByTestId("mark-seen").count();
 
@@ -312,7 +312,7 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
  * shared-patient lookup tests above keep an un-seen row to work with.
  * Must run after those tests.
  */
-test("volunteer marks a waiting patient seen, and a re-scan is refused", async ({
+test("volunteer marks a printed-for patient seen, and a re-scan is refused", async ({
   page,
 }) => {
   const reg = env("E2E_SECOND_PATIENT_REG_NO");
@@ -336,7 +336,7 @@ test("volunteer marks a waiting patient seen, and a re-scan is refused", async (
 
   // A mis-scan is recoverable within the server-side window (D25).
   await expect(
-    result.getByRole("button", { name: /Wapas line mein/i }),
+    result.getByRole("button", { name: /Wapas registered karein/i }),
   ).toBeVisible();
 
   // Re-scan is refused, says so, and offers no second Mark seen.

@@ -77,18 +77,19 @@ test("public/register SeatBoard call sites never pass live", () => {
 });
 
 test("staff desks enable live seat board", () => {
-  const volunteer = read("src/app/volunteer/page.tsx");
-  const admin = read("src/app/admin/page.tsx");
-
-  assert.match(volunteer, /live\b/);
-  assert.match(admin, /live\b/);
+  // Admin mounts it directly; the volunteer desk mounts it behind Aur dekhein.
+  assert.match(read("src/app/admin/page.tsx"), /<SeatBoard[\s\S]{0,200}live/);
+  assert.match(
+    read("src/components/volunteer-desk-more.tsx"),
+    /<SeatBoard[\s\S]{0,200}live/,
+  );
 });
 
 test("D22 desk offers exactly the two actions, and refuses an already-seen patient", () => {
   const scanner = read("src/components/qr-scanner.tsx");
   const deskOps = read("src/lib/desk-ops.ts");
 
-  // Print (which queues) and Mark seen — no doctor selection anywhere.
+  // Print (which records presence) and Mark seen — no doctor selection anywhere.
   // Stable seam: testids, not Hinglish label copy (renames must not break the gate).
   assert.match(scanner, /data-testid="print-prescription"/);
   assert.match(scanner, /data-testid="mark-seen"/);
@@ -97,8 +98,8 @@ test("D22 desk offers exactly the two actions, and refuses an already-seen patie
 
   // Already seen is terminal and says when (D25).
   assert.match(scanner, /Already seen/);
-  assert.match(deskOps, /not_in_queue/);
-  assert.match(deskOps, /NOT_IN_QUEUE_COPY/);
+  assert.match(deskOps, /never_printed/);
+  assert.match(deskOps, /NEVER_PRINTED_COPY/);
 });
 
 test("#58 scanner uses camera session + decode orchestrator generation guards", () => {
@@ -116,14 +117,15 @@ test("SeatBoard live defaults false; staff path uses shared desk owner", () => {
   assert.match(src, /useFixedPoll/);
 });
 
-test("staff queue/seat use shared camp desk live owner", () => {
-  const liveQueue = read("src/components/live-queue.tsx");
+test("the seat board is the only shared camp desk live consumer", () => {
   const seatBoard = read("src/components/seat-board.tsx");
-  assert.match(liveQueue, /useCampDeskLive/);
   assert.match(seatBoard, /useCampDeskLive/);
-  assert.doesNotMatch(liveQueue, /next\/navigation/);
-  assert.doesNotMatch(liveQueue, /useRouter/);
   assert.match(read("src/lib/poll.ts"), /POLL_MS = 20_000/);
+  // There is no Live Queue panel to poll (ADR 0013).
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "src/components/live-queue.tsx")),
+    false,
+  );
 });
 
 test("#56 continuous ~20s poll is the staff freshness owner", () => {
@@ -138,11 +140,10 @@ test("#56 continuous ~20s poll is the staff freshness owner", () => {
 test("#56 no staff copy instructs manual-only refresh on live desks", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
   const admin = read("src/app/admin/page.tsx");
-  // Queue titles live on the shared scan/queue island (#63).
-  const scanQueue = read("src/components/desk-scan-queue.tsx");
+  const scan = read("src/components/desk-scan.tsx");
   assert.doesNotMatch(volunteer, /refresh manually/i);
   assert.doesNotMatch(admin, /auto-refresh/i);
-  assert.match(scanQueue, /Pehle aao, pehle pao/);
+  assert.doesNotMatch(scan, /pehle aao|pehle pao/i);
 });
 
 test("#26 no unstable_cache in src/", () => {

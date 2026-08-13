@@ -17,7 +17,7 @@ import {
 import { QrCameraSession } from "@/lib/qr-camera-session";
 import { QrDecodeOrchestrator } from "@/lib/qr-decode-orchestrator";
 import {
-  checkInPatientWithRetries,
+  printPrescriptionWithRetries,
   lookupPatientScanWithRetries,
   markSeenWithRetries,
   searchDeskPatientsWithRetries,
@@ -239,38 +239,33 @@ export function QrScanner({
   );
 
   /**
-   * Print prescription — the desk's first action, and the thing that puts a
-   * patient in the queue (D24). Queueing is bound to this action, not to the
-   * print dialog succeeding: if the printer jams the patient is already in
-   * line and simply reprints, never losing their place.
+   * Print prescription — the desk's first action. Presence is bound to the
+   * action, not to the print dialog succeeding: if the print window is blocked
+   * the patient is already recorded as present and simply reprints (ADR 0013).
    *
-   * A lookup on its own must never mutate queue state, so the check-in call
-   * lives here rather than in resolvePatient.
+   * A lookup on its own must never record presence, so the call lives here
+   * rather than in resolvePatient. The sheet's own POST is idempotent, so
+   * scan-then-sheet still writes one printed_at.
    */
-  const printAndQueue = useCallback(
+  const printPrescription = useCallback(
     async (row: LookupRow) => {
       if (assigningRef.current) return;
       assigningRef.current = true;
       setAssigning(true);
       setError(null);
 
-      // Only a not-yet-queued patient is checked in. A reprint for someone
-      // already `waiting` or `seen` must not re-queue or reorder them.
-      if (row.queue_status === "registered") {
-        const outcome = await checkInPatientWithRetries({
-          patientId: row.id,
-          regNo: null,
-          rpc: deskRpc(createClient()),
-          errorContext: "qr-scanner.print-queue",
-          errorFallback: "Could not add this patient to the queue. Try again.",
-        });
+      const outcome = await printPrescriptionWithRetries({
+        patientId: row.id,
+        regNo: null,
+        rpc: deskRpc(createClient()),
+        errorContext: "qr-scanner.print-prescription",
+      });
 
-        if (!outcome.ok && !outcome.alreadySeen) {
-          setError(outcome.error);
-          assigningRef.current = false;
-          setAssigning(false);
-          return;
-        }
+      if (!outcome.ok) {
+        setError(outcome.error);
+        assigningRef.current = false;
+        setAssigning(false);
+        return;
       }
 
       assigningRef.current = false;
@@ -298,7 +293,7 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
       } else {
-        showSuccessToast("Wapas line mein aa gaya");
+        showSuccessToast("Wapas registered kar diya");
         readyForNext();
         router.refresh();
       }
@@ -368,7 +363,7 @@ export function QrScanner({
       }
 
       // A lookup is read-only. Nothing about scanning or typing a reg number
-      // changes queue state — only Print prescription does (D24).
+      // records presence — only Print prescription does (ADR 0013).
       setLookup(row);
       handledRef.current = true;
       return row;
@@ -822,7 +817,7 @@ export function QrScanner({
         <strong className="text-foreground">Scan</strong> the paper or phone QR,
         or enter their registration number or name. Then{" "}
         <strong className="text-foreground">Print prescription</strong> — that
-        puts them in the queue — or{" "}
+        prints the paper and records that they arrived — or{" "}
         <strong className="text-foreground">Mark seen</strong> after the
         consultation. A patient already seen is refused.
       </p>
@@ -992,7 +987,7 @@ export function QrScanner({
                 disabled={assigning}
                 onClick={() => void undoSeen(seen.id)}
               >
-                Wapas line mein
+                Wapas registered karein
               </Button>
             ) : null}
             <Button
@@ -1054,7 +1049,7 @@ export function QrScanner({
           ) : null}
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {/* Action 1 — printing is what puts them in the queue (D22/D24). */}
+            {/* Action 1 — printing the paper is what records presence (ADR 0013). */}
             <Button
               type="button"
               size="lg"
@@ -1062,13 +1057,13 @@ export function QrScanner({
               disabled={assigning}
               loading={assigning}
               data-testid="print-prescription"
-              onClick={() => void printAndQueue(lookup)}
+              onClick={() => void printPrescription(lookup)}
             >
               Parchi print karein
             </Button>
 
-            {/* Action 2 — only meaningful once they are actually in the line. */}
-            {lookup.queue_status === "waiting" ? (
+            {/* Action 2 — only offered once presence exists; the RPC refuses otherwise. */}
+            {lookup.queue_status !== "seen" && lookup.printed_at ? (
               <Button
                 type="button"
                 size="lg"

@@ -539,18 +539,18 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
     reg2[0].id,
     "permanent number resolves to the active Camp Registration",
   );
-  const { rows: checkedIn } = await client.query(
+  const { rows: printed } = await client.query(
     `select id
-     from public.check_in_patient(
+     from public.mark_patient_printed(
        p_patient_id => null,
        p_reg_no => $1
      )`,
     [reg1[0].reg_no],
   );
   assert.equal(
-    checkedIn[0]?.id,
+    printed[0]?.id,
     reg2[0].id,
-    "check-in by permanent number affects the active Camp Registration",
+    "printing by permanent number affects the active Camp Registration",
   );
   await client.query("reset role");
 

@@ -5,18 +5,19 @@ import { getPatientStatusGuidance } from "../src/lib/patient-status-guidance.ts"
 // Patients read Hinglish (CONTEXT.md §Language). These assertions are the guard
 // against an English regression leaking back onto the status page.
 
-test("registered patients are sent to the desk, not into the queue", () => {
+test("registered patients are sent to their venue, not into a line", () => {
   const result = getPatientStatusGuidance("registered");
   assert.equal(result.label, "Registration ho gaya");
-  assert.match(result.instruction, /desk par jaayein/i);
+  assert.match(result.instruction, /venue par jaayein/i);
   assert.equal(result.tone, "neutral");
 });
 
-test("waiting patients receive queue guidance", () => {
+test("a retired waiting status falls through to safe desk guidance", () => {
+  // `waiting` is dead on the enum but not droppable, so it must not resolve to
+  // line copy if a residual row ever reaches the page (ADR 0013).
   const result = getPatientStatusGuidance("waiting");
-  assert.equal(result.label, "Line mein hain");
-  assert.match(result.instruction, /30 second/i);
-  assert.equal(result.tone, "waiting");
+  assert.equal(result.label, "Status nahi mil paaya");
+  assert.equal(result.tone, "neutral");
 });
 
 test("seen is terminal and has no pending-treatment arm", () => {
@@ -36,8 +37,8 @@ test("guidance is Hinglish, never English clinical copy", () => {
     const { label, instruction } = getPatientStatusGuidance(status);
     assert.doesNotMatch(
       `${label} ${instruction}`,
-      /consultation|treatment|pending|check in/i,
-      `retired English copy leaked back into "${status}"`,
+      /consultation|treatment|pending|check in|queue|line mein/i,
+      `retired English or line copy leaked back into "${status}"`,
     );
   }
 });

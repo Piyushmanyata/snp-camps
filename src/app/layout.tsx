@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: "%s · SNP Camps",
   },
   description:
-    "Medical camp desk: register, print prescription (queue), mark seen — Sikar Nagarik Parishad (Kolkata)",
+    "Medical camp desk: register, print prescription, mark seen — Sikar Nagarik Parishad (Kolkata)",
   applicationName: "SNP Camps",
   formatDetection: { telephone: false },
   metadataBase: new URL(
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     title: "SNP Camps · Medical Camp Desk",
-    description: "Register, queue and get seen at the SNP eye camp.",
+    description: "Register and get seen at the SNP eye camp.",
     siteName: "SNP Camps",
   },
   robots: { index: false, follow: false },

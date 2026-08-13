@@ -61,7 +61,7 @@ export function resolveOrigin(origin?: string | null): string {
 
 /**
  * Staff-scan QR payload (short path = denser, more reliable paper scan).
- * Opening as staff: registered → print · waiting/seen → desk assign.
+ * Opening as staff: registered → print · seen → desk assign.
  * Opening as public: show-at-desk message (no login).
  */
 export function patientScanUrl(

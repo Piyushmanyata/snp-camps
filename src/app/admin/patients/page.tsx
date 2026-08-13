@@ -24,7 +24,7 @@ async function PatientDeskContent() {
     supabase
       .from("patients")
       .select(
-        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), seen_by_profile:profiles!seen_by(full_name)",
+        "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, camp_day_id, created_by, checked_in_by, seen_by, printed_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), seen_by_profile:profiles!seen_by(full_name)",
         { count: "exact" },
       )
       .order("created_at", { ascending: false })
@@ -109,7 +109,7 @@ async function PatientDeskContent() {
       created_by: createdBy,
       checked_in_by: checkedInBy,
       seen_by: seenBy,
-      queued_at: (p.queued_at as string | null) ?? null,
+      printed_at: (p.printed_at as string | null) ?? null,
       seen_at: (p.seen_at as string | null) ?? null,
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
@@ -124,19 +124,13 @@ async function PatientDeskContent() {
       ? queueCountsRes.data[0]
       : queueCountsRes.data);
   const registered = Number(queueCounts?.registered_count ?? 0);
-  const waiting = Number(queueCounts?.waiting_count ?? 0);
   const seen = Number(queueCounts?.seen_count ?? 0);
-  const medianWaitMin =
-    queueCounts?.completed_wait_median_minutes != null
-      ? Number(queueCounts.completed_wait_median_minutes)
-      : null;
 
   return (
     <div className="space-y-3 sm:space-y-4">
       {camp && !countsFailed ? (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <Stat label="Active registered" value={registered} />
-          <Stat label="Active queue" value={waiting} tone="wait" />
           <Stat label="Active seen" value={seen} tone="ok" />
         </div>
       ) : camp && countsFailed ? (
@@ -154,8 +148,8 @@ async function PatientDeskContent() {
           Patient desk
         </p>
         <p className="text-sm text-muted">
-          Who registered them, who saw them, and when. Median wait is from
-          queue join to seen.
+          Who registered them, who printed their prescription, who saw them, and
+          when.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 lg:hidden">
           <NavLink href="/register" variant="primary">
@@ -179,7 +173,6 @@ async function PatientDeskContent() {
         <AdminPatients
           initial={patients}
           totalCount={patientsRes.count ?? patients.length}
-          completedMedianWaitMinutes={medianWaitMin}
           showAttribution
         />
       </Card>

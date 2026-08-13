@@ -20,7 +20,7 @@ export type DeskRegisterRow = {
   full_name: string;
   camp_day_id?: string;
   day_date?: string;
-  queue_status?: "registered" | "waiting" | "seen";
+  queue_status?: "registered" | "seen";
 };
 
 export type DeskRegisterSubmitResult = RegistrationSubmitResult;
@@ -183,8 +183,8 @@ export type DeskRegisterFailure = {
 
 /**
  * Register (idempotent RPC) → navigate pre-opened print target → reset form.
- * Queue/check-in already happened inside the RPC when the day is today;
- * print is never required for queue correctness.
+ * Registration never records presence (ADR 0013); the print sheet's own POST
+ * writes printed_at once, so a blocked print window loses nothing.
  *
  * Caller must acquire `printTarget` synchronously during the submit gesture
  * **before** awaiting this function. On any non-success path the target is
@@ -252,8 +252,9 @@ export async function runDeskRegisterAndPrint(options: {
     };
   }
 
-  // Order is deliberate: patient is already registered/queued, then print opens.
-  // A cancelled/blocked print leaves them registered/queued — correct for the desk.
+  // Order is deliberate: the patient is already registered, then print opens.
+  // A cancelled/blocked print leaves them registered with no presence — correct,
+  // because they have no paper yet.
   // Register-only (#107): no print target — skip the window entirely.
   let print: "navigated" | "recovery" | "skipped";
   if (!options.printTarget) {

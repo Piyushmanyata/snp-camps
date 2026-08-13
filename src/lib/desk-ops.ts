@@ -6,12 +6,12 @@
  * - mark_seen — SELECT … FOR UPDATE; if queue_status is already `seen`, returns
  *   the original seen_at / seen_by with already_seen (never re-stamps), so a
  *   success-after-timeout surfaces as already_seen rather than a rewrite.
- * - undo_mark_seen — seen → waiting on the original queued_at; a second call
+ * - undo_mark_seen — seen → registered, keeping printed_at; a second call
  *   returns not_seen rather than moving the patient again.
  * - change_camp_day — patient + target day FOR UPDATE; same-day early return;
  *   seat count checked under the day lock before UPDATE.
- * - check_in_patient — registered → waiting; waiting is idempotent (same queued_at,
- *   so a reprint never reorders the queue); seen is terminal (already_seen).
+ * - mark_patient_printed — records presence once; a reprint returns
+ *   already_printed on the original printed_at, and a seen patient may reprint.
  * - search_registered_patients — read-only; empty rows ≠ error.
  *
  * Retry uses classifyOperationError allow-list only (transient transport / DB).
@@ -71,14 +71,12 @@ export type ChangeDayRow = {
   day_date: string;
 };
 
-export type CheckInRow = {
+export type PrintPrescriptionRow = {
   id: string;
   reg_no: number;
   full_name: string;
   queue_status: string;
-  already_waiting: boolean;
-  seen_by_name: string | null;
-  error_code: string | null;
+  already_printed: boolean;
 };
 
 /** Lost-slip search row — name/age/locality only (no phone/token/status). */
@@ -91,7 +89,7 @@ export type RegisteredSearchRow = {
 };
 
 export type DeskPatientSearchRow = RegisteredSearchRow & {
-  queue_status: "registered" | "waiting" | "seen";
+  queue_status: "registered" | "seen";
 };
 
 type Step<T> =
@@ -201,14 +199,14 @@ export async function lookupPatientScanWithRetries(options: {
 }
 
 /** Worker-facing copy when Mark seen is used on someone never printed for (D25). */
-export const NOT_IN_QUEUE_COPY =
-  "Print their prescription first — that puts them in the queue.";
+export const NEVER_PRINTED_COPY =
+  "Pehle inki parchi print karein — tabhi dekha hua kar sakte hain.";
 
 /**
  * Mark seen — the second of the two desk actions (D22).
  * already_seen is a successful terminal outcome (idempotent re-call), which is
  * what makes this safe to auto-retry and safe to double-scan.
- * not_in_queue is a terminal business rejection (no auto-retry).
+ * never_printed is a terminal business rejection (no auto-retry).
  */
 export async function markSeenWithRetries(options: {
   patientId?: string | null;
@@ -219,11 +217,11 @@ export async function markSeenWithRetries(options: {
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
   | { ok: true; row: MarkSeenRow }
-  | { ok: false; error: string; notInQueue?: boolean }
+  | { ok: false; error: string; neverPrinted?: boolean }
 > {
   type Out =
     | { ok: true; row: MarkSeenRow }
-    | { ok: false; error: string; notInQueue?: boolean };
+    | { ok: false; error: string; neverPrinted?: boolean };
 
   const context = options.errorContext ?? "desk-ops.mark-seen";
   const fallback =
@@ -256,10 +254,10 @@ export async function markSeenWithRetries(options: {
             },
           };
         }
-        if (row.error_code === "not_in_queue") {
+        if (row.error_code === "never_printed") {
           return {
             done: true,
-            value: { ok: false, error: NOT_IN_QUEUE_COPY, notInQueue: true },
+            value: { ok: false, error: NEVER_PRINTED_COPY, neverPrinted: true },
           };
         }
         if (row.already_seen || row.queue_status === "seen") {
@@ -446,11 +444,14 @@ export async function changeCampDayWithRetries(options: {
 }
 
 /**
- * Check-in (registered → waiting). Shared by reg number, QR paste, name row,
- * scanner auto-check-in, and likely-duplicate "check in instead" (#61).
- * Transient failures retry; already_seen / permission / unknown are terminal.
+ * Print prescription — the first of the two desk actions (ADR 0013). Shared by
+ * reg number, QR paste, name row, scanner auto-print, likely-duplicate "print
+ * for them instead", and the sheet's own POST.
+ *
+ * Presence is recorded once, so a reprint is a success (already_printed), not a
+ * refusal — a seen patient may still be given a replacement paper.
  */
-export async function checkInPatientWithRetries(options: {
+export async function printPrescriptionWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
   rpc: DeskRpc;
@@ -458,31 +459,21 @@ export async function checkInPatientWithRetries(options: {
   errorFallback?: string;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<
-  | { ok: true; row: CheckInRow }
-  | {
-      ok: false;
-      error: string;
-      alreadySeen?: boolean;
-      seenByName?: string | null;
-    }
+  { ok: true; row: PrintPrescriptionRow } | { ok: false; error: string }
 > {
   type Out =
-    | { ok: true; row: CheckInRow }
-    | {
-        ok: false;
-        error: string;
-        alreadySeen?: boolean;
-        seenByName?: string | null;
-      };
+    | { ok: true; row: PrintPrescriptionRow }
+    | { ok: false; error: string };
 
-  const context = options.errorContext ?? "desk-ops.check-in";
+  const context = options.errorContext ?? "desk-ops.print-prescription";
   const fallback =
-    options.errorFallback ?? "Could not check in this patient. Try again.";
+    options.errorFallback ??
+    "Parchi print nahi ho payi. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
       try {
-        const { data, error } = await options.rpc("check_in_patient", {
+        const { data, error } = await options.rpc("mark_patient_printed", {
           p_patient_id: options.patientId ?? null,
           p_reg_no: options.regNo ?? null,
         });
@@ -494,26 +485,13 @@ export async function checkInPatientWithRetries(options: {
             value: { ok: false, error: classified.publicMessage },
           };
         }
-        const row = firstRow<CheckInRow>(data);
+        const row = firstRow<PrintPrescriptionRow>(data);
         if (!row) {
           return {
             done: true,
             value: {
               ok: false,
-              error: "Could not check in this patient. Refresh and try again.",
-            },
-          };
-        }
-        if (row.error_code === "already_seen" || row.queue_status === "seen") {
-          return {
-            done: true,
-            value: {
-              ok: false,
-              error: row.seen_by_name
-                ? `Already seen by ${row.seen_by_name}`
-                : "Already seen",
-              alreadySeen: true,
-              seenByName: row.seen_by_name ?? null,
+              error: "Parchi print nahi ho payi. Refresh karke try karein.",
             },
           };
         }
@@ -532,7 +510,7 @@ export async function checkInPatientWithRetries(options: {
         };
       }
     },
-    { ok: false, error: RETRY_EXHAUSTED_COPY.checkIn },
+    { ok: false, error: RETRY_EXHAUSTED_COPY.printPrescription },
     options.sleep,
   );
 }
@@ -600,7 +578,7 @@ export async function searchRegisteredPatientsWithRetries(options: {
   );
 }
 
-/** Unified staff desk name search across registered, waiting, and seen rows. */
+/** Unified staff desk name search across registered and seen rows. */
 export async function searchDeskPatientsWithRetries(options: {
   campId: string;
   query: string;

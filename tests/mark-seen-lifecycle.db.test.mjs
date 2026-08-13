@@ -1,5 +1,5 @@
 /**
- * D22/D25 — mark_seen must enforce waiting → seen only, and stay idempotent.
+ * D22/D25 — mark_seen requires presence (printed_at) and stays idempotent.
  * Real authenticated staff JWTs; FOR UPDATE state machine.
  * Venue: assign-lifecycle-test (cleaned in test.after).
  */
@@ -216,7 +216,7 @@ async function registerPatient(campId, dayId, name) {
 
 async function snapshotPatient(id) {
   const { rows } = await client.query(
-    `select queue_status, seen_at, seen_by, queued_at, checked_in_by
+    `select queue_status, seen_at, seen_by, printed_at, checked_in_by
      from public.patients where id = $1`,
     [id],
   );
@@ -240,36 +240,37 @@ test("mark_seen on a registered patient refuses and leaves the row untouched", a
     return rows[0];
   });
 
-  assert.equal(result.error_code, "not_in_queue");
+  assert.equal(result.error_code, "never_printed");
   assert.equal(result.queue_status, "registered");
   assert.equal(result.already_seen, false);
 
   const after = await snapshotPatient(patient.id);
   assert.equal(after.queue_status, "registered");
+  assert.equal(after.printed_at, null);
   assert.equal(after.seen_at, null);
   assert.equal(after.seen_by, null);
-  assert.equal(after.queued_at, null);
+
   assert.equal(after.checked_in_by, before.checked_in_by);
 });
 
-test("printing queues the patient and mark_seen records the staff member who scanned", async (t) => {
+test("printing records presence and mark_seen records the staff member who scanned", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
   const markerId = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
-  const patient = await registerPatient(campId, dayId, "Waiting Patient");
+  const patient = await registerPatient(campId, dayId, "Printed Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
   });
 
-  const waiting = await snapshotPatient(patient.id);
-  assert.equal(waiting.queue_status, "waiting");
-  assert.ok(waiting.queued_at);
-  assert.equal(waiting.checked_in_by, volunteerId);
-  const queuedAt = String(waiting.queued_at);
+  const printed = await snapshotPatient(patient.id);
+  assert.equal(printed.queue_status, "registered", "print does not move status");
+  assert.ok(printed.printed_at);
+  assert.equal(printed.checked_in_by, volunteerId);
+  const printedAt = String(printed.printed_at);
 
   const seen = await asAuthenticated(markerId, async (c) => {
     const { rows } = await c.query(`select * from public.mark_seen($1, null)`, [
@@ -287,8 +288,8 @@ test("printing queues the patient and mark_seen records the staff member who sca
   // seen_by is the volunteer who scanned, not a doctor (D22).
   assert.equal(after.seen_by, markerId);
   assert.ok(after.seen_at);
-  // Check-in attribution and queue position survive being marked seen.
-  assert.equal(String(after.queued_at), queuedAt);
+  // Presence and its attribution survive being marked seen.
+  assert.equal(String(after.printed_at), printedAt);
   assert.equal(after.checked_in_by, volunteerId);
 });
 
@@ -300,7 +301,7 @@ test("a team lead may mark seen exactly as a volunteer does", async (t) => {
   const patient = await registerPatient(campId, dayId, "Team Lead Marks Seen");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
   });
@@ -327,7 +328,7 @@ test("a second scan is terminal and never re-stamps seen_at or seen_by", async (
   const patient = await registerPatient(campId, dayId, "Seen Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
   });
@@ -352,18 +353,18 @@ test("a second scan is terminal and never re-stamps seen_at or seen_by", async (
   assert.equal(String(after.seen_at), String(firstState.seen_at));
 });
 
-test("undo returns the patient to the queue on their original position", async (t) => {
+test("undo returns the patient to registered and keeps their presence", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
   const { campId, dayId } = await seedCampFutureDay();
   const patient = await registerPatient(campId, dayId, "Undo Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
   });
-  const queued = await snapshotPatient(patient.id);
+  const printed = await snapshotPatient(patient.id);
   await asAuthenticated(volunteerId, async (c) => {
     await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
   });
@@ -377,14 +378,14 @@ test("undo returns the patient to the queue on their original position", async (
   });
 
   assert.equal(undone.error_code, null);
-  assert.equal(undone.queue_status, "waiting");
+  assert.equal(undone.queue_status, "registered");
 
   const after = await snapshotPatient(patient.id);
-  assert.equal(after.queue_status, "waiting");
+  assert.equal(after.queue_status, "registered");
   assert.equal(after.seen_at, null);
   assert.equal(after.seen_by, null);
-  // Undo must not send them to the back of the line.
-  assert.equal(String(after.queued_at), String(queued.queued_at));
+  // Presence survives, so no reprint is needed to mark them seen again.
+  assert.equal(String(after.printed_at), String(printed.printed_at));
 
   // Undo is only valid against a seen row.
   const again = await asAuthenticated(volunteerId, async (c) => {
@@ -403,7 +404,7 @@ test("undo refuses to reopen a patient after the camp becomes inactive", async (
   const patient = await registerPatient(campId, dayId, "Inactive Undo Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
     await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
@@ -430,7 +431,7 @@ test("undo holds the camp lifecycle lock until its transition commits", async (t
   const patient = await registerPatient(campId, dayId, "Undo Lock Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
     await c.query(`select * from public.mark_seen($1, null)`, [patient.id]);
@@ -479,7 +480,7 @@ test("undo holds the camp lifecycle lock until its transition commits", async (t
     );
 
     const after = await snapshotPatient(patient.id);
-    assert.equal(after.queue_status, "waiting");
+    assert.equal(after.queue_status, "registered");
   } finally {
     await undoClient.query("rollback").catch(() => {});
     await lifecycleClient.query(`set statement_timeout = 0`).catch(() => {});
@@ -497,7 +498,7 @@ test("concurrent mark_seen produces exactly one first-time transition", async (t
   const patient = await registerPatient(campId, dayId, "Race Patient");
 
   await asAuthenticated(volunteerId, async (c) => {
-    await c.query(`select * from public.check_in_patient($1, null)`, [
+    await c.query(`select * from public.mark_patient_printed($1, null)`, [
       patient.id,
     ]);
   });

@@ -35,32 +35,29 @@ function read(rel) {
 // Section client — call isolation
 // ---------------------------------------------------------------------------
 
-test("fetchDeskSection requests only the named section (queue)", async () => {
+test("fetchDeskSection requests only the named section (seats)", async () => {
   /** @type {string[]} */
   const urls = [];
   const fetchImpl = async (url) => {
     urls.push(String(url));
     return new Response(
-      JSON.stringify({
-        ok: true,
-        data: { waiting: [], waitingTotal: 0 },
-      }),
+      JSON.stringify({ ok: true, data: { days: [] } }),
       { status: 200 },
     );
   };
 
-  const result = await fetchDeskSection("queue", {
+  const result = await fetchDeskSection("seats", {
     campId: "11111111-1111-4111-8111-111111111111",
     fetchImpl,
   });
   assert.equal(result.ok, true);
   assert.equal(urls.length, 1);
-  assert.match(urls[0], /section=queue/);
+  assert.match(urls[0], /section=seats/);
   assert.match(urls[0], /campId=11111111/);
-  assert.doesNotMatch(urls[0], /section=seats|section=admin-analytics|section=volunteer-kpis/);
+  assert.doesNotMatch(urls[0], /section=admin-analytics|section=volunteer-kpis/);
 });
 
-test("fetchDeskSection analytics retry never requests queue or volunteer KPIs", async () => {
+test("fetchDeskSection analytics retry never requests seats or volunteer KPIs", async () => {
   /** @type {string[]} */
   const urls = [];
   const fetchImpl = async (url) => {
@@ -81,9 +78,9 @@ test("fetchDeskSection analytics retry never requests queue or volunteer KPIs", 
   });
   assert.equal(urls.length, 2);
   assert.match(urls[0], /section=admin-analytics/);
-  assert.doesNotMatch(urls[0], /section=queue/);
+  assert.doesNotMatch(urls[0], /section=seats/);
   assert.match(urls[1], /section=volunteer-kpis/);
-  assert.doesNotMatch(urls[1], /section=admin-analytics|section=queue/);
+  assert.doesNotMatch(urls[1], /section=admin-analytics|section=seats/);
 });
 
 test("fetchDeskSection maps HTTP failure to safe error (no raw body leak)", async () => {
@@ -100,7 +97,7 @@ test("fetchDeskSection maps HTTP failure to safe error (no raw body leak)", asyn
   const fetchThrow = async () => {
     throw new TypeError("Failed to fetch");
   };
-  const result = await fetchDeskSection("queue", {
+  const result = await fetchDeskSection("seats", {
     campId: "11111111-1111-4111-8111-111111111111",
     fetchImpl: fetchThrow,
   });
@@ -171,12 +168,8 @@ test("admin analytics section is role-gated and returns aggregate-only data", as
       return {
         data: [{
           registered_count: 1,
-          waiting_count: 2,
           seen_count: 3,
           total_count: 6,
-          current_longest_wait_minutes: 12,
-          completed_wait_median_minutes: 10,
-          completed_wait_p90_minutes: 20,
           completed_today_count: 3,
           desk_registration_count: 4,
           self_registration_count: 2,
@@ -227,9 +220,8 @@ test("initial fetch failure with no seed → freshness error (not empty success)
     });
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(view?.freshness, "error");
-    assert.equal(view?.waitingKnown, false);
     assert.equal(view?.daysKnown, false);
-    assert.equal(view?.waiting.length, 0);
+    assert.equal(view?.days.length, 0);
     unsub();
   } finally {
     globalThis.fetch = originalFetch;
@@ -240,7 +232,7 @@ test("initial fetch failure with no seed → freshness error (not empty success)
   }
 });
 
-test("seeded waiting known + refresh fail → stale-error preserves rows", async () => {
+test("seeded days known + refresh fail → stale-error preserves rows", async () => {
   if (typeof globalThis.document === "undefined") {
     globalThis.document = {
       visibilityState: "visible",
@@ -267,22 +259,14 @@ test("seeded waiting known + refresh fail → stale-error preserves rows", async
         view = v;
       },
       {
-        waiting: [
-          {
-            id: "p1",
-            reg_no: 1,
-            full_name: "Keep",
-            phone: null,
-          },
-        ],
-        waitingTotal: 1,
-        waitingKnown: true,
+        days: [{ id: "keep", seats_left: 7 }],
+        daysKnown: true,
       },
     );
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(view?.freshness, "stale-error");
-    assert.equal(view?.waitingKnown, true);
-    assert.equal(view?.waiting[0]?.full_name, "Keep");
+    assert.equal(view?.daysKnown, true);
+    assert.equal(view?.days[0]?.id, "keep");
     unsub();
   } finally {
     globalThis.fetch = originalFetch;
@@ -361,12 +345,12 @@ test("admin page section loaders do not throw inside Suspense children", () => {
   assert.match(admin, /AdminAnalyticsPanel|initialLoadKnown/);
 });
 
-test("volunteer page always mounts LiveQueue/SeatBoard for camp (no SectionLoadError gate)", () => {
+test("volunteer page always mounts the scanner for a camp (no SectionLoadError gate)", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
-  // Queue/seats no longer gated solely behind SectionLoadError
-  assert.match(volunteer, /DeskScanQueue|initialLoadKnown/);
-  assert.match(volunteer, /VolunteerKpisSection|DeskScanQueue/);
-  assert.match(volunteer, /loadQueueSection|loadSeatsSection/);
+  assert.match(volunteer, /<DeskScan\b/);
+  assert.match(volunteer, /<VolunteerDeskMore\b/);
+  // The Live Queue panel is gone; seats load behind Aur dekhein (ADR 0013).
+  assert.doesNotMatch(volunteer, /LiveQueue|loadQueueSection/);
 });
 
 test("login and change-password use mapAuthError", () => {
@@ -393,21 +377,19 @@ test("mapDbError still maps RLS without raw table names", () => {
 
 
 // ---------------------------------------------------------------------------
-// W5 FCFS + amortized count
+// No queue section (ADR 0013)
 // ---------------------------------------------------------------------------
 
-test("loadQueueSection source uses the bounded queue RPC", () => {
+test("section reads expose no queue seam and never select patients directly", () => {
   const src = read("src/lib/section-reads.ts");
-  assert.match(src, /DESK_LIVE_WAITING_LIMIT/);
-  assert.match(src, /rpc\("desk_waiting_queue"/);
+  assert.doesNotMatch(src, /desk_waiting_queue/);
+  assert.doesNotMatch(src, /loadQueueSection/);
   assert.doesNotMatch(src, /\.from\("patients"\)/);
+  assert.equal(isSectionKey("queue"), false);
 });
 
-test("desk-live select drops queued_at from payload columns", () => {
+test("the desk poll payload carries days only", () => {
   const src = read("src/lib/desk-live.ts");
-  assert.match(src, /DESK_LIVE_WAITING_SELECT[\s\S]*"id, reg_no, full_name, phone"/);
-  assert.doesNotMatch(
-    src,
-    /DESK_LIVE_WAITING_SELECT[\s\S]*queued_at/,
-  );
+  assert.match(src, /days: CampDayStats\[\]/);
+  assert.doesNotMatch(src, /waiting|queued_at/);
 });

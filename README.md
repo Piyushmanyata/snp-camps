@@ -2,29 +2,32 @@
 
 Simple medical camp desk for **Sikar Nagarik Parishad (Kolkata)**.
 
-The app tracks a queue. **The printed prescription remains the prescribing source
-of truth**; the separate Clinical Desk stores an operational transcription and
-immutable fulfilment/follow-up history. See
+The app tracks a two-state lifecycle: `registered → seen`. **There is no FCFS
+queue** — presence is `printed_at`, the moment the desk printed the paper. **The
+printed prescription remains the prescribing source of truth**; the separate
+Clinical Desk stores an operational transcription and immutable
+fulfilment/follow-up history. See
+[`docs/adr/0013-no-fcfs-queue.md`](docs/adr/0013-no-fcfs-queue.md) and
 [`docs/adr/0008-printing-queues-the-patient.md`](docs/adr/0008-printing-queues-the-patient.md).
 
 ## Camp flow
 
 1. **Registration**
    - **Desk (staff):** Full name + age required; phone, Aadhaar last-4, gender, address optional. Scanning the card's QR fills the form and locks the identity fields.
-   - **Self-registration (patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, patient QR, camp day, venue, status link) is the receipt. Queue status is **always `registered`**, never `waiting`. Needs only `AADHAAR_HASH_PEPPER`.
-2. **Print prescription** → scan the patient QR or type the reg number. **Printing is what puts them in the queue** (`registered` → `waiting`). Line order is by print time. A reprint keeps their original place and never re-queues them.
+   - **Self-registration (patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, patient QR, camp day, venue, status link) is the receipt. Status is **always `registered`**. Needs only `AADHAAR_HASH_PEPPER`.
+2. **Print prescription** → scan the patient QR or type the reg number. Printing prints the paper and **records presence once** (`printed_at`). It does not change status. A reprint — including for a `seen` patient — keeps the original `printed_at`, so it never looks like a second arrival.
 3. The doctor writes on the printed form by hand.
 4. **Clinical Desk:** a separate Clinical Desk Operator may transcribe the
    paper outcome and record Medicine, Specs, or OT fulfilment/follow-up history
    for an eligible `seen` registration. This operational record never replaces
    the paper prescription.
-5. **Mark seen** → scan, type, or tap the live queue. Records the time and the volunteer who scanned. A double scan is a no-op; a mis-scan can be undone for ten minutes.
+5. **Mark seen** → scan or type the reg number. Refuses a Registration that was never printed for (`never_printed`). Records the time and the volunteer who scanned. A double scan is a no-op; a mis-scan can be undone for ten minutes, which restores `registered` and keeps `printed_at`.
 6. **Patient status (passwordless):** `/s/<token>` with no sign-in.
 
 Seat caps apply to **pre-registration only** — a walk-in at the desk is never turned away.
 
 - Patient QR is for **staff scan only** (payload `/p/{uuid}` or `snp:{uuid}` — never a login)
-- One active camp; FCFS queue = **`waiting` only** (physically present)
+- One active camp; lifecycle is **`registered` → `seen`** and presence is `printed_at`. `waiting` survives on the Postgres enum only because enum values cannot be dropped — no row carries it
 - Aadhaar: full number used only for parsing in memory; **last 4 digits only** stored
 
 ## Auth model
@@ -102,7 +105,7 @@ Do **not** re-run the baseline against a database that already has this schema. 
 4. Bump `EXPECTED_MIGRATION_HEAD` in `src/lib/readiness-contract.ts` **and** the `migration_head_current` invariant inside `readiness_catalog_probe()`. Readiness fails closed if they disagree with the applied head.
 5. Commit the migration file. Never hardcode a project ref or scrape passwords from `.env.local` — use `supabase link` / documented env vars.
 
-Queue and seat boards use **manual Refresh** or a **fixed poll** — no live websockets.
+The seat board uses **manual Refresh** or a **fixed poll** — no live websockets.
 
 `GET /api/health` is a cheap, open **liveness** probe (no database).
 `GET /api/health?ready=1` is **fail-closed readiness**: database reachability,
@@ -214,7 +217,7 @@ seconds before treating the result as a capacity signal.
 |------|--------|
 | Admin | Camps, days, staff, search, counts, camp settings, the same desk as a volunteer |
 | Team Lead | Everything a volunteer does, plus creating volunteers on their team and seeing team KPIs |
-| Volunteer | Register, print prescription (queues the patient), mark seen, live queue |
+| Volunteer | Register, print prescription (records presence), mark seen |
 | Clinical Desk Operator | Eligible `seen` registration lookup, operational transcription, fulfilment and follow-up records; no registration-desk access |
 | Patient | No app login; self-registration by Aadhaar card scan; staff-scan QR; passwordless status at `/s/<token>` |
 
@@ -233,8 +236,8 @@ The scan is not cryptographically verified, so the data carries the same assuran
 typing (ADR 0004). Set `AADHAAR_HASH_PEPPER` so scanned registrations can compute the
 Person duplicate key.
 The passwordless status page and status link contain only the registration number,
-queue state/position, camp/day and venue; they do not expose patient name, contact
-details, Aadhaar data, date of birth, or audit fields. Patients can use the public
+`registered` / `seen`, camp/day and venue — **no position number**; they do not
+expose patient name, contact details, Aadhaar data, date of birth, or audit fields. Patients can use the public
 `/lookup` form to resolve a status link, but lookup is token resolution—not login.
 
 ### Registration SMS via MSG91 (optional)

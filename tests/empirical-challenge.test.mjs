@@ -378,7 +378,7 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
     patients.push(p);
   }
 
-  // Check in patients 0..4 so they are 'waiting'
+  // Print for patients 0..4 so they carry presence and mark_seen may proceed.
   for (let i = 0; i < 5; i++) {
     const pId = patients[i].id;
     await client.query("begin");
@@ -392,7 +392,9 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
       JSON.stringify({ role: "authenticated", sub: vol1 }),
     ]);
     await client.query(`set local role authenticated`);
-    await client.query(`select * from public.check_in_patient($1, null)`, [pId]);
+    await client.query(`select * from public.mark_patient_printed($1, null)`, [
+      pId,
+    ]);
     await client.query("commit");
   }
 
@@ -443,7 +445,7 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
     const pResults = assignResults.filter((r) => r.patientId === pId);
 
     if (i < 5) {
-      // Patients 0..4 were 'waiting'.
+      // Patients 0..4 were printed for, so they carry presence.
       // EXACTLY 1 request should succeed (error_code null, queue_status seen, already_seen false).
       // The other 2 requests MUST be 'already_seen' with the original staff attribution.
       const successes = pResults.filter(
@@ -456,12 +458,12 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
       assert.equal(
         successes.length,
         1,
-        `Patient ${i} (waiting) should have exactly 1 first-time transition, got ${successes.length}`,
+        `Patient ${i} (printed) should have exactly 1 first-time transition, got ${successes.length}`,
       );
       assert.equal(
         alreadySeens.length,
         2,
-        `Patient ${i} (waiting) should have 2 already_seen responses, got ${alreadySeens.length}`,
+        `Patient ${i} (printed) should have 2 already_seen responses, got ${alreadySeens.length}`,
       );
 
       // Every terminal response must echo the same seen_at as the winner —
@@ -475,13 +477,13 @@ test("STRESS: High-concurrency assignment burst across registered vs waiting pat
         );
       }
     } else {
-      // Patients 5..9 were 'registered' — never printed for, so never queued.
-      // ALL 3 requests MUST refuse with not_in_queue.
+      // Patients 5..9 were never printed for, so they carry no presence.
+      // ALL 3 requests MUST refuse with never_printed.
       for (const r of pResults) {
         assert.equal(
           r.result?.error_code,
-          "not_in_queue",
-          `Patient ${i} (registered) should return not_in_queue`,
+          "never_printed",
+          `Patient ${i} (registered) should return never_printed`,
         );
         assert.equal(r.result?.queue_status, "registered");
         assert.equal(r.result?.already_seen, false);
@@ -536,8 +538,8 @@ test("STRESS: non-staff callers and inactive camps are refused by mark_seen", as
     }
   }
 
-  // Queue the patient so mark_seen has a valid target.
-  await asUser(volId, `select * from public.check_in_patient($1, null)`, [
+  // Record presence so mark_seen has a valid target.
+  await asUser(volId, `select * from public.mark_patient_printed($1, null)`, [
     patient.id,
   ]);
 
@@ -592,10 +594,12 @@ test("STRESS: non-staff callers and inactive camps are refused by mark_seen", as
 
   // The patient is untouched by every refusal above.
   const { rows } = await client.query(
-    `select queue_status, seen_at, seen_by from public.patients where id = $1`,
+    `select queue_status, seen_at, seen_by, printed_at
+       from public.patients where id = $1`,
     [patient.id],
   );
-  assert.equal(rows[0].queue_status, "waiting");
+  assert.equal(rows[0].queue_status, "registered");
+  assert.notEqual(rows[0].printed_at, null, "presence survives every refusal");
   assert.equal(rows[0].seen_at, null);
   assert.equal(rows[0].seen_by, null);
 });

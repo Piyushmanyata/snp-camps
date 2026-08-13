@@ -12,7 +12,6 @@ import {
   EmptyState,
   ErrorBox,
   Input,
-  Stat,
 } from "@/components/ui";
 import { mapDbError } from "@/lib/public-error";
 
@@ -31,7 +30,7 @@ export type AdminPatientRow = {
   created_by?: string | null;
   checked_in_by?: string | null;
   seen_by?: string | null;
-  queued_at?: string | null;
+  printed_at?: string | null;
   seen_at?: string | null;
   volunteer_name?: string | null;
   checked_in_by_name?: string | null;
@@ -53,23 +52,6 @@ function fmtTs(iso: string | null | undefined) {
   } catch {
     return null;
   }
-}
-
-function waitMinutes(
-  queuedAt: string | null | undefined,
-  seenAt: string | null | undefined,
-  createdAt: string | null | undefined,
-) {
-  const end = seenAt ? new Date(seenAt).getTime() : NaN;
-  const start = queuedAt
-    ? new Date(queuedAt).getTime()
-    : createdAt
-      ? new Date(createdAt).getTime()
-      : NaN;
-  if (!Number.isFinite(end) || !Number.isFinite(start) || end < start) {
-    return null;
-  }
-  return Math.round((end - start) / 60_000);
 }
 
 function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
@@ -123,7 +105,7 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
       created_by: createdBy,
       checked_in_by: checkedInBy,
       seen_by: seenBy,
-      queued_at: (patient.queued_at as string | null) ?? null,
+      printed_at: (patient.printed_at as string | null) ?? null,
       seen_at: (patient.seen_at as string | null) ?? null,
       volunteer_name: volunteerName,
       checked_in_by_name: checkedInByName,
@@ -133,24 +115,20 @@ function mapRows(data: Record<string, unknown>[]): AdminPatientRow[] {
 }
 
 const SELECT =
-  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, queued_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), seen_by_profile:profiles!seen_by(full_name)";
+  "id, reg_no, full_name, phone, queue_status, gender, age, created_at, camp_id, created_by, checked_in_by, seen_by, printed_at, seen_at, camps(name), camp_days(day_date), volunteer:profiles!created_by(full_name), checked_in_by_profile:profiles!checked_in_by(full_name), seen_by_profile:profiles!seen_by(full_name)";
 
 export function AdminPatients({
   initial,
   totalCount,
-  completedMedianWaitMinutes = null,
   showAttribution = true,
 }: {
   initial: AdminPatientRow[];
   totalCount?: number;
-  completedMedianWaitMinutes?: number | null;
   showAttribution?: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<
-    "all" | "registered" | "waiting" | "seen"
-  >("all");
+  const [filter, setFilter] = useState<"all" | "registered" | "seen">("all");
   const [page, setPage] = useState(0);
   const isDefaultView = !q.trim() && filter === "all" && page === 0;
   const [snapshot, setSnapshot] = useState<{
@@ -304,21 +282,6 @@ export function AdminPatients({
 
   return (
     <div className="space-y-3">
-      {completedMedianWaitMinutes != null &&
-      !Number.isNaN(completedMedianWaitMinutes) ? (
-        <div className="grid grid-cols-1 gap-2 sm:max-w-xs">
-          <Stat
-            label="Median wait (queue → seen)"
-            value={
-              completedMedianWaitMinutes < 1
-                ? "< 1 min"
-                : `${Math.round(completedMedianWaitMinutes)} min`
-            }
-            tone="wait"
-          />
-        </div>
-      ) : null}
-
       <div className="mb-3 space-y-3">
         <Input
           label="Filter list"
@@ -339,7 +302,6 @@ export function AdminPatients({
             [
               ["all", "All"],
               ["registered", "Registered"],
-              ["waiting", "In queue"],
               ["seen", "Seen"],
             ] as const
           ).map(([key, label]) => (
@@ -379,9 +341,8 @@ export function AdminPatients({
       ) : (
         <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
           {rows.map((r) => {
-            const wait = waitMinutes(r.queued_at, r.seen_at, r.created_at);
             const createdAt = showAttribution ? fmtTs(r.created_at) : null;
-            const queuedAt = showAttribution ? fmtTs(r.queued_at) : null;
+            const printedAt = showAttribution ? fmtTs(r.printed_at) : null;
             const seenAt = showAttribution ? fmtTs(r.seen_at) : null;
             return (
               <li
@@ -417,12 +378,12 @@ export function AdminPatients({
                             ? " · by staff"
                             : " · desk / walk-in"}
                       </p>
-                      {r.queued_at ? (
+                      {r.printed_at ? (
                         <p>
                           <span className="font-semibold text-foreground/70">
-                            Queued
+                            Printed
                           </span>
-                          {queuedAt ? ` · ${queuedAt}` : ""}
+                          {printedAt ? ` · ${printedAt}` : ""}
                           {r.checked_in_by_name
                             ? ` · by ${r.checked_in_by_name}`
                             : r.checked_in_by
@@ -441,7 +402,6 @@ export function AdminPatients({
                             : r.seen_by
                               ? " · by staff"
                               : ""}
-                          {wait != null ? ` · wait ${wait} min` : ""}
                         </p>
                       ) : null}
                     </div>

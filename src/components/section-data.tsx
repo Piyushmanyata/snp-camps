@@ -114,7 +114,6 @@ export function VolunteerKpisSection({
         data: {
           total: number;
           today: number;
-          waiting: number;
           seen: number;
         };
       }
@@ -139,12 +138,6 @@ export function VolunteerKpisSection({
 
 function percent(value: number, total: number): number {
   return total > 0 ? Math.round((value / total) * 100) : 0;
-}
-
-function waitLabel(value: number | null): string {
-  if (value == null) return "Unavailable";
-  if (value < 1) return "< 1 min";
-  return `${Math.round(value)} min`;
 }
 
 function FunnelRow({
@@ -190,12 +183,8 @@ export function AdminAnalyticsPanel({
         ok: true;
         data: {
           registered: number;
-          inQueue: number;
           seen: number;
           total: number;
-          currentLongestWaitMinutes: number | null;
-          completedWaitMedianMinutes: number | null;
-          completedWaitP90Minutes: number | null;
           completedToday: number;
           deskRegistrations: number;
           selfRegistrations: number;
@@ -210,9 +199,8 @@ export function AdminAnalyticsPanel({
     return (
       <Card>
         <SectionTitle>Active-camp analytics</SectionTitle>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <Stat label="Registered" value={0} />
-          <Stat label="In queue" value={0} tone="wait" />
           <Stat label="Seen" value={0} tone="ok" />
         </div>
         <p className="mt-3 text-sm text-muted">
@@ -246,30 +234,25 @@ export function AdminAnalyticsPanel({
           </div>
           {data.total === 0 ? (
             <p className="rounded-xl border border-border bg-background/50 p-3 text-sm text-muted">
-              No registrations in this camp yet. Wait percentiles remain
-              unavailable until a queued patient is marked seen.
+              No registrations in this camp yet.
             </p>
           ) : null}
           <div className="mt-3 grid gap-4 lg:grid-cols-2">
             <div className="space-y-2.5">
               <p className="text-xs font-bold uppercase tracking-wide text-muted">
-                Queue funnel
+                Lifecycle
               </p>
               <FunnelRow label="Registered" value={data.registered} total={data.total} />
-              <FunnelRow label="In queue" value={data.inQueue} total={data.total} />
               <FunnelRow label="Seen" value={data.seen} total={data.total} />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-muted">
-                Queue pressure & throughput
+                Throughput
               </p>
               <dl className="mt-2 grid grid-cols-2 gap-2">
                 {[
-                  ["Current queue", String(data.inQueue)],
-                  ["Longest current wait", waitLabel(data.currentLongestWaitMinutes)],
-                  ["Completed today", String(data.completedToday)],
-                  ["Median completed wait", waitLabel(data.completedWaitMedianMinutes)],
-                  ["P90 completed wait", waitLabel(data.completedWaitP90Minutes)],
+                  ["Seen today", String(data.completedToday)],
+                  ["Seen in camp", String(data.seen)],
                 ].map(([label, value]) => (
                   <div
                     key={label}

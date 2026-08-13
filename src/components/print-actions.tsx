@@ -14,23 +14,20 @@ export type PrintActionPatient = {
 };
 
 /**
- * Print controls for the patient's paper prescription.
+ * Print controls for the patient's paper prescription. Printing records
+ * presence once; it does not move the patient's status (ADR 0013).
  */
 const PRINT_STATUS_COPY: Record<
   QueueStatus,
   { printLabel: string; heading: string }
 > = {
   seen: {
-    printLabel: "Puri ho chuki parchi print karein",
+    printLabel: "Dobara print karein (1 page)",
     heading: "Print · dekha hua marij",
   },
-  waiting: {
-    printLabel: "Dobara print karein (1 page)",
-    heading: "Dobara print · pehle se line mein",
-  },
   registered: {
-    printLabel: "Print karein",
-    heading: "Print ke liye taiyaar · line mein aa jayega",
+    printLabel: "Parchi print karein",
+    heading: "Parchi print ke liye taiyaar",
   },
 };
 
@@ -115,16 +112,12 @@ export function PrintActions({
         if (!result.ok) {
           anyFail = true;
           failText =
-            result.error || "Print taiyaar nahi ho paya. Dobara try karein.";
+            result.error || "Parchi print nahi ho payi. Dobara try karein.";
           continue;
         }
-        const nextStatus =
-          result.queueStatus === "seen" || result.queueStatus === "waiting"
-            ? result.queueStatus
-            : nextStatuses[p.id] === "seen"
-              ? "seen"
-              : "waiting";
-        nextStatuses[p.id] = nextStatus;
+        if (result.queueStatus) {
+          nextStatuses[p.id] = result.queueStatus;
+        }
       }
       setStatuses(nextStatuses);
 
@@ -134,7 +127,7 @@ export function PrintActions({
 
       setMessage({
         tone: "success",
-        text: "Marij line mein hai. Print dialog khul gaya hai.",
+        text: "Parchi record ho gayi. Print dialog khul gaya hai.",
       });
       window.print();
     } catch (error) {

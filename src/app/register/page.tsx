@@ -94,7 +94,7 @@ export default async function RegisterPage() {
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
               Ek patient, ek din. Sirf naam aur umar zaroori. Register karein
-              aur print — aaj ka din ho to seedha line mein.
+              aur parchi print karein.
             </p>
             <PatientForm
               campId={camp.id}

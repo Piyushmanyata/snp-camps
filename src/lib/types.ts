@@ -8,7 +8,11 @@ export type UserRole =
   | "team_lead"
   | "volunteer"
   | "clinical_operator";
-export type QueueStatus = "registered" | "waiting" | "seen";
+/**
+ * Lifecycle is exactly registered → seen (ADR 0013). `waiting` survives on the
+ * Postgres enum only because enum values cannot be dropped; no row carries it.
+ */
+export type QueueStatus = "registered" | "seen";
 
 export type Profile = {
   id: string;
@@ -45,13 +49,11 @@ export type CampDayStats = {
 
 export function queueLabel(status: string) {
   if (status === "seen") return "Seen";
-  if (status === "waiting") return "In queue";
   return "Registered";
 }
 
-export function queueTone(status: string): "default" | "ok" | "wait" {
+export function queueTone(status: string): "default" | "ok" {
   if (status === "seen") return "ok";
-  if (status === "waiting") return "wait";
   return "default";
 }
 

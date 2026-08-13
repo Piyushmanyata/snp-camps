@@ -476,7 +476,8 @@ export default async function globalSetup() {
         regNo = insertedPatient.data.reg_no;
         process.env.E2E_STATUS_TOKEN = insertedPatient.data.status_token;
 
-        // Second waiting patient, used by the Mark seen mutation specs.
+        // Second patient, already printed for, used by the Mark seen specs.
+        // Presence is printed_at (ADR 0013) — mark_seen refuses without it.
         secondPatientName = `${PATIENT_PREFIX} Second ${Date.now()}`;
         const secondPatient = await admin
           .from("patients")
@@ -487,8 +488,8 @@ export default async function globalSetup() {
             gender: "O",
             age: 40,
             phone: `+91${secondPatientPhone}`,
-            queue_status: "waiting",
-            queued_at: new Date().toISOString(),
+            queue_status: "registered",
+            printed_at: new Date().toISOString(),
             created_by: null,
           })
           .select("id, reg_no, full_name")

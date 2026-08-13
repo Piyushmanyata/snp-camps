@@ -80,7 +80,7 @@ const MAX_FOOTER_TEXT = 180;
 /**
  * Merge a camp's stored overrides over the default. Any missing or malformed
  * field falls back rather than throwing — a bad template must never stop a
- * patient being printed and queued at a busy desk.
+ * patient being printed at a busy desk.
  */
 export function resolvePrescriptionTemplate(
   stored: unknown,

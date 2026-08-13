@@ -478,7 +478,7 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   await expect(review).toBeVisible();
 
   // The two desk actions (D22). Print is always offered; Mark seen only once
-  // the patient is actually in the queue, so it may legitimately be absent.
+  // the patient has been printed for, so it may legitimately be absent.
   const printAction = review.getByTestId("print-prescription");
   if (await printAction.isVisible().catch(() => false)) {
     measurements.printPrescription = await assertTouchTarget(
@@ -545,8 +545,8 @@ test("desk at desktop width: Mark seen path meets 48×48 and focus rings", async
   await assertTouchTarget(lookUp, "desk Look up");
   await assertFocusVisible(openCamera, "desk Camera kholein");
 
-  // The fixture second patient is already `waiting`, so this is the one place
-  // the Mark seen control is guaranteed to render.
+  // The fixture second patient already carries presence, so this is the one
+  // place the Mark seen control is guaranteed to render.
   await page
     .getByLabel("Registration number ya naam")
     .fill(env("E2E_SECOND_PATIENT_REG_NO"));
@@ -726,7 +726,7 @@ test("lost-paper recovery: keyboard path and touch targets", async ({ page }) =>
   await assertFocusVisible(patientInput, "Unified patient input");
   await assertFocusVisible(printBtn, "Print prescription");
 
-  // Queue / seat refresh if present
+  // Seat board refresh if present
   const queueRefresh = page.getByRole("button", { name: /^Refresh/i });
   const count = await queueRefresh.count();
   for (let i = 0; i < count; i += 1) {

@@ -18,7 +18,7 @@ export function ChangeDay({
   patientId: string;
   currentDayId: string | null;
   days: CampDayStats[];
-  /** When waiting/seen, day change is locked (also enforced in DB). */
+  /** Once seen, day change is locked (also enforced in DB). */
   queueStatus?: string | null;
   campActive?: boolean;
   onDayChanged?: (newDayId: string, newDayDate?: string) => void;
@@ -37,8 +37,7 @@ export function ChangeDay({
     setDayId(currentDayId || "");
   }
 
-  const locked =
-    !campActive || queueStatus === "waiting" || queueStatus === "seen";
+  const locked = !campActive || queueStatus === "seen";
 
   if (locked) {
     const dayLabel = days.find((d) => d.id === activeDayId);
@@ -52,9 +51,7 @@ export function ChangeDay({
         <p className="mt-1 text-xs">
           {!campActive
             ? "Day cannot be changed because this camp is no longer active."
-            : queueStatus === "seen"
-            ? "Day cannot be changed after the patient has been seen."
-            : "Day cannot be changed after joining the queue."}
+            : "Day cannot be changed after the patient has been seen."}
         </p>
       </div>
     );

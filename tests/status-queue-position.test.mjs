@@ -95,86 +95,43 @@ test("status page treats RPC error as safe retry UI, zero rows as notFound", () 
   assert.doesNotMatch(errorBlock, /notFound/);
 });
 
-test("mapStatusRpcRow maps waiting position and nulls non-waiting", async () => {
-  // Dynamic import of the TS page via route-loader path aliases is heavy;
-  // re-implement the pure contract here against the exported helper by
-  // evaluating the minimal pure logic that page.tsx ships.
-  const src = readPage();
-  assert.match(src, /export function mapStatusRpcRow/);
-
-  // Load via node --import route-loader when available; fallback: inline contract.
-  let mapStatusRpcRow;
-  try {
-    const mod = await import("../src/app/s/[token]/page.tsx");
-    mapStatusRpcRow = mod.mapStatusRpcRow;
-  } catch {
-    // route-loader may not be active in plain --test; define from source contract
-    mapStatusRpcRow = (row) => ({
-      regNo: row.reg_no,
-      queueStatus: row.queue_status,
-      queuePosition:
-        row.queue_status === "waiting" && row.queue_position != null
-          ? Number(row.queue_position)
-          : null,
-      campName: row.camp_name?.trim() ? row.camp_name : "—",
-      venue: row.venue?.trim() ? row.venue : "—",
-      dayDate: row.day_date ? String(row.day_date) : null,
-    });
-  }
+test("mapStatusRpcRow never produces a position, whatever the RPC sends", async () => {
+  // The real module only — a local re-implementation would pass while the page
+  // rotted (AGENTS.md, Testing & Evidence Governance). The mapper lives in a
+  // .ts lib precisely so the node runner can load it.
+  const { mapStatusRpcRow } = await import("../src/lib/status-view.ts");
 
   assert.deepEqual(
     mapStatusRpcRow({
       reg_no: 42,
-      queue_status: "waiting",
-      queue_position: 3,
+      queue_status: "registered",
       camp_name: "Camp A",
       venue: "Hall",
       day_date: "2099-10-15",
     }),
     {
       regNo: 42,
-      queueStatus: "waiting",
-      queuePosition: 3,
+      queueStatus: "registered",
       campName: "Camp A",
       venue: "Hall",
       dayDate: "2099-10-15",
+      patientId: null,
     },
   );
 
-  assert.equal(
-    mapStatusRpcRow({
-      reg_no: 1,
-      queue_status: "seen",
-      queue_position: null,
-      camp_name: null,
-      venue: null,
-      day_date: null,
-    }).queuePosition,
-    null,
+  // A residual position column from an older deployment must not leak through.
+  const withStalePosition = mapStatusRpcRow({
+    reg_no: 2,
+    queue_status: "seen",
+    queue_position: 99,
+    camp_name: "  ",
+    venue: "",
+    day_date: null,
+  });
+  assert.ok(
+    !("queuePosition" in withStalePosition),
+    `status view must carry no position, got ${JSON.stringify(withStalePosition)}`,
   );
-
-  assert.equal(
-    mapStatusRpcRow({
-      reg_no: 2,
-      queue_status: "registered",
-      queue_position: 99,
-      camp_name: "  ",
-      venue: "",
-      day_date: null,
-    }).queuePosition,
-    null,
-    "non-waiting must not show fabricated position even if RPC sent a number",
-  );
-
-  assert.equal(
-    mapStatusRpcRow({
-      reg_no: 2,
-      queue_status: "registered",
-      queue_position: 99,
-      camp_name: "  ",
-      venue: "",
-      day_date: null,
-    }).campName,
-    "—",
-  );
+  assert.equal(withStalePosition.campName, "—");
+  assert.equal(withStalePosition.venue, "—");
 });

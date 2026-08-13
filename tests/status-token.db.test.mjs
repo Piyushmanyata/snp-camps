@@ -1,6 +1,10 @@
 /**
- * #70 — Atomic FCFS queue position via patient_status_by_token.
+ * #70 — the passwordless status bearer, patient_status_by_token.
  * Requires local Supabase Postgres (default 127.0.0.1:54322).
+ *
+ * There is no position to report (ADR 0013): the projection carries camp day,
+ * venue, and registered / seen only. Position coverage is now the assertion
+ * that the column is absent, in print-presence.db.test.mjs and below.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -238,7 +242,7 @@ async function seedPatient(opts) {
 async function statusByToken(token) {
   return asServiceRole(async (c) => {
     const { rows } = await c.query(
-      `select reg_no, queue_status::text, queue_position,
+      `select reg_no, queue_status::text,
               camp_name, venue, day_date::text
        from public.patient_status_by_token($1)`,
       [token],
@@ -277,287 +281,6 @@ async function seedProfile(role = "volunteer") {
 // ---------------------------------------------------------------------------
 // Cases
 // ---------------------------------------------------------------------------
-
-test("two waiting different timestamps → positions 1 and 2", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { campId, dayId } = await seedCampDay("ts");
-  try {
-    const a = await seedPatient({
-      campId,
-      dayId,
-      regNo: 1001,
-      queuedAt: "2099-10-15T08:00:00Z",
-      fullName: "First In",
-    });
-    const b = await seedPatient({
-      campId,
-      dayId,
-      regNo: 1002,
-      queuedAt: "2099-10-15T08:05:00Z",
-      fullName: "Second In",
-    });
-
-    const [ra] = await statusByToken(a.token);
-    const [rb] = await statusByToken(b.token);
-    assert.equal(ra.queue_position, 1);
-    assert.equal(rb.queue_position, 2);
-    assert.equal(ra.queue_status, "waiting");
-    assert.equal(ra.camp_name.startsWith("FCFS camp"), true);
-    assert.equal(ra.day_date, "2099-10-15");
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
-
-test("identical queued_at ordered by reg_no then id; unique consecutive positions", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { campId, dayId } = await seedCampDay("tie");
-  const ts = "2099-10-15T09:00:00Z";
-  // Fixed ids so id tie-break is deterministic when reg_no equal path is tested.
-  const idHigh = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-  const idLow = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-  try {
-    // Same timestamp; lower reg_no first.
-    const lowReg = await seedPatient({
-      campId,
-      dayId,
-      regNo: 2001,
-      queuedAt: ts,
-      id: idHigh,
-      fullName: "LowReg HighId",
-    });
-    const highReg = await seedPatient({
-      campId,
-      dayId,
-      regNo: 2002,
-      queuedAt: ts,
-      id: idLow,
-      fullName: "HighReg LowId",
-    });
-    // Same reg_no impossible (unique?), so third with different reg
-    const mid = await seedPatient({
-      campId,
-      dayId,
-      regNo: 2000,
-      queuedAt: ts,
-      fullName: "Lowest Reg",
-    });
-
-    const [rMid] = await statusByToken(mid.token);
-    const [rLow] = await statusByToken(lowReg.token);
-    const [rHigh] = await statusByToken(highReg.token);
-
-    assert.equal(rMid.queue_position, 1, "reg 2000 first");
-    assert.equal(rLow.queue_position, 2, "reg 2001 second");
-    assert.equal(rHigh.queue_position, 3, "reg 2002 third");
-
-    const positions = [rMid, rLow, rHigh].map((r) => r.queue_position).sort();
-    assert.deepEqual(positions, [1, 2, 3]);
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
-
-test("same queued_at and reg_no: id ASC is final tie-break", async (t) => {
-  if (skipIfNoDb(t)) return;
-  // reg_no is unique globally via sequence default but not a unique constraint
-  // on the column alone in all schemas — try insert same reg_no in one camp.
-  const { campId, dayId } = await seedCampDay("id-tie");
-  const ts = "2099-10-15T10:00:00Z";
-  const idA = "11111111-1111-4111-8111-111111111111";
-  const idB = "22222222-2222-4222-8222-222222222222";
-  try {
-    // Distinct reg_nos still ordered primarily by reg; for pure id test use
-    // equal timestamps with reg_no order reversed vs id to prove both keys.
-    // When reg_nos equal if allowed:
-    let sameRegOk = true;
-    try {
-      await seedPatient({
-        campId,
-        dayId,
-        regNo: 3000,
-        queuedAt: ts,
-        id: idB,
-        fullName: "Later Id",
-      });
-      await seedPatient({
-        campId,
-        dayId,
-        regNo: 3000,
-        queuedAt: ts,
-        id: idA,
-        fullName: "Earlier Id",
-      });
-    } catch {
-      sameRegOk = false;
-      await admin.query(`delete from public.patients where camp_id = $1`, [
-        campId,
-      ]);
-      // Fallback: prove id order when reg_no equal is not allowed by using
-      // two patients and checking full comparator via SQL row_number directly.
-      const t1 = hexToken();
-      const t2 = hexToken();
-      await admin.query(
-        `insert into public.patients (
-           id, camp_id, camp_day_id, reg_no, full_name, queue_status, queued_at, status_token
-         ) values
-           ($1, $3, $4, 3101, 'A', 'waiting', $5::timestamptz, $6),
-           ($2, $3, $4, 3102, 'B', 'waiting', $5::timestamptz, $7)`,
-        [idA, idB, campId, dayId, ts, t1, t2],
-      );
-      const [rA] = await statusByToken(t1);
-      const [rB] = await statusByToken(t2);
-      assert.equal(rA.queue_position, 1);
-      assert.equal(rB.queue_position, 2);
-    }
-    if (sameRegOk) {
-      const { rows } = await admin.query(
-        `select status_token, id from public.patients where camp_id = $1 order by id`,
-        [campId],
-      );
-      const earlier = rows.find((r) => r.id === idA);
-      const later = rows.find((r) => r.id === idB);
-      const [rA] = await statusByToken(earlier.status_token);
-      const [rB] = await statusByToken(later.status_token);
-      assert.equal(rA.queue_position, 1, "lower id first when reg+time equal");
-      assert.equal(rB.queue_position, 2);
-    }
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
-
-test("different camps never affect each other", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const a = await seedCampDay("c1");
-  const b = await seedCampDay("c2");
-  try {
-    const pA = await seedPatient({
-      campId: a.campId,
-      dayId: a.dayId,
-      regNo: 4001,
-      queuedAt: "2099-10-15T08:00:00Z",
-    });
-    await seedPatient({
-      campId: a.campId,
-      dayId: a.dayId,
-      regNo: 4002,
-      queuedAt: "2099-10-15T07:00:00Z",
-    });
-    const pB = await seedPatient({
-      campId: b.campId,
-      dayId: b.dayId,
-      regNo: 4003,
-      queuedAt: "2099-10-15T12:00:00Z",
-    });
-
-    const [rA] = await statusByToken(pA.token);
-    const [rB] = await statusByToken(pB.token);
-    assert.equal(rA.queue_position, 2);
-    assert.equal(rB.queue_position, 1);
-  } finally {
-    for (const campId of [a.campId, b.campId]) {
-      await admin.query(`delete from public.patients where camp_id = $1`, [
-        campId,
-      ]);
-      await admin.query(`delete from public.camp_days where camp_id = $1`, [
-        campId,
-      ]);
-      await admin.query(`delete from public.camps where id = $1`, [campId]);
-    }
-  }
-});
-
-test("seen/registered do not count ahead of waiting", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { campId, dayId } = await seedCampDay("nonwait");
-  try {
-    await seedPatient({
-      campId,
-      dayId,
-      regNo: 5001,
-      status: "seen",
-      queuedAt: "2099-10-15T07:00:00Z",
-    });
-    await seedPatient({
-      campId,
-      dayId,
-      regNo: 5002,
-      status: "registered",
-      queuedAt: null,
-    });
-    const waiting = await seedPatient({
-      campId,
-      dayId,
-      regNo: 5003,
-      status: "waiting",
-      queuedAt: "2099-10-15T09:00:00Z",
-    });
-
-    const [r] = await statusByToken(waiting.token);
-    assert.equal(r.queue_position, 1);
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
-
-test("waiting → seen loses position (NULL)", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { campId, dayId } = await seedCampDay("transition");
-  try {
-    const p = await seedPatient({
-      campId,
-      dayId,
-      regNo: 6001,
-      status: "waiting",
-      queuedAt: "2099-10-15T08:00:00Z",
-    });
-    const [before] = await statusByToken(p.token);
-    assert.equal(before.queue_position, 1);
-
-    await admin.query(
-      `update public.patients set queue_status = 'seen', seen_at = now()
-       where id = $1`,
-      [p.id],
-    );
-
-    const [after] = await statusByToken(p.token);
-    assert.equal(after.queue_status, "seen");
-    assert.equal(after.queue_position, null);
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
 
 test("invalid/expired/random tokens return empty (same not-found shape)", async (t) => {
   if (skipIfNoDb(t)) return;
@@ -765,42 +488,7 @@ test("null token input returns empty (not a fabricated number)", async (t) => {
   assert.equal(rows.length, 0);
 });
 
-test("concurrent waiting peers get distinct ranks in one snapshot", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { campId, dayId } = await seedCampDay("conc");
-  try {
-    const tokens = [];
-    for (let i = 0; i < 5; i++) {
-      const p = await seedPatient({
-        campId,
-        dayId,
-        regNo: 8000 + i,
-        queuedAt: `2099-10-15T08:0${i}:00Z`,
-      });
-      tokens.push(p.token);
-    }
-
-    const results = await Promise.all(tokens.map((tok) => statusByToken(tok)));
-    const positions = results.map((r) => {
-      assert.equal(r.length, 1);
-      assert.equal(typeof r[0].queue_position, "number");
-      return r[0].queue_position;
-    });
-    const unique = new Set(positions);
-    assert.equal(unique.size, 5, `duplicate positions: ${positions}`);
-    assert.deepEqual([...unique].sort((a, b) => a - b), [1, 2, 3, 4, 5]);
-  } finally {
-    await admin.query(`delete from public.patients where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camp_days where camp_id = $1`, [
-      campId,
-    ]);
-    await admin.query(`delete from public.camps where id = $1`, [campId]);
-  }
-});
-
-test("least-privilege projection has no phone/token/queued_at columns", async (t) => {
+test("least-privilege projection has no phone/token/queued_at/position columns", async (t) => {
   if (skipIfNoDb(t)) return;
   const { rows } = await admin.query(
     `select a.attname
@@ -821,13 +509,15 @@ test("least-privilege projection has no phone/token/queued_at columns", async (t
     );
     const result = fr[0].result.toLowerCase();
     assert.doesNotMatch(result, /full_name/);
-    assert.match(result, /queue_position/);
+    assert.doesNotMatch(result, /queue_position/);
+    assert.match(result, /queue_status/);
     assert.doesNotMatch(result, /status_token/);
     assert.doesNotMatch(result, /\bphone\b/);
     assert.doesNotMatch(result, /queued_at/);
   } else {
     assert.ok(!names.includes("full_name"));
-    assert.ok(names.includes("queue_position"));
+    assert.ok(!names.includes("queue_position"));
+    assert.ok(names.includes("queue_status"));
     assert.ok(!names.includes("status_token"));
     assert.ok(!names.includes("phone"));
     assert.ok(!names.includes("queued_at"));

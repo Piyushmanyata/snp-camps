@@ -15,11 +15,9 @@ import {
   NavLink,
   Shell,
 } from "@/components/ui";
-import type { LiveQueuePatient } from "@/components/live-queue";
 import { SignOutButton } from "@/components/sign-out";
-import { loadQueueSection } from "@/lib/section-reads";
 import { mapDbError } from "@/lib/public-error";
-import { DeskScanQueue } from "@/components/desk-scan-queue";
+import { DeskScan } from "@/components/desk-scan";
 import { AdminStaff } from "@/components/admin-staff";
 import { VolunteerDeskMore } from "@/components/volunteer-desk-more";
 import type { StaffPerson } from "@/components/staff-detail";
@@ -89,8 +87,8 @@ export default async function VolunteerPage() {
               {disabledVolunteers
                 ? `${disabledVolunteers} disabled · `
                 : ""}
-              Tap a volunteer for their KPIs and patients. Scanner and queue live
-              on the main admin dashboard.
+              Tap a volunteer for their KPIs and patients. The scanner lives on
+              the main admin dashboard.
             </p>
             <div className="desk-inline-actions mt-4">
               <NavLink href="/admin" variant="soft">
@@ -126,9 +124,6 @@ export default async function VolunteerPage() {
     throw new Error("Volunteer desk data could not be loaded");
   }
 
-  let waiting: LiveQueuePatient[] = [];
-  let waitingCount = 0;
-  let queueKnown = false;
   let teamVolunteers: StaffPerson[] = [];
   let rosterError: string | null = null;
 
@@ -150,16 +145,6 @@ export default async function VolunteerPage() {
     }
   }
 
-  // Queue only — seats / KPIs / leaderboard load behind Aur dekhein.
-  if (camp) {
-    const queueRes = await loadQueueSection(camp.id);
-    if (queueRes.ok) {
-      waiting = queueRes.data.waiting as LiveQueuePatient[];
-      waitingCount = queueRes.data.waitingTotal;
-      queueKnown = true;
-    }
-  }
-
   return (
     <Shell
       title="Volunteer desk"
@@ -174,7 +159,6 @@ export default async function VolunteerPage() {
       dock={[
         { href: "/register", label: "Register", primary: true },
         { href: "#scan", label: "Scan patient" },
-        { href: "#queue", label: "Queue" },
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
@@ -201,11 +185,8 @@ export default async function VolunteerPage() {
           disabledReason="Koi active camp nahi. Admin se camp chalu karwayein."
         />
 
-        <DeskScanQueue
+        <DeskScan
           campId={camp?.id ?? null}
-          waiting={waiting}
-          waitingTotal={waitingCount}
-          queueKnown={queueKnown || !camp}
           noCampReason={
             camp
               ? undefined

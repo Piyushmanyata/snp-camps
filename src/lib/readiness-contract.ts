@@ -10,13 +10,13 @@
  */
 
 /** Bump when the set of required facts or expectations changes. */
-export const READINESS_CONTRACT_VERSION = 9;
+export const READINESS_CONTRACT_VERSION = 10;
 
 /**
  * Latest migration version the app expects to be applied.
  * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
  */
-export const EXPECTED_MIGRATION_HEAD = "20260812090000";
+export const EXPECTED_MIGRATION_HEAD = "20260813090000";
 
 /** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
@@ -62,7 +62,6 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "id",
     "status_token",
     "queue_status",
-    "queued_at",
     "printed_at",
     "seen_at",
     "seen_by",
@@ -167,7 +166,7 @@ export const REQUIRED_FUNCTIONS = [
   "patient_status_by_token",
   "upsert_camp_day",
   "register_patient_idempotent",
-  "check_in_patient",
+  "mark_patient_printed",
   "lookup_patient_scan",
   "mark_seen",
   "undo_mark_seen",
@@ -181,7 +180,6 @@ export const REQUIRED_FUNCTIONS = [
   "patient_registration_notify_fields",
   "camp_queue_counts",
   "search_desk_patients",
-  "desk_waiting_queue",
   "print_patient",
   "staff_registered_patients",
   "begin_sponsor_asset_deletion",
@@ -237,7 +235,7 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   complete_sms_delivery_service_role_execute: true,
   // Capacity + desk RPCs remain available to authenticated staff.
   upsert_camp_day_authenticated_execute: true,
-  check_in_patient_authenticated_execute: true,
+  mark_patient_printed_authenticated_execute: true,
   lookup_patient_scan_authenticated_execute: true,
   search_desk_patients_authenticated_execute: true,
   search_desk_patients_anon_execute: false,
@@ -296,7 +294,6 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   audit_scanned_aadhaar_authenticated_execute: false,
   audit_scanned_aadhaar_anon_execute: false,
   audit_scanned_aadhaar_service_role_execute: true,
-  desk_waiting_queue_authenticated_execute: true,
   print_patient_authenticated_execute: true,
   staff_registered_patients_authenticated_execute: true,
   begin_sponsor_asset_deletion_authenticated_execute: true,

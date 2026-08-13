@@ -7,7 +7,7 @@ import test from "node:test";
 import {
   markSeenWithRetries,
   changeCampDayWithRetries,
-  checkInPatientWithRetries,
+  printPrescriptionWithRetries,
   lookupPatientScanWithRetries,
   searchRegisteredPatientsWithRetries,
   searchDeskPatientsWithRetries,
@@ -173,7 +173,7 @@ test("mark seen already_seen after a flaky first call is terminal success", asyn
   assert.equal(result.row.seen_at, "2026-07-28T10:00:00Z");
 });
 
-test("mark seen not_in_queue is not retried and names the reason", async () => {
+test("mark seen never_printed is not retried and names the reason", async () => {
   let calls = 0;
   const result = await markSeenWithRetries({
     patientId: "p1",
@@ -189,7 +189,7 @@ test("mark seen not_in_queue is not retried and names the reason", async () => {
             seen_at: null,
             seen_by_name: null,
             already_seen: false,
-            error_code: "not_in_queue",
+            error_code: "never_printed",
           },
         ],
         error: null,
@@ -200,7 +200,7 @@ test("mark seen not_in_queue is not retried and names the reason", async () => {
   assert.equal(calls, 1);
   assert.equal(result.ok, false);
   if (result.ok) return;
-  assert.equal(result.notInQueue, true);
+  assert.equal(result.neverPrinted, true);
   assert.match(result.error, /print/i);
   assert.doesNotMatch(result.error, /network|timeout|PGRST|postgres/i);
 });
@@ -371,12 +371,12 @@ test("change-day unknown XX000 is terminal (not three internet retries)", async 
 });
 
 // ---------------------------------------------------------------------------
-// #61 — check-in + lost-slip search
+// Print prescription + lost-slip search (#61, ADR 0013)
 // ---------------------------------------------------------------------------
 
-test("check-in retries twice on 08006 then surfaces exhausted copy", async () => {
+test("print retries twice on 08006 then surfaces exhausted copy", async () => {
   let calls = 0;
-  const result = await checkInPatientWithRetries({
+  const result = await printPrescriptionWithRetries({
     patientId: "p1",
     rpc: async () => {
       calls += 1;
@@ -387,17 +387,20 @@ test("check-in retries twice on 08006 then surfaces exhausted copy", async () =>
   assert.equal(calls, 3);
   assert.equal(result.ok, false);
   if (result.ok) return;
-  assert.equal(result.error, RETRY_EXHAUSTED_COPY.checkIn);
+  assert.equal(result.error, RETRY_EXHAUSTED_COPY.printPrescription);
 });
 
-test("check-in success on second attempt after serialization_failure", async () => {
+test("print calls mark_patient_printed and succeeds after serialization_failure", async () => {
   let calls = 0;
   /** @type {unknown[]} */
   const patientArgs = [];
-  const result = await checkInPatientWithRetries({
+  /** @type {string[]} */
+  const fns = [];
+  const result = await printPrescriptionWithRetries({
     patientId: "p-fixed",
-    rpc: async (_fn, args) => {
+    rpc: async (fn, args) => {
       calls += 1;
+      fns.push(fn);
       patientArgs.push(args.p_patient_id);
       if (calls === 1) {
         return {
@@ -411,10 +414,8 @@ test("check-in success on second attempt after serialization_failure", async () 
             id: "p-fixed",
             reg_no: 42,
             full_name: "Sita Devi",
-            queue_status: "waiting",
-            already_waiting: false,
-            seen_by_name: null,
-            error_code: null,
+            queue_status: "registered",
+            already_printed: false,
           },
         ],
         error: null,
@@ -423,16 +424,17 @@ test("check-in success on second attempt after serialization_failure", async () 
     sleep,
   });
   assert.equal(calls, 2);
+  assert.deepEqual(fns, ["mark_patient_printed", "mark_patient_printed"]);
   assert.deepEqual(patientArgs, ["p-fixed", "p-fixed"]);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.row.reg_no, 42);
-  assert.equal(result.row.already_waiting, false);
+  assert.equal(result.row.already_printed, false);
 });
 
-test("check-in already_seen is terminal and uses safe copy", async () => {
+test("a seen patient may still be reprinted — print never refuses on status", async () => {
   let calls = 0;
-  const result = await checkInPatientWithRetries({
+  const result = await printPrescriptionWithRetries({
     regNo: 9,
     rpc: async () => {
       calls += 1;
@@ -443,63 +445,7 @@ test("check-in already_seen is terminal and uses safe copy", async () => {
             reg_no: 9,
             full_name: "Seen Pat",
             queue_status: "seen",
-            already_waiting: false,
-            seen_by_name: "Asha Rao",
-            error_code: "already_seen",
-          },
-        ],
-        error: null,
-      };
-    },
-    sleep,
-  });
-  assert.equal(calls, 1);
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.alreadySeen, true);
-  assert.match(result.error, /Already seen by Asha Rao/);
-  assert.doesNotMatch(result.error, /postgres|PGRST|relation/i);
-});
-
-test("check-in permission denial is not retried and hides raw text", async () => {
-  let calls = 0;
-  const result = await checkInPatientWithRetries({
-    patientId: "p1",
-    rpc: async () => {
-      calls += 1;
-      return {
-        data: null,
-        error: {
-          code: "42501",
-          message: "permission denied for function check_in_patient",
-        },
-      };
-    },
-    sleep,
-  });
-  assert.equal(calls, 1);
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.match(result.error, /permission/i);
-  assert.doesNotMatch(result.error, /check_in_patient|42501/i);
-});
-
-test("check-in already_waiting success is not retried", async () => {
-  let calls = 0;
-  const result = await checkInPatientWithRetries({
-    regNo: 5,
-    rpc: async () => {
-      calls += 1;
-      return {
-        data: [
-          {
-            id: "p5",
-            reg_no: 5,
-            full_name: "Waiting",
-            queue_status: "waiting",
-            already_waiting: true,
-            seen_by_name: null,
-            error_code: null,
+            already_printed: true,
           },
         ],
         error: null,
@@ -510,7 +456,58 @@ test("check-in already_waiting success is not retried", async () => {
   assert.equal(calls, 1);
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.row.already_waiting, true);
+  assert.equal(result.row.already_printed, true);
+  assert.equal(result.row.queue_status, "seen");
+});
+
+test("print permission denial is not retried and hides raw text", async () => {
+  let calls = 0;
+  const result = await printPrescriptionWithRetries({
+    patientId: "p1",
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: null,
+        error: {
+          code: "42501",
+          message: "permission denied for function mark_patient_printed",
+        },
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /permission/i);
+  assert.doesNotMatch(result.error, /mark_patient_printed|42501/i);
+});
+
+test("a reprint reports already_printed and is not retried", async () => {
+  let calls = 0;
+  const result = await printPrescriptionWithRetries({
+    regNo: 5,
+    rpc: async () => {
+      calls += 1;
+      return {
+        data: [
+          {
+            id: "p5",
+            reg_no: 5,
+            full_name: "Reprint",
+            queue_status: "registered",
+            already_printed: true,
+          },
+        ],
+        error: null,
+      };
+    },
+    sleep,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.row.already_printed, true);
 });
 
 test("search empty rows is success empty — not an error (#61)", async () => {

@@ -78,7 +78,7 @@ export default async function PrintPage({
             id: record.patient.id,
             regNo: record.patient.reg_no,
             name: record.patient.full_name,
-            queueStatus: record.queueStatus ?? "waiting",
+            queueStatus: record.queueStatus ?? "registered",
           },
         ]}
         deskHref={deskHref}

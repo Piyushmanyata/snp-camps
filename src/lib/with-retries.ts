@@ -24,8 +24,8 @@ export const RETRY_EXHAUSTED_COPY = {
     "Could not undo mark-seen. Check the internet and press Try Again.",
   changeDay:
     "Could not change the day. Check the internet and press Try Again.",
-  checkIn:
-    "Could not check in this patient. Check the internet and press Try Again.",
+  printPrescription:
+    "Parchi print nahi ho payi. Internet check karke Try Again dabayein.",
   search:
     "Could not search names. Check the internet and press Try Again.",
   prescription:

@@ -440,13 +440,15 @@ test("notification phone normalization accepts common Indian formats", () => {
   assert.equal(normalizePhoneE164(""), null);
 });
 
-test("queue labels and tones map known statuses", () => {
+test("status labels and tones cover the two-state lifecycle", () => {
   assert.equal(queueLabel("seen"), "Seen");
-  assert.equal(queueLabel("waiting"), "In queue");
   assert.equal(queueLabel("registered"), "Registered");
   assert.equal(queueTone("seen"), "ok");
-  assert.equal(queueTone("waiting"), "wait");
   assert.equal(queueTone("registered"), "default");
+  // `waiting` is dead on the enum but not droppable; a residual row must read
+  // as Registered, never as a line position (ADR 0013).
+  assert.equal(queueLabel("waiting"), "Registered");
+  assert.equal(queueTone("waiting"), "default");
 });
 
 test("team_lead role predicates and roleHome route correctly", () => {

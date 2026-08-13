@@ -8,11 +8,9 @@ import {
   Shell,
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
-import type { LiveQueuePatient } from "@/components/live-queue";
 import { getCampsList } from "@/lib/metadata";
 import {
   loadAdminQueueCountsSection,
-  loadQueueSection,
   loadSeatsSection,
   loadStaffLeaderboardSection,
   type StaffKpiRow,
@@ -23,7 +21,7 @@ import {
   AdminAnalyticsPanel,
   CampsLoadFailed,
 } from "@/components/section-data";
-import { DeskScanQueue } from "@/components/desk-scan-queue";
+import { DeskScan } from "@/components/desk-scan";
 import { SeatBoard } from "@/components/seat-board";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
@@ -55,12 +53,8 @@ export default async function AdminPage() {
         ok: true;
         data: {
           registered: number;
-          inQueue: number;
           seen: number;
           total: number;
-          currentLongestWaitMinutes: number | null;
-          completedWaitMedianMinutes: number | null;
-          completedWaitP90Minutes: number | null;
           completedToday: number;
           deskRegistrations: number;
           selfRegistrations: number;
@@ -72,16 +66,12 @@ export default async function AdminPage() {
     | null = null;
   let days: CampDayStats[] = [];
   let seatsKnown = false;
-  let waiting: LiveQueuePatient[] = [];
-  let waitingCount = 0;
-  let queueKnown = false;
   let leaderboard: StaffKpiRow[] = [];
 
   if (active) {
-    const [statsRes, seatsRes, queueRes, leaderboardRes] = await Promise.all([
+    const [statsRes, seatsRes, leaderboardRes] = await Promise.all([
       loadAdminQueueCountsSection(active.id),
       loadSeatsSection(active.id),
-      loadQueueSection(active.id),
       loadStaffLeaderboardSection(active.id),
     ]);
     if (leaderboardRes.ok) leaderboard = leaderboardRes.data;
@@ -89,11 +79,6 @@ export default async function AdminPage() {
     if (seatsRes.ok) {
       days = seatsRes.data.days;
       seatsKnown = true;
-    }
-    if (queueRes.ok) {
-      waiting = queueRes.data.waiting as LiveQueuePatient[];
-      waitingCount = queueRes.data.waitingTotal;
-      queueKnown = true;
     }
   }
 
@@ -230,12 +215,7 @@ export default async function AdminPage() {
 
         {active ? (
           <div className="space-y-3 sm:space-y-4">
-            <DeskScanQueue
-              campId={active.id}
-              waiting={waiting}
-              waitingTotal={waitingCount}
-              queueKnown={queueKnown}
-            />
+            <DeskScan campId={active.id} />
 
             <CollapsibleSection
               title="Teams & leaderboards"

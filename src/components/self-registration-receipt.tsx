@@ -68,9 +68,8 @@ export function SelfRegistrationReceipt({
       </dl>
 
       <p className="text-sm text-muted">
-        Aap <strong>registered</strong> hain, abhi line mein nahi. Camp ke din
-        desk par jaayein — wahan aapka parcha print hoga, tabhi aap line mein
-        aayenge.
+        Aap <strong>registered</strong> hain. Camp ke din apne venue par
+        jaayein — desk par aapki parchi print hogi.
       </p>
 
       <div>

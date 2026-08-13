@@ -93,18 +93,18 @@ async function camp({ active = true, name = "KPI Camp" } = {}) {
 async function patient(
   campId,
   dayId,
-  { createdBy = null, checkedInBy = null, seenBy = null, status = "waiting" },
+  { createdBy = null, checkedInBy = null, seenBy = null, status = "registered" },
 ) {
   const id = randomUUID();
   await client.query(
     `insert into public.patients (
        id, camp_id, camp_day_id, full_name, queue_status,
-       created_by, checked_in_by, seen_by, seen_at, queued_at
+       created_by, checked_in_by, seen_by, seen_at, printed_at
      ) values (
        $1, $2, $3, $4, $5::public.queue_status,
        $6, $7, $8,
        case when $5 = 'seen' then now() else null end,
-       case when $5 in ('waiting', 'seen') then now() else null end
+       case when $5 = 'seen' then now() else null end
      )`,
     [
       id,
@@ -198,7 +198,7 @@ test("volunteer metrics use original-registrar credit and reject residual doctor
 
     await patient(active.campId, active.dayId, {
       createdBy: volunteer,
-      status: "waiting",
+      status: "registered",
     });
     await patient(active.campId, active.dayId, {
       checkedInBy: volunteer,
@@ -207,7 +207,7 @@ test("volunteer metrics use original-registrar credit and reject residual doctor
     });
     await patient(inactive.campId, inactive.dayId, {
       createdBy: volunteer,
-      status: "waiting",
+      status: "registered",
     });
 
     const volunteerRows = await personKpis(
@@ -217,13 +217,16 @@ test("volunteer metrics use original-registrar credit and reject residual doctor
       active.campId,
     );
     assert.deepEqual(
-      volunteerRows.rows.map(({ total, waiting, seen, label }) => ({
+      volunteerRows.rows.map(({ total, seen, label }) => ({
         total: Number(total),
-        waiting: Number(waiting),
         seen: Number(seen),
         label,
       })),
-      [{ total: 1, waiting: 0, seen: 0, label: "Registered" }],
+      [{ total: 1, seen: 0, label: "Registered" }],
+    );
+    assert.ok(
+      !("waiting" in volunteerRows.rows[0]),
+      "KPIs must not invent a dead state (ADR 0013)",
     );
 
     const staleCamp = await personKpis(
@@ -233,7 +236,7 @@ test("volunteer metrics use original-registrar credit and reject residual doctor
       inactive.campId,
     );
     assert.equal(Number(staleCamp.rows[0].total), 0);
-    assert.equal(Number(staleCamp.rows[0].waiting), 0);
+    assert.equal(Number(staleCamp.rows[0].seen), 0);
     // PostgreSQL aborts this local transaction after the authorization error,
     // so keep the residual-role rejection as the final assertion.
     await assert.rejects(
@@ -253,7 +256,7 @@ test("no active Camp returns zeros instead of all-time person totals", async (t)
     const historical = await camp({ active: false });
     await patient(historical.campId, historical.dayId, {
       createdBy: volunteer,
-      status: "waiting",
+      status: "registered",
     });
     await client.query(`update public.camps set is_active = false`);
 
@@ -265,7 +268,6 @@ test("no active Camp returns zeros instead of all-time person totals", async (t)
     );
     assert.equal(Number(result.rows[0].total), 0);
     assert.equal(Number(result.rows[0].today), 0);
-    assert.equal(Number(result.rows[0].waiting), 0);
     assert.equal(Number(result.rows[0].seen), 0);
   } finally {
     await client.query("rollback");

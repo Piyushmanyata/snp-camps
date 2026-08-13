@@ -343,7 +343,7 @@ test("likely override inserts second row and records who and when; not sticky", 
   }
 });
 
-test("check-in of soft-match reg creates no new patient", async (t) => {
+test("printing for a soft-match reg creates no new patient", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaff();
   const { campId, dayId } = await seedCampWithDay();
@@ -371,18 +371,19 @@ test("check-in of soft-match reg creates no new patient", async (t) => {
       `select set_config('request.jwt.claim.sub', $1, true)`,
       [staffId],
     );
-    // Mirror check-in.db: full claims JSON so auth.uid() resolves.
+    // Full claims JSON so auth.uid() resolves.
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [
       JSON.stringify({ role: "authenticated", sub: staffId }),
     ]);
-    const { rows: checkRows } = await client.query(
-      `select * from public.check_in_patient(null, $1)`,
+    const { rows: printRows } = await client.query(
+      `select * from public.mark_patient_printed(null, $1)`,
       [first.row.reg_no],
     );
     await client.query("commit");
 
-    assert.equal(checkRows[0].queue_status, "waiting");
-    assert.equal(checkRows[0].already_waiting, false);
+    assert.equal(printRows[0].id, first.row.id, "the existing Registration is printed");
+    assert.equal(printRows[0].queue_status, "registered");
+    assert.equal(printRows[0].already_printed, false);
 
     const after = await client.query(
       `select count(*)::int as n from public.patients where camp_id = $1`,

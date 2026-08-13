@@ -19,7 +19,7 @@ export default async function TeamLeadPage() {
   }
 
   // A team lead's desk IS the volunteer desk — it carries register, check-in,
-  // scan, queue and seats, and renders their team panel above all of it. This
+  // scan and seats, and renders their team panel above all of it. This
   // page is the admin's team-lead roster; a lead landing here would otherwise
   // get the panel alone and lose every desk action.
   if (isTeamLead(profile?.role)) redirect("/volunteer");

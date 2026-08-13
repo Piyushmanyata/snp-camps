@@ -33,6 +33,19 @@ prescription remains the prescribing source of truth. See
   * **`registered`**: Has a registration number. May or may not have been printed for. Public status stays `registered` until seen.
   * **`seen`**: The doctor has finished with them and a volunteer scanned them out. Terminal, apart from a ten-minute undo window.
   _Avoid_: FCFS Queue, waiting, queued_at as a line, Live Queue.
+* **Presence**: The fact that a patient turned up, recorded as `printed_at` on
+  the Registration. It is written **once**, by Print prescription, and never
+  again: a reprint — including for a `seen` patient — keeps the original
+  timestamp, so paper can be replaced without inventing a second arrival. It is
+  not a position, not an ordering, and not a state: a patient is `registered`
+  both before and after presence exists. `checked_in_by` records who printed
+  (the column keeps its legacy name; it is not user-visible). Mark seen refuses
+  a Registration with no presence, and Undo mark seen keeps it, which is why an
+  undone mis-scan needs no reprint. `queued_at` is dead history — nothing writes
+  it and nothing reads it.
+  _Avoid_: "check-in", "arrival time", "queue join", treating presence as a
+  third lifecycle state ([ADR 0013](docs/adr/0013-no-fcfs-queue.md),
+  [ADR 0016](docs/adr/0016-normalise-residual-waiting-rows.md)).
 * **Print prescription**: The first of the two desk actions. Prints the paper Prescription Sheet and records presence (`printed_at`) once, idempotently. Does not change lifecycle state. Routes: scan the Patient QR, type the registration number, or register a walk-in first. A `seen` patient may still reprint their paper. Register-only does not set `printed_at`.
   _Avoid_: Calling this "check-in" or "queue". There is no line.
 * **Mark seen**: The second desk action. Records `seen_at` and the **volunteer who scanned** in `seen_by` — not a doctor. Idempotent: a double scan returns the original timestamp and never re-stamps the row. Refused for a Registration that was never printed for, so a mis-scan names its reason instead of failing silently.

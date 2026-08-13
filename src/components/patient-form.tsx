@@ -20,7 +20,7 @@ import {
   validatePatientForm,
   type PatientFormField,
 } from "@/lib/patient-form-validate";
-import { checkInPatientWithRetries } from "@/lib/desk-ops";
+import { printPrescriptionWithRetries, type DeskRpc } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats } from "@/lib/types";
 import {
   Button,
@@ -503,14 +503,12 @@ export function PatientForm({
           printHref: patientPrintPath(row.id),
         });
         setPhase("registered-print-ready");
-        const queueBit =
-          row.queue_status === "waiting" ? "in the queue" : "registered";
         const flash =
           print === "navigated"
-            ? `Reg #${row.reg_no} — ${queueBit}. Print window open.`
+            ? `Reg #${row.reg_no} — registered. Print window open.`
             : print === "skipped"
-              ? `Reg #${row.reg_no} — ${queueBit}. Print later from the patient list if needed.`
-              : `Reg #${row.reg_no} — ${queueBit}. Print blocked — use Print below.`;
+              ? `Reg #${row.reg_no} — registered. Print later from the patient list if needed.`
+              : `Reg #${row.reg_no} — registered. Print blocked — use Print below.`;
         setFlash(flash);
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
@@ -526,7 +524,7 @@ export function PatientForm({
     });
 
     if (!outcome.ok) {
-      // Soft match first — volunteer can check in existing patient (#48).
+      // Soft match first — volunteer can print for the existing patient (#48).
       if (outcome.likelyDuplicateRegNo) {
         setLikelyDuplicateRegNo(outcome.likelyDuplicateRegNo);
         setAadhaarDuplicateRegNo(null);
@@ -571,8 +569,9 @@ export function PatientForm({
   }
 
   /**
-   * Likely-duplicate primary action: queue existing patient + open print path.
-   * Flash copy is truth-based — never claims print when the window failed.
+   * Likely-duplicate primary action: print the existing Registration instead of
+   * creating a second Person. Flash copy is truth-based — never claims print
+   * when the window failed.
    */
   async function printLikelyDuplicateInstead() {
     if (likelyDuplicateRegNo == null || loading) return;
@@ -581,10 +580,7 @@ export function PatientForm({
     setError(null);
     setFlash(null);
     const supabase = createClient();
-    const outcome = await checkInPatientWithRetries({
-      patientId: null,
-      regNo: regTarget,
-      rpc: async (fn, args) => {
+    const rpc: DeskRpc = async (fn, args) => {
         const result = await supabase.rpc(fn, args);
         return {
           data: result.data,
@@ -597,9 +593,12 @@ export function PatientForm({
               }
             : null,
         };
-      },
+    };
+    const outcome = await printPrescriptionWithRetries({
+      patientId: null,
+      regNo: regTarget,
+      rpc,
       errorContext: "patient-form.print-likely-dup",
-      errorFallback: "Could not queue this patient. Try again.",
     });
     if (!outcome.ok) {
       // Preserve likely-duplicate selection + form state for Try Again (#61).
@@ -620,23 +619,15 @@ export function PatientForm({
     setPrintRecovery({
       patientId: row.id,
       regNo: reg,
-      queueStatus: row.queue_status as "registered" | "waiting" | "seen" | undefined,
+      queueStatus: row.queue_status as "registered" | "seen" | undefined,
       printNavigated: printOpened,
       printHref,
     });
-    if (printOpened) {
-      setFlash(
-        `Registration #${reg} — print window open. No duplicate was created.`,
-      );
-    } else if (row.already_waiting) {
-      setFlash(
-        `Registration #${reg} is already in the queue. Print blocked — use Print below. No duplicate was created.`,
-      );
-    } else {
-      setFlash(
-        `Registration #${reg} is in the queue. Print blocked — use Print below. No duplicate was created.`,
-      );
-    }
+    setFlash(
+      printOpened
+        ? `Registration #${reg} — print window open. No duplicate was created.`
+        : `Registration #${reg} is recorded as present. Print blocked — use Print below. No duplicate was created.`,
+    );
     setLikelyDuplicateRegNo(null);
     setAadhaarDuplicateRegNo(null);
     aadhaarOverrideOnceRef.current = false;

@@ -7,7 +7,7 @@ import {
 
 /**
  * The printed prescription. This is the ONLY thing the desk prints on a camp
- * day, and printing it is what puts a patient in the queue.
+ * day, and printing it is what records that the patient arrived.
  *
  * The identity block is pre-filled from the patient record; every clinical
  * field is left blank for the optometrist to write by hand. The Patient QR
@@ -141,7 +141,7 @@ export function PrescriptionSheet({
             <FilledLine label="Contact No." value={patientPhone} />
           </div>
 
-          {/* Patient QR — staff scan to queue and to mark seen. */}
+          {/* Patient QR — staff scan to print and to mark seen. */}
           <div className="text-center">
             <div className="border border-current p-[3px]">
               <QrCode value={qrValue} size={92} />

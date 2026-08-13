@@ -50,7 +50,7 @@ test("out-of-order: only latest generation applies", async () => {
     /** @type {import("../src/lib/camp-desk-live.ts").DeskLiveView[]} */
     const views = [];
     const unsub = subscribeCampDeskLive(campId, (v) =>
-      views.push({ ...v, pendingRemovals: new Set(v.pendingRemovals) }),
+      views.push({ ...v, days: [...v.days] }),
     );
 
     assert.equal(calls.length, 1);
@@ -58,30 +58,8 @@ test("out-of-order: only latest generation applies", async () => {
     await Promise.resolve();
     assert.ok(calls.length >= 2, `expected >=2 fetches, got ${calls.length}`);
 
-    const payloadB = {
-      waiting: [
-        {
-          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          reg_no: 2,
-          full_name: "Later",
-          phone: null,
-        },
-      ],
-      waitingTotal: 1,
-      days: [],
-    };
-    const payloadA = {
-      waiting: [
-        {
-          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          reg_no: 1,
-          full_name: "Stale",
-          phone: null,
-        },
-      ],
-      waitingTotal: 1,
-      days: [],
-    };
+    const payloadB = { days: [{ id: "day-b", seats_left: 5 }] };
+    const payloadA = { days: [{ id: "day-a", seats_left: 99 }] };
 
     const bCall = calls[calls.length - 1];
     bCall.resolve(
@@ -96,10 +74,10 @@ test("out-of-order: only latest generation applies", async () => {
     assert.ok(
       afterB,
       `expected fresh view after B; views=${JSON.stringify(
-        views.map((v) => ({ f: v.freshness, n: v.waiting[0]?.full_name })),
+        views.map((v) => ({ f: v.freshness, n: v.days[0]?.id })),
       )}`,
     );
-    assert.equal(afterB.waiting[0]?.full_name, "Later");
+    assert.equal(afterB.days[0]?.id, "day-b");
 
     const aCall = calls[0];
     try {
@@ -115,7 +93,7 @@ test("out-of-order: only latest generation applies", async () => {
     await new Promise((r) => setTimeout(r, 30));
 
     const final = views.filter((v) => v.freshness === "fresh").at(-1);
-    assert.equal(final?.waiting[0]?.full_name, "Later");
+    assert.equal(final?.days[0]?.id, "day-b");
 
     unsub();
     assert.equal(__campDeskLiveOwnerCountForTests(), 0);
@@ -144,10 +122,7 @@ test("two subscribers share one owner and one in-flight fetch", async () => {
       }
       setTimeout(() => {
         resolve(
-          new Response(
-            JSON.stringify({ waiting: [], waitingTotal: 0, days: [] }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ days: [] }), { status: 200 }),
         );
       }, 50);
     });
@@ -177,69 +152,6 @@ test("two subscribers share one owner and one in-flight fetch", async () => {
   }
 });
 
-test("pending removals are id-keyed and independent", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        waiting: [
-          {
-            id: "p1",
-            reg_no: 1,
-            full_name: "One",
-            phone: null,
-          },
-          {
-            id: "p2",
-            reg_no: 2,
-            full_name: "Two",
-            phone: null,
-          },
-        ],
-        waitingTotal: 2,
-        days: [],
-      }),
-      { status: 200 },
-    );
-
-  try {
-    const {
-      __resetCampDeskLiveForTests,
-      subscribeCampDeskLive,
-      markDeskLivePendingRemoval,
-      clearDeskLivePendingRemoval,
-    } = await import("../src/lib/camp-desk-live.ts");
-    __resetCampDeskLiveForTests();
-    const campId = "33333333-3333-4333-8333-333333333333";
-    /** @type {import("../src/lib/camp-desk-live.ts").DeskLiveView | null} */
-    let view = null;
-    const unsub = subscribeCampDeskLive(campId, (v) => {
-      view = v;
-    });
-    await new Promise((r) => setTimeout(r, 20));
-    assert.equal(view?.waiting.length, 2);
-
-    markDeskLivePendingRemoval(campId, "p1");
-    assert.equal(view?.waiting.length, 1);
-    assert.equal(view?.waiting[0]?.id, "p2");
-
-    markDeskLivePendingRemoval(campId, "p2");
-    assert.equal(view?.waiting.length, 0);
-
-    clearDeskLivePendingRemoval(campId, "p1");
-    assert.equal(view?.waiting.length, 1);
-    assert.equal(view?.waiting[0]?.id, "p1");
-
-    unsub();
-  } finally {
-    globalThis.fetch = originalFetch;
-    const { __resetCampDeskLiveForTests } = await import(
-      "../src/lib/camp-desk-live.ts"
-    );
-    __resetCampDeskLiveForTests();
-  }
-});
-
 test("failed refresh after client snapshot preserves rows and marks stale-error", async () => {
   const originalFetch = globalThis.fetch;
   let n = 0;
@@ -247,18 +159,7 @@ test("failed refresh after client snapshot preserves rows and marks stale-error"
     n += 1;
     if (n === 1) {
       return new Response(
-        JSON.stringify({
-          waiting: [
-            {
-              id: "p1",
-              reg_no: 1,
-              full_name: "Keep Me",
-              phone: null,
-            },
-          ],
-          waitingTotal: 1,
-          days: [],
-        }),
+        JSON.stringify({ days: [{ id: "keep-me", seats_left: 3 }] }),
         { status: 200 },
       );
     }
@@ -279,12 +180,12 @@ test("failed refresh after client snapshot preserves rows and marks stale-error"
       view = v;
     });
     await new Promise((r) => setTimeout(r, 20));
-    assert.equal(view?.waiting[0]?.full_name, "Keep Me");
+    assert.equal(view?.days[0]?.id, "keep-me");
     assert.equal(view?.freshness, "fresh");
 
     refreshCampDeskLive(campId);
     await new Promise((r) => setTimeout(r, 20));
-    assert.equal(view?.waiting[0]?.full_name, "Keep Me");
+    assert.equal(view?.days[0]?.id, "keep-me");
     assert.equal(view?.freshness, "stale-error");
     unsub();
   } finally {

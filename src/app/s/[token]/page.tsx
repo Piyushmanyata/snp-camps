@@ -10,6 +10,7 @@ import { QrCode } from "@/components/qr-code";
 import { ErrorBox } from "@/components/ui";
 import { StatusAutoRefresh } from "@/components/status-auto-refresh";
 import { getPatientStatusGuidance } from "@/lib/patient-status-guidance";
+import { mapStatusRpcRow, type StatusRpcRow } from "@/lib/status-view";
 
 const STATUS_IP_RATE_LIMIT = {
   scope: "status-ip",
@@ -24,31 +25,6 @@ const STATUS_TOKEN_RATE_LIMIT = {
   windowMs: 60_000,
   keyType: "subject" as const,
 };
-
-type StatusRpcRow = {
-  reg_no: number;
-  queue_status: string;
-  queue_position: number | null;
-  camp_name: string | null;
-  venue: string | null;
-  day_date: string | null;
-  patient_id?: string | null;
-};
-
-export function mapStatusRpcRow(row: StatusRpcRow) {
-  return {
-    regNo: row.reg_no,
-    queueStatus: row.queue_status,
-    queuePosition:
-      row.queue_status === "waiting" && row.queue_position != null
-        ? Number(row.queue_position)
-        : null,
-    campName: row.camp_name?.trim() ? row.camp_name : "—",
-    venue: row.venue?.trim() ? row.venue : "—",
-    dayDate: row.day_date ? String(row.day_date) : null,
-    patientId: row.patient_id || null,
-  };
-}
 
 export default async function PatientStatusPage({
   params,
@@ -143,30 +119,16 @@ export default async function PatientStatusPage({
             Aapka camp status
           </h1>
           <p className="mt-0.5 text-[0.8125rem] text-muted">
-            Line pehle-aao-pehle-paao ke hisaab se chalti hai
+            Apne camp din par venue par pahunchein
           </p>
         </div>
-
-        {/* Queue position first: on camp day it is the only number that matters. */}
-        {view.queuePosition != null ? (
-          <div className="rounded-2xl border border-brand/25 bg-brand-soft p-5 text-center">
-            <p className="text-[0.8125rem] font-bold uppercase tracking-wider text-brand">
-              Line mein aapka number
-            </p>
-            <p className="tabular mt-1 text-6xl font-extrabold leading-none text-brand">
-              {view.queuePosition}
-            </p>
-          </div>
-        ) : null}
 
         <section
           aria-labelledby="current-status-heading"
           className={
             statusGuidance.tone === "complete"
               ? "rounded-2xl border border-brand/25 bg-success-soft p-4 text-foreground"
-              : statusGuidance.tone === "waiting"
-                ? "rounded-2xl border border-warning/30 bg-warning-soft p-4 text-foreground"
-                : "rounded-2xl border border-border bg-card p-4 text-foreground"
+              : "rounded-2xl border border-border bg-card p-4 text-foreground"
           }
         >
           <h2
