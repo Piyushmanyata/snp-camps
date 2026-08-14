@@ -30,17 +30,6 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select
-         to_regprocedure('public.upsert_camp_day(uuid,date,integer,uuid)') is not null
-           and to_regprocedure(
-             'public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,text,date,text)'
-           ) is not null as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await c.end();
-      return null;
-    }
     return c;
   } catch {
     try {

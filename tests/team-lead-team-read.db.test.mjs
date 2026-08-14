@@ -24,16 +24,6 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select to_regclass('public.profiles') is not null
-              and exists (
-                select 1 from pg_proc where proname = 'is_team_lead_of'
-              ) as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await c.end();
-      return null;
-    }
     return c;
   } catch {
     try {

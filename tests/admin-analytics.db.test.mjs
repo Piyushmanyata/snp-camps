@@ -23,16 +23,13 @@ async function connect() {
   const candidate = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await candidate.connect();
-    const { rows } = await candidate.query(
-      `select to_regclass('public.patients') is not null as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await candidate.end();
-      return null;
-    }
     return candidate;
   } catch {
-    await candidate.end().catch(() => {});
+    try {
+      await candidate.end();
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 }

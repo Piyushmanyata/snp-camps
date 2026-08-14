@@ -29,13 +29,6 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select to_regprocedure('public.patient_status_by_token(text)') is not null as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await c.end();
-      return null;
-    }
     return c;
   } catch {
     try {
@@ -52,7 +45,7 @@ test.before(async () => {
   dbAvailable = Boolean(admin);
   if (!dbAvailable) {
     console.warn(
-      "[status-queue-position.db] local Postgres unavailable or migration missing — DB tests skipped",
+      "[status-token.db] local Postgres unavailable — DB tests skipped",
     );
   }
 });

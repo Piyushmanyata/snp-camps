@@ -16,6 +16,11 @@ let authMock = {
   /** Optional list results for .from().select().eq().order() chains (staff GET). */
   listByRole: null,
   listError: null,
+  /** Optional camp results for .from('camps') */
+  activeCamp: null,
+  campError: null,
+  /** Optional generic table handlers */
+  tableQueryHandler: null,
 };
 
 export function __setAuthMock(next) {
@@ -35,6 +40,9 @@ export function __resetAuthMock() {
     profileError: null,
     listByRole: null,
     listError: null,
+    activeCamp: null,
+    campError: null,
+    tableQueryHandler: null,
   };
 }
 
@@ -67,15 +75,45 @@ export function createServerClient() {
       return { data: null, error: null };
     },
     from(table) {
+      if (authMock.tableQueryHandler) {
+        return authMock.tableQueryHandler(table);
+      }
+      if (table === "camps") {
+        return {
+          select() {
+            const chain = {
+              eq() { return chain; },
+              order() { return chain; },
+              async maybeSingle() {
+                if (authMock.campError) return { data: null, error: authMock.campError };
+                return { data: authMock.activeCamp, error: null };
+              },
+              then(resolve, reject) {
+                const run = async () => {
+                  if (authMock.campError) return { data: null, error: authMock.campError };
+                  return { data: authMock.activeCamp ? [authMock.activeCamp] : [], error: null };
+                };
+                return run().then(resolve, reject);
+              },
+            };
+            return chain;
+          },
+        };
+      }
       if (table !== "profiles") {
         throw new Error(`unexpected table ${table}`);
       }
       return {
         select() {
           let roleFilter = null;
+          let teamLeadFilter = null;
           const chain = {
             eq(col, val) {
               if (col === "role") roleFilter = val;
+              if (col === "team_lead_id") teamLeadFilter = val;
+              return chain;
+            },
+            is() {
               return chain;
             },
             order() {
@@ -88,6 +126,9 @@ export function createServerClient() {
                 }
                 if (authMock.listByRole && roleFilter != null) {
                   const rows = authMock.listByRole[roleFilter] || [];
+                  if (teamLeadFilter != null) {
+                    return { data: rows.filter((r) => r.team_lead_id === teamLeadFilter), error: null };
+                  }
                   return { data: rows, error: null };
                 }
                 return { data: [], error: null };

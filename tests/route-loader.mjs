@@ -26,6 +26,7 @@ const exact = new Map([
     pathToFileURL(path.join(stubs, "service-role-admin.mjs")).href,
   ],
   ["next/cache", pathToFileURL(path.join(stubs, "next-cache.mjs")).href],
+  ["next/navigation", pathToFileURL(path.join(stubs, "next-navigation.mjs")).href],
 ]);
 
 function resolveAt(base, rel) {

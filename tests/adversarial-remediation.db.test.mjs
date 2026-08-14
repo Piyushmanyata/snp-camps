@@ -16,12 +16,6 @@ const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
-const REGISTER_RPC =
-  "public.register_patient_idempotent(uuid,uuid,text,text,integer,text,text,text,text,uuid,uuid,uuid,boolean,boolean,boolean,text,text,date,text)";
-
-const MANUAL_RPC =
-  "public.register_manual_exception(uuid,uuid,uuid,text,text,text,integer,text,text,text,integer,uuid)";
-
 /** @type {pg.Client | null} */
 let client = null;
 let dbAvailable = false;
@@ -30,16 +24,6 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select
-         to_regprocedure($1) is not null as reg_ok,
-         to_regprocedure($2) is not null as manual_ok`,
-      [REGISTER_RPC, MANUAL_RPC],
-    );
-    if (!rows[0]?.reg_ok || !rows[0]?.manual_ok) {
-      await c.end();
-      return null;
-    }
     return c;
   } catch {
     try {
@@ -56,7 +40,7 @@ test.before(async () => {
   dbAvailable = Boolean(client);
   if (!dbAvailable) {
     console.warn(
-      "[adversarial-remediation.db] local Postgres unavailable or remediation migration not applied — DB tests skipped",
+      "[adversarial-remediation.db] local Postgres unavailable — DB tests skipped",
     );
   }
 });

@@ -22,14 +22,6 @@ async function connect() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await c.connect();
-    const { rows } = await c.query(
-      `select to_regprocedure($1) is not null as ok`,
-      [RPC],
-    );
-    if (!rows[0]?.ok) {
-      await c.end();
-      return null;
-    }
     return c;
   } catch {
     try {
@@ -46,7 +38,7 @@ test.before(async () => {
   dbAvailable = Boolean(client);
   if (!dbAvailable) {
     console.warn(
-      "[self-registration.db] local Postgres unavailable or #79 migration not applied — DB tests skipped",
+      "[self-registration.db] local Postgres unavailable — DB tests skipped",
     );
   }
 });

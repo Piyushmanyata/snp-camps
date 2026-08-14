@@ -7,31 +7,42 @@ const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
-let client;
+/** @type {pg.Client | null} */
+let client = null;
 let dbAvailable = false;
 
-test.before(async () => {
-  client = new pg.Client({ connectionString: DATABASE_URL });
+async function connect() {
+  const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
-    await client.connect();
+    await c.connect();
+    return c;
   } catch {
-    dbAvailable = false;
-    return;
+    try {
+      await c.end();
+    } catch {
+      /* ignore */
+    }
+    return null;
   }
-  const { rows } = await client.query(
-    "select to_regprocedure('public.clinical_lookup(uuid,integer)') is not null as ok",
-  );
-  assert.equal(rows[0]?.ok, true, "clinical workflow migration is missing");
-  dbAvailable = true;
+}
+
+test.before(async () => {
+  client = await connect();
+  dbAvailable = Boolean(client);
+  if (!dbAvailable) {
+    console.warn(
+      "[issue-124-clinical.db] local Postgres unavailable — DB tests skipped",
+    );
+  }
 });
 
 test.after(async () => {
-  await client?.end().catch(() => {});
+  if (client) await client.end().catch(() => {});
 });
 
 function skipIfNoDb(t) {
   if (!dbAvailable) {
-    t.skip("local clinical workflow migration unavailable");
+    t.skip("local Postgres not available");
     return true;
   }
   return false;

@@ -17,17 +17,28 @@ const KPI_SIGNATURE = "public.staff_person_kpis(uuid,text,uuid,text)";
 let client = null;
 let dbAvailable = false;
 
-test.before(async () => {
-  client = new pg.Client({ connectionString: DATABASE_URL });
+async function connect() {
+  const c = new pg.Client({ connectionString: DATABASE_URL });
   try {
-    await client.connect();
-    const { rows } = await client.query(
-      `select to_regprocedure($1) is not null as ok`,
-      [KPI_SIGNATURE],
-    );
-    dbAvailable = rows[0]?.ok === true;
+    await c.connect();
+    return c;
   } catch {
-    dbAvailable = false;
+    try {
+      await c.end();
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+}
+
+test.before(async () => {
+  client = await connect();
+  dbAvailable = Boolean(client);
+  if (!dbAvailable) {
+    console.warn(
+      "[staff-person-kpis.db] local Postgres unavailable — DB tests skipped",
+    );
   }
 });
 
@@ -37,7 +48,7 @@ test.after(async () => {
 
 function skipIfNoDb(t) {
   if (!dbAvailable) {
-    t.skip("local Postgres or final KPI migration unavailable");
+    t.skip("local Postgres not available");
     return true;
   }
   return false;

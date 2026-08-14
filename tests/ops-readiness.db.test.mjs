@@ -30,13 +30,6 @@ async function connect() {
   const client = new pg.Client({ connectionString: DATABASE_URL });
   try {
     await client.connect();
-    const { rows } = await client.query(
-      `select to_regprocedure('public.readiness_catalog_probe()') is not null as ok`,
-    );
-    if (!rows[0]?.ok) {
-      await client.end();
-      return null;
-    }
     return client;
   } catch {
     try {
@@ -50,7 +43,7 @@ async function connect() {
 
 function skipIfNoDb(t) {
   if (!dbAvailable) {
-    t.skip("local Postgres / readiness_catalog_probe not available");
+    t.skip("local Postgres not available");
     return true;
   }
   return false;
@@ -61,7 +54,7 @@ test.before(async () => {
   dbAvailable = Boolean(admin);
   if (!dbAvailable) {
     console.warn(
-      "[ops-readiness] local Postgres or probe RPC unavailable — DB tests skipped",
+      "[ops-readiness.db] local Postgres unavailable — DB tests skipped",
     );
   }
 });
