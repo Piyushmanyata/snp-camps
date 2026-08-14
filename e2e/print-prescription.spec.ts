@@ -17,8 +17,9 @@ async function gotoHydrated(page: Page, pathName: string) {
 
 async function loginStaff(page: Page, role: "admin" | "volunteer") {
   await gotoHydrated(page, "/login");
-  await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
+  await page.locator("form").getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
+    .locator("form")
     .getByLabel("Password")
     .fill(env(`E2E_${role.toUpperCase()}_PASSWORD`));
   await page.getByRole("button", { name: "Sign in" }).click();

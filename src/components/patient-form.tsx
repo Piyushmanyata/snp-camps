@@ -21,7 +21,7 @@ import {
   type PatientFormField,
 } from "@/lib/patient-form-validate";
 import { printPrescriptionWithRetries, type DeskRpc } from "@/lib/desk-ops";
-import { formatCampDay, type CampDayStats } from "@/lib/types";
+import { formatCampDay, type CampDayStats, type QueueStatus } from "@/lib/types";
 import {
   Button,
   Input,
@@ -40,7 +40,7 @@ import { useToastedError } from "@/lib/use-toasted-error";
 type PrintRecovery = {
   patientId: string;
   regNo: number;
-  queueStatus?: "registered" | "waiting" | "seen";
+  queueStatus?: QueueStatus;
   /** True only when the pre-opened target was navigated successfully. */
   printNavigated: boolean;
   printHref: string;

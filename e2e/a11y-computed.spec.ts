@@ -27,9 +27,11 @@ async function loginStaff(
   page: Page,
   role: "admin" | "team_lead" | "volunteer" | "clinical_operator",
 ) {
-  await gotoReady(page, "/login", page.getByLabel("Email"));
-  await page.getByLabel("Email").fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
+  const emailInput = page.locator("form").getByLabel("Email");
+  await gotoReady(page, "/login", emailInput);
+  await emailInput.fill(env(`E2E_${role.toUpperCase()}_EMAIL`));
   await page
+    .locator("form")
     .getByLabel("Password")
     .fill(env(`E2E_${role.toUpperCase()}_PASSWORD`));
   await page.getByRole("button", { name: "Sign in" }).click();

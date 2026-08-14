@@ -58,4 +58,8 @@ next-env.d.ts
 # the code it described, which is exactly how a passing summary stops meaning anything.
 /docs/evidence/
 
+# Agent metadata
+.agents/
+
+
 
