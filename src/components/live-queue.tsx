@@ -1,0 +1,309 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import { useCampDeskLive } from "@/lib/use-camp-desk-live";
+import {
+  Button,
+  EmptyState,
+  ErrorBox,
+  Spinner,
+} from "@/components/ui";
+import { DeskFreshnessIndicator } from "@/components/desk-freshness-indicator";
+import { showSuccessToast } from "@/lib/toast-bus";
+import { useToastedError } from "@/lib/use-toasted-error";
+import {
+  markSeenWithRetries,
+  undoMarkSeenWithRetries,
+} from "@/lib/desk-ops";
+
+export type LiveQueuePatient = {
+  id: string;
+  reg_no: number;
+  full_name: string;
+  phone: string | null;
+};
+
+/** Waiting queue. Mark seen removes the patient from the list (D22). */
+export function LiveQueue({
+  initial,
+  initialTotal,
+  campId,
+  /** False when SSR queue failed — do not treat empty as success (#63). */
+  initialLoadKnown = true,
+}: {
+  initial: LiveQueuePatient[];
+  initialTotal?: number;
+  campId: string | null;
+  initialLoadKnown?: boolean;
+}) {
+  const [error, setError] = useToastedError(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Last patient marked seen from this list — the undo target (D25).
+  const [undoable, setUndoable] = useState<LiveQueuePatient | null>(null);
+
+  const {
+    waiting: rows,
+    waitingTotal: total,
+    freshness,
+    waitingKnown,
+    refreshing,
+    refresh,
+    markRemoved,
+    clearRemoved,
+  } = useCampDeskLive(campId, {
+    waiting: initial,
+    waitingTotal: initialTotal ?? initial.length,
+    // SSR always seeds known when this component mounts with a successful
+    // or empty initial list; pass waitingKnown=false from pages on SSR fail.
+    waitingKnown: initialLoadKnown,
+  });
+
+  function manualRefresh() {
+    setError(null);
+    refresh();
+  }
+
+  function deskRpc(supabase: ReturnType<typeof createClient>) {
+    return async (fn: string, args: Record<string, unknown>) => {
+      const result = await supabase.rpc(fn, args);
+      return {
+        data: result.data,
+        error: result.error
+          ? {
+              message: result.error.message,
+              code: result.error.code,
+              details: result.error.details,
+              hint: result.error.hint,
+            }
+          : null,
+      };
+    };
+  }
+
+  async function markSeen(patient: LiveQueuePatient) {
+    if (busyId) return;
+    setError(null);
+    setBusyId(patient.id);
+
+    const outcome = await markSeenWithRetries({
+      patientId: patient.id,
+      rpc: deskRpc(createClient()),
+      errorContext: "live-queue.mark-seen",
+      errorFallback: "Could not mark this patient seen. Try again.",
+    });
+
+    if (!outcome.ok) {
+      setError(outcome.error);
+      clearRemoved(patient.id);
+      setBusyId(null);
+      return;
+    }
+
+    const row = outcome.row;
+    markRemoved(patient.id);
+
+    if (row.already_seen) {
+      setError(
+        row.seen_by_name
+          ? `Already seen by ${row.seen_by_name}`
+          : "Already seen",
+      );
+      refresh();
+      setBusyId(null);
+      return;
+    }
+
+    try {
+      if (typeof window !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate([100, 30, 100]);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    showSuccessToast(`#${patient.reg_no} dekha hua ho gaya`);
+    setUndoable(patient);
+    refresh();
+    setBusyId(null);
+  }
+
+  async function undoSeen(patient: LiveQueuePatient) {
+    if (busyId) return;
+    setError(null);
+    setBusyId(patient.id);
+
+    const outcome = await undoMarkSeenWithRetries({
+      patientId: patient.id,
+      rpc: deskRpc(createClient()),
+      errorContext: "live-queue.undo-mark-seen",
+    });
+
+    if (!outcome.ok) {
+      setError(outcome.error);
+      setBusyId(null);
+      return;
+    }
+
+    setUndoable(null);
+    showSuccessToast(`#${patient.reg_no} Wapas line mein aa gaya`);
+    clearRemoved(patient.id);
+    refresh();
+    setBusyId(null);
+  }
+
+  const statusHint =
+    freshness === "stale-error"
+      ? " · stale"
+      : freshness === "error"
+        ? " · unavailable"
+        : freshness === "refreshing"
+          ? " · refreshing"
+          : freshness === "fresh"
+            ? " · live"
+            : "";
+
+  const queueFailed =
+    !waitingKnown &&
+    (freshness === "error" ||
+      freshness === "stale-error" ||
+      (freshness === "refreshing" && rows.length === 0 && !initialLoadKnown));
+  const showEmpty = waitingKnown && rows.length === 0;
+  const showRows = waitingKnown || rows.length > 0;
+
+  return (
+    <div>
+      <ErrorBox message={error} />
+      <DeskFreshnessIndicator
+        freshness={freshness}
+        onRetry={manualRefresh}
+        hasKnownData={waitingKnown}
+      />
+      {undoable ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2"
+          role="status"
+        >
+          <p className="text-sm">
+            <span className="tabular font-semibold text-brand">
+              #{undoable.reg_no}
+            </span>{" "}
+            {undoable.full_name} marked seen.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="w-auto"
+              disabled={busyId !== null}
+              onClick={() => void undoSeen(undoable)}
+            >
+              Wapas line mein
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="w-auto"
+              onClick={() => setUndoable(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
+        <span aria-live="polite">
+          {!waitingKnown && freshness === "refreshing"
+            ? "Loading queue…"
+            : queueFailed
+              ? "Queue unavailable"
+              : total > rows.length
+                ? "Showing first " + rows.length + " of " + total
+                : total + " waiting"}
+          {waitingKnown || freshness === "fresh" ? statusHint : ""}
+        </span>
+        <button
+          type="button"
+          onClick={manualRefresh}
+          disabled={refreshing || !campId}
+          className="pressable inline-flex min-h-12 items-center gap-1 rounded-lg px-3 font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
+        >
+          {refreshing ? <Spinner className="h-3 w-3" /> : null}
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <ul
+        className="divide-y divide-border lg:max-h-[70vh] lg:overflow-y-auto"
+        aria-label="Patients waiting in queue"
+      >
+        {showRows
+          ? rows.map((p, index) => (
+          <li key={p.id} className="px-1 py-3">
+            {/* Wraps instead of pushing the actions off a narrow phone. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 basis-40 items-start gap-2.5">
+                <span
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-[11px] font-bold tabular-nums text-warning ring-1 ring-warning/40"
+                  aria-label={`Position ${index + 1}`}
+                >
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {/* Reg number is the identity staff call out and scan for. */}
+                  <p className="tabular text-lg font-bold leading-tight text-brand">
+                    #{p.reg_no}
+                  </p>
+                  <p className="break-words font-semibold leading-snug">
+                    {p.full_name}
+                  </p>
+                  {p.phone ? (
+                    <p className="break-all text-xs text-muted">{p.phone}</p>
+                  ) : null}
+                </div>
+              </div>
+              {/* No "In queue" badge — every row in this list is in the queue.
+                  basis-40 above stops a long name collapsing to a 9px column
+                  and wrapping over 20+ lines; the actions wrap under instead. */}
+              <div className="flex flex-1 items-center justify-end gap-1.5">
+                <Link
+                  href={`/print/${p.id}`}
+                  className="pressable inline-flex min-h-12 items-center rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand-soft"
+                >
+                  Reprint
+                </Link>
+                <button
+                  type="button"
+                  disabled={busyId !== null}
+                  onClick={() => void markSeen(p)}
+                  data-testid="mark-seen"
+                  className="pressable inline-flex min-h-12 items-center rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-white disabled:opacity-50"
+                >
+                  {busyId === p.id ? "…" : "Dekha hua karein"}
+                </button>
+              </div>
+            </div>
+          </li>
+        ))
+          : null}
+        {queueFailed && !rows.length ? (
+          <li className="px-1 py-2">
+            {/* Distinct from empty: hard load failure, not "nothing here". */}
+            <ErrorBox message="Queue could not be loaded. Use Refresh or Try again — this is not an empty line." />
+          </li>
+        ) : null}
+        {showEmpty ? (
+          <li className="px-1 py-2">
+            <EmptyState>
+              Queue is empty. Printing a patient&apos;s prescription puts them
+              here, in arrival order.
+            </EmptyState>
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
