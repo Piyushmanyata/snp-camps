@@ -217,6 +217,47 @@ test("same-day desk registration stays registered until print, even when the day
   }
 });
 
+test("desk walk-in insert writer never stamps waiting or queued_at", async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+  const { campId, dayId } = await seedCampWithDay({
+    seatLimit: 10,
+    dayDate: today,
+  });
+  const requestId = randomUUID();
+
+  try {
+    const { rows } = await asServiceRole(() =>
+      client.query(
+        `select id, queue_status::text
+         from public.register_patient_idempotent_preprint_queue(
+           $1::uuid, $2::uuid, 'Walk-in writer', 'M', 40,
+           null, null, null, null, null, null, $3::uuid,
+           false, false, false, 'self_declared', null, null, null)`,
+        [requestId, campId, dayId],
+      ),
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].queue_status, "registered");
+
+    const { rows: persisted } = await client.query(
+      `select queue_status::text, queued_at, checked_in_by, printed_at
+       from public.patients where id = $1`,
+      [rows[0].id],
+    );
+    assert.equal(persisted[0].queue_status, "registered");
+    assert.equal(persisted[0].queued_at, null);
+    assert.equal(persisted[0].checked_in_by, null);
+    assert.equal(persisted[0].printed_at, null);
+  } finally {
+    await cleanupCamp(campId);
+  }
+});
+
 test("N concurrent registrations against M seats yield exactly M successes", async (t) => {
   if (skipIfNoDb(t)) return;
 

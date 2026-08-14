@@ -492,6 +492,107 @@ test("clinical lookup exposes ordered prior history before a current transcripti
   }
 });
 
+test("undo and first transcription cannot both commit", async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const volunteer = await profile("volunteer");
+  const operator = await profile("clinical_operator");
+  const campId = randomUUID();
+  const dayId = randomUUID();
+  const patientId = randomUUID();
+  await client.query("update public.camps set is_active=false where is_active");
+  await client.query(
+    `insert into public.camps(id,name,venue,is_active) values($1,'Undo race','undo-race',true)`,
+    [campId],
+  );
+  await client.query(
+    "insert into public.camp_days(id,camp_id,day_date,seat_limit) values($1,$2,'2099-08-01',20)",
+    [dayId, campId],
+  );
+  await client.query(
+    `insert into public.patients(
+       id,camp_id,camp_day_id,full_name,queue_status,printed_at,seen_at,seen_by
+     ) values($1,$2,$3,'Race Patient','seen',now(),now(),$4)`,
+    [patientId, campId, dayId, volunteer],
+  );
+
+  const a = new pg.Client({ connectionString: DATABASE_URL });
+  const b = new pg.Client({ connectionString: DATABASE_URL });
+  await a.connect();
+  await b.connect();
+  try {
+    async function claim(c, userId) {
+      await c.query("begin");
+      await c.query(
+        "select set_config('request.jwt.claim.role','authenticated',true)",
+      );
+      await c.query("select set_config('request.jwt.claim.sub',$1,true)", [
+        userId,
+      ]);
+      await c.query("select set_config('request.jwt.claims',$1,true)", [
+        JSON.stringify({ role: "authenticated", sub: userId }),
+      ]);
+      await c.query("set local role authenticated");
+    }
+
+    await claim(a, volunteer);
+    const undo = await a.query(
+      "select error_code from public.undo_mark_seen($1)",
+      [patientId],
+    );
+    assert.equal(undo.rows[0].error_code, null);
+
+    const saveStarted = claim(b, operator).then(() =>
+      b.query("select public.clinical_save_transcription($1,$2::jsonb)", [
+        patientId,
+        JSON.stringify({ diagnoses: ["Other"], remarks: "race" }),
+      ]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await a.query("commit");
+
+    let saveOk = false;
+    try {
+      await saveStarted;
+      await b.query("commit");
+      saveOk = true;
+    } catch {
+      await b.query("rollback").catch(() => {});
+    }
+
+    const { rows } = await client.query(
+      `select p.queue_status::text,
+              exists(
+                select 1 from public.prescription_transcriptions t
+                where t.patient_id = p.id
+              ) as has_transcription
+         from public.patients p
+        where p.id = $1`,
+      [patientId],
+    );
+    assert.equal(rows[0].queue_status, "registered");
+    assert.equal(
+      rows[0].has_transcription,
+      false,
+      saveOk
+        ? "transcription committed against an undone registration"
+        : "expected no transcription after undo won",
+    );
+  } finally {
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+    await client.query(
+      "delete from public.prescription_transcriptions where patient_id=$1",
+      [patientId],
+    );
+    await client.query("delete from public.patients where camp_id=$1", [campId]);
+    await client.query("delete from public.camp_days where camp_id=$1", [
+      campId,
+    ]);
+    await client.query("delete from public.camps where id=$1", [campId]);
+  }
+});
+
 test("clinical tables deny authenticated direct access", async (t) => {
   if (skipIfNoDb(t)) return;
   const { rows } = await client.query(
