@@ -20,7 +20,6 @@ export function ToastHost() {
       setCurrent(null);
     }, 3000);
     return () => clearTimeout(timer);
-    // Remount timer when message changes so rapid updates stay readable.
   }, [current]);
 
   if (!current) return null;

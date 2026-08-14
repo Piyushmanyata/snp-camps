@@ -1,8 +1,3 @@
-/**
- * Fail-closed readiness evaluation (#68).
- * Produces independent check results; any failure / unknown → not ready.
- * Never includes secrets, SQL text, PHI, or connection strings in output.
- */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CHECK_OPERATOR_HINTS,
@@ -24,9 +19,7 @@ import {
 
 export type CheckResult = {
   ok: boolean;
-  /** Stable machine code when not ok (or when ok with extra context). */
   code?: string;
-  /** Safe operator explanation — never secrets/PHI/SQL. */
   detail?: string;
 };
 
@@ -36,17 +29,10 @@ export type ReadinessResult = {
   expectedMigrationHead: string;
   appliedMigrationHead: string | null;
   checks: Record<ReadinessCheckId, CheckResult>;
-  /** First failed check id, if any. */
   failedCheck: ReadinessCheckId | null;
   integrations: {
     sms: boolean;
-    /**
-     * The Aadhaar pepper. eKYC provider configuration was retired with the OTP
-     * flow (#116); the pepper survives because the Person duplicate key is
-     * keyed on it, so a scanned registration cannot proceed without it.
-     */
     aadhaarPepper: boolean;
-    /** Durable public rate limiting for /s/<token>, lookup, self-registration. */
     rateLimitSecret: boolean;
     cron: boolean;
   };
@@ -66,7 +52,6 @@ export function integrationConfig(env: Record<string, string | undefined> = proc
   };
 }
 
-/** Facts returned by public.readiness_catalog_probe() (service_role). */
 export type CatalogProbeFacts = {
   tables?: Record<string, boolean>;
   columns?: Record<string, boolean>;
@@ -152,7 +137,6 @@ function allOk(checks: Record<ReadinessCheckId, CheckResult>): boolean {
   return READINESS_CHECK_IDS.every((id) => checks[id].ok);
 }
 
-/** Evaluate catalog facts against the versioned contract. */
 export function evaluateCatalogFacts(facts: CatalogProbeFacts | null | undefined): {
   schema_contract: CheckResult;
   rpc_grants: CheckResult;
@@ -264,10 +248,6 @@ export function evaluateCatalogFacts(facts: CatalogProbeFacts | null | undefined
   };
 }
 
-/**
- * Run fail-closed readiness against a service-role Supabase client.
- * Any null/timeout/error → corresponding check fails → overall not ready.
- */
 export async function evaluateReadiness(
   client: ServiceClient | null,
 ): Promise<ReadinessResult> {
@@ -282,7 +262,6 @@ export async function evaluateReadiness(
     const checks = emptyChecks(
       fail("service_role_unconfigured", "database_reachability"),
     );
-    // Only reachability is specifically about missing client; others cascade.
     for (const id of READINESS_CHECK_IDS) {
       if (id !== "database_reachability") {
         checks[id] = fail("service_role_unconfigured", id);
@@ -333,8 +312,6 @@ async function evaluateReadinessInner(
 ): Promise<ReadinessResult> {
   const checks = {} as Record<ReadinessCheckId, CheckResult>;
 
-  // 1) Database reachability — cheap table probe.
-  // Promise.resolve: PostgREST builders are thenable but not typed as Promise.
   try {
     const camps = await withTimeout(
       Promise.resolve(client.from("camps").select("id").limit(1)),
@@ -366,7 +343,6 @@ async function evaluateReadinessInner(
           "required_configuration",
         );
 
-  // 2) Migration-head discovery — failure is not ready (never coerce to null success).
   let applied: string | null = null;
   try {
     const mig = await withTimeout(
@@ -395,7 +371,6 @@ async function evaluateReadinessInner(
     );
   }
 
-  // 3) Applied-head agreement — requires successful discovery.
   if (!checks.migration_head_discovery.ok || applied === null) {
     checks.applied_head_agreement = fail(
       "discovery_unavailable",
@@ -412,7 +387,6 @@ async function evaluateReadinessInner(
     checks.applied_head_agreement = pass("heads_agree", `head=${applied}`);
   }
 
-  // 4–7) Catalog contract via single probe RPC (or fail closed).
   let catalogEval = evaluateCatalogFacts(null);
   try {
     const probe = await withTimeout(
@@ -453,7 +427,6 @@ async function evaluateReadinessInner(
   checks.patients_realtime_absent = catalogEval.patients_realtime_absent;
   checks.sms_ledger = catalogEval.sms_ledger;
 
-  // If DB is unreachable, mark dependent checks failed even if somehow ok.
   if (!checks.database_reachability.ok) {
     for (const id of READINESS_CHECK_IDS) {
       if (id === "database_reachability" || id === "required_configuration") {
@@ -474,7 +447,6 @@ async function evaluateReadinessInner(
   };
 }
 
-/** JSON body for HTTP response — only safe fields. */
 export function readinessResponseBody(result: ReadinessResult) {
   return {
     ok: result.ok,

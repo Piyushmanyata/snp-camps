@@ -12,11 +12,6 @@ export {
   roleHome,
 } from "@/lib/roles";
 
-/**
- * Uncached session load for API route handlers (and tests).
- * Prefer this in route handlers so role checks are not stuck on a
- * request-scoped React cache entry from an earlier call in the same process.
- */
 export async function loadSessionProfile(): Promise<{
   userId: string | null;
   profile: Profile | null;
@@ -52,10 +47,8 @@ export async function loadSessionProfile(): Promise<{
   return { userId, profile: profile as Profile };
 }
 
-/** Request-deduped session for Server Components / layouts. */
 export const getSessionProfile = cache(loadSessionProfile);
 
-/** Parse a small JSON body with a strict media type and bounded decoded size. */
 export async function readJsonBody<T = Record<string, unknown>>(
   req: Request,
   maxBytes = 16_384,

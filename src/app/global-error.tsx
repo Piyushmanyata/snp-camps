@@ -2,10 +2,6 @@
 
 import { useEffect } from "react";
 
-/**
- * Root layout crash recovery. Must define its own <html>/<body> because the
- * root layout is not rendered when this boundary is shown.
- */
 export default function GlobalError({
   error,
   reset,

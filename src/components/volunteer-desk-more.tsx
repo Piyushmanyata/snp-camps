@@ -247,7 +247,6 @@ function MoreIslands({
   );
 }
 
-/** Collapsed extras: points, seats, team — lazy islands + section API. */
 export function VolunteerDeskMore({
   campId,
   currentUserId,

@@ -36,12 +36,11 @@ import { AadhaarUsbInput } from "@/components/aadhaar-usb-input";
 import { validateHouseholdPhone } from "@/lib/phone";
 import { useToastedError } from "@/lib/use-toasted-error";
 
-/** Recoverable print action after a successful registration (#62 / #64). */
+// Recoverable print action after a successful registration (#62 / #64).
 type PrintRecovery = {
   patientId: string;
   regNo: number;
   queueStatus?: QueueStatus;
-  /** True only when the pre-opened target was navigated successfully. */
   printNavigated: boolean;
   printHref: string;
 };
@@ -51,7 +50,6 @@ type Props = {
   days: CampDayStats[];
   defaultPhone?: string;
   createdBy?: string | null;
-  /** Volunteer/admin desk registration — print only, no on-screen QR */
   isStaff?: boolean;
   userRole?: string | null;
 };
@@ -96,20 +94,9 @@ export function PatientForm({
   const [scannedIdentity, setScannedIdentity] = useState<{
     fullName: string;
     aadhaarLast4: string;
-    /** Card DOB — the trusted server route needs the full date. */
     dateOfBirth: string;
   } | null>(null);
 
-  /**
-   * Which identity fields the scanned card actually supplied.
-   *
-   * The lock exists so a scanned value cannot be quietly edited — but a field
-   * the card never filled has nothing to protect, and locking it strands the
-   * desk. Old XML cards routinely carry no uid (so no last 4) and sometimes no
-   * date of birth at all, which left those fields empty, read-only and still
-   * marked required: the banner asked the operator to type them in and the form
-   * refused the keystrokes. Lock per field, not per scan.
-   */
   const [cardProvided, setCardProvided] = useState({
     fullName: false,
     age: false,
@@ -127,9 +114,9 @@ export function PatientForm({
   const formRef = useRef<HTMLFormElement | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormFieldErrors>({});
   const [loading, setLoading] = useState(false);
-  /** idle | saving | failed-retryable | registered-print-ready (#62). */
+  // idle | saving | failed-retryable | registered-print-ready (#62).
   const [phase, setPhase] = useState<DeskSubmitPhase>("idle");
-  /** #107 — which submit button was used; both always visible. */
+  // Which submit button was used (#107); both always visible.
   const wantPrintRef = useRef(true);
   const [printRecovery, setPrintRecovery] = useState<PrintRecovery | null>(
     null,
@@ -142,17 +129,9 @@ export function PatientForm({
   );
 
   const [scannedBanner, setScannedBanner] = useState<string | null>(null);
-  // Structure-only fingerprint of the last partial scan (no patient data), so an
-  // unsupported card format can be reported from the field.
   const [partialScanDiagnostic, setPartialScanDiagnostic] = useState<string | null>(null);
-  /** Amber warning shown when the payload came from an old unsigned legacy XML card. */
   const [legacyQrWarning, setLegacyQrWarning] = useState<string | null>(null);
 
-  /**
-   * Fill the form from one decoded card. Returns false to keep the camera
-   * running when the payload carried no autofillable field — a partial read on
-   * one blurry frame should not end the session when the next may read cleanly.
-   */
   const onCardScanned = async (
     parsed: ParsedAadhaarQr,
     diagnostic: string,
@@ -208,7 +187,6 @@ export function PatientForm({
         dateOfBirth: parsed.dateOfBirth!,
       });
 
-      // Legacy XML cards carry no UIDAI signature — show an amber caution badge.
       if (parsed.source === "legacy_xml") {
         setLegacyQrWarning(
           "Purana Aadhaar QR — details bina digital verify ke aayi hain. Card se milaan karein.",
@@ -226,7 +204,6 @@ export function PatientForm({
 
   const scanner = useAadhaarScanner(onCardScanned);
   const { clearError: clearScanError } = scanner;
-  // A rejected payload (the app's own desk slip) means nothing was filled.
   const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
   const lastDiagnostic = useRef<string | null>(null);
   useEffect(() => {
@@ -236,19 +213,8 @@ export function PatientForm({
     }
   }, [scanDiagnostic]);
 
-  /**
-   * Aadhaar is the source of patient identity, so the typed fields stay out of
-   * the way until they are actually needed: either a card was read (and the
-   * fields are shown filled and locked, for confirmation) or the operator has
-   * explicitly declared the scan a failure.
-   *
-   * Showing them by default is what makes a desk type a name it could have
-   * scanned — slower, and it loses the Aadhaar last-4 and DOB that the
-   * duplicate-detection Person key is built from.
-   */
   const [manualEntry, setManualEntry] = useState(false);
   const identityVisible = isCardScanned || manualEntry;
-
 
   const focusName = useCallback(() => {
     requestAnimationFrame(() => {
@@ -264,9 +230,6 @@ export function PatientForm({
     const formatted = formatAadhaarDisplay(value);
     setAadhaar(formatted);
     const d = digitsOnly(formatted);
-    // Only a card that actually asserted a last 4 can be contradicted by typing.
-    // Old XML cards often carry no uid, and treating the operator filling that
-    // empty field as tampering downgraded a genuine card-scanned record.
     if (
       provenance === "card_scanned" &&
       scannedIdentity &&
@@ -303,8 +266,6 @@ export function PatientForm({
     setError(null);
     setFlash(null);
     setFieldErrors({});
-    // Keep prior print recovery until a new success replaces it —
-    // never clear the only route to the slip mid-submit.
     const aadhaarDuplicateOverride = aadhaarOverrideOnceRef.current;
     aadhaarOverrideOnceRef.current = false;
     const likelyDuplicateOverride = likelyOverrideOnceRef.current;
@@ -337,7 +298,6 @@ export function PatientForm({
       return;
     }
 
-    // Register & print: acquire print target during the submit gesture BEFORE
     // any await (#62). Register-only: no window (#107).
     const wantPrint = wantPrintRef.current;
     const printTarget = wantPrint
@@ -388,7 +348,6 @@ export function PatientForm({
         phone: validated.values.phone,
         email: null,
         aadhaarLast4: validated.values.aadhaarLast4,
-        // The Person key is derived only by the trusted server route.
         duplicateKey: null,
         dateOfBirth: scannedIdentity?.dateOfBirth ?? null,
         createdBy,
@@ -416,7 +375,6 @@ export function PatientForm({
                 email: args.p_email,
                 aadhaarLast4: args.p_aadhaar_last4,
                 dateOfBirth: args.p_date_of_birth,
-                // Staff one-shot overrides — Person key still server-derived.
                 aadhaarDuplicateOverride: Boolean(
                   args.p_aadhaar_duplicate_override,
                 ),
@@ -550,7 +508,6 @@ export function PatientForm({
       return;
     }
 
-    // onSuccess already retained recovery + flash before reset.
     setLoading(false);
   }
 
@@ -568,11 +525,6 @@ export function PatientForm({
     formRef.current?.requestSubmit();
   }
 
-  /**
-   * Likely-duplicate primary action: print the existing Registration instead of
-   * creating a second Person. Flash copy is truth-based — never claims print
-   * when the window failed.
-   */
   async function printLikelyDuplicateInstead() {
     if (likelyDuplicateRegNo == null || loading) return;
     const regTarget = likelyDuplicateRegNo;
@@ -728,7 +680,6 @@ export function PatientForm({
         hint="Sirf contact ke liye — ghar ke log same number de sakte hain."
       />
 
-      {/* Aadhaar capture stays closed until the household contact is valid. */}
       {phoneValidation.ok ? (
       <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
         <div>

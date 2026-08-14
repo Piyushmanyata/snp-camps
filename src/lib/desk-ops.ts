@@ -1,22 +1,3 @@
-/**
- * Desk ops with shared quiet retry (#32, #60, #61).
- *
- * Idempotency guarantees (safe to auto-retry):
- * - lookup_patient_scan — read-only; COMMENT ON FUNCTION: "No side effects."
- * - mark_seen — SELECT … FOR UPDATE; if queue_status is already `seen`, returns
- *   the original seen_at / seen_by with already_seen (never re-stamps), so a
- *   success-after-timeout surfaces as already_seen rather than a rewrite.
- * - undo_mark_seen — seen → registered, keeping printed_at; a second call
- *   returns not_seen rather than moving the patient again.
- * - change_camp_day — patient + target day FOR UPDATE; same-day early return;
- *   seat count checked under the day lock before UPDATE.
- * - mark_patient_printed — records presence once; a reprint returns
- *   already_printed on the original printed_at, and a seen patient may reprint.
- * - search_registered_patients — read-only; empty rows ≠ error.
- *
- * Retry uses classifyOperationError allow-list only (transient transport / DB).
- * Terminal business, permission, validation, and capacity results are not retried.
- */
 
 import {
   classifyOperationError,
@@ -79,7 +60,6 @@ export type PrintPrescriptionRow = {
   already_printed: boolean;
 };
 
-/** Lost-slip search row — name/age/locality only (no phone/token/status). */
 export type RegisteredSearchRow = {
   id: string;
   reg_no: number;
@@ -114,7 +94,6 @@ async function withTransientSteps<T>(
   return last.done ? last.value : exhausted;
 }
 
-/** Map a structured RPC error; terminal vs retry decided by classifier (#60). */
 function classifyRpcFailure(
   error: DeskRpcError,
   context: string,
@@ -130,12 +109,10 @@ function classifyRpcFailure(
   };
 }
 
-/** QR / reg scan lookup — read-only RPC. */
 export async function lookupPatientScanWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
   rpc: DeskRpc;
-  /** @deprecated Prefer errorContext/errorFallback. */
   mapRpcError?: (message: string) => string;
   errorContext?: string;
   errorFallback?: string;
@@ -198,16 +175,9 @@ export async function lookupPatientScanWithRetries(options: {
   );
 }
 
-/** Worker-facing copy when Mark seen is used on someone never printed for (D25). */
 export const NEVER_PRINTED_COPY =
   "Pehle inki parchi print karein — tabhi dekha hua kar sakte hain.";
 
-/**
- * Mark seen — the second of the two desk actions (D22).
- * already_seen is a successful terminal outcome (idempotent re-call), which is
- * what makes this safe to auto-retry and safe to double-scan.
- * never_printed is a terminal business rejection (no auto-retry).
- */
 export async function markSeenWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
@@ -244,8 +214,6 @@ export async function markSeenWithRetries(options: {
         }
         const row = firstRow<MarkSeenRow>(data);
         if (!row) {
-          // A completed RPC with no row is a business ambiguity, not a
-          // transport fault — do not burn retries on it.
           return {
             done: true,
             value: {
@@ -289,7 +257,6 @@ export async function markSeenWithRetries(options: {
   );
 }
 
-/** Undo a mis-scan (D25). Time-limited server-side; expiry is a terminal result. */
 export async function undoMarkSeenWithRetries(options: {
   patientId: string;
   rpc: DeskRpc;
@@ -377,7 +344,6 @@ export async function undoMarkSeenWithRetries(options: {
   );
 }
 
-/** Move a registered patient to another camp day (seat lock in RPC). */
 export async function changeCampDayWithRetries(options: {
   patientId: string;
   newDayId: string;
@@ -414,7 +380,6 @@ export async function changeCampDayWithRetries(options: {
         }
         const row = firstRow<ChangeDayRow>(data);
         if (!row?.camp_day_id) {
-          // Missing row after successful RPC is not a transport failure.
           return {
             done: true,
             value: {
@@ -443,14 +408,6 @@ export async function changeCampDayWithRetries(options: {
   );
 }
 
-/**
- * Print prescription — the first of the two desk actions (ADR 0013). Shared by
- * reg number, QR paste, name row, scanner auto-print, likely-duplicate "print
- * for them instead", and the sheet's own POST.
- *
- * Presence is recorded once, so a reprint is a success (already_printed), not a
- * refusal — a seen patient may still be given a replacement paper.
- */
 export async function printPrescriptionWithRetries(options: {
   patientId?: string | null;
   regNo?: number | null;
@@ -515,10 +472,6 @@ export async function printPrescriptionWithRetries(options: {
   );
 }
 
-/**
- * Lost-slip name search — read-only. Failures never collapse to empty success (#61).
- * Empty rows mean no match; RPC/transport errors return { ok: false }.
- */
 export async function searchRegisteredPatientsWithRetries(options: {
   campId: string;
   query: string;
@@ -578,7 +531,6 @@ export async function searchRegisteredPatientsWithRetries(options: {
   );
 }
 
-/** Unified staff desk name search across registered and seen rows. */
 export async function searchDeskPatientsWithRetries(options: {
   campId: string;
   query: string;

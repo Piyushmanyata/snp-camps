@@ -2,7 +2,6 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Camp } from "@/lib/types";
 
-/** Request-scoped admin query so a router refresh always sees camp mutations. */
 export const getCampsList = cache(async (): Promise<Camp[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase

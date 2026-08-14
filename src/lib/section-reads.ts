@@ -1,8 +1,3 @@
-/**
- * Narrow section read seams (#63).
- * Each loader returns a safe result — never throws for expected query failures.
- * Client retry hits one section only via /api/desk/section.
- */
 
 import { mapDbError } from "@/lib/public-error";
 import { createClient } from "@/lib/supabase/server";
@@ -22,7 +17,6 @@ export type KpisSectionData = {
   seen: number;
 };
 
-
 export type AdminAnalyticsData = {
   registered: number;
   seen: number;
@@ -33,7 +27,6 @@ export type AdminAnalyticsData = {
   scannedRegistrations: number;
   selfDeclaredRegistrations: number;
 };
-
 
 export const SECTION_KEYS = [
   "seats",
@@ -121,9 +114,6 @@ export type StaffKpiRow = {
   team_headcount: number;
 };
 
-/**
- * Whole-camp staff rollup for both leaderboards (#119/#121).
- */
 export async function loadStaffLeaderboardSection(
   campId: string | null,
 ): Promise<SectionResult<StaffKpiRow[]>> {
@@ -163,9 +153,6 @@ export async function loadStaffLeaderboardSection(
   };
 }
 
-
-
-
 export async function loadAdminQueueCountsSection(
   campId: string,
 ): Promise<SectionResult<AdminAnalyticsData>> {
@@ -204,13 +191,11 @@ export async function loadAdminQueueCountsSection(
   };
 }
 
-/** Dispatch one narrow section read — used by the section API and tests. */
 export async function loadSection(
   section: SectionKey,
   params: {
     campId?: string | null;
     userId?: string | null;
-    /** When team_lead, staff_person_kpis rolls up the team. */
     kpiRole?: "volunteer" | "team_lead";
   },
 ): Promise<SectionResult<unknown>> {

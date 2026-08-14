@@ -1,9 +1,3 @@
-/**
- * Hinglish registration SMS — DLT template + MSG91 dispatch (#51).
- *
- * Template text is a fixed constant. Runtime only fills named slots for
- * length tests and for the MSG91 variables payload — never invents free text.
- */
 
 import { formatCampDaySms } from "@/lib/format-camp-day";
 import { sendMsg91TemplateSms } from "@/lib/msg91";
@@ -16,15 +10,9 @@ import {
   type SmsDeliveryClient,
 } from "@/lib/sms-deliveries";
 
-/**
- * Exact DLT body to register with TRAI / MSG91 (Roman Hinglish, GSM-7).
- * Four sequential {#var#} slots: reg, date, venue, link.
- * Date slot uses compact form e.g. "30 Sep 2026" (see formatCampDaySms).
- */
 export const REGISTRATION_SMS_DLT_TEMPLATE =
   "SNP Camp: Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein. {#var#}";
 
-/** MSG91 flow variable names, same order as DLT {#var#} slots. */
 export const REGISTRATION_SMS_VAR_ORDER = [
   "reg",
   "date",
@@ -32,13 +20,8 @@ export const REGISTRATION_SMS_VAR_ORDER = [
   "link",
 ] as const;
 
-/** Venue hard cap so max-length inputs stay in one 160-char GSM-7 segment. */
 export const SMS_VENUE_MAX = 35;
 
-/**
- * GSM-7 default alphabet + basic extension markers we never emit.
- * Reject anything outside this set so the whole SMS stays one segment.
- */
 const GSM7_RE =
   /^[\n\r !"#%&'()*+,\-./0-9:;<=>?@A-Z_a-z£¥èéùìòÇØøÅåÆæßÉ¤¡¿ÄÖÑÜ§äöñüà]*$/;
 
@@ -59,7 +42,6 @@ export function truncateVenueForSms(venue: string): string {
     cleaned.length <= SMS_VENUE_MAX
       ? cleaned
       : cleaned.slice(0, SMS_VENUE_MAX);
-  // Drop any non-GSM-7 (en-dash, smart quotes) rather than fail the desk.
   let out = "";
   for (const ch of slice) {
     if (isGsm7(ch)) out += ch;
@@ -74,7 +56,6 @@ export type RegistrationSmsVars = {
   statusUrl: string;
 };
 
-/** Fill the fixed template for length tests and admin preview. */
 export function fillRegistrationSms(input: RegistrationSmsVars): string {
   const vars = registrationSmsVariables(input);
   let i = 0;
@@ -98,11 +79,9 @@ export function registrationSmsVariables(
   return { reg, date, venue, link };
 }
 
-/** Realistic maximums used by the segment-length test. */
 export function maxLengthRegistrationInputs(): RegistrationSmsVars {
   return {
     regNo: 999999,
-    // formatCampDay("2026-09-30") → longest-ish en-IN short form
     dayDate: "2026-09-30",
     venue: "A".repeat(SMS_VENUE_MAX),
     statusUrl: "https://snp-camps.vercel.app/s/" + "a".repeat(32),
@@ -121,7 +100,6 @@ export type SmsFailureRecord = {
   at: string;
   template: "registration" | "test" | "reminder";
   detail: string;
-  /** Last 4 digits only — never store full phone in the admin log. */
   phoneLast4?: string;
 };
 
@@ -164,10 +142,6 @@ export type SendRegistrationResult =
 
 type SendFn = typeof sendMsg91TemplateSms;
 
-/**
- * Send the registration template. Never throws — desk must not care.
- * When `patientId` + `ledger` are provided, uses durable claim/complete (#65).
- */
 export async function sendRegistrationSms(
   input: {
     phone: string | null | undefined;
@@ -175,7 +149,6 @@ export async function sendRegistrationSms(
     dayDate: string;
     venue: string | null | undefined;
     statusUrl: string;
-    /** When set with ledger, dispatch is lease-protected and durable. */
     patientId?: string | null;
   },
   options: {
@@ -220,7 +193,6 @@ export async function sendRegistrationSms(
       return { status: "failed", detail };
     }
     if (!claim) {
-      // Already sent/ambiguous or live lease held by another worker.
       return { status: "skipped", reason: "not_claimed" };
     }
   }
@@ -324,7 +296,6 @@ export async function sendRegistrationSms(
   }
 }
 
-/** Origin for passwordless status links in SMS. */
 export function statusUrlForToken(token: string): string {
   const base = (
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"

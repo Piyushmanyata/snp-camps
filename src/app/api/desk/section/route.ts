@@ -10,10 +10,6 @@ import {
 
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
-/**
- * Narrow section re-read for recoverable client islands (#63).
- * One section per request — never bundles sibling desk queries.
- */
 export async function GET(request: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId) {
@@ -39,7 +35,6 @@ export async function GET(request: Request) {
   }
   const section: SectionKey = sectionRaw;
 
-  // Role gates for sensitive sections
   if (section === "admin-analytics" && profile?.role !== "admin") {
     return NextResponse.json(
       { error: "Admin access required" },

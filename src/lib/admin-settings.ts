@@ -2,7 +2,6 @@ import { SMS_VENUE_MAX } from "@/lib/registration-sms";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
-/** Re-export MAX_SMS_VENUE_LENGTH alias matching ticket specifications. */
 export const MAX_SMS_VENUE_LENGTH = SMS_VENUE_MAX;
 
 export type CampSettings = {
@@ -19,27 +18,23 @@ export type CampSettingsInput = {
   postCampSurgeryVenue?: string | null;
 };
 
-/** Validates venue string length against SMS segment cap (35 chars). */
 export function validateVenueLength(venue?: string | null): boolean {
   if (!venue) return true;
   return venue.trim().length <= MAX_SMS_VENUE_LENGTH;
 }
 
-/** Format venue string or convert empty/whitespace string to null. */
 export function normalizeVenueInput(venue?: string | null): string | null {
   if (venue === undefined || venue === null) return null;
   const trimmed = venue.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Format date string or convert empty string to null. */
 export function normalizeDateInput(dateStr?: string | null): string | null {
   if (dateStr === undefined || dateStr === null) return null;
   const trimmed = dateStr.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Get admin settings for a given camp. Returns null if camp not found. */
 export async function getCampSettings(
   campId: string,
   client?: SupabaseClient
@@ -63,7 +58,6 @@ export async function getCampSettings(
   };
 }
 
-/** Update admin settings for a camp. Throws error if venue validation fails or DB update is refused. */
 export async function updateCampSettings(
   campId: string,
   input: CampSettingsInput,
@@ -89,7 +83,6 @@ export async function updateCampSettings(
 
   const supabase = client ?? (await createClient());
 
-  // Try RPC update first
   const { error: rpcErr } = await supabase.rpc("update_camp_settings", {
     p_camp_id: campId,
     p_spectacles_collection_date: specDate,
@@ -102,7 +95,6 @@ export async function updateCampSettings(
     return { success: true };
   }
 
-  // Fallback to direct table update if RPC unavailable in test double
   const { data, error } = await supabase
     .from("camps")
     .update({

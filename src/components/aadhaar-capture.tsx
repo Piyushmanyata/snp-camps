@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { Button, CollapsibleSection } from "@/components/ui";
 import type { AadhaarScanner } from "@/components/use-aadhaar-scanner";
 
-/** Keep the patient scanner flow out of the eager self-register route chunk. */
 export const SelfRegistrationFlowLazy = dynamic(
   () =>
     import("@/components/self-registration-flow").then(
@@ -26,13 +25,7 @@ export const SelfRegistrationFlowLazy = dynamic(
 
 type Props = {
   scanner: AadhaarScanner;
-  /** Hindi-Roman copy for patient self-registration; English for the desk. */
   tone?: "desk" | "patient";
-  /**
-   * Overrides the scanner's own fingerprint. The desk also reports *partial*
-   * reads — a card that filled some fields but not others — which the scanner
-   * itself does not treat as an error.
-   */
   diagnostic?: string | null;
 };
 
@@ -72,7 +65,6 @@ const COPY = {
   },
 } as const;
 
-/** Shared camera/photo Aadhaar capture surface for desk and self-registration. */
 export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
   const copy = COPY[tone];
   const {

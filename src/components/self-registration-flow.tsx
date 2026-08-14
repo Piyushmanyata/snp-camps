@@ -41,13 +41,6 @@ type FieldErrors = Partial<
   Record<"displayName" | "phone" | "dayId", string>
 >;
 
-/**
- * Patient self-registration by Aadhaar card scan (#113).
- *
- * No OTP and no eKYC provider (ADR 0004): the card is parsed on the device and
- * assumed authentic. The phone number is typed because the QR does not carry
- * one, and no registration SMS is sent — this screen is the receipt.
- */
 export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   const openDays = days.filter((day) => !day.is_full);
   const [card, setCard] = useState<ScannedCard | null>(null);
@@ -67,8 +60,6 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
   const generationRef = useRef(0);
 
   const onParsed = useCallback((parsed: ParsedAadhaarQr): boolean => {
-    // Every key field is required: without all four the Person key cannot be
-    // derived, and a half-filled self-registration is worse than a desk visit.
     if (
       !parsed.fullName ||
       !parsed.gender ||

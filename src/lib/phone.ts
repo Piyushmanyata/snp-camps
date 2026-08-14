@@ -1,4 +1,3 @@
-/** Normalize the Indian mobile formats accepted by desk registration and notify. */
 export function normalizePhoneE164(raw: string): string | null {
   if (!raw || typeof raw !== "string" || raw.length > 512) return null;
   const digits = raw.replace(/\D/g, "");
@@ -22,7 +21,6 @@ export type HouseholdPhoneValidation =
   | { ok: true; phone: string }
   | { ok: false; message: string };
 
-/** Desk-only household contact: required, shareable, and not an identity key. */
 export function validateHouseholdPhone(raw: string): HouseholdPhoneValidation {
   const normalized = normalizePhoneE164(raw);
   const phone = normalized?.slice(-10) ?? "";

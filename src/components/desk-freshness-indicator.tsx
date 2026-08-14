@@ -8,11 +8,9 @@ export const STALE_DESK_INDICATOR =
 export const FAILED_DESK_INDICATOR =
   "Could not load live data. Try again.";
 
-/** Visible when a desk poll failed (#56, #63). */
 export function DeskFreshnessIndicator({
   freshness,
   onRetry,
-  /** When false, initial failure has no prior rows — use hard-error copy. */
   hasKnownData = true,
 }: {
   freshness: DeskLiveFreshness;

@@ -10,12 +10,6 @@ const cacheHeaders = {
   "Cache-Control": "no-store",
 };
 
-/**
- * Liveness: GET /api/health  → always cheap { ok: true } (no DB).
- * Readiness: GET /api/health?ready=1 → fail-closed catalog/migration checks (#68).
- * Liveness stays independent of readiness so process probes never trip on drift.
- */
-/** Expensive readiness probes only — liveness stays unlimited. */
 const READY_RATE = {
   scope: "health-ready",
   limit: 12,

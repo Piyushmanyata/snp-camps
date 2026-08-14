@@ -1,30 +1,12 @@
-/**
- * Versioned runtime-critical database/catalog contract for readiness (#68).
- *
- * This is NOT a full historical schema dump. Only objects the running app
- * requires at runtime: lifecycle tables/columns, concurrency RPCs, status
- * projection, SMS ledger, least-privilege grants, and Realtime publication.
- *
- * EXPECTED_MIGRATION_HEAD must match the latest file under supabase/migrations/
- * (version prefix). Bump both when a new migration lands.
- */
 
-/** Bump when the set of required facts or expectations changes. */
 export const READINESS_CONTRACT_VERSION = 10;
 
-/**
- * Latest migration version the app expects to be applied.
- * Matches `supabase/migrations/<version>_*.sql` head after #68 probe migration.
- */
 export const EXPECTED_MIGRATION_HEAD = "20260813090000";
 
-/** Bounded wait for each remote readiness probe (ms). */
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
 
-/** Overall budget for the readiness handler (ms). */
 export const READINESS_OVERALL_TIMEOUT_MS = 6_000;
 
-/** Stable check identifiers returned in JSON (machine-readable). */
 export const READINESS_CHECK_IDS = [
   "database_reachability",
   "required_configuration",
@@ -56,7 +38,6 @@ export const REQUIRED_TABLES = [
   "aadhaar_extraction_events",
 ] as const;
 
-/** table ΓåÆ required columns (runtime-critical subset). */
 export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   patients: [
     "id",
@@ -141,7 +122,6 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
-/** Runtime functions; the catalog probe verifies exact overload signatures. */
 export const REQUIRED_FUNCTIONS = [
   "is_clinical_operator",
   "assert_valid_clinical_data",
@@ -186,7 +166,6 @@ export const REQUIRED_FUNCTIONS = [
   "finish_sponsor_asset_deletion",
 ] as const;
 
-/** Catalog invariants that cannot be proven by table/column presence alone. */
 export const REQUIRED_INVARIANTS = [
   "patients_camp_reg_no_unique",
   "patients_person_camp_unique",
@@ -217,11 +196,6 @@ export const REQUIRED_INVARIANTS = [
   "sponsor_bucket_restrictions",
 ] as const;
 
-/**
- * Grant / privilege expectations as boolean facts.
- * Keys match facts returned by readiness_catalog_probe().
- * true = privilege must be present; false = privilege must be absent.
- */
 export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   // Bearer status tokens are not selectable by ordinary authenticated sessions (#56).
   patients_status_token_authenticated_select: false,
@@ -233,13 +207,11 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   sms_deliveries_authenticated_select: false,
   claim_sms_delivery_service_role_execute: true,
   complete_sms_delivery_service_role_execute: true,
-  // Capacity + desk RPCs remain available to authenticated staff.
   upsert_camp_day_authenticated_execute: true,
   mark_patient_printed_authenticated_execute: true,
   lookup_patient_scan_authenticated_execute: true,
   search_desk_patients_authenticated_execute: true,
   search_desk_patients_anon_execute: false,
-  // The two desk actions (D22). Never reachable without a signed-in staff session.
   mark_seen_authenticated_execute: true,
   mark_seen_anon_execute: false,
   undo_mark_seen_authenticated_execute: true,
@@ -261,11 +233,8 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   camp_queue_counts_anon_execute: false,
   camp_queue_counts_service_role_execute: true,
   latest_applied_migration_service_role_execute: true,
-  // persons is server-only: duplicate_key is the pepper-derived Person key.
   persons_authenticated_select: false,
-  // persons is server-only: duplicate_key is the pepper-derived Person key.
   persons_authenticated_write: false,
-  // Patients list is not open to every authenticated role; desks use RPCs.
   patients_authenticated_select: false,
   prescription_transcriptions_authenticated_write: false,
   prescription_corrections_authenticated_write: false,
@@ -300,12 +269,10 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   finish_sponsor_asset_deletion_authenticated_execute: true,
 };
 
-/** patients must NOT be in supabase_realtime after #56. */
 export const PUBLICATION_EXPECTATIONS = {
   patients_in_supabase_realtime: false,
 } as const;
 
-/** SMS ledger enum states the app relies on (#65). */
 export const SMS_DELIVERY_STATES = [
   "pending",
   "sending",
@@ -314,14 +281,8 @@ export const SMS_DELIVERY_STATES = [
   "ambiguous",
 ] as const;
 
-/**
- * Only the two kinds the app still sends (D28). The `spectacles_deferral` and
- * `surgery_deferral` labels remain in the Postgres enum ΓÇö a value cannot be
- * dropped from an enum type ΓÇö but nothing produces them any more.
- */
 export const SMS_DELIVERY_KINDS = ["registration", "reminder"] as const;
 
-/** Safe operator explanations (no SQL, secrets, PHI, connection strings). */
 export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =
   {
     database_reachability:

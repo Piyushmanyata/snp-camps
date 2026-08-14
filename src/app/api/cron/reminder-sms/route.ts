@@ -6,12 +6,6 @@ import {
 } from "@/lib/reminder-sms";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
-/**
- * Vercel Cron: day-before reminder SMS (#52 + #65).
- * Auth: Authorization: Bearer $CRON_SECRET
- * Job-level failures (list/schema/config) return non-2xx + ok:false.
- * Per-patient failures still return 200 with truthful counts.
- */
 export async function GET(request: Request) {
   return handleCron(request);
 }

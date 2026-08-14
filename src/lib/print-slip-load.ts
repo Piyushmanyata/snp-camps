@@ -1,10 +1,3 @@
-/**
- * Server-side load of the patient data the printed prescription needs.
- * Auth + RLS applied by the caller's supabase client.
- *
- * Desk slips were retired — a camp day prints prescriptions and nothing else —
- * so this loads the identity block of the prescription sheet.
- */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPatientUuid, patientScanUrl } from "@/lib/qr";
@@ -17,7 +10,6 @@ export type LoadedPrintPatient = {
   campDayDate: string | null;
   qrValue: string;
   queueStatus: QueueStatus;
-  /** Per-camp prescription template overrides, or null for the default. */
   prescriptionTemplate: unknown;
 };
 
@@ -56,10 +48,6 @@ function toLoaded(row: PatientRow, origin: string, published?: unknown): LoadedP
   };
 }
 
-/**
- * Load distinct authorized patients by id, preserving request order.
- * Missing/unauthorized IDs are omitted (never fabricate duplicates).
- */
 export async function loadPrintSlips(
   supabase: SupabaseClient,
   ids: readonly string[],

@@ -3,12 +3,6 @@ import {
   type DbErrorLike,
 } from "@/lib/public-error";
 
-/**
- * Stable idempotency key for one registration attempt.
- * Retries of the same walk-in reuse `id`; call `rotate()` after success or resetForm.
- * Pass `createRequestId` (or any UUID factory) — kept injectable so unit tests
- * do not depend on Node resolving TypeScript path/extension quirks.
- */
 export type RegistrationAttempt = {
   readonly id: string;
   rotate(): void;
@@ -40,16 +34,13 @@ export type StaffRegistrationFields = {
   aadhaarLast4: string | null;
   createdBy: string | null;
   campDayId: string;
-  /** Explicit one-shot Aadhaar last-4 + name duplicate override (staff only). */
   aadhaarDuplicateOverride?: boolean;
-  /** Explicit one-shot soft-duplicate (name+age / phone) override (staff only). */
   likelyDuplicateOverride?: boolean;
   provenance?: string | null;
   duplicateKey?: string | null;
   dateOfBirth?: string | null;
 };
 
-/** Parse `AADHAAR_DUPLICATE:reg=N` from RPC / API error text. */
 export function parseAadhaarDuplicateError(
   message: string | null | undefined,
 ): { regNo: number } | null {
@@ -61,7 +52,6 @@ export function parseAadhaarDuplicateError(
   return { regNo };
 }
 
-/** Parse `LIKELY_DUPLICATE:reg=N` from soft-match warn (#48). */
 export function parseLikelyDuplicateError(
   message: string | null | undefined,
 ): { regNo: number } | null {
@@ -73,7 +63,6 @@ export function parseLikelyDuplicateError(
   return { regNo };
 }
 
-/** Args for supabase.rpc("register_patient_idempotent", …). */
 export function staffRegistrationRpcArgs(
   attempt: Pick<RegistrationAttempt, "id">,
   fields: StaffRegistrationFields,
@@ -111,23 +100,11 @@ export type RegistrationSubmitResult = {
   error: string | null;
   aadhaarDuplicateRegNo?: number | null;
   likelyDuplicateRegNo?: number | null;
-  /**
-   * Explicit retry allow-list result from classifyOperationError (#60).
-   * Undefined only for success / misconfiguration (not retryable).
-   */
   retryable?: boolean;
-  /** Structured code for logs (no PII). */
   logCode?: string;
   publicCategory?: string;
 };
 
-/**
- * Outbound registration call used by PatientForm.
- * Staff path only → RPC `register_patient_idempotent`.
- * The public `/self-register` flow uses its dedicated API boundary; this helper
- * remains the staff desk submission path used by `PatientForm`.
- * Does not rotate the attempt — caller rotates only after success / resetForm.
- */
 export async function submitRegistrationOutbound(options: {
   isStaff: boolean;
   attempt: Pick<RegistrationAttempt, "id">;
@@ -176,7 +153,6 @@ export async function submitRegistrationOutbound(options: {
       };
     }
 
-    // Keep AADHAAR_DUPLICATE / LIKELY_DUPLICATE raw so the form can offer actions.
     if (dup || soft) {
       return {
         data: result.data,

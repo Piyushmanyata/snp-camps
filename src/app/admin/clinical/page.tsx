@@ -19,7 +19,6 @@ export default async function AdminClinicalPage() {
     .order("is_active", { ascending: false })
     .order("name");
   const camps = (campRows ?? []) as ClinicalCampOption[];
-  // Preselect the active camp only — never fall back to first alphabetically.
   const activeCampId = camps.find((camp) => camp.is_active)?.id ?? null;
   let page: { records: ClinicalRecord[]; total: number } = {
     records: [],

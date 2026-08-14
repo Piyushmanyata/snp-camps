@@ -21,7 +21,6 @@ export default async function ClinicalPage({
   const params = await searchParams;
   const scanRaw = params.scan?.trim().toLowerCase() ?? "";
   const initialScan = isPatientUuid(scanRaw) ? scanRaw : null;
-  // Admin may view but mutations are operator-only (audit path is separate).
   const canMutate = profile.role === "clinical_operator";
 
   return (

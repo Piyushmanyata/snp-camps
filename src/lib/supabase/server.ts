@@ -19,7 +19,6 @@ export const createClient = cache(async () => {
               cookieStore.set(name, value, options),
             );
           } catch {
-            /* called from Server Component — middleware will refresh */
           }
         },
       },

@@ -10,13 +10,6 @@ import {
 } from "@/lib/registration-sms";
 import { isPatientUuid } from "@/lib/qr";
 
-/**
- * Fire-and-forget registration SMS after a successful desk register.
- * Staff only. status_token is read via SECURITY DEFINER RPC (#56).
- * Durable pending row is created at registration (#65); this route claims and sends.
- * Never blocks/fails the desk path that already succeeded.
- */
-
 const NOTIFY_RATE_LIMIT = {
   scope: "notify-registration",
   limit: 30,
@@ -76,7 +69,6 @@ export async function POST(req: Request) {
   }
 
   if (!isMsg91Configured()) {
-    // Leave durable pending for when config appears; do not fail registration.
     return NextResponse.json({
       ok: true,
       status: "skipped",
@@ -104,7 +96,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ...result });
   }
 
-  // Never return raw provider error text to the client.
   if (result.status === "ambiguous") {
     console.error("[notify/registration] ambiguous SMS", {
       detail: result.detail,

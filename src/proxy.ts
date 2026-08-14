@@ -8,7 +8,6 @@ export async function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
-  // Next.js reads this request header to nonce framework scripts on SSR.
   requestHeaders.set("Content-Security-Policy", csp);
 
   const response = await updateSession(request, requestHeaders);
@@ -18,11 +17,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Pages that need session refresh + nonce CSP.
-     * Skip static assets; still run for API so session cookies stay fresh
-     * on authenticated API calls (CSP is harmless on JSON responses).
-     */
     {
       source:
         "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml|woff2?)$).*)",

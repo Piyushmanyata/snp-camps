@@ -17,11 +17,9 @@ const shellWidths = {
 type DockItem = {
   href: string;
   label: string;
-  /** Primary CTA gets solid brand fill */
   primary?: boolean;
 };
 
-/** Sticky bottom action bar for field desk pages (mobile only). */
 function MobileDock({
   items,
   label = "Quick actions",
@@ -50,7 +48,6 @@ function MobileDock({
     </nav>
   );
 }
-/** Page chrome: brand mark, title, optional back + actions. Mobile-first. */
 export function Shell({
   title,
   subtitle,
@@ -66,11 +63,8 @@ export function Shell({
   children: ReactNode;
   backHref?: string;
   actions?: ReactNode;
-  /** Desktop content width. Mobile stays full-bleed with padding. */
   width?: keyof typeof shellWidths;
-  /** Optional role chip for the signed-in camp role. */
   roleLabel?: string;
-  /** Mobile sticky bottom actions (hidden on desktop) */
   dock?: DockItem[];
 }) {
   const hasDock = Boolean(dock?.length);
@@ -184,7 +178,6 @@ export function SectionTitle({
   );
 }
 
-/** Native collapsible panel — keeps long dashboards scannable. */
 export function CollapsibleSection({
   title,
   hint,
@@ -510,7 +503,6 @@ export function NavLink({
   );
 }
 
-/** Large home / hub action card — primary path or secondary path. */
 export function ActionCard({
   href,
   title,
@@ -601,7 +593,6 @@ export function EmptyState({
   );
 }
 
-/** Segmented control for 2–4 mutually exclusive options (login modes, filters). */
 export function SegmentedControl<T extends string>({
   value,
   onChange,
@@ -673,7 +664,6 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-/** Compact process steps for “how this works” strips. */
 export function StepList({
   steps,
 }: {

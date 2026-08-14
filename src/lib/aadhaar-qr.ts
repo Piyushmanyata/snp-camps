@@ -1,17 +1,3 @@
-/**
- * Aadhaar QR payload parser.
- *
- * Handles every payload shape a camp desk actually meets:
- *   - UIDAI Secure QR (2018+): one huge decimal integer -> BigInt -> bytes ->
- *     inflate -> fields delimited by byte 255.
- *   - Legacy `<PrintLetterBarcodeData …/>` XML, and the compact `<QDA n= g= d=>`
- *     variant, raw or base64-wrapped.
- *   - JSON and key=value payloads seen on third-party reprints.
- *
- * Never makes a network request and never verifies the UIDAI signature — the
- * trailing 256 signature bytes are only stripped so the other field boundaries
- * come out right.
- */
 
 import { inflate, inflateRaw, ungzip } from "pako";
 import { XMLParser } from "fast-xml-parser";
@@ -19,35 +5,13 @@ import { z } from "zod";
 import { normalizeGender } from "@/lib/aadhaar";
 import { isNonLatinText, parseDateOfBirth } from "@/lib/aadhaar-text";
 
-// Re-exported so existing importers keep one entry point for the parser.
 export { isNonLatinText, parseDateOfBirth };
 
-/* ------------------------------------------------------------------ */
-/* Schema                                                              */
-/* ------------------------------------------------------------------ */
-
-/** Longest a single scanned text field may be before we treat it as garbage. */
 const MAX_FIELD = 180;
-/** Longest joined address we will carry into the form. */
 const MAX_ADDRESS = 512;
 
-/**
- * Control characters and angle brackets, built from an ASCII-only pattern
- * string so no literal control byte ever lands in this file.
- */
 const CONTROL_OR_MARKUP = new RegExp("[\\u0000-\\u001f\\u007f<>]", "g");
 
-
-
-/**
- * Scrub one value that came off a QR code.
- *
- * Everything here is untrusted: the payload is whatever was printed on the
- * card, and it flows straight into React state and then into the database.
- * Control characters and angle brackets are dropped rather than escaped, so no
- * caller can reintroduce them as markup, and anything absurdly long is refused
- * outright instead of silently truncated into a half-word.
- */
 function cleanText(raw: unknown, max = MAX_FIELD): string | null {
   if (typeof raw !== "string") return null;
   const stripped = raw.replace(CONTROL_OR_MARKUP, "").trim();
@@ -60,11 +24,6 @@ const textField = z
   .transform((value) => cleanText(value))
   .nullable();
 
-/**
- * The one internal shape every payload format collapses to. Address components
- * are kept separately as well as joined, because the desk form shows one line
- * but the Person key and any later export want the parts.
- */
 export const AadhaarFieldsSchema = z.object({
   fullName: textField,
   dateOfBirth: z
@@ -100,26 +59,11 @@ export const AadhaarFieldsSchema = z.object({
 export type AadhaarFields = z.infer<typeof AadhaarFieldsSchema>;
 
 export type ParsedAadhaarQr = AadhaarFields & {
-  /** Address components joined for display, in postal order. */
   address: string | null;
   isNonLatinName: boolean;
-  /**
-   * Payload origin.
-   * - `legacy_xml`  — old unsigned <PrintLetterBarcodeData> XML; data extracted
-   *                   but NOT cryptographically verified.
-   * - `secure_qr`   — modern UIDAI numeric/binary stream; signature must be
-   *                   checked externally to be considered verified.
-   * - `unknown`     — format could not be classified (JSON / KV / fallback).
-   */
   source: "legacy_xml" | "secure_qr" | "unknown";
 };
 
-/* ------------------------------------------------------------------ */
-/* Dates, text, addresses                                              */
-/* ------------------------------------------------------------------ */
-
-
-/** Year of birth from either a full DOB or a bare `YYYY`. */
 function parseYearOfBirth(
   dobStr?: string | number | null,
   yobStr?: string | number | null,
@@ -132,11 +76,6 @@ function parseYearOfBirth(
   return Number.isFinite(year) && year >= 1875 && year <= 2100 ? year : null;
 }
 
-
-/**
- * Calculate age accurately from DOB string (YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD, DD.MM.YYYY, ISO)
- * or YOB string (YYYY), considering the current reference date.
- */
 export function calculateAge(
   dobStr?: string | number | null,
   yobStr?: string | number | null,
@@ -149,7 +88,6 @@ export function calculateAge(
   if (dobStr && typeof dobStr === "string") {
     const trimmed = dobStr.trim();
 
-    // Check if dobStr is actually a numeric age (e.g. "35")
     if (/^\d{1,3}$/.test(trimmed)) {
       const parsedVal = parseInt(trimmed, 10);
       if (parsedVal >= 0 && parsedVal < 150) return parsedVal;
@@ -184,7 +122,6 @@ export function calculateAge(
   return null;
 }
 
-/** Postal order, so the joined line reads the way an address is written. */
 const ADDRESS_ORDER = [
   "careOf",
   "house",
@@ -209,12 +146,6 @@ function joinAddress(fields: AadhaarFields): string | null {
   return parts.join(", ").slice(0, MAX_ADDRESS);
 }
 
-/**
- * Combine loose address components into a single display string.
- *
- * Kept exported (and alias-tolerant) because callers outside the parser hand it
- * arbitrary key spellings from third-party payloads.
- */
 export function buildAddress(
   fields: Record<string, string | null | undefined>,
 ): string | null {
@@ -248,10 +179,6 @@ export function buildAddress(
   return parts.length > 0 ? parts.join(", ").slice(0, MAX_ADDRESS) : null;
 }
 
-/**
- * Assemble the parsed result, running everything through the schema first so no
- * unvalidated QR text ever reaches a caller.
- */
 function finalize(
   raw: Partial<Record<keyof AadhaarFields, unknown>>,
   source: ParsedAadhaarQr["source"],
@@ -284,19 +211,6 @@ function finalize(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Aadhaar number extraction                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Aadhaar last 4 from a uid-ish attribute — only when the value really is a uid.
- *
- * Taking `slice(-4)` of the first candidate attribute is a trap: compact <QDA>
- * cards use `a` for the *address*, so that scrapes the pincode's last four
- * digits and autofills them as the patient's Aadhaar. A uid is 12 digits, or a
- * masked form whose only non-digits are mask characters; anything else is not a
- * uid and yields nothing.
- */
 function pickAadhaarLast4(attrs: Record<string, string>): string | null {
   const keys = ["uid", "aadhaar", "aadhaarnumber", "aadhaarlast4", "u", "a"];
 
@@ -305,14 +219,11 @@ function pickAadhaarLast4(attrs: Record<string, string>): string | null {
     if (!raw) continue;
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 12) return digits.slice(-4);
-    // Masked uid: "XXXXXXXX1234", "**** **** 1234".
     if (digits.length === 4 && !/[a-wyz0-9]/i.test(raw.replace(/\d/g, ""))) {
       return digits;
     }
   }
 
-  // Unknown key holding a full uid: a bare 12-digit value is a uid and nothing
-  // else on these cards (pincode is 6, mobile 10, dates never 12).
   for (const raw of Object.values(attrs)) {
     if (/^\d{12}$/.test(String(raw).trim())) return String(raw).trim().slice(-4);
   }
@@ -320,35 +231,18 @@ function pickAadhaarLast4(attrs: Record<string, string>): string | null {
   return null;
 }
 
-/**
- * Address held whole in one attribute, as compact cards do, rather than split
- * into the house/street/vtc components the schema expects.
- */
 function pickWholeAddress(attrs: Record<string, string>): string | null {
   for (const k of ["address", "addr", "a", "ad"]) {
     const val = (attrs[k] ?? "").trim();
-    // Long enough, and not a bare number that is really a uid or pincode.
     if (val.length >= 10 && /[a-z]/i.test(val)) return val;
   }
   return null;
 }
 
-/* ------------------------------------------------------------------ */
-/* Bytes                                                               */
-/* ------------------------------------------------------------------ */
-
 function isGzip(bytes: Uint8Array): boolean {
   return bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
-/**
- * Inflate a Secure QR stream.
- *
- * Producers in the wild wrap the same payload as gzip, zlib, or raw deflate, so
- * all three are attempted. pako is synchronous and identical in Node and the
- * browser, which matters because the same parser runs on the desk (browser) and
- * in the tests (Node).
- */
 export function decompress(bytes: Uint8Array): Uint8Array | null {
   if (bytes.length < 3) return null;
   const attempts = isGzip(bytes)
@@ -362,23 +256,16 @@ export function decompress(bytes: Uint8Array): Uint8Array | null {
       const out = attempt(bytes);
       if (out?.length) return out;
     } catch {
-      /* try the next wrapper */
     }
   }
   return null;
 }
 
-/**
- * Converts a numeric digit string to its big-endian byte array.
- * Chunked base-10^9 limbs avoid a multi-second full-string BigInt on long
- * Secure QR payloads (CodSpeed-style hot path).
- */
 export function numericStringToBytes(numericStr: string): Uint8Array {
   try {
     const digits = numericStr.replace(/\D/g, "");
     if (!digits) return new Uint8Array();
 
-    // Short strings: BigInt is fine and keeps the original path.
     if (digits.length <= 180) {
       let big = BigInt(digits);
       const zero = BigInt(0);
@@ -394,7 +281,6 @@ export function numericStringToBytes(numericStr: string): Uint8Array {
       return new Uint8Array(bytes);
     }
 
-    // Long strings: accumulate base-10^9 limbs, then convert to bytes.
     const CHUNK = 9;
     const BASE = 1_000_000_000;
     const limbs: number[] = [];
@@ -441,7 +327,6 @@ function decodeLatin1(bytes: Uint8Array): string {
   return new TextDecoder("iso-8859-1").decode(bytes);
 }
 
-/** One Secure QR text field: UTF-8 when it is valid, ISO-8859-1 otherwise. */
 function decodeField(bytes: Uint8Array): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -450,16 +335,9 @@ function decodeField(bytes: Uint8Array): string {
   }
 }
 
-/**
- * Text decodings to try for a whole byte payload, best first.
- *
- * Legacy (pre-2018) cards carry plain XML, usually UTF-8 — decoding those as
- * latin-1 mangles any non-ASCII name. Secure QR is binary and must stay latin-1
- * so its bytes survive 1:1. Leading '<' or '{' distinguishes the text cases.
- */
 function textDecodings(bytes: Uint8Array): string[] {
   const first = bytes[0];
-  const looksLikeText = first === 0x3c || first === 0x7b; // '<' or '{'
+  const looksLikeText = first === 0x3c || first === 0x7b;
   const latin1 = decodeLatin1(bytes);
   if (!looksLikeText) return [latin1];
 
@@ -471,14 +349,6 @@ function textDecodings(bytes: Uint8Array): string[] {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Secure QR                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * UIDAI Secure QR text field order, after the leading email/mobile presence
- * indicator and the reference ID.
- */
 const SECURE_QR_ORDER = [
   "fullName",
   "dob",
@@ -496,14 +366,6 @@ const SECURE_QR_ORDER = [
   "vtc",
 ] as const;
 
-/**
- * Split the decompressed Secure QR into its leading text fields.
- *
- * Layout is: indicator ÿ refId ÿ <14 text fields> ÿ JP2000 photo [ÿ 32-byte
- * mobile hash] [ÿ 32-byte email hash] <256-byte RSA signature>. Only the text
- * run is wanted, so the scan stops after enough delimiters — the photo is full
- * of 0xFF bytes and splitting it would produce binary garbage fields.
- */
 export function splitSecureQrFields(bytes: Uint8Array, max = 16): string[] {
   const fields: string[] = [];
   let start = 0;
@@ -516,15 +378,6 @@ export function splitSecureQrFields(bytes: Uint8Array, max = 16): string[] {
   return fields;
 }
 
-/**
- * Map delimited Secure QR fields onto the schema.
- *
- * V2 payloads prefix an email/mobile indicator, so the reference ID sits at
- * index 1 rather than 0. Rather than trusting either layout, anchor on the DOB
- * field — it is the only one with an unmistakable shape — and read the rest
- * relative to it. Falls back to the documented fixed offset when no date is
- * present at all.
- */
 function parseSecureAadhaarFields(
   parts: string[],
   now: Date,
@@ -544,8 +397,6 @@ function parseSecureAadhaarFields(
     values[key] = at(index);
   });
 
-  // Reference ID is "<Aadhaar last 4><timestamp>", so the last 4 digits belong
-  // to the timestamp, not the Aadhaar, once a timestamp is actually present.
   const digitsInRef = (parts[nameIdx - 1] || "").replace(/\D/g, "");
   const aadhaarLast4 =
     digitsInRef.length >= 16
@@ -581,10 +432,6 @@ function parseSecureAadhaarFields(
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* XML                                                                 */
-/* ------------------------------------------------------------------ */
-
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
@@ -596,14 +443,6 @@ const xmlParser = new XMLParser({
   processEntities: true,
 });
 
-/**
- * Flatten every attribute on every element into one lowercased bag.
- *
- * Aadhaar XML is a single self-closing element, but reprints and wrappers
- * occasionally nest it one level deep, and namespace prefixes (`ns:name`) show
- * up on some third-party exports — so the prefix is dropped and the whole tree
- * is walked rather than assuming a shape.
- */
 function collectXmlAttributes(node: unknown, into: Record<string, string>): void {
   if (!node || typeof node !== "object") return;
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
@@ -641,7 +480,6 @@ function parseXmlPayload(payload: string, now: Date): ParsedAadhaarQr | null {
     attrs["name_en"] ||
     attrs["name-en"] ||
     attrs["name_eng"] ||
-    // Compact <QDA n="…" g="M" d="…"> cards use single-letter attributes.
     attrs["n"] ||
     null;
 
@@ -686,8 +524,6 @@ function parseXmlPayload(payload: string, now: Date): ParsedAadhaarQr | null {
     "legacy_xml",
   );
 
-  // Compact cards carry the address whole in one attribute rather than split
-  // into components, so the joined line comes out empty above.
   if (!parsed.address) {
     const whole = pickWholeAddress(attrs);
     if (whole) return { ...parsed, address: cleanText(whole, MAX_ADDRESS) };
@@ -695,20 +531,13 @@ function parseXmlPayload(payload: string, now: Date): ParsedAadhaarQr | null {
   return parsed;
 }
 
-/* ------------------------------------------------------------------ */
-/* Entry points                                                        */
-/* ------------------------------------------------------------------ */
-
-/** Our own desk-slip / status QR codes, matched on structure not substrings. */
 function looksLikeSnpSlip(trimmed: string): boolean {
   if (trimmed.startsWith("SNP-")) return true;
 
   const lower = trimmed.toLowerCase();
-  // Our status and desk URLs.
-  if (/^https?:\/\//.test(lower) && (lower.includes("/s/") || lower.includes("/desk"))) {
+  if (/^https?:\/\//.test(lower)) {
     return true;
   }
-  // Our JSON slip payloads — keyed fields, not free text that happens to match.
   if (
     trimmed.startsWith("{") &&
     /"(reg_no|token|patientid|patient_id)"\s*:/i.test(trimmed)
@@ -722,10 +551,6 @@ const UNREADABLE = "Invalid or unreadable Aadhaar QR code.";
 const DESK_SLIP =
   "This is an SNP patient desk slip QR code, not an Aadhaar card. Please scan the patient's Aadhaar card.";
 
-/**
- * Parse an Aadhaar QR payload string (XML, JSON, Key-Value, or Secure QR).
- * Rejects SNP patient desk slip QR codes with an explicit message.
- */
 export function parseAadhaarQr(
   payload: string,
   now: Date = new Date(),
@@ -734,7 +559,6 @@ export function parseAadhaarQr(
 
   const trimmed = payload.trim();
 
-  // 1. Base64-wrapped XML (common on legacy cards and e-Aadhaar downloads).
   if (
     !trimmed.startsWith("<") &&
     !trimmed.startsWith("{") &&
@@ -751,23 +575,17 @@ export function parseAadhaarQr(
         return parseAadhaarQr(decoded, now);
       }
     } catch {
-      /* not base64 */
     }
   }
 
-  // 2. Our own patient QR. Matched structurally, not by substring: a legacy
-  // Aadhaar address such as house="12/S/4" contains "/s/" and must not be
-  // mistaken for a desk slip.
   if (looksLikeSnpSlip(trimmed)) throw new Error(DESK_SLIP);
 
-  // 3. XML — <PrintLetterBarcodeData …/> and the compact <QDA …/> variant.
   if (/<[a-zA-Z0-9_:-]+[^>]*>/.test(trimmed)) {
     const parsed = parseXmlPayload(trimmed, now);
     if (parsed) return parsed;
     if (trimmed.startsWith("<")) throw new Error(UNREADABLE);
   }
 
-  // 4. JSON.
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
       const obj = JSON.parse(trimmed) as Record<string, unknown>;
@@ -798,11 +616,9 @@ export function parseAadhaarQr(
         "unknown",
       );
     } catch {
-      /* fallthrough */
     }
   }
 
-  // 5. Key=value pairs (e.g. name=John&dob=1990-01-01).
   if (trimmed.includes("=") && (trimmed.includes("&") || trimmed.includes("\n"))) {
     const kvs: Record<string, string> = {};
     for (const pair of trimmed.split(/[&\n]/)) {
@@ -836,12 +652,6 @@ export function parseAadhaarQr(
     }
   }
 
-  // 6. Already-inflated Secure QR handed to us as text.
-  //
-  // Guard: require a part that looks like a real date before trusting the
-  // split. A still-compressed payload decoded as latin-1 routinely contains
-  // 0xFF bytes and would otherwise split into binary garbage, producing a
-  // confidently wrong aadhaarLast4.
   if (trimmed.includes("ÿ")) {
     const parts = trimmed.split("ÿ");
     const hasRealDate = parts.some((p) =>
@@ -855,7 +665,6 @@ export function parseAadhaarQr(
     }
   }
 
-  // 7. Secure QR as one huge decimal integer.
   if (/^\d{50,}$/.test(trimmed)) {
     const bytes = numericStringToBytes(trimmed);
     const parsed = parseAadhaarBytes(bytes, now);
@@ -865,11 +674,6 @@ export function parseAadhaarQr(
   throw new Error(UNREADABLE);
 }
 
-/**
- * Parse a raw byte payload: inflate when it is compressed, then split on the
- * 0xFF delimiter; fall back to reading the bytes as text for legacy cards,
- * whose numeric-mode QR is the uncompressed XML itself.
- */
 function parseAadhaarBytes(
   bytes: Uint8Array,
   now: Date,
@@ -883,7 +687,6 @@ function parseAadhaarBytes(
     if (isUseful(parsed)) return parsed;
   }
 
-  // Uncompressed byte-mode payload (legacy XML cards encode plain text here).
   for (const text of textDecodings(bytes)) {
     if (text.startsWith("<") || text.startsWith("{")) {
       const parsed = tryParse(text, now);
@@ -891,13 +694,11 @@ function parseAadhaarBytes(
     }
   }
 
-  // Uncompressed Secure QR field stream.
   const fields = splitSecureQrFields(bytes);
   const parsed = parseSecureAadhaarFields(fields, now);
   return isUseful(parsed) ? parsed : null;
 }
 
-/** Parse succeeded only if it yielded a field we would actually autofill. */
 function isUseful(parsed: ParsedAadhaarQr | null): parsed is ParsedAadhaarQr {
   return Boolean(parsed && (parsed.fullName || parsed.age != null || parsed.gender));
 }
@@ -910,16 +711,6 @@ function tryParse(payload: string, now: Date): ParsedAadhaarQr | null {
   }
 }
 
-/**
- * Browser entry point — accepts the QR's raw bytes as well as its text.
- *
- * Aadhaar Secure QR is byte-mode binary, so a decoder's *text* is a lossy UTF-8
- * decode that cannot be inflated; only `bytes` round-trips. Callers should pass
- * bytes whenever the decoder exposes them.
- *
- * Async only for API compatibility with the worker-side caller — pako is
- * synchronous, so nothing here actually awaits.
- */
 export async function parseAadhaarQrAsync(
   payload: string | Uint8Array,
   now: Date = new Date(),
@@ -929,9 +720,6 @@ export async function parseAadhaarQrAsync(
 
   if (payload instanceof Uint8Array) {
     candidates.push(payload);
-    // Numeric-mode Secure QR reaches us as the ASCII digits of one huge decimal
-    // integer, because the camera decoders hand back bytes rather than text.
-    // Those digits still have to be converted to the byte stream they encode.
     const digits = decodeLatin1(payload).trim();
     if (/^\d{50,}$/.test(digits)) candidates.push(numericStringToBytes(digits));
   } else if (/^\d{50,}$/.test(text)) {
@@ -943,12 +731,6 @@ export async function parseAadhaarQrAsync(
     if (isUseful(parsed)) return parsed;
   }
 
-  // Nothing above yielded an autofillable field. Re-run so a real parse error
-  // (desk slip, unreadable) reaches the operator with its own message — but a
-  // result carrying only an aadhaarLast4 is NOT a successful read: every other
-  // field is null and that last4 came from a payload we could not interpret.
-  // Autofilling it puts four wrong digits in the Aadhaar box, which is worse
-  // than saying the card did not read.
   const last = parseAadhaarQr(
     typeof payload === "string" ? payload : decodeLatin1(payload),
     now,
@@ -957,18 +739,6 @@ export async function parseAadhaarQrAsync(
   return last;
 }
 
-/* ------------------------------------------------------------------ */
-/* Diagnostics                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Structure-only fingerprint of a scanned payload, for diagnosing a card format
- * the parser does not yet handle.
- *
- * Deliberately carries NO field values: lengths, byte classes, delimiter counts
- * and a leading-byte hex prefix are enough to identify an encoding, and none of
- * it is patient data. Safe to copy out of a camp desk and paste into an issue.
- */
 export function describeQrPayload(payload: string | Uint8Array): string {
   const bytes =
     typeof payload === "string" ? new TextEncoder().encode(payload) : payload;
@@ -989,9 +759,6 @@ export function describeQrPayload(payload: string | Uint8Array): string {
     `hasXmlTag=${/<[a-zA-Z]/.test(text)}`,
   ];
 
-  // Root tag and attribute *names* for an XML payload. Names identify the card
-  // variant (<PrintLetterBarcodeData …> vs compact <QDA n= g= d= …>); values are
-  // the patient data and are never included.
   const tag = text.match(/<([a-zA-Z][\w:-]*)/);
   if (tag) bits.push(`tag=${tag[1]}`);
   const keys = [...text.matchAll(/([a-zA-Z0-9_:-]+)\s*=\s*["']/g)].map((m) =>

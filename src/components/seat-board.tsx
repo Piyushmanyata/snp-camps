@@ -23,27 +23,20 @@ function pollHint(pollMs: number): string {
   return `Updates every ${Math.round(pollMs / 60_000)} min`;
 }
 
-/**
- * Seat board.
- * Staff (`live`): shared ~20s camp desk poll (#56).
- * Patient / non-live: page poll or manual refresh.
- */
 export function SeatBoard({
   days: initialDays,
   campId = null,
   title = "Camp days & seats",
   compact = false,
   pollMs = POLL_MS,
-  /** Staff desks only — patient screens keep poll-only (live=false). */
   live = false,
-  /** False when SSR seats failed — do not treat empty as success (#63). */
+  // False when SSR seats failed — do not treat empty as success (#63).
   initialLoadKnown = true,
 }: {
   days: CampDayStats[];
   campId?: string | null;
   title?: string;
   compact?: boolean;
-  /** Patient auto-refresh interval; 0 = manual only. Ignored while live. */
   pollMs?: number;
   live?: boolean;
   initialLoadKnown?: boolean;
@@ -62,7 +55,6 @@ export function SeatBoard({
     });
   }, [router]);
 
-  // Patient / non-live: fixed page poll when pollMs > 0.
   useFixedPoll(
     patientRefresh,
     pollMs,

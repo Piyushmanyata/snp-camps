@@ -110,18 +110,9 @@ export function AdminStaff({
 }: {
   role: ManageableStaffRole;
   initial: StaffPerson[];
-  /** Create, reset, deactivate, and reactivate accounts */
   canManage?: boolean;
-  /**
-   * Expand a row for per-patient KPIs. The staff-detail route and the
-   * `staff_person_kpis` RPC both allow this only for an admin, or for someone
-   * reading their own numbers — so a team lead managing their team passes false
-   * rather than being offered a control that returns 403.
-   */
   canViewDetail?: boolean;
-  /** Admin-only optional team assignment when creating a volunteer. */
   teamLeadOptions?: Array<{ id: string; full_name: string | null }>;
-  /** Optional aggregate shown beside each staff row. */
   metricById?: Record<string, number>;
 }) {
   const copy = roleCopy(role);

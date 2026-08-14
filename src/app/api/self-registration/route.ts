@@ -16,17 +16,6 @@ import {
 } from "@/lib/registration-input";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
-/**
- * Self-registration from an Aadhaar card scan (#113).
- *
- * No OTP, no eKYC provider, no registration SMS: the card is parsed in the
- * patient's browser and assumed authentic (ADR 0004), and the confirmation
- * screen is the receipt. The registration SMS is deliberately withheld because
- * it embeds a live status link and the typed phone number is unverified — one
- * mistyped digit would deliver a working medical status link to a stranger.
- */
-
-/** Public write endpoint: a generous IP ceiling plus a durable subject gate. */
 const SELF_REGISTRATION_IP_RATE_LIMIT = {
   scope: "self-registration-ip",
   limit: 300,
@@ -51,7 +40,6 @@ type ScannedCard = {
 };
 
 type SelfRegistrationBody = {
-  /** Client-stable UUID for idempotent retries. */
   requestId?: unknown;
   campId?: unknown;
   campDayId?: unknown;
@@ -65,13 +53,11 @@ function errorResponse(detail: string, status = 400) {
 
 const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-/** Same-origin status path only — never absolute external URLs. */
 function statusPath(token: string) {
   return `/s/${token}`;
 }
 
 export async function POST(request: Request) {
-  // Instance-local abuse ceiling runs before body parsing by design.
   const rate = checkRateLimit(request, SELF_REGISTRATION_IP_RATE_LIMIT);
   if (!rate.allowed) {
     return NextResponse.json(
@@ -123,8 +109,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // The duplicate key and name-search both assume a Latin alphabet, so a
-  // Devanagari card name needs a Latin spelling before it can be stored.
   const displayName = str(card.displayName);
   if (isNonLatinText(fullName) && !displayName) {
     return errorResponse("Apna naam English letters mein bhi likhein.");
@@ -135,8 +119,6 @@ export async function POST(request: Request) {
 
   let duplicateKey: string;
   try {
-    // Verbatim card name — never the transliteration — so two different
-    // spellings of one card can never mint two Persons.
     duplicateKey = derivePersonDuplicateKey({
       name: fullName,
       aadhaarLast4,
@@ -227,8 +209,6 @@ export async function POST(request: Request) {
     const message = error ? String((error as { message?: unknown }).message ?? error) : "";
     const aadhaarDup = parseAadhaarDuplicateError(message);
     const likelyDup = parseLikelyDuplicateError(message);
-    // Same-card (hard Person key) re-scan may return the status link.
-    // Soft name+age likely-duplicates must NOT leak a stranger's bearer token.
     if (aadhaarDup?.regNo != null) {
       const dupRegNo = aadhaarDup.regNo;
       const existing = await supabase

@@ -95,7 +95,6 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
       </div>
 
       <form onSubmit={handleSave} className="space-y-5">
-        {/* Spectacles Collection Section */}
         <div className="space-y-3 rounded-lg border border-border/80 bg-background/50 p-3 sm:p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">
@@ -135,7 +134,6 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
           </div>
         </div>
 
-        {/* Post-Camp Surgery Section */}
         <div className="space-y-3 rounded-lg border border-border/80 bg-background/50 p-3 sm:p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">

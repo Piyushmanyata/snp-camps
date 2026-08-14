@@ -8,10 +8,6 @@ import type { CampDayStats } from "@/lib/types";
 
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
-/**
- * Minimal desk poll (#53/#56): seat counts for one camp.
- * Poll is the sole freshness owner — no Realtime.
- */
 export async function GET(request: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId) {
@@ -37,7 +33,6 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
 
-  // Active-camp gate keeps the polling surface scoped to live operations.
   const { data: campRow, error: campErr } = await supabase
     .from("camps")
     .select("id, is_active")

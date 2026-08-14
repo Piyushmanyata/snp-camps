@@ -1,7 +1,3 @@
-/**
- * Minimal desk live payload (#53) — seat board only.
- * There is no queue to poll (ADR 0013), and staff KPIs stay on full page load.
- */
 
 import type { CampDayStats } from "@/lib/types";
 
@@ -9,7 +5,6 @@ export type DeskLivePayload = {
   days: CampDayStats[];
 };
 
-/** Client fetch of the minimal desk endpoint. */
 export async function fetchDeskLive(
   campId: string,
   options: { signal?: AbortSignal } = {},

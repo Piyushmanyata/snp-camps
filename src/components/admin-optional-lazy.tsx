@@ -3,11 +3,6 @@
 import dynamic from "next/dynamic";
 import { OpenOnToggle } from "@/components/open-on-toggle";
 
-/**
- * Non-critical admin tools load only when their collapsible is opened (#71).
- * Primary desk controls stay on the page; these panels are optional islands.
- */
-
 const ChangePasswordCard = dynamic(
   () =>
     import("@/components/change-password-card").then((m) => ({

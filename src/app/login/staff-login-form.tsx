@@ -48,7 +48,6 @@ export function StaffLoginForm() {
         return;
       }
 
-      // Must filter by user id — staff can read multiple profiles via RLS.
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("role, disabled_at")
@@ -61,9 +60,6 @@ export function StaffLoginForm() {
         return;
       }
 
-      // roleHome() is the single routing table (CONTEXT.md §Navigation). It
-      // sends a team lead straight to /volunteer — their actual desk — instead
-      // of bouncing through /team-lead, and returns null for non-login roles.
       const home = roleHome(profile.role);
       if (home) router.replace(home);
       else {

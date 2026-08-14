@@ -1,8 +1,3 @@
-/**
- * QR capability detection for desk scanners (#44 / #49).
- * Native BarcodeDetector only when formats include qr_code — constructor
- * presence alone is insufficient (Play Services / Windows).
- */
 
 export type DetectedBarcode = { rawValue: string };
 
@@ -20,10 +15,6 @@ type BarcodeDetectorGlobal = BarcodeDetectorConstructor & {
   getSupportedFormats?: () => Promise<string[]>;
 };
 
-/**
- * True only when this browsing context can actually decode QR with the
- * platform BarcodeDetector (not merely expose the interface).
- */
 export async function canUseNativeQrDetector(): Promise<boolean> {
   try {
     const Ctor = (globalThis as unknown as { BarcodeDetector?: BarcodeDetectorGlobal })
@@ -56,7 +47,6 @@ export type JsQrFn = (
   options?: JsQrOptions,
 ) => JsQrResult | null;
 
-/** Decode a canvas ImageData with jsQR (dynamic-import payload). */
 export function decodeQrFromImageData(
   jsQR: JsQrFn,
   imageData: ImageData,
@@ -66,13 +56,6 @@ export function decodeQrFromImageData(
   return code?.data ?? null;
 }
 
-/**
- * Decode returning the raw byte payload alongside the text.
- *
- * Aadhaar Secure QR is byte-mode binary (a gzip stream), and jsQR's `data` is a
- * lossy UTF-8 decode of those bytes — unusable for decompression. `binaryData`
- * is the only faithful copy, so anything parsing Aadhaar must use this.
- */
 export function decodeQrPayloadFromImageData(
   jsQR: JsQrFn,
   imageData: ImageData,
@@ -86,11 +69,6 @@ export function decodeQrPayloadFromImageData(
   };
 }
 
-/**
- * Best-effort camera tuning for dense QR: continuous autofocus is what makes a
- * 137-module Aadhaar Secure QR resolvable at all, and a mild zoom fills more of
- * the sensor with the code. Unsupported constraints are ignored per platform.
- */
 export async function applyBestEffortCameraConstraints(
   stream: MediaStream,
 ): Promise<void> {
@@ -119,6 +97,5 @@ export async function applyBestEffortCameraConstraints(
         .catch(() => {});
     }
   } catch {
-    /* ignore unsupported constraints */
   }
 }

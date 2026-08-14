@@ -44,15 +44,6 @@ async function parseRole(
   return raw as StaffRole;
 }
 
-/**
- * Who may act on this staff role: an admin always, plus a team lead confined to
- * volunteers. `scopeTeamLeadId` is non-null only for the team-lead case and is
- * the caller's own id — every query below filters on it, so a lead can never
- * read or change a volunteer outside their team, or another lead.
- *
- * A separate team-lead route would duplicate the deactivate/reactivate/reset
- * flows and drift from them; one guard here keeps a single implementation.
- */
 async function requireStaffManager(
   role: StaffRole,
 ): Promise<{ userId: string; scopeTeamLeadId: string | null } | { error: NextResponse }> {
@@ -84,8 +75,6 @@ export async function GET(_req: Request, { params }: RouteCtx) {
   const auth = await requireStaffManager(role);
   if ("error" in auth) return auth.error;
 
-  // A scoped caller reads through the service role with an explicit team filter:
-  // their own RLS grant does not cover other people's profile rows.
   const scoped = auth.scopeTeamLeadId;
   const supabase = scoped ? createServiceRoleClient() : await createClient();
   if (!supabase) {
@@ -227,9 +216,6 @@ export async function POST(req: Request, { params }: RouteCtx) {
         );
       }
 
-      // An Auth user without a profile is the recoverable orphan left by a
-      // partial provisioning transaction. Reconcile only that exact email;
-      // never take over an account that has a usable profile.
       const { data: users, error: usersError } = await admin.auth.admin.listUsers({
         page: 1,
         perPage: 1000,
@@ -404,7 +390,6 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
     .from("profiles")
     .select("id, full_name, email, role, disabled_at")
     .eq("id", id);
-  // Scoped caller: the target must be on their team, or it does not exist to them.
   if (auth.scopeTeamLeadId) profileQuery = profileQuery.eq("team_lead_id", auth.scopeTeamLeadId);
   const { data: profile, error: profileError } = await profileQuery.maybeSingle();
 
@@ -540,7 +525,6 @@ export async function DELETE(req: Request, { params }: RouteCtx) {
   }
 
   let loadQuery = admin.from("profiles").select("id, role, disabled_at").eq("id", id);
-  // Scoped caller: the target must be on their team, or it does not exist to them.
   if (auth.scopeTeamLeadId) loadQuery = loadQuery.eq("team_lead_id", auth.scopeTeamLeadId);
   const { data: profile, error: pErr } = await loadQuery.maybeSingle();
 

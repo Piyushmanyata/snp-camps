@@ -5,16 +5,6 @@ import {
   type PrescriptionTemplate,
 } from "@/lib/prescription-template";
 
-/**
- * The printed prescription. This is the ONLY thing the desk prints on a camp
- * day, and printing it is what records that the patient arrived.
- *
- * The identity block is pre-filled from the patient record; every clinical
- * field is left blank for the optometrist to write by hand. The Patient QR
- * sits beside the registration number so a volunteer can scan the sheet to
- * mark the patient seen.
- */
-
 export type PrescriptionSheetPatient = {
   id: string;
   reg_no: number;
@@ -33,7 +23,6 @@ export type PrescriptionSheetProps = {
   template?: PrescriptionTemplate;
 };
 
-/** A dotted write-on line with an optional pre-filled value. */
 function FilledLine({
   label,
   value,
@@ -75,7 +64,6 @@ function GenderBox({ gender }: { gender: string | null }) {
   );
 }
 
-/** Empty cell of the refraction table — the optometrist writes in these. */
 const cell = "border border-current px-1 py-[6px]";
 
 function boundedPrintText(value: string | null | undefined, max: number) {
@@ -103,7 +91,6 @@ export function PrescriptionSheet({
       data-print-format="prescription-a4"
       aria-label={`Prescription for registration number ${patient.reg_no}`}
     >
-      {/* Letterhead — one image so no Indic font is needed on the printer. */}
       {template.letterheadUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- print asset, no optimisation pipeline
         <img
@@ -114,7 +101,6 @@ export function PrescriptionSheet({
         />
       ) : null}
 
-      {/* Identity: dotted lines left, boxed registration block + QR right. */}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-[7px] pt-1">
           <FilledLine label="Venue" value={venue} />
@@ -141,7 +127,6 @@ export function PrescriptionSheet({
             <FilledLine label="Contact No." value={patientPhone} />
           </div>
 
-          {/* Patient QR — staff scan to print and to mark seen. */}
           <div className="text-center">
             <div className="border border-current p-[3px]">
               <QrCode value={qrValue} size={92} />
@@ -153,7 +138,6 @@ export function PrescriptionSheet({
         </div>
       </div>
 
-      {/* Diagnosis tick boxes */}
       <div className="mt-3">
         <p className="text-[10pt] font-bold">Diagnosis :</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 border border-current px-2 py-[6px]">
@@ -169,7 +153,6 @@ export function PrescriptionSheet({
         </div>
       </div>
 
-      {/* Vitals + write-in sections */}
       <div className="mt-2 space-y-[6px]">
         {template.vitalsFields.map((field) => (
           <FilledLine key={field} label={`${field} :`} />
@@ -185,7 +168,6 @@ export function PrescriptionSheet({
         ))}
       </div>
 
-      {/* Operation venue */}
       {template.operationLabel ? (
         <div className="mt-2 border border-current px-2 py-[7px]">
           <span className="text-[11pt] font-bold">
@@ -194,7 +176,6 @@ export function PrescriptionSheet({
         </div>
       ) : null}
 
-      {/* Refraction table */}
       {template.showGlassesTable ? (
         <div className="mt-2 border border-current">
           <p className="border-b border-current py-[3px] text-center text-[10pt] font-bold italic">
@@ -254,7 +235,6 @@ export function PrescriptionSheet({
         </div>
       ) : null}
 
-      {/* Footer + sponsor + signature */}
       {template.footerNote ? (
         <p className="mt-2 border border-current px-2 py-[5px] text-[7.5pt] leading-snug">
           {template.footerNote}

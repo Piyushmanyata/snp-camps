@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-/** ≥128 bits of entropy, URL-safe hex (32 chars). Not derived from UUID or reg no. */
 export const STATUS_TOKEN_HEX_LENGTH = 32;
 
 export function generateStatusToken(): string {

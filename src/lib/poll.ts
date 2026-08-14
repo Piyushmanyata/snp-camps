@@ -2,14 +2,8 @@
 
 import { useEffect } from "react";
 
-/**
- * Fixed auto-refresh interval for desk freshness (#53/#56: ~20s).
- * Staff desks poll the minimal desk snapshot while the page is visible;
- * patient SeatBoard may use the same interval or manual-only.
- */
 export const POLL_MS = 20_000;
 
-/** Tick after each completed request while visible. `ms <= 0` disables. */
 export function useFixedPoll(
   tick: () => void | Promise<unknown>,
   ms: number,
@@ -38,7 +32,6 @@ export function useFixedPoll(
       try {
         await tick();
       } catch {
-        // A failed refresh must not disable future polling.
       } finally {
         running = false;
         schedule();

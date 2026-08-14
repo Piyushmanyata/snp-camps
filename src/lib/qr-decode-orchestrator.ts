@@ -1,18 +1,11 @@
-/**
- * #58 — Decoder orchestration: single in-flight detect, generation guards,
- * pause (review), freeze (terminal recovery), duplicate debounce.
- * Framework-free; React owns animation frames and media elements.
- */
 
 export type DecodeSource = HTMLVideoElement | HTMLCanvasElement | ImageBitmap;
 
 export type NativeDetect = (source: DecodeSource) => Promise<{ rawValue: string }[]>;
 
 export type DecodeOrchestratorOptions = {
-  /** Return false when session token is no longer current or unmounted. */
   isLive: () => boolean;
   onDecoded: (rawValue: string) => void;
-  /** Ignore this exact raw value after resume (just-seen QR). */
   debounceMs?: number;
 };
 
@@ -40,18 +33,15 @@ export class QrDecodeOrchestrator {
     return this.frozen;
   }
 
-  /** Pause decoding while review is open; stream may stay live. */
   pause(): void {
     this.paused = true;
   }
 
-  /** Resume after successful Mark seen / cancel review (same session). */
   resume(): void {
     this.paused = false;
     this.frozen = false;
   }
 
-  /** Terminal lookup/decode exhaustion — no auto re-arm until unfreeze. */
   freeze(): void {
     this.frozen = true;
     this.paused = true;
@@ -62,7 +52,6 @@ export class QrDecodeOrchestrator {
     this.paused = false;
   }
 
-  /** After marking a patient seen from camera, ignore the same QR briefly. */
   debounceRawValue(raw: string): void {
     this.debounceRaw = raw;
     this.debounceUntil = Date.now() + this.debounceMs;
@@ -77,11 +66,6 @@ export class QrDecodeOrchestrator {
     return this.isLive() && !this.paused && !this.frozen && !this.inFlight;
   }
 
-  /**
-   * Run one native detect. Generation is re-checked after the await.
-   * Returns true if a live callback fired and decode should stop looping
-   * until pause/resume (handled by caller via pause).
-   */
   async runNativeDetect(
     source: DecodeSource,
     detect: NativeDetect,
@@ -106,9 +90,6 @@ export class QrDecodeOrchestrator {
     }
   }
 
-  /**
-   * Sync jsQR path — still respects pause/freeze/live and debounce.
-   */
   runSyncDecode(raw: string | null): boolean {
     if (!raw) return false;
     if (!this.isLive() || this.paused || this.frozen) return false;

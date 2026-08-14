@@ -13,10 +13,6 @@ export type PrintActionPatient = {
   queueStatus: QueueStatus;
 };
 
-/**
- * Print controls for the patient's paper prescription. Printing records
- * presence once; it does not move the patient's status (ADR 0013).
- */
 const PRINT_STATUS_COPY: Record<
   QueueStatus,
   { printLabel: string; heading: string }
@@ -40,7 +36,6 @@ export function PrintActions({
   className?: string;
   patients: PrintActionPatient[];
   deskHref: "/admin" | "/volunteer";
-  /** When true (desk register flow), open the print dialog once on mount. */
   autoPrint?: boolean;
 }) {
   const primary = patients[0];
@@ -151,7 +146,6 @@ export function PrintActions({
     if (!autoPrint || autoStarted.current) return;
     autoStarted.current = true;
     void handlePrint();
-    // One-shot mount trigger for desk "Register karein aur print".
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only
   }, [autoPrint]);
 

@@ -1,15 +1,3 @@
-/**
- * Camp-keyed desk snapshot owner (#56, #63).
- * One shared poller per campId for the seat board.
- * Pure module — no React; polling only.
- *
- * Freshness:
- * - fresh: last fetch succeeded
- * - refreshing: in-flight
- * - stale-error: prior known rows kept; soft refresh failed
- * - error: no known snapshot; not an empty success
- * - off: no camp
- */
 
 import { fetchDeskLive, type DeskLivePayload } from "@/lib/desk-live";
 import { POLL_MS } from "@/lib/poll";
@@ -26,15 +14,12 @@ export type DeskLiveView = {
   campId: string | null;
   days: CampDayStats[];
   freshness: DeskLiveFreshness;
-  /** True after SSR seed success or a successful client payload for days. */
   daysKnown: boolean;
-  /** Monotonic generation; only the latest non-aborted apply wins. */
   generation: number;
 };
 
 export type DeskLiveSeed = {
   days?: CampDayStats[];
-  /** SSR succeeded for days (including empty). */
   daysKnown?: boolean;
 };
 
@@ -50,7 +35,6 @@ type Owner = {
   abort: AbortController | null;
   inFlight: boolean;
   timer: ReturnType<typeof setTimeout> | null;
-  /** True after first successful client fetch for this camp. */
   hasClientSnapshot: boolean;
 };
 
@@ -103,7 +87,6 @@ function schedule(owner: Owner) {
 }
 
 function failureFreshness(owner: Owner): DeskLiveFreshness {
-  // Any prior known snapshot → soft failure preserves content.
   if (owner.hasClientSnapshot || owner.daysKnown) {
     return "stale-error";
   }
@@ -122,8 +105,6 @@ async function runFetch(
     return;
   }
   if (owner.inFlight) {
-    // Never stack ordinary polls. Manual / visibility abort the in-flight
-    // request and start a newer generation.
     if (options.reason === "manual" || options.reason === "visibility") {
       owner.abort?.abort();
       owner.inFlight = false;
@@ -229,10 +210,6 @@ function bindVisibility() {
   });
 }
 
-/**
- * Subscribe to the shared camp desk owner. Starts an immediate fetch and
- * ~20s visible-page polling. Returns unsubscribe.
- */
 export function subscribeCampDeskLive(
   campId: string,
   listener: Listener,
@@ -253,14 +230,12 @@ export function subscribeCampDeskLive(
   };
 }
 
-/** Manual refresh / Try Again — same path as poll, aborts in-flight. */
 export function refreshCampDeskLive(campId: string) {
   const owner = owners.get(campId);
   if (!owner || owner.listeners.size === 0) return;
   void runFetch(owner, { reason: "manual" });
 }
 
-/** Test helpers */
 export function __resetCampDeskLiveForTests() {
   for (const owner of owners.values()) {
     clearTimer(owner);

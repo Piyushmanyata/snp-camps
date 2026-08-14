@@ -17,7 +17,6 @@ export function StaticLoginFormShell() {
       roleLabel="Staff"
     >
       <Card>
-        {/* Non-submittable Suspense shell — never native POST without a handler. */}
         <div
           className="space-y-4"
           aria-busy="true"

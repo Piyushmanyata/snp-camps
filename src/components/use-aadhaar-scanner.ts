@@ -19,17 +19,6 @@ import {
   type DecodeOutcome,
 } from "@/lib/aadhaar-attempt";
 
-/**
- * The decode client is an optional island, loaded only once the operator
- * actually starts a scan.
- *
- * It must not be imported statically: it constructs the decode Worker from a
- * `new URL(…, import.meta.url)` that the bundler resolves at build time, which
- * puts the worker's whole graph (Comlink, the parser, zod) into this route's
- * synchronous chunk set and blows the per-route JS budget (#71). Deferring the
- * import keeps the route entry thin and costs nothing: by the time a frame
- * needs decoding, the module has long since resolved.
- */
 type DecodeClient = typeof import("@/lib/aadhaar-decode-client");
 let decodeClientPromise: Promise<DecodeClient> | null = null;
 
@@ -40,33 +29,10 @@ function loadDecodeClient(): Promise<DecodeClient> {
   return decodeClientPromise;
 }
 
-/** Dense Aadhaar QR needs pixels; cap decode work to keep the loop responsive. */
 const SCAN_FPS = 12;
 const SCAN_FRAME_INTERVAL_MS = 1000 / SCAN_FPS;
-/**
- * Frames spent on the cheap path before escalating to the full preprocessing
- * cascade. Clean originals read almost immediately; a photocopy needs the
- * heavier passes, so we pay for them only once the easy path has clearly failed.
- */
 const ESCALATE_AFTER_FRAMES = 12;
-/**
- * Once escalated, how often a frame runs the full cascade rather than the cheap
- * pass. The cascade costs several times a cheap pass on a miss, so running it on
- * every frame both stalls the probe-geometry sweep and drops the effective frame
- * rate to a crawl. Interleaving keeps the cheap sweep live and still retries the
- * heavy passes several times a second.
- */
 const THOROUGH_EVERY_N_FRAMES = 4;
-/**
- * Probe geometries cycled one per frame, so all card sizes are covered within
- * ~6 frames without making any single frame expensive.
- *
- * The tight, upscaled probes exist for legacy pre-2018 cards: their QR is
- * printed far smaller than the modern Secure QR, so it occupies too few pixels
- * to resolve from the whole frame. Cropping in and upscaling is what makes
- * those cards readable at all.
- */
-/** What the caller does with a decoded card. */
 export type OnParsed = (
   parsed: ParsedAadhaarQr,
   diagnostic: string,
@@ -77,9 +43,7 @@ export type AadhaarScanner = {
   isReadingPhoto: boolean;
   isReadingUsb: boolean;
   hasConsent: boolean;
-  /** Operator-facing failure. Always names manual entry as the way forward. */
   scanError: string | null;
-  /** Structure-only fingerprint of a problem payload — never patient data. */
   scanDiagnostic: string | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   start: () => Promise<void>;
@@ -92,7 +56,6 @@ export type AadhaarScanner = {
 
 const MANUAL_HINT = "Please type the details manually.";
 
-/** Probe once per session; try/catch → null if unsupported or construct fails. */
 async function createNativeQrDetector(): Promise<BarcodeDetectorInstance | null> {
   try {
     const ok = await canUseNativeQrDetector();
@@ -105,20 +68,6 @@ async function createNativeQrDetector(): Promise<BarcodeDetectorInstance | null>
   }
 }
 
-/**
- * The single Aadhaar camera + decode entry point, shared by the Volunteer Desk
- * and patient self-registration. #92 forbids a second scanner stack, and the
- * probe geometry and escalation schedule below are tuned against the device
- * floor documented in docs/barcodedetector-device-floor.md — duplicating them
- * would mean two implementations drifting apart on the cards that read worst.
- *
- * All decoding happens in a worker; this hook only owns the camera, the frame
- * clock, and the probe geometry.
- *
- * `onParsed` runs on a successfully decoded Aadhaar payload. Return true to end
- * the session; return false to keep going (used when a frame decoded but
- * carried nothing worth filling in).
- */
 export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const [isScanning, setIsScanning] = useState(false);
   const [isReadingPhoto, setIsReadingPhoto] = useState(false);
@@ -130,8 +79,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // Keep the latest callback without restarting the camera when a parent
-  // re-renders with a new closure.
   const onParsedRef = useRef(onParsed);
   useEffect(() => {
     onParsedRef.current = onParsed;
@@ -163,21 +110,10 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       if (animFrameRef.current !== null) {
         cancelAnimationFrame(animFrameRef.current);
       }
-      // The WASM engines hold tens of megabytes; the low-end Androids these
-      // camps run on notice when that is not given back. Only meaningful if a
-      // scan actually loaded the client.
       void decodeClientPromise?.then((client) => client.disposeDecoder());
     };
   }, []);
 
-  /**
-   * Apply one decode outcome. Returns true when the session should end.
-   *
-   * A payload that decoded but carried no usable field is not terminal — a
-   * partial read on one blurry frame should not end the session when the next
-   * frame may read cleanly. A non-Aadhaar payload (the app's own desk slip) is
-   * terminal, because retrying will never help.
-   */
   const handleOutcome = useCallback(
     async (outcome: DecodeOutcome, token: number): Promise<boolean> => {
       if (!sessionRef.current.isCurrent(token)) return true;
@@ -222,7 +158,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       setScanError("Record the patient's consent before extracting Aadhaar details.");
       return;
     }
-    // Starting the camera supersedes any in-flight photo decode.
     setIsReadingPhoto(false);
     setScanError(null);
     setScanDiagnostic(null);
@@ -230,9 +165,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
     const token = sessionRef.current.begin();
 
     try {
-      // Camera permission and decoder loading are independent. Starting both
-      // together removes a full network/worker round trip from time-to-preview.
-      // Native BarcodeDetector is a first-chance path; WASM worker stays fallback.
       const clientPromise = loadDecodeClient();
       const nativePromise = createNativeQrDetector();
       const streamPromise = sessionRef.current.acquireFirstAvailable(
@@ -242,8 +174,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
           {
             video: {
               facingMode: { ideal: "environment" },
-              // Dense Secure QR and tiny legacy QR are both pixel-starved; ask
-              // for detail first, then retry without a size on broken OEMs.
               width: { ideal: 2560 },
               height: { ideal: 1440 },
             },
@@ -272,8 +202,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         return;
       }
 
-      // Continuous autofocus is the single biggest factor in whether a dense
-      // Aadhaar QR resolves at all.
       await applyBestEffortCameraConstraints(stream);
       if (!sessionRef.current.isCurrent(token)) return;
 
@@ -294,15 +222,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         return videoRef.current;
       }
 
-    /**
-     * Grab one probe geometry as a bounded ImageData.
-     *
-     * ONE bounded surface per probe. Decoding the crop at native camera
-     * resolution costs seconds per frame on a mid-range phone, which reads to
-     * the operator as a frozen scanner — this has regressed twice, so
-     * `probeSurface` owns the bound and is asserted by
-     * tests/qr-decode-surface.test.mjs.
-     */
       const probeImage = (probe: Probe): ImageData | null => {
         if (!ctx || !video()) return null;
         const v = video()!;
@@ -312,8 +231,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
 
         canvas.width = dw;
         canvas.height = dh;
-        // Hard module edges when magnifying; smooth when shrinking, which
-        // averages sensor noise away instead of aliasing it into the modules.
         ctx.imageSmoothingEnabled = dw < cw;
         ctx.drawImage(v, sx, sy, cw, ch, 0, 0, dw, dh);
         return ctx.getImageData(0, 0, dw, dh);
@@ -323,8 +240,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         if (!sessionRef.current.isCurrent(token) || !video()) return;
 
         const now = performance.now();
-        // Throttle: an unthrottled rAF loop ran full-resolution decodes at 60fps,
-        // starving the camera and making scanning slower, not faster.
         if (!busy && now - lastFrameAt >= SCAN_FRAME_INTERVAL_MS) {
           lastFrameAt = now;
           busy = true;
@@ -333,12 +248,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
             if (v.readyState >= 2 && v.videoWidth > 0) {
               frameTick += 1;
 
-            // Cycle the probe geometries so every card size gets covered within
-            // a few frames, while each individual frame stays cheap. Once the
-            // easy path has plainly failed (a faded photocopy), start mixing in
-            // the full preprocessing cascade — but only on some frames. Making
-            // every frame thorough pins the loop at the cascade's miss cost and
-            // stalls the geometry sweep, so the operator waits seconds per probe.
               const thorough =
                 frameTick > ESCALATE_AFTER_FRAMES &&
                 frameTick % THOROUGH_EVERY_N_FRAMES === 0;
@@ -358,8 +267,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
                     detector = null;
                   }
                 }
-                // One attempt, one outcome: the native text is a hint, and
-                // only a parsed card suppresses the binary reader (ADR 0014).
                 const outcome = await attemptAadhaarDecode({
                   image,
                   nativeText,
@@ -428,7 +335,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         let width: number;
         let height: number;
 
-        // Native detector probe runs in parallel with image load when possible.
         let detector = await createNativeQrDetector();
         if (!sessionRef.current.isCurrent(token)) return;
 
@@ -461,10 +367,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         const client = await loadDecodeClient();
         if (!sessionRef.current.isCurrent(token)) return;
 
-        // Full-resolution native pass first — ML Kit handles dense QRs well,
-        // and the probe surfaces below are bounded to MAX_DECODE_EDGE. Its
-        // answer is still only a hint: anything short of a parsed card falls
-        // through to the probe sweep rather than ending the attempt (ADR 0014).
         if (detector) {
           try {
             const full = document.createElement("canvas");
@@ -514,8 +416,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
             }
           }
 
-          // Same one-attempt sequencing as the camera (ADR 0014), so photo-first
-          // on phones (ADR 0012) is not a second decode stack.
           const outcome = await attemptAadhaarDecode({
             image: ctx.getImageData(0, 0, dw, dh),
             nativeText,
@@ -562,7 +462,6 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       try {
         const client = await loadDecodeClient();
         if (!sessionRef.current.isCurrent(token)) return;
-        // The wedge carries text only — same attempt, no picture (ADR 0014).
         const outcome = await attemptAadhaarDecode({
           nativeText: payload,
           client,

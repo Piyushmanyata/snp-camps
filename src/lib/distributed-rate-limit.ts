@@ -29,15 +29,10 @@ export type DistributedRateLimitResult = {
   retryAfterSeconds: number;
 };
 
-/** Dedicated secret only — never fall back to the service-role key. */
 function signingSecret() {
   return process.env.RATE_LIMIT_SECRET?.trim() || "";
 }
 
-/**
- * Durable abuse protection shared by all serverless instances. The database
- * receives only keyed digests, never a raw address or patient identifier.
- */
 export async function checkDistributedRateLimit(
   request: Request,
   client: RpcClient,

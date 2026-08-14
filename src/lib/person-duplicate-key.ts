@@ -1,25 +1,13 @@
-/**
- * Person duplicate key (#109 prefactor).
- *
- * Key material matches CONTEXT.md:
- *   HMAC-SHA256(last4 + normalised_name + dob + gender)
- * using the required Aadhaar pepper.
- */
 
 import { createHmac } from "node:crypto";
 import { parseDateOfBirth } from "@/lib/aadhaar-text";
 
-/**
- * The Aadhaar pepper. Survives the eKYC deletion (#116) because the Person
- * duplicate key is keyed on it; only the eKYC *provider* config was retired.
- */
 export function getAadhaarPepper(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
   return env.AADHAAR_HASH_PEPPER?.trim() || null;
 }
 
-/** Same rule as `patients.full_name_normalized`: case-fold + collapse whitespace. */
 export function normalizePersonName(name: string): string {
   return name
     .trim()
@@ -28,23 +16,12 @@ export function normalizePersonName(name: string): string {
 }
 
 export type PersonDuplicateKeyInput = {
-  /** Aadhaar last-4 only — never the full 12-digit number. */
   aadhaarLast4: string;
-  /**
-   * Verbatim scanned name from the card. Do not pass a display-name
-   * transliteration — the key must ignore volunteer typing choices.
-   */
   name: string;
-  /** Full DOB (`YYYY-MM-DD` preferred; other common shapes are normalised). */
   dateOfBirth: string;
-  /** Prefer M / F / O as produced by {@link normalizeGender}. */
   gender: string;
 };
 
-/**
- * Build the stable HMAC for a scanned card identity.
- * Throws when the pepper is missing so we never mint a weak key.
- */
 export function derivePersonDuplicateKey(
   input: PersonDuplicateKeyInput,
   env: Record<string, string | undefined> = process.env,

@@ -4,14 +4,6 @@ export type PatientStatusGuidance = {
   tone: "neutral" | "complete";
 };
 
-/**
- * Patient-facing meaning of the lifecycle state. Hinglish — patients read
- * Hinglish, staff read English, and a leak either way is a bug
- * (CONTEXT.md §Language).
- *
- * Two states only (ADR 0013): there is no line, so no waiting arm and no
- * position to report.
- */
 export function getPatientStatusGuidance(
   queueStatus: string,
 ): PatientStatusGuidance {

@@ -3,7 +3,6 @@ import { SelfRegistrationFlowLazy } from "@/components/aadhaar-capture";
 import { getActiveCampSnapshot } from "@/lib/camp";
 import { connection } from "next/server";
 
-/** Patient self-registration needs only an active camp day and an offline card scan. */
 export default async function SelfRegisterPage() {
   await connection();
   const camp = await getActiveCampSnapshot();

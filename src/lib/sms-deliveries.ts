@@ -1,7 +1,3 @@
-/**
- * Durable SMS delivery ledger helpers (#65).
- * Server-only semantics via Supabase RPC; never stores full phone or message body.
- */
 
 export type SmsDeliveryKind = "registration" | "reminder";
 export type SmsDeliveryOutcome = "sent" | "failed" | "ambiguous" | "release";
@@ -11,7 +7,6 @@ export type SmsClaim = {
   claimToken: string;
 };
 
-/** Minimal PostgREST-shaped client (session or service role). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SmsDeliveryClient = { rpc: (fn: string, args?: Record<string, unknown>) => any };
 
@@ -24,10 +19,6 @@ export function phoneLast4FromRaw(
   return digits.slice(-4);
 }
 
-/**
- * Atomically claim a logical delivery for dispatch.
- * Returns null when already sent/ambiguous or another runner holds a live lease.
- */
 export async function claimSmsDelivery(
   client: SmsDeliveryClient,
   input: {
@@ -73,10 +64,6 @@ export async function completeSmsDelivery(
   return Boolean(data);
 }
 
-/**
- * Persist the point immediately before the provider call. If the worker dies
- * after this succeeds, an expired lease is ambiguous and is never auto-retried.
- */
 export async function markSmsDispatchStarted(
   client: SmsDeliveryClient,
   claim: SmsClaim,
@@ -97,7 +84,6 @@ export type SmsDeliveryIssue = {
   state?: string;
 };
 
-/** Admin-only redacted failed/ambiguous rows (durable across instances). */
 export async function listRecentSmsDeliveryIssues(
   client: SmsDeliveryClient,
   limit = 50,
@@ -132,11 +118,6 @@ export async function pruneSmsDeliveries(
   return Number(data ?? 0);
 }
 
-/**
- * Classify MSG91 adapter failure for ledger outcome.
- * Provider HTTP rejection → failed (safe to retry).
- * Timeout / connection loss → ambiguous (do not auto-retry).
- */
 export function smsOutcomeFromProviderFailure(detail: string): {
   outcome: "failed" | "ambiguous";
   detail: string;

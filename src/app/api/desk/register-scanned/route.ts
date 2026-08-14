@@ -27,7 +27,6 @@ type ScannedDeskRegistrationBody = {
   email?: unknown;
   aadhaarLast4?: unknown;
   dateOfBirth?: unknown;
-  /** Staff one-shot audited overrides (Person key remains server-derived). */
   aadhaarDuplicateOverride?: unknown;
   likelyDuplicateOverride?: unknown;
 };
@@ -42,13 +41,6 @@ function failure(message: string, status: number, code?: string) {
   );
 }
 
-/**
- * Trusted scanned-card registration boundary.
- *
- * The Aadhaar Person key is derived only on the server and is never returned to
- * the browser. Staff may send one-shot audited duplicate overrides; the key is
- * never accepted from the client.
- */
 export async function POST(request: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId) return failure("Not signed in", 401, "AUTH_REQUIRED");

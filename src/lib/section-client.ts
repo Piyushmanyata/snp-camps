@@ -1,7 +1,3 @@
-/**
- * Client fetch of one narrow desk section (#63).
- * Returns safe public copy only — never raw provider text.
- */
 
 import type { SectionKey } from "@/lib/section-reads";
 
@@ -12,10 +8,6 @@ export type SectionClientResult<T> =
 const GENERIC =
   "Something went wrong. Try again or ask the desk.";
 
-/**
- * Fetch one section from /api/desk/section.
- * Call-count tests can inject `fetchImpl`.
- */
 export async function fetchDeskSection<T = unknown>(
   section: SectionKey,
   options: {

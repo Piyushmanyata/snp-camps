@@ -7,11 +7,6 @@ import {
   useState,
 } from "react";
 
-/**
- * Collapsible that only mounts children once opened (lazy island gate).
- * children is a render prop receiving `ready` after first open.
- * Import from this module (not ui.tsx) so RSC can stay hook-free.
- */
 export function OpenOnToggle({
   title,
   hint,

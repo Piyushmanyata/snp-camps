@@ -58,7 +58,6 @@ export default async function PatientStatusPage({
   const admin = createServiceRoleClient();
   if (!admin) notFound();
 
-  // Multi-instance durable gate (in-memory alone is not enough under load).
   const durableIp = await checkDistributedRateLimit(rateRequest, admin, {
     ...STATUS_IP_RATE_LIMIT,
   });

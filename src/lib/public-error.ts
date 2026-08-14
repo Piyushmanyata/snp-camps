@@ -1,34 +1,18 @@
-/**
- * Map database / PostgREST errors to camp-worker copy, and classify
- * whether a failure is safe to auto-retry (#31, #60).
- *
- * Retry policy is an allow-list of transient transport/DB classes only.
- * Unknown and business rejections are terminal (explicit user retry).
- * Technical details stay log-only — never returned to the UI.
- */
 
 export type DbErrorLike = {
   message?: string;
   code?: string;
   details?: string;
   hint?: string;
-  /** HTTP status when the client surfaces one (5xx → transient). */
   status?: number;
 } | null | undefined;
 
 export type MapDbErrorOptions = {
-  /** Short label for logs, e.g. "admin-camps.create". */
   context?: string;
-  /** Default true. Tests can pass false when asserting pure mapping. */
   log?: boolean;
-  /**
-   * Domain-flavoured generic fallback when nothing matches.
-   * Registration uses a registration-specific sentence; desks use a load sentence.
-   */
   fallback?: string;
 };
 
-/** Safe UI categories for structured logging and copy selection (#60). */
 export type PublicErrorCategory =
   | "permission"
   | "not_found"
@@ -41,38 +25,23 @@ export type PublicErrorCategory =
   | "unknown";
 
 export type ClassifiedOperationError = {
-  /** True only for explicit transient classes (allow-list). */
   retryable: boolean;
   publicCategory: PublicErrorCategory;
-  /** Camp-worker safe sentence — never raw Postgres text. */
   publicMessage: string;
-  /** SQLSTATE / PostgREST / domain code for logs. */
   logCode: string | undefined;
-  /** Original message text (for duplicate parsers; not for UI). */
   rawMessage: string;
 };
 
 export type ClassifyOperationErrorOptions = MapDbErrorOptions & {
-  /**
-   * Caller observed a transport failure (thrown fetch, offline, etc.).
-   * Always treated as retryable when set.
-   */
   transportFailure?: boolean;
-  /**
-   * Request aborted / timed out before a business response.
-   * Retryable when the operation is idempotent (desk mutations are).
-   */
   timedOut?: boolean;
 };
 
 const DEFAULT_FALLBACK =
   "Something went wrong. Try again or ask the desk.";
 
-/** Explicit transient SQLSTATE / PostgREST codes (allow-list). */
 const RETRYABLE_CODES = new Set([
-  // Explicit browser/API transport sentinel
   "NETWORK_ERROR",
-  // Class 08 — connection exception
   "08000",
   "08001",
   "08003",
@@ -80,13 +49,10 @@ const RETRYABLE_CODES = new Set([
   "08006",
   "08007",
   "08P01",
-  // Serialization / deadlock (safe transaction rollback)
   "40001",
   "40P01",
-  // Statement timeout / cancel; cannot_connect_now
   "57014",
   "57P03",
-  // Resource exhaustion that may clear
   "53300",
 ]);
 
@@ -131,7 +97,6 @@ function normalizeErrorParts(
   return rawParts("");
 }
 
-/** Last-resort transport patterns when no structured code is present. */
 function isTransportLikeMessage(message: string): boolean {
   return /failed to fetch|networkerror|network request failed|load failed|econnreset|econnrefused|etimedout|enotfound|socket hang up|fetch failed|connection (reset|refused|closed|terminated)|err_network|err_connection|err_internet|offline|net::err_/i.test(
     message,
@@ -147,12 +112,10 @@ function isTimeoutLikeMessage(message: string): boolean {
 function isRetryableCode(code: string): boolean {
   if (!code) return false;
   if (RETRYABLE_CODES.has(code)) return true;
-  // Entire SQLSTATE class 08 — connection exception
   if (code.startsWith("08")) return true;
   return false;
 }
 
-/** Log raw error server- or client-side; never skip when log is true. */
 export function logDbError(
   error: DbErrorLike | string | unknown,
   context?: string,
@@ -170,10 +133,6 @@ export function logDbError(
   });
 }
 
-/**
- * Pure classification: retry decision + safe public copy + log code (#60).
- * Allow-list for retryable; everything else is terminal.
- */
 export function classifyOperationError(
   error: DbErrorLike | string | unknown,
   options: ClassifyOperationErrorOptions = {},
@@ -192,7 +151,6 @@ export function classifyOperationError(
   const combined = `${message} ${parts.details} ${parts.hint}`;
   const logCode = code || undefined;
 
-  // --- Public message resolution (mirrors prior mapDbError rules) ---
   let publicCategory: PublicErrorCategory = "unknown";
   let publicMessage: string | null = null;
 
@@ -205,7 +163,6 @@ export function classifyOperationError(
   const likelyDup = message.match(/LIKELY_DUPLICATE:reg=(\d+)/i);
   if (!publicMessage && likelyDup) {
     publicCategory = "duplicate";
-    // Keep raw for form actions when callers need the code; mapper still safe:
     publicMessage = `A similar registration may already exist (reg no ${likelyDup[1]}). Confirm before creating another.`;
   }
 
@@ -252,7 +209,6 @@ export function classifyOperationError(
     publicMessage = "The request took too long. Try again.";
   }
 
-  // Camp / registration domain phrases from RPC raise messages (copy only)
   if (!publicMessage && /day is full|select a camp day/i.test(message)) {
     publicCategory = "capacity";
     publicMessage = "That camp day is full. Choose another day.";
@@ -293,7 +249,6 @@ export function classifyOperationError(
     publicCategory = "conflict";
     publicMessage = "Cannot delete while patients or related records still exist.";
   }
-  // Schema cache / missing RPC — terminal, safe generic
   if (
     !publicMessage &&
     (code === "PGRST202" ||
@@ -311,7 +266,6 @@ export function classifyOperationError(
     publicMessage = fallback;
   }
 
-  // --- Retry allow-list (never invert to "retry everything except…") ---
   let retryable = false;
 
   if (transportFailure) {
@@ -331,14 +285,12 @@ export function classifyOperationError(
       publicCategory = "transient";
     }
   } else if (!code && isTransportLikeMessage(message)) {
-    // Last-resort legacy / browser transport strings
     retryable = true;
     publicCategory = "transient";
   } else if (!code && isTimeoutLikeMessage(message)) {
     retryable = true;
     publicCategory = "timeout";
   }
-  // P0001 / business raises / permission / validation / unknown → not retryable
 
   if (log) {
     logDbError(error, context, { category: publicCategory, retryable });
@@ -353,10 +305,6 @@ export function classifyOperationError(
   };
 }
 
-/**
- * Known Postgres / PostgREST codes and camp-specific message patterns → safe UI copy.
- * Unknown codes always return the fallback; raw text is logged, never returned.
- */
 export function mapDbError(
   error: DbErrorLike | string | unknown,
   options: MapDbErrorOptions = {},
@@ -364,7 +312,6 @@ export function mapDbError(
   return classifyOperationError(error, options).publicMessage;
 }
 
-/** True only when the error is on the transient allow-list (#60). */
 export function isRetryableDbError(
   error: DbErrorLike | string | unknown,
   options: Pick<
@@ -375,7 +322,6 @@ export function isRetryableDbError(
   return classifyOperationError(error, { ...options, log: false }).retryable;
 }
 
-/** Registration API helper — same mapper with registration-flavoured fallback. */
 export function publicRegistrationError(
   error: DbErrorLike | string | unknown,
   context = "staff-register",
@@ -386,15 +332,9 @@ export function publicRegistrationError(
   });
 }
 
-/**
- * Map Supabase Auth / GoTrue provider errors to staff-safe copy (#63).
- * Known credential and rate-limit cases get specific sentences; everything
- * else logs raw text and returns a generic message — never provider internals.
- */
 export function mapAuthError(
   error: DbErrorLike | string | unknown,
   options: MapDbErrorOptions & {
-    /** Default: staff sign-in flavour. */
     kind?: "sign-in" | "change-password";
   } = {},
 ): string {

@@ -1,50 +1,26 @@
-/**
- * Prescription sheet template.
- *
- * The letterhead (organisation names in three scripts, address, tagline, emblem
- * and artwork) is a single image so it prints identically on any machine — no
- * Devanagari or Bengali font has to exist on the printing computer. A camp that
- * is not SNP replaces that one image and the text below it.
- *
- * Everything here is per-camp and admin-editable (see admin camp settings).
- * The patient identity block, registration number and Patient QR are NOT
- * templatable — they are what makes the sheet usable at the desk.
- */
 
-/** A ruled area the optometrist writes into by hand. */
 export type PrescriptionSection = {
-  /** Stable key so reordering never loses saved labels. */
   key: string;
   label: string;
-  /** Rendered height in millimetres of writing space. */
   heightMm: number;
   visible?: boolean;
 };
 
 export type PrescriptionTemplate = {
-  /** Public path or Storage URL of the letterhead strip. */
   letterheadUrl: string;
-  /** Sponsor logo shown in the footer. Empty string hides the whole block. */
   sponsorLogoUrl: string;
   sponsorLogos: string[];
   sponsorLabel: string;
-  /** Diagnosis tick-boxes across the top of the clinical area. */
   diagnosisOptions: string[];
-  /** Short measurement fields printed as "Label : ................". */
   vitalsFields: string[];
-  /** Ruled write-in areas, in print order. */
   sections: PrescriptionSection[];
-  /** Boxed line above the glasses table. */
   operationLabel: string;
-  /** Whether to print the RE/LE refraction table. */
   showGlassesTable: boolean;
   glassesTableTitle: string;
-  /** Small print above the signature. */
   footerNote: string;
   signatureLabel: string;
 };
 
-/** Sikar Nagarik Parishad — matches the printed pad in EYE CLINIC.jpg. */
 export const DEFAULT_PRESCRIPTION_TEMPLATE: PrescriptionTemplate = {
   letterheadUrl: "/brand/letterhead.png",
   sponsorLogoUrl: "/brand/rupa-logo.png",
@@ -77,11 +53,6 @@ const MAX_SECTIONS_TOTAL_HEIGHT_MM = 42;
 const MAX_SHORT_TEXT = 80;
 const MAX_FOOTER_TEXT = 180;
 
-/**
- * Merge a camp's stored overrides over the default. Any missing or malformed
- * field falls back rather than throwing — a bad template must never stop a
- * patient being printed at a busy desk.
- */
 export function resolvePrescriptionTemplate(
   stored: unknown,
 ): PrescriptionTemplate {
@@ -133,7 +104,6 @@ export function resolvePrescriptionTemplate(
   }).filter((section) => section.heightMm > 0);
 
   const base = DEFAULT_PRESCRIPTION_TEMPLATE;
-  /** Same-origin brand paths + admin sponsor asset route only. */
   const isAllowedAssetUrl = (value: string) =>
     value === "/brand/letterhead.png" ||
     value === "/brand/rupa-logo.png" ||

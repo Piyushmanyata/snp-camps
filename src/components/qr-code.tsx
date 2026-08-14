@@ -1,6 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
 
-/** Pure SVG QR renderer; it needs no hydration when used by a Server Component. */
 export function QrCode({
   value,
   size = 200,

@@ -1,38 +1,9 @@
-/**
- * Multi-pass QR decoding for real-world Aadhaar cards, including photocopies.
- *
- * Two independent WASM engines run over each image, because they fail on
- * different things:
- *
- *   - **ZXing-C++ (zxing-wasm)** is the primary. It is strongest on dense and
- *     damaged codes, and its own `tryHarder` / `tryRotate` / `tryInvert` /
- *     `tryDenoise` flags already cover rotation, inversion and denoising, so
- *     those are not re-implemented here.
- *   - **ZBar (@undecaf/zbar-wasm)** is a genuinely separate implementation, not
- *     another wrapper over the same core, so it reads codes ZXing misses.
- *
- * Ahead of them sits the preprocessing cascade: a faded or unevenly lit
- * photocopy becomes clean black-and-white before either engine sees it.
- *
- * Payloads are returned as **bytes**. Aadhaar Secure QR is byte-mode binary and
- * any string form is a lossy decode that cannot be inflated.
- */
 
 export type QrPayload = string | Uint8Array;
 
-/** Preprocessing applied before a decode attempt. */
 export type Variant = "raw" | "stretch" | "otsu" | "adaptive" | "invert";
 
-/** Cheap enough to run on every live camera frame. */
 export const FAST_VARIANTS: Variant[] = ["raw"];
-/**
- * Escalation for a frame that will not read, and for uploaded photos.
- *
- * Each entry costs a full grayscale pass plus one attempt per engine, so the
- * list length *is* the cost. `invert` is omitted deliberately: an Aadhaar QR is
- * never printed inverted, and ZXing's own `tryInvert` covers the odd scan that
- * is.
- */
 export const THOROUGH_VARIANTS: Variant[] = [
   "raw",
   "stretch",
@@ -40,8 +11,6 @@ export const THOROUGH_VARIANTS: Variant[] = [
   "adaptive",
 ];
 
-// Geometry lives in its own dependency-free module so the main thread can size
-// probes without loading the preprocessing cascade below.
 export {
   AADHAAR_PROBES,
   MAX_DECODE_EDGE,
@@ -50,24 +19,7 @@ export {
   type Probe,
 } from "@/lib/qr-decode-geometry";
 
-/* ------------------------------------------------------------------ */
-/* Engine loading                                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * Where the decoder binaries are served from.
- *
- * Both packages default to a CDN. A camp desk runs on a phone hotspot and is
- * frequently offline, so a CDN fetch is the request that hangs — the binaries
- * are copied into `public/wasm` by scripts/copy-wasm.mjs and served
- * same-origin. Overridable so the Node test suite can point at node_modules.
- */
 let wasmBase = "/wasm/";
-/**
- * Preloaded ZXing binary. Emscripten's `locateFile` resolves against a URL, so
- * outside a browser (the Node test suite) the binary has to be handed over
- * directly instead.
- */
 let zxingWasmBinary: ArrayBuffer | null = null;
 
 export function setDecoderWasmBase(
@@ -76,7 +28,6 @@ export function setDecoderWasmBase(
 ): void {
   wasmBase = base;
   zxingWasmBinary = options.zxingWasmBinary ?? null;
-  // Engines cache their module on first load; a later base change must re-load.
   zxingPromise = null;
   zbarPromise = null;
 }
@@ -87,7 +38,6 @@ type ZbarModule = typeof import("@undecaf/zbar-wasm");
 let zxingPromise: Promise<ZxingReader | null> | null = null;
 let zbarPromise: Promise<ZbarModule | null> | null = null;
 
-/** Loaded on demand only — keeps ~1MB of WASM out of the route bundle. */
 export function loadZxing(): Promise<ZxingReader | null> {
   if (!zxingPromise) {
     zxingPromise = import("zxing-wasm/reader")
@@ -105,8 +55,6 @@ export function loadZxing(): Promise<ZxingReader | null> {
         return module;
       })
       .catch(() => {
-        // A killed Android worker or interrupted first WASM fetch must not
-        // poison every later scan attempt for the lifetime of the page.
         zxingPromise = null;
         return null;
       });
@@ -132,16 +80,10 @@ export function loadZbar(): Promise<ZbarModule | null> {
   return zbarPromise;
 }
 
-/** Warm both engines so the first scanned frame is not the one paying for it. */
 export async function preloadDecoders(): Promise<void> {
   await Promise.all([loadZxing(), loadZbar()]);
 }
 
-/* ------------------------------------------------------------------ */
-/* Preprocessing                                                       */
-/* ------------------------------------------------------------------ */
-
-/** Luma (Rec. 601), the plane every decoder actually works on. */
 export function toGrayscale(image: ImageData): Uint8ClampedArray {
   const { data, width, height } = image;
   const gray = new Uint8ClampedArray(width * height);
@@ -151,11 +93,6 @@ export function toGrayscale(image: ImageData): Uint8ClampedArray {
   return gray;
 }
 
-/**
- * Percentile contrast stretch. A photocopy often occupies a narrow band of the
- * range (say 90–200 instead of 0–255); pulling it back to full range is enough
- * for a decoder to find module edges.
- */
 function contrastStretch(gray: Uint8ClampedArray): Uint8ClampedArray {
   const histogram = new Uint32Array(256);
   for (const value of gray) histogram[value]++;
@@ -185,7 +122,6 @@ function contrastStretch(gray: Uint8ClampedArray): Uint8ClampedArray {
   return out;
 }
 
-/** Otsu global threshold — best when the copy is evenly lit. */
 function otsuBinarize(gray: Uint8ClampedArray): Uint8ClampedArray {
   const histogram = new Uint32Array(256);
   for (const value of gray) histogram[value]++;
@@ -224,11 +160,6 @@ function otsuBinarize(gray: Uint8ClampedArray): Uint8ClampedArray {
   return out;
 }
 
-/**
- * Adaptive (local mean) threshold via integral image — handles the uneven
- * lighting and shadow gradients typical of a phone photo of a photocopy, which
- * a single global threshold cannot.
- */
 function adaptiveBinarize(
   gray: Uint8ClampedArray,
   width: number,
@@ -244,7 +175,6 @@ function adaptiveBinarize(
     }
   }
 
-  // Window ~1/16 of the smaller side keeps several QR modules in view.
   const radius = Math.max(4, Math.floor(Math.min(width, height) / 32));
   const out = new Uint8ClampedArray(gray.length);
 
@@ -260,7 +190,6 @@ function adaptiveBinarize(
         integral[y0 * (width + 1) + (x1 + 1)] -
         integral[(y1 + 1) * (width + 1) + x0] +
         integral[y0 * (width + 1) + x0];
-      // 6% bias below local mean suppresses paper speckle from a copier.
       out[y * width + x] = gray[y * width + x] * area > sum * 0.94 ? 255 : 0;
     }
   }
@@ -293,7 +222,6 @@ function applyVariant(
   }
 }
 
-/** Both engines want RGBA, so a processed grey plane is expanded back out. */
 export function grayToImageData(
   gray: Uint8ClampedArray,
   width: number,
@@ -307,18 +235,6 @@ export function grayToImageData(
   return new ImageData(rgba, width, height);
 }
 
-/* ------------------------------------------------------------------ */
-/* Engines                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * ZXing reader options.
- *
- * `binarizer: "LocalAverage"` is ZXing's own adaptive threshold and is what
- * makes an unevenly lit phone photo readable. Rotation, inversion and denoising
- * are delegated to the engine rather than re-implemented as extra image
- * variants — one WASM call covering four cases is far cheaper than four calls.
- */
 const ZXING_OPTIONS: import("zxing-wasm/reader").ReaderOptions = {
   formats: ["QRCode"],
   tryHarder: true,
@@ -337,8 +253,6 @@ async function decodeWithZxing(
   try {
     const results = await zxing.readBarcodes(image, ZXING_OPTIONS);
     for (const result of results) {
-      // `bytes` is the faithful byte-mode payload; `text` is a lossy decode of
-      // it and cannot be inflated, so only bytes are ever returned.
       if (result?.isValid && result.bytes?.length) return new Uint8Array(result.bytes);
     }
     return null;
@@ -356,7 +270,6 @@ async function decodeWithZbar(
     for (const symbol of symbols) {
       if (symbol.type !== zbar.ZBarSymbolType.ZBAR_QRCODE) continue;
       if (!symbol.data?.length) continue;
-      // ZBar hands back a signed view over the same buffer.
       return new Uint8Array(symbol.data.buffer.slice(0), 0, symbol.data.length);
     }
     return null;
@@ -365,24 +278,12 @@ async function decodeWithZbar(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Cascade                                                             */
-/* ------------------------------------------------------------------ */
-
 export type MultiPassOptions = {
   zxing?: ZxingReader | null;
   zbar?: ZbarModule | null;
   variants?: Variant[];
 };
 
-/**
- * Try one image every configured way, cheapest first. Returns the first payload
- * found.
- *
- * Engines are passed in rather than loaded here so a caller decoding many
- * variants in a row pays the module load once, and so the Node test suite can
- * drive the same cascade.
- */
 export async function decodeImageMultiPass(
   image: ImageData,
   { zxing, zbar, variants = FAST_VARIANTS }: MultiPassOptions,
@@ -398,7 +299,6 @@ export async function decodeImageMultiPass(
     const candidate =
       processed === null ? image : grayToImageData(processed, width, height);
 
-    // ZXing first: strongest on dense and damaged codes.
     if (zxing) {
       const hit = await decodeWithZxing(zxing, candidate);
       if (hit) return hit;

@@ -1,9 +1,3 @@
-/**
- * Day-before camp reminder SMS — DLT template + MSG91 + durable ledger job (#52 + #65).
- *
- * Reuses the single MSG91 adapter. Separate template ID env var.
- * Never throws out of the per-patient path; job-level list failures surface as ok:false.
- */
 
 import { formatCampDaySms } from "@/lib/format-camp-day";
 import { sendMsg91TemplateSms } from "@/lib/msg91";
@@ -24,11 +18,6 @@ import {
   type SmsDeliveryClient,
 } from "@/lib/sms-deliveries";
 
-/**
- * Exact DLT body for the day-before reminder (Roman Hinglish, GSM-7).
- * Three sequential {#var#} slots: reg, date, venue.
- * No status link — useful when the patient cannot open a URL.
- */
 export const REMINDER_SMS_DLT_TEMPLATE =
   "SNP Camp: Kal aana. Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein.";
 
@@ -40,7 +29,6 @@ export type ReminderSmsVars = {
   venue: string | null | undefined;
 };
 
-/** Fill the fixed template for length tests and previews. */
 export function fillReminderSms(input: ReminderSmsVars): string {
   const vars = reminderSmsVariables(input);
   let i = 0;
@@ -78,10 +66,6 @@ export function isMsg91ReminderConfigured(): boolean {
   );
 }
 
-/**
- * Calendar date `YYYY-MM-DD` in Asia/Kolkata for `now + dayOffset`.
- * dayOffset 0 = today, 1 = tomorrow.
- */
 export function kolkataDateIso(
   dayOffset = 0,
   now: Date = new Date(),
@@ -106,13 +90,10 @@ export type ReminderCandidate = {
   queueStatus: string;
   dayDate: string;
   venue: string | null | undefined;
-  /** Legacy column; still dual-written during #65 compatibility window. */
   reminderSmsSentAt?: string | null | undefined;
-  /** Ledger state when joined; null means no delivery row yet. */
   reminderDeliveryState?: string | null | undefined;
 };
 
-/** Pure filter used by tests and as documentation of eligibility. */
 export function isReminderEligible(
   row: ReminderCandidate,
   tomorrowIso: string,
@@ -120,11 +101,9 @@ export function isReminderEligible(
   if (row.queueStatus !== "registered") return false;
   if (row.dayDate !== tomorrowIso) return false;
   if (!row.phone || !normalizePhoneE164(row.phone)) return false;
-  // Ledger: skip terminal non-retry states
   const st = row.reminderDeliveryState;
   if (st === "sent" || st === "ambiguous") return false;
-  if (st === "sending") return false; // live or will be reclaimed via claim lease
-  // Legacy compatibility: timestamp without ledger row
+  if (st === "sending") return false;
   if (!st && row.reminderSmsSentAt) return false;
   return true;
 }
@@ -137,9 +116,6 @@ export type SendReminderResult =
 
 type SendFn = typeof sendMsg91TemplateSms;
 
-/**
- * Send one reminder SMS. Never throws.
- */
 export async function sendReminderSms(
   input: {
     phone: string | null | undefined;
@@ -212,10 +188,6 @@ export async function sendReminderSms(
 
 export type ReminderJobDeps = {
   listCandidates: () => Promise<ReminderCandidate[]>;
-  /**
-   * Atomic claim for one patient reminder delivery.
-   * Returns claim ids when this runner won.
-   */
   claimReminder: (
     patientId: string,
     phoneLast4: string | null,
@@ -233,7 +205,6 @@ export type ReminderJobDeps = {
   }) => Promise<boolean>;
   send?: SendFn;
   now?: Date;
-  /** When true, listCandidates already day-filtered — re-check status/phone/ledger. */
   preFiltered?: boolean;
   prune?: () => Promise<void>;
 };
@@ -245,15 +216,10 @@ export type ReminderJobSummary = {
   skipped: number;
   failed: number;
   ambiguous: number;
-  /** false when candidate list / unexpected job failure — cron must not report healthy. */
   ok: boolean;
   error?: string;
 };
 
-/**
- * Run the day-before reminder pass.
- * Per-patient failures are counted; list/claim infrastructure failures set ok:false.
- */
 export async function runDayBeforeReminders(
   deps: ReminderJobDeps,
 ): Promise<ReminderJobSummary> {
@@ -374,9 +340,7 @@ export async function runDayBeforeReminders(
           claimToken: claim.claimToken,
           outcome: "release",
         });
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       summary.skipped += 1;
       continue;
     }
@@ -389,9 +353,7 @@ export async function runDayBeforeReminders(
           outcome: "ambiguous",
           lastError: result.detail,
         });
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       summary.ambiguous += 1;
       continue;
     }
@@ -403,9 +365,7 @@ export async function runDayBeforeReminders(
         outcome: "failed",
         lastError: result.detail,
       });
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     summary.failed += 1;
   }
 
@@ -422,13 +382,11 @@ export async function runDayBeforeReminders(
   return summary;
 }
 
-/** Minimal PostgREST-shaped client used by the cron (service role). */
 export type ReminderSupabase = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (table: string) => any;
 } & SmsDeliveryClient;
 
-/** Supabase-backed candidate list + ledger claim helpers for the cron route. */
 export function createReminderJobStore(
   supabase: ReminderSupabase,
 ): Pick<
@@ -444,9 +402,6 @@ export function createReminderJobStore(
     preFiltered: true,
     async listCandidates() {
       const tomorrow = kolkataDateIso(1);
-      // Candidates by day/status/phone; ledger filter applied in job + claim.
-      // Left-join style: fetch patients then overlay delivery state in a second query
-      // to avoid fragile nested filters on a private table.
       const { data, error } = await supabase
         .from("patients")
         .select(
@@ -469,7 +424,6 @@ export function createReminderJobStore(
       }>;
 
       const ids = rows.map((r) => r.id);
-      /** @type {Map<string, string>} */
       const stateByPatient = new Map();
       if (ids.length > 0) {
         const { data: deliveries, error: dErr } = await supabase

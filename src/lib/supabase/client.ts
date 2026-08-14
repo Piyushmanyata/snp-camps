@@ -3,7 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 let browserClient: SupabaseClient | null = null;
 
-/** Singleton browser client — one auth listener. */
 export function createClient() {
   if (browserClient) return browserClient;
   browserClient = createBrowserClient(

@@ -18,7 +18,6 @@ export function ChangeDay({
   patientId: string;
   currentDayId: string | null;
   days: CampDayStats[];
-  /** Once seen, day change is locked (also enforced in DB). */
   queueStatus?: string | null;
   campActive?: boolean;
   onDayChanged?: (newDayId: string, newDayDate?: string) => void;

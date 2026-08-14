@@ -24,11 +24,6 @@ export function TeamLeadPanel({
 }: {
   currentUserId: string;
   initialLeaderboard: StaffKpiRow[];
-  /**
-   * The caller's own team, for the add/manage roster. Omitted by the admin
-   * dashboard, which manages every volunteer on the volunteer desk instead —
-   * the roster card is then not rendered at all.
-   */
   teamVolunteers?: StaffPerson[];
   hasActiveCamp: boolean;
 }) {
@@ -38,9 +33,6 @@ export function TeamLeadPanel({
   const volunteers = leaderboard.filter((r) => r.role === "volunteer");
 
   const myTeamLeadRow = leaderboard.find((r) => r.staff_id === currentUserId);
-  // Headcount comes from the roster, not the leaderboard: the leaderboard only
-  // carries staff who have handled a patient at this camp, so counting it hid
-  // every volunteer who had not registered anyone yet.
   const activeTeamSize = teamVolunteers
     ? teamVolunteers.filter((v) => !v.disabled_at).length
     : volunteers.filter((v) => v.team_lead_id === currentUserId).length;
@@ -81,8 +73,6 @@ export function TeamLeadPanel({
       ) : null}
 
       {teamVolunteers ? (
-        /* Add and manage the volunteers on this team. Same component the admin
-           uses; the staff API scopes every read and write to the caller's team. */
         <Card className="!p-4 sm:!p-5">
           <SectionTitle hint="Add · reset password · deactivate">
             My team&apos;s volunteers
@@ -99,10 +89,8 @@ export function TeamLeadPanel({
         </Card>
       ) : null}
 
-      {/* Two Leaderboards */}
       {hasActiveCamp ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 1. Team Lead Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
             Team Lead leaderboard · outcomes
@@ -140,7 +128,6 @@ export function TeamLeadPanel({
           )}
         </Card>
 
-        {/* 2. Volunteer Leaderboard */}
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
             Volunteer leaderboard · outcomes

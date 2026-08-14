@@ -1,4 +1,3 @@
-/** Plain not-found — no hint that a token was close or revoked. */
 export default function StatusNotFound() {
   return (
     <main id="main" className="mx-auto max-w-md px-4 py-16 text-center text-foreground">

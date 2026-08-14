@@ -23,20 +23,12 @@ function eyeFieldValues(eye: Record<string, unknown>): string[] {
   );
 }
 
-/**
- * Pure formatter for unit tests and ClinicalRecordView.
- * Never emits JSON or "[object Object]".
- */
 export function formatClinicalRecordRows(data: unknown): string[] {
   if (!data || typeof data !== "object" || Array.isArray(data)) return [];
   const source = data as Record<string, unknown>;
   const rows: string[] = [];
 
   if (source.diagnoses != null) {
-    // Spec: normalizeDiagnoses(data.diagnoses, []). Empty knownOptions is
-    // ignored for the object shape (early return). For legacy flat arrays,
-    // omit the template so every stored entry is treated as a chosen option
-    // (passing [] would push them all into `other` in clinical-diagnoses).
     const normalized = Array.isArray(source.diagnoses)
       ? normalizeDiagnoses(source.diagnoses)
       : normalizeDiagnoses(source.diagnoses, []);

@@ -15,7 +15,6 @@ function fail(message: string, status = 400) {
   return NextResponse.json({ data: null, error: { message } }, { status });
 }
 
-/** Audited exception only; normal desk registration always uses Aadhaar QR. */
 export async function POST(request: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId) return fail("Not signed in", 401);

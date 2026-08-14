@@ -53,7 +53,6 @@ function ensureCanvasSize(
   canvas.height = height;
 }
 
-/** Dynamic import only after native capability fails (#49). */
 let jsQrPromise: Promise<JsQrFn> | null = null;
 function loadJsQr(): Promise<JsQrFn> {
   if (!jsQrPromise) {
@@ -65,10 +64,6 @@ function loadJsQr(): Promise<JsQrFn> {
   return jsQrPromise;
 }
 
-/**
- * Camp-day scan surface. Admin and volunteer desks behave identically now that
- * the doctor station is retired — there is no per-role branch left to make.
- */
 export function QrScanner({
   campId,
   disabledReason,
@@ -109,10 +104,6 @@ export function QrScanner({
   const reviewRef = useRef<HTMLDivElement | null>(null);
   const firstNameMatchRef = useRef<HTMLButtonElement | null>(null);
 
-  // Move focus to the first result once the list is actually in the DOM. A
-  // requestAnimationFrame right after setState can run before React commits,
-  // leaving the ref null and focus where it was — while the sr-only status
-  // still announces "Focus moved to the first result."
   useEffect(() => {
     if (nameMatches.length > 0) firstNameMatchRef.current?.focus();
   }, [nameMatches]);
@@ -125,7 +116,6 @@ export function QrScanner({
     }
   }, []);
 
-  /** Hard stop: invalidate generation, stop tracks, no post-unmount setState. */
   const stopScanner = useCallback(async () => {
     cameraSessionRef.current.invalidate();
     sessionTokenRef.current = cameraSessionRef.current.token;
@@ -153,7 +143,6 @@ export function QrScanner({
       session.invalidate();
       cancelAnimation();
       decodeOrchRef.current = null;
-      // Stop tracks via session; video element is unmounting — avoid ref race.
     };
   }, [cancelAnimation]);
 
@@ -184,7 +173,6 @@ export function QrScanner({
     [],
   );
 
-  /** Mark seen — the desk's second action (D22). */
   const markSeen = useCallback(
     async (opts: { id?: string; regNo?: number }) => {
       if (assigningRef.current) return null;
@@ -201,7 +189,6 @@ export function QrScanner({
       });
 
       if (!outcome.ok) {
-        // Keep the review card open so the worker can read the reason.
         setError(outcome.error);
         assigningRef.current = false;
         setAssigning(false);
@@ -214,14 +201,10 @@ export function QrScanner({
         if (typeof window !== "undefined" && "vibrate" in navigator) {
           navigator.vibrate(80);
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
 
       setSeen(row);
       setLookup(null);
-      // Clear the input so the next patient can be typed straight away; the
-      // result card above keeps the Undo affordance for the one just done.
       setManual("");
       showSuccessToast(
         row.already_seen
@@ -238,15 +221,6 @@ export function QrScanner({
     [deskRpc, router, setError, stopScanner],
   );
 
-  /**
-   * Print prescription — the desk's first action. Presence is bound to the
-   * action, not to the print dialog succeeding: if the print window is blocked
-   * the patient is already recorded as present and simply reprints (ADR 0013).
-   *
-   * A lookup on its own must never record presence, so the call lives here
-   * rather than in resolvePatient. The sheet's own POST is idempotent, so
-   * scan-then-sheet still writes one printed_at.
-   */
   const printPrescription = useCallback(
     async (row: LookupRow) => {
       if (assigningRef.current) return;
@@ -276,7 +250,6 @@ export function QrScanner({
     [deskRpc, router, setError, stopScanner],
   );
 
-  /** Undo a mis-scan within the server-side window (D25). */
   const undoSeen = useCallback(
     async (patientId: string) => {
       if (assigningRef.current) return;
@@ -339,7 +312,6 @@ export function QrScanner({
       });
 
       if (!outcome.ok) {
-        // Terminal lookup: freeze auto decode so the same QR does not loop.
         if (origin === "camera") {
           decodeOrchRef.current?.freeze();
           handledRef.current = true;
@@ -358,12 +330,8 @@ export function QrScanner({
         if (typeof window !== "undefined" && "vibrate" in navigator) {
           navigator.vibrate(40);
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
 
-      // A lookup is read-only. Nothing about scanning or typing a reg number
-      // records presence — only Print prescription does (ADR 0013).
       setLookup(row);
       handledRef.current = true;
       return row;
@@ -377,7 +345,6 @@ export function QrScanner({
     return () => window.cancelAnimationFrame(frame);
   }, [lookup]);
 
-  // Deep-link: ?scan=<uuid> or legacy ?checkin=<uuid>
   useEffect(() => {
     if (autoScanDone.current || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -406,7 +373,6 @@ export function QrScanner({
     autoScanDone.current = true;
     const timer = window.setTimeout(() => {
       void resolvePatient({ id }).then(() => {
-        // Strip ?scan= via History API so the lookup card is not remounted away.
         const next = window.location.pathname;
         window.history.replaceState(null, "", next);
       });
@@ -421,7 +387,6 @@ export function QrScanner({
       handledRef.current = true;
       lastCameraRawRef.current = decoded;
       lookupOriginRef.current = "camera";
-      // Pause before async lookup so a pending detect cannot double-fire.
       decodeOrchRef.current?.pause();
       void resolvePatient({ id }, "camera");
       return;
@@ -458,9 +423,7 @@ export function QrScanner({
           advanced: [constraints],
         } as unknown as MediaTrackConstraints);
       }
-    } catch {
-      /* ignore unsupported constraints */
-    }
+    } catch {}
   }
 
   async function openCameraStream(token: number): Promise<MediaStream | null> {
@@ -477,7 +440,6 @@ export function QrScanner({
       },
     );
     if (stream) return stream;
-    // Stale token vs permission denial: only surface error when still current.
     if (
       cameraSessionRef.current.isCurrent(token) &&
       isMounted.current
@@ -611,7 +573,6 @@ export function QrScanner({
         }
       }
 
-      // Paused (review) or frozen (terminal error): stop rAF until explicit resume.
       if (
         cameraSessionRef.current.isCurrent(token) &&
         isMounted.current &&
@@ -664,9 +625,7 @@ export function QrScanner({
 
       if (useNative) {
         const Ctor = getBarcodeDetectorConstructor();
-        if (!Ctor) {
-          // formats gate passed but constructor vanished — fall through to jsQR
-        } else {
+        if (Ctor) {
           const stream = await openCameraStream(token);
           if (!stream) return;
           await applyBestEffortCameraConstraints(stream);
@@ -687,7 +646,6 @@ export function QrScanner({
         }
       }
 
-      // Fallback: jsQR loaded only when native path is unavailable.
       let jsQR: JsQrFn;
       try {
         jsQR = await loadJsQr();
@@ -739,7 +697,6 @@ export function QrScanner({
     setSeen(null);
     handledRef.current = false;
     lookupOriginRef.current = "manual";
-    // Manual path is independent; freeze recovery is cleared on explicit submit.
     decodeOrchRef.current?.unfreeze();
     const raw = manual.trim();
 
@@ -795,7 +752,6 @@ export function QrScanner({
     if (assigningRef.current) return;
     setError(null);
     readyForNext();
-    // Explicit recovery: unfreeze camera decode or leave manual field ready.
     const orch = decodeOrchRef.current;
     if (orch?.isFrozen) {
       orch.unfreeze();
@@ -1016,8 +972,6 @@ export function QrScanner({
           <p className="text-sm font-semibold text-muted">
             Check this is the right patient
           </p>
-          {/* The region is named after the patient, so a screen reader announces
-              who is on screen rather than a generic instruction. */}
           <p
             id={reviewHeadingId}
             className="mt-0.5 text-lg font-bold text-foreground"
@@ -1029,7 +983,6 @@ export function QrScanner({
             <p className="text-sm text-muted">{lookup.phone}</p>
           ) : null}
 
-          {/* Already seen is terminal — refuse and say when (D25). */}
           {lookup.queue_status === "seen" ? (
             <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
               <p className="text-sm font-semibold text-amber-950">
@@ -1049,7 +1002,6 @@ export function QrScanner({
           ) : null}
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {/* Action 1 — printing the paper is what records presence (ADR 0013). */}
             <Button
               type="button"
               size="lg"
@@ -1062,7 +1014,6 @@ export function QrScanner({
               Parchi print karein
             </Button>
 
-            {/* Action 2 — only offered once presence exists; the RPC refuses otherwise. */}
             {lookup.queue_status !== "seen" && lookup.printed_at ? (
               <Button
                 type="button"
@@ -1094,5 +1045,4 @@ export function QrScanner({
     </div>
   );
 }
-
 

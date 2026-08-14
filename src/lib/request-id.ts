@@ -1,10 +1,3 @@
-/**
- * Idempotency key for registration RPCs.
- *
- * Prefer crypto.randomUUID when available (secure contexts). Fall back to
- * getRandomValues, then Math.random, so desk registration still works on
- * plain http:// camp LAN hosts where randomUUID is missing.
- */
 export function createRequestId(): string {
   if (
     typeof crypto !== "undefined" &&
@@ -25,7 +18,6 @@ export function createRequestId(): string {
     }
   }
 
-  // RFC 4122 version 4 + variant bits
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
 

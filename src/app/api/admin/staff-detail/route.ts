@@ -4,7 +4,6 @@ import { loadSessionProfile, isAdmin, isCampCrew } from "@/lib/auth";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Staff KPIs and recent handled patients for camp-crew desks and admin. */
 export async function GET(req: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId || !isCampCrew(profile?.role)) {

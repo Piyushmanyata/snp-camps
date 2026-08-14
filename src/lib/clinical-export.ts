@@ -107,8 +107,6 @@ export function buildCampRecordsCsv(
 
   const body = rows.map((row) => {
     const data = (row.data ?? null) as Record<string, unknown> | null;
-    // Template options only for legacy split — retired labels must not absorb free text.
-    // Explicit {options,other} shape still returns stored options (including retired) as-is.
     const templateOnly = diagnosisOptions.filter((option) => !retired.has(option));
     const diagnoses = normalizeDiagnoses(data?.diagnoses, templateOnly);
     const selected = new Set(diagnoses.options);
@@ -195,7 +193,6 @@ export function buildClinicalAuditCsv(
   return buildCsvDocument([headers.map(encodeCsvCell), ...body]);
 }
 
-/** Asia/Kolkata calendar date (YYYY-MM-DD) for export filenames. */
 export function formatIstDate(when: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",

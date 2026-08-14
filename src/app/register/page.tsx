@@ -13,7 +13,6 @@ export default async function RegisterPage() {
 
   const staff = isStaff(role);
 
-  // One routing table, not two (D5) — roleHome() is the single source.
   const deskHref = roleHome(role) || "/";
 
   const staffDock =
@@ -90,7 +89,6 @@ export default async function RegisterPage() {
         </Card>
       ) : (
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-5 lg:items-start">
-          {/* Form first on phone — speed for walk-ins */}
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
               Ek patient, ek din. Sirf naam aur umar zaroori. Register karein

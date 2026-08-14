@@ -72,12 +72,6 @@ const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
 
 type ResolveKind = keyof typeof KIND_HEADINGS;
 
-/**
- * The database is the no (ADR 0015). These entries only translate a refusal the
- * database already made into Hinglish; an unmatched refusal is shown verbatim
- * rather than swallowed behind "try again", because the operator needs to know
- * whether they forgot Specs numbers, a date/venue, or hit a lock.
- */
 const CLINICAL_ERRORS: Array<
   [RegExp, string | ((kind: ResolveKind) => string)]
 > = [
@@ -149,12 +143,6 @@ const CLINICAL_ERRORS: Array<
   ],
 ];
 
-/**
- * Map one database refusal to operator Hinglish. Never returns a generic retry
- * line for a refusal the database explained: an unmatched message is passed
- * through as-is (ADR 0015). Only a failure with no message at all — a dropped
- * connection — gets the transport sentence.
- */
 function clinicalRefusal(
   message: string | null | undefined,
   kind?: ResolveKind,
@@ -190,9 +178,7 @@ export function ClinicalDesk({
   canMutate = true,
   initialScan = null,
 }: {
-  /** When false (admin view), Save/Resolve/Replace controls are hidden. */
   canMutate?: boolean;
-  /** Prefill from `/clinical?scan=` deep link. */
   initialScan?: string | null;
 }) {
   const supabase = createClient();
@@ -361,8 +347,6 @@ export function ClinicalDesk({
 
   useEffect(() => {
     if (!initialScan) return;
-    // Defer so setState inside lookup is not synchronous in the effect body
-    // (React Compiler set-state-in-effect); still one-shot for the deep link.
     const timer = setTimeout(() => {
       void lookup(initialScan);
     }, 0);
@@ -513,7 +497,6 @@ export function ClinicalDesk({
       await lookup();
     } catch (thrown) {
       if (isCurrentLookup(generation, patientId)) {
-        // The database said why; do not replace that with "try again".
         setError(
           clinicalRefusal(
             thrown instanceof Error ? thrown.message : null,
@@ -532,8 +515,6 @@ export function ClinicalDesk({
       return;
     }
     const data = transcriptionData();
-    // The one refusal the database deliberately does not make: an amendment
-    // that changes nothing is a screen hint, not a SQL equality check.
     if (isSameTranscription(data, record.effective_data)) {
       setError("Pehle koi field badlein, tabhi correction jud sakta hai.");
       return;
@@ -738,9 +719,6 @@ export function ClinicalDesk({
               </div>
             ) : null}
 
-            {/* Empty boxes and obvious shapes are the browser's job; every
-                other refusal comes from the database (ADR 0015). Save and
-                Correction are submit buttons so those hints actually block. */}
             <form
               className="space-y-4"
               noValidate={false}

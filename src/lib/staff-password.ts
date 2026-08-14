@@ -1,6 +1,5 @@
 import { randomInt } from "node:crypto";
 
-/** Keep this contract aligned with supabase/config.toml and Auth operations. */
 export const MIN_PASSWORD_LENGTH = 12;
 export const DEFAULT_STAFF_PASSWORD_LENGTH = 16;
 export const PASSWORD_SYMBOLS = "!@#$%&*+-=?";
@@ -21,7 +20,6 @@ export function isStaffPasswordStrong(password: string): boolean {
   );
 }
 
-/** Generate a shareable temporary password with all four required classes. */
 export function generateStaffPassword(
   length = DEFAULT_STAFF_PASSWORD_LENGTH,
 ): string {

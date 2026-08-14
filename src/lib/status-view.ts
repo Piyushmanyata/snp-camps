@@ -1,13 +1,3 @@
-/**
- * Public status projection for `/s/<token>`.
- *
- * Lives here rather than in the page so tests exercise the real mapper: the
- * node runner cannot import a `.tsx` module, and a re-implementation inside the
- * test would keep passing while the page rotted.
- *
- * There is no position (ADR 0013) — a residual `queue_position` from an older
- * deployment is dropped rather than surfaced.
- */
 
 export type StatusRpcRow = {
   reg_no: number;

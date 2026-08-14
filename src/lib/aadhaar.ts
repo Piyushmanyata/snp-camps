@@ -1,5 +1,3 @@
-/** Aadhaar helpers — only last 4 digits are persisted on the patient row. */
-
 const VERHOEFF_D = [
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
   [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
@@ -29,7 +27,6 @@ export function digitsOnly(value: string): string {
   return value.replace(/\D/g, "");
 }
 
-/** Format as XXXX XXXX XXXX while typing. */
 export function formatAadhaarDisplay(raw: string): string {
   const d = digitsOnly(raw).slice(0, 12);
   const parts = [d.slice(0, 4), d.slice(4, 8), d.slice(8, 12)].filter(Boolean);
@@ -41,11 +38,9 @@ export function aadhaarLast4(raw: string): string {
   return d.length >= 4 ? d.slice(-4) : "";
 }
 
-/** Verhoeff checksum used by UIDAI for 12-digit Aadhaar. */
 export function isValidAadhaarNumber(raw: string): boolean {
   const d = digitsOnly(raw);
   if (d.length !== 12) return false;
-  // Reject obviously invalid (all same digit)
   if (/^(\d)\1{11}$/.test(d)) return false;
 
   let c = 0;

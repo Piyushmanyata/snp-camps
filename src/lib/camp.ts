@@ -30,7 +30,6 @@ function parseSnapshot(data: unknown): ActiveCampSnapshot | null {
   };
 }
 
-/** Cross-request active-camp snapshot; short revalidate for public seat boards. */
 async function fetchCachedSnapshot() {
   "use cache";
   cacheTag("active-camp-snapshot");
@@ -70,7 +69,6 @@ async function fetchSnapshot() {
   return parseSnapshot(data);
 }
 
-/** Public-only camp data; registration capacity is still enforced in Postgres. */
 export const getActiveCampSnapshot = cache(async () => {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return fetchCachedSnapshot();
@@ -79,5 +77,4 @@ export const getActiveCampSnapshot = cache(async () => {
   return fetchSnapshot();
 });
 
-/** Request-fresh operational snapshot so staff never register into a stale camp. */
 export const getActiveCampSnapshotFresh = cache(fetchSnapshot);

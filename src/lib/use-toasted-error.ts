@@ -3,10 +3,6 @@
 import { useCallback, useState } from "react";
 import { showErrorToast } from "@/lib/toast-bus";
 
-/**
- * Error state that also fires the global error toast when set to a non-null
- * message. One channel for desk surfaces that pair inline/sr-only alert with toast.
- */
 export function useToastedError(
   initial: string | null = null,
 ): [string | null, (message: string | null) => void] {

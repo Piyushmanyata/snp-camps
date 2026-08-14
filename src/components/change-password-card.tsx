@@ -18,7 +18,6 @@ import {
 
 type ChangePasswordFormProps = {
   onSuccess?: () => void;
-  /** Compact layout for dialogs. */
   compact?: boolean;
 };
 
@@ -138,7 +137,6 @@ type ChangePasswordDialogProps = {
   onClose: () => void;
 };
 
-/** Modal wrapper around the shared change-password form (header / sign-out). */
 export function ChangePasswordDialog({
   open,
   onClose,

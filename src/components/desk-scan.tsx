@@ -4,11 +4,6 @@ import { Suspense } from "react";
 import { Card, SectionTitle } from "@/components/ui";
 import { QrScannerLazy } from "@/components/qr-scanner-lazy";
 
-/**
- * The camp-day desk is the scanner: print prescription and mark seen.
- * There is no Live Queue panel — the hall does not run off a list (ADR 0013).
- * Client island so Server Components never pass function children.
- */
 export function DeskScan({
   campId,
   noCampReason,

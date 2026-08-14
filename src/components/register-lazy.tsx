@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 
-/** Keep the secondary seat board out of the eager staff registration bundle. */
 export const RegisterSeatBoardLazy = dynamic(
   () =>
     import("@/components/seat-board").then((module) => ({

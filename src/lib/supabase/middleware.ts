@@ -1,11 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/**
- * Refresh auth cookies when a session is present.
- * Optional requestHeaders (e.g. nonce + CSP) are forwarded so Next.js can
- * attach nonces to framework scripts during SSR.
- */
 export async function updateSession(
   request: NextRequest,
   requestHeaders?: Headers,
@@ -21,7 +16,6 @@ export async function updateSession(
     return supabaseResponse;
   }
 
-  // Skip Supabase round-trip when there is no session cookie (anonymous traffic)
   const hasSessionCookie = request.cookies
     .getAll()
     .some(
@@ -52,9 +46,6 @@ export async function updateSession(
     },
   });
 
-  // Validate locally against Supabase JWKS when possible; this also refreshes
-  // an expired access token through the cookie adapter without the extra Auth
-  // network round-trip performed by getUser().
   await supabase.auth.getClaims();
   return supabaseResponse;
 }

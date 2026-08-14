@@ -1,15 +1,9 @@
-/**
- * MSG91 Flow/template SMS — one module, one send function (#51).
- * Swapping providers later means editing this file only.
- */
 
 export type Msg91SendInput = {
-  /** Digits with country code, no + (e.g. 919876543210). */
   mobiles: string;
   templateId: string;
   senderId: string;
   authKey: string;
-  /** Named variables matching the MSG91 flow (reg, date, venue, link). */
   variables: Record<string, string>;
 };
 
@@ -18,16 +12,11 @@ export type Msg91SendResult =
   | {
       ok: false;
       detail: string;
-      /** rejected = provider responded without send; uncertain = timeout/network */
       failureKind?: "rejected" | "uncertain";
     };
 
 const FLOW_URL = "https://control.msg91.com/api/v5/flow/";
 
-/**
- * Send one transactional template SMS via MSG91 Flow API.
- * Callers must treat failures as non-fatal for desk work.
- */
 export async function sendMsg91TemplateSms(
   input: Msg91SendInput,
   options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
@@ -79,7 +68,6 @@ export async function sendMsg91TemplateSms(
     try {
       const parsed = JSON.parse(text) as { request_id?: string; message?: string };
       if (typeof parsed.request_id === "string") requestId = parsed.request_id;
-      // MSG91 sometimes returns 200 with type/error in body.
       if (
         parsed &&
         typeof parsed === "object" &&
@@ -95,7 +83,6 @@ export async function sendMsg91TemplateSms(
         };
       }
     } catch {
-      // non-JSON success body is fine
     }
     return { ok: true, requestId };
   } catch (err) {

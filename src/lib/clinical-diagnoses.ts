@@ -3,11 +3,6 @@ export type NormalizedDiagnoses = {
   other: string | null;
 };
 
-/**
- * Read either the stored { options, other } shape or a legacy flat string array
- * and return the explicit split. When knownOptions is provided, legacy rows are
- * split the way the Clinical Desk used to (template match → option, else Other).
- */
 export function normalizeDiagnoses(
   raw: unknown,
   knownOptions?: readonly string[],
@@ -58,14 +53,6 @@ export function normalizeDiagnoses(
   };
 }
 
-/**
- * Flatten diagnoses to a sorted multiset for equality across legacy/new shapes.
- * Every entry is split on semicolons — a legacy array holds its free text as
- * separate items while the same content re-saved holds it joined in `other`, so
- * both sides must split identically or an untouched re-save reads as a
- * correction. Equality only — storage and the export `diagnosis_other` column
- * still use the stored string verbatim.
- */
 export function flattenDiagnoses(raw: unknown): string[] {
   const normalized = normalizeDiagnoses(raw);
   const items = [...normalized.options];

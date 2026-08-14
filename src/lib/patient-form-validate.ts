@@ -42,7 +42,6 @@ export type PatientFormDraft = {
 export type DayLike = {
   id: string;
   is_full: boolean;
-  /** YYYY-MM-DD — required for walk-in-on-full-today exemption. */
   day_date?: string;
 };
 
@@ -55,7 +54,6 @@ export type PatientFormValidation =
       message: string;
     };
 
-/** Calendar date YYYY-MM-DD in Asia/Kolkata. */
 export function kolkataTodayIso(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -65,10 +63,6 @@ export function kolkataTodayIso(now: Date = new Date()): string {
   }).format(now);
 }
 
-/**
- * Desk day selectable when open, or when it is today (walk-ins never blocked
- * solely by seat caps — CONTEXT). Future full days stay blocked.
- */
 export function isDeskDaySelectable(
   day: DayLike,
   todayIso: string = kolkataTodayIso(),
@@ -77,11 +71,6 @@ export function isDeskDaySelectable(
   return !day.is_full;
 }
 
-/**
- * Desk registration validation (#47, #112). Staff-facing English copy.
- * Required: camp day, full name, age.
- * If full name is in non-Latin script, Latin display name is required.
- */
 export function validatePatientForm(
   draft: PatientFormDraft,
   days: DayLike[],

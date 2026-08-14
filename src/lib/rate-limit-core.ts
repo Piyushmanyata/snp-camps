@@ -21,11 +21,6 @@ const globalStore = globalThis as typeof globalThis & {
 const store = globalStore.__snpRateLimits ?? new Map<string, Entry>();
 globalStore.__snpRateLimits = store;
 
-/**
- * Client IP for rate limiting.
- * On Vercel, trust only platform-injected `x-vercel-forwarded-for` so spoofed
- * XFF cannot empty buckets. Off Vercel (local/dev), fall back to XFF/real-ip.
- */
 function clientAddress(request: Request) {
   const onVercel =
     process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
@@ -100,10 +95,6 @@ function recordLimit(
   return entry;
 }
 
-/**
- * Per-instance burst protection. Production must also enforce a distributed
- * limit at the CDN/WAF because serverless instances do not share memory.
- */
 export function checkRateLimit(request: Request, options: Options) {
   const now = Date.now();
   sweepExpired(now);
@@ -128,8 +119,6 @@ export function checkRateLimit(request: Request, options: Options) {
     };
   }
 
-  // Keep both protections: an attacker cannot rotate identifiers from one IP,
-  // and one patient/token cannot bypass the limit by rotating IPs.
   const entries = keys.map((key) =>
     recordLimit(key, options.windowMs, now),
   );

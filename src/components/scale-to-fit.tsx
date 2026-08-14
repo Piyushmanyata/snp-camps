@@ -4,10 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const DESIGN_WIDTH = 794;
 
-/**
- * Scales children as one piece to fit the outer container width (phone preview).
- * Print CSS resets transform so paper output stays pixel-identical.
- */
 export function ScaleToFit({ children }: { children: ReactNode }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);

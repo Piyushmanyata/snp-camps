@@ -1,17 +1,8 @@
-/**
- * Login roles only. The legacy DB enum may still list `patient` and `doctor`;
- * the app treats both as non-login. The doctor station was retired — a
- * volunteer or team lead marks a patient seen by scanning their prescription.
- */
 export type UserRole =
   | "admin"
   | "team_lead"
   | "volunteer"
   | "clinical_operator";
-/**
- * Lifecycle is exactly registered → seen (ADR 0013). `waiting` survives on the
- * Postgres enum only because enum values cannot be dropped; no row carries it.
- */
 export type QueueStatus = "registered" | "seen";
 
 export type Profile = {

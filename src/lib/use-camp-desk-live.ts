@@ -37,10 +37,6 @@ function initialView(
   };
 }
 
-/**
- * Shared camp-keyed desk snapshot (#56). Multiple components for the same
- * campId share one poller; no websocket channels.
- */
 export function useCampDeskLive(
   campId: string | null | undefined,
   seed?: DeskLiveSeed,
@@ -63,11 +59,9 @@ export function useCampDeskLive(
       return;
     }
     return subscribeCampDeskLive(campId, setView, seed);
-    // Seed is only for first owner creation; re-subscribe only on camp change.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: campId only
   }, [campId]);
 
-  // When campId becomes null, derive off state without an effect setState.
   const activeView =
     campId && view.campId === campId
       ? view

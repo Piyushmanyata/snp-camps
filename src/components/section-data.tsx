@@ -16,11 +16,6 @@ type SectionState<T> =
   | { status: "error"; error: string }
   | { status: "loading" };
 
-/**
- * Recoverable client island for one narrow section (#63).
- * Initial SSR result seeds state; Retry calls only that section endpoint.
- * Soft refresh failure preserves prior data when present.
- */
 export function SectionDataIsland<T>({
   section,
   campId,
@@ -102,7 +97,6 @@ export function SectionDataIsland<T>({
   );
 }
 
-/** Volunteer KPI strip with isolated retry. */
 export function VolunteerKpisSection({
   campId,
   initial,
@@ -127,7 +121,6 @@ export function VolunteerKpisSection({
     >
       {(data) => (
         <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-2">
-          {/* Original-registrar credit only (issue-124 / ADR 0005). */}
           <Stat label="Registered" value={data.total} tone="ok" />
           <Stat label="Seen" value={data.seen} tone="ok" />
         </div>
@@ -172,7 +165,6 @@ function FunnelRow({
   );
 }
 
-/** Admin analytics card with one isolated aggregate retry seam. */
 export function AdminAnalyticsPanel({
   campId,
   initial,
@@ -300,10 +292,6 @@ export function AdminAnalyticsPanel({
   );
 }
 
-/**
- * Foundation section failed — reload is the last-resort seam when no
- * narrower client endpoint exists. Still isolated from the route error page.
- */
 export function CampsLoadFailed({
   message,
   title = "Camps",
@@ -326,5 +314,4 @@ export function CampsLoadFailed({
     </Card>
   );
 }
-
 

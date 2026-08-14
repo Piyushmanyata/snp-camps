@@ -1,7 +1,3 @@
-/**
- * #58 — Camera session lifecycle (generation token + track ownership).
- * No React. Invalidate is synchronous; every await must re-check isCurrent.
- */
 
 export type GetUserMedia = (
   constraints: MediaStreamConstraints,
@@ -11,7 +7,6 @@ export class QrCameraSession {
   private generation = 0;
   private stream: MediaStream | null = null;
 
-  /** Current session token (increments on invalidate / begin). */
   get token(): number {
     return this.generation;
   }
@@ -24,17 +19,12 @@ export class QrCameraSession {
     return token === this.generation;
   }
 
-  /** Begin a new session; invalidates any prior generation and stops tracks. */
   begin(): number {
     this.stopTracks();
     this.generation += 1;
     return this.generation;
   }
 
-  /**
-   * Hard cancel: bump generation and stop tracks.
-   * Callers must not write React state after unmount using this alone.
-   */
   invalidate(): number {
     this.generation += 1;
     this.stopTracks();
@@ -46,15 +36,10 @@ export class QrCameraSession {
     try {
       this.stream.getTracks().forEach((t) => t.stop());
     } catch {
-      /* ignore */
     }
     this.stream = null;
   }
 
-  /**
-   * Acquire a stream for `token`. If the token is stale after getUserMedia,
-   * acquired tracks are stopped and null is returned.
-   */
   async acquire(
     token: number,
     getUserMedia: GetUserMedia,
@@ -71,24 +56,14 @@ export class QrCameraSession {
       try {
         stream.getTracks().forEach((t) => t.stop());
       } catch {
-        /* ignore */
       }
       return null;
     }
-    // Replace any prior stream for this session.
     this.stopTracks();
     this.stream = stream;
     return stream;
   }
 
-  /**
-   * Try camera profiles from most useful to most compatible.
-   *
-   * `ideal` constraints should be best-effort, but several Android OEM camera
-   * stacks still reject a high-resolution request outright. Retrying without
-   * width/height keeps those phones on the rear camera instead of sending the
-   * operator straight to manual entry.
-   */
   async acquireFirstAvailable(
     token: number,
     getUserMedia: GetUserMedia,
@@ -100,8 +75,6 @@ export class QrCameraSession {
       try {
         stream = await getUserMedia(constraints);
       } catch (error) {
-        // WebViews may surface a named error from a different JS realm, where
-        // `instanceof DOMException` is false. The name is the stable contract.
         const name =
           typeof error === "object" &&
           error !== null &&
@@ -109,8 +82,6 @@ export class QrCameraSession {
           typeof error.name === "string"
             ? error.name
             : "";
-        // Permission/security failures are terminal. Retrying would only repeat
-        // the prompt or denial; profile fallback is for camera-stack failures.
         if (name === "NotAllowedError" || name === "SecurityError") return null;
         continue;
       }
@@ -118,7 +89,6 @@ export class QrCameraSession {
         try {
           stream.getTracks().forEach((track) => track.stop());
         } catch {
-          /* ignore */
         }
         return null;
       }
@@ -129,10 +99,6 @@ export class QrCameraSession {
     return null;
   }
 
-  /**
-   * Release tracks without bumping generation (pause-with-hold uses decode
-   * pause instead). Prefer invalidate() for Stop / unmount.
-   */
   releaseTracksKeepGeneration(): void {
     this.stopTracks();
   }

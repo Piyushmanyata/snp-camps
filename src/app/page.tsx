@@ -12,9 +12,6 @@ export default async function HomePage() {
     getActiveCampSnapshot(),
   ]);
   const { profile } = session;
-  // One routing table, not four — roleHome() is the single source (CONTEXT.md
-  // §Navigation). It returns null for non-login roles, who stay on the public
-  // landing; patient status lives at /s/<token>.
   const home = roleHome(profile?.role);
   if (home) redirect(home);
 

@@ -1,12 +1,5 @@
 "use client";
 
-/**
- * Main-thread front door to the camera-only Aadhaar decode worker.
- *
- * The worker owns the decoder engines and payload parser; this module owns its
- * lifetime and transfers live frames without copying their pixel buffers.
- */
-
 import * as Comlink from "comlink";
 import type { AadhaarDecodeApi, DecodeOutcome } from "@/lib/aadhaar-decode.worker";
 
@@ -30,12 +23,10 @@ function getWorker(): WorkerHandle {
   return handle;
 }
 
-/** Start loading the WASM engines before the first frame needs them. */
 export function warmUpDecoder(): void {
   void getWorker().api.warmUp();
 }
 
-/** Release the decoder engines and WASM heap when leaving registration. */
 export function disposeDecoder(): void {
   if (!handle) return;
   handle.api[Comlink.releaseProxy]();
@@ -43,7 +34,6 @@ export function disposeDecoder(): void {
   handle = null;
 }
 
-/** Decode one bounded live frame, transferring rather than cloning its pixels. */
 export function decodeFrame(
   image: ImageData,
   thorough = false,
@@ -54,7 +44,6 @@ export function decodeFrame(
   );
 }
 
-/** Parse one complete keyboard-wedge payload in the existing worker. */
 export function decodePayload(payload: string): Promise<DecodeOutcome> {
   return getWorker().api.decodePayload(payload);
 }
