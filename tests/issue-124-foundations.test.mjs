@@ -37,3 +37,25 @@ test("clinical CSV export neutralizes spreadsheet formula prefixes", () => {
   assert.equal(encodeCsvCell("\t=1+1"), "\"'\t=1+1\"");
   assert.equal(encodeCsvCell("Normal name"), "\"Normal name\"");
 });
+
+test("patient QR scan dispatch maps clinical_operator to /clinical and admin to admin desk", () => {
+  const patientId = "a0b1c2d3-e4f5-4678-9abc-def012345678";
+  function dispatchPatientScan(role) {
+    if (isClinicalOperator(role)) {
+      return `/clinical?scan=${patientId}`;
+    }
+    if (!isCampCrew(role)) {
+      return null;
+    }
+    const deskBase = roleHome(role) || "/volunteer";
+    return `${deskBase}?scan=${patientId}`;
+  }
+
+  assert.equal(dispatchPatientScan("clinical_operator"), `/clinical?scan=${patientId}`);
+  assert.equal(dispatchPatientScan("admin"), `/admin?scan=${patientId}`);
+  assert.equal(dispatchPatientScan("volunteer"), `/volunteer?scan=${patientId}`);
+  assert.equal(dispatchPatientScan("team_lead"), `/volunteer?scan=${patientId}`);
+  assert.equal(dispatchPatientScan("patient"), null);
+  assert.equal(dispatchPatientScan(null), null);
+});
+

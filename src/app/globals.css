@@ -408,7 +408,6 @@ h3 {
 
 /* Anchor scroll offset for sticky dock + header */
 #scan,
-#queue,
 #seen,
 #register-action {
   scroll-margin-top: 0.75rem;
@@ -417,7 +416,6 @@ h3 {
 
 /* Defer rendering of below-fold sections on capable browsers */
 @supports (content-visibility: auto) {
-  #queue,
   #seen {
     content-visibility: auto;
     contain-intrinsic-size: auto 400px;

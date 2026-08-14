@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AdminStaff } from "@/components/admin-staff";
 import { SignOutButton } from "@/components/sign-out";
-import { Card, NavLink, Shell } from "@/components/ui";
+import { Card, ErrorBox, NavLink, Shell } from "@/components/ui";
 import { getSessionProfile, roleHome } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
 import { createClient } from "@/lib/supabase/server";
@@ -21,9 +21,12 @@ export default async function ClinicalOperatorsPage() {
     .eq("role", "clinical_operator")
     .order("created_at", { ascending: false });
 
+  let loadError: string | null = null;
   if (error) {
-    mapDbError(error, { context: "clinical-operators-page.list" });
-    throw new Error("Clinical Desk accounts could not be loaded");
+    loadError = mapDbError(error, {
+      context: "clinical-operators-page.list",
+      fallback: "Clinical Desk accounts could not be loaded.",
+    });
   }
 
   const active = operators?.filter((operator) => !operator.disabled_at).length ?? 0;
@@ -43,6 +46,7 @@ export default async function ClinicalOperatorsPage() {
       ]}
     >
       <div className="space-y-4">
+        {loadError ? <ErrorBox message={loadError} /> : null}
         <Card className="bg-brand-soft">
           <p className="text-xs font-bold uppercase tracking-wide text-brand">
             Separate station role

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile, isTeamLead, isAdmin, roleHome } from "@/lib/auth";
 import {
   Card,
+  ErrorBox,
   NavLink,
   Shell,
 } from "@/components/ui";
@@ -18,10 +19,6 @@ export default async function TeamLeadPage() {
     redirect(roleHome(profile?.role) || "/login");
   }
 
-  // A team lead's desk IS the volunteer desk — it carries register, check-in,
-  // scan and seats, and renders their team panel above all of it. This
-  // page is the admin's team-lead roster; a lead landing here would otherwise
-  // get the panel alone and lose every desk action.
   if (isTeamLead(profile?.role)) redirect("/volunteer");
 
   const supabase = await createClient();
@@ -31,12 +28,17 @@ export default async function TeamLeadPage() {
     .eq("role", "team_lead")
     .order("created_at", { ascending: false });
 
+  let loadError: string | null = null;
   if (error) {
-    mapDbError(error, { context: "team-lead-page.admin-list" });
-    throw new Error("Team lead desk data could not be loaded");
+    loadError = mapDbError(error, {
+      context: "team-lead-page.admin-list",
+      fallback: "Team lead desk data could not be loaded.",
+    });
   }
   const activeTeamLeads = teamLeadsFull?.filter((tl) => !tl.disabled_at).length ?? 0;
   const disabledTeamLeads = (teamLeadsFull?.length ?? 0) - activeTeamLeads;
+
+  let assignmentsError: string | null = null;
   const { data: volunteers, error: volunteersError } = await supabase
     .from("profiles")
     .select("id, full_name, email, team_lead_id")
@@ -44,8 +46,10 @@ export default async function TeamLeadPage() {
     .is("disabled_at", null)
     .order("full_name", { ascending: true });
   if (volunteersError) {
-    mapDbError(volunteersError, { context: "team-lead-page.assignments" });
-    throw new Error("Team assignments could not be loaded");
+    assignmentsError = mapDbError(volunteersError, {
+      context: "team-lead-page.assignments",
+      fallback: "Team assignments could not be loaded.",
+    });
   }
   return (
     <Shell
@@ -61,6 +65,8 @@ export default async function TeamLeadPage() {
       ]}
     >
       <div className="space-y-4">
+        {loadError ? <ErrorBox message={loadError} /> : null}
+        {assignmentsError ? <ErrorBox message={assignmentsError} /> : null}
         <Card className="bg-brand-soft">
           <p className="text-xs font-bold uppercase tracking-wide text-brand">
             Staff management

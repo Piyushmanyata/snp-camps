@@ -24,8 +24,6 @@ import type { StaffPerson } from "@/components/staff-detail";
 
 export default async function VolunteerPage() {
   const { userId, profile } = await getSessionProfile();
-  // Staff only (admin | team_lead | volunteer). Anyone else goes to roleHome,
-  // or /login when they hold no login role at all.
   if (!isStaff(profile?.role)) {
     redirect(roleHome(profile?.role) || "/login");
   }
@@ -35,7 +33,6 @@ export default async function VolunteerPage() {
   const teamLead = isTeamLead(profile?.role);
 
   if (admin) {
-    // No narrower-query fallback — column failures (incl. RLS) surface as errors.
     const [
       { data: volunteers, error },
       { data: teamLeads, error: teamLeadsError },
@@ -52,11 +49,12 @@ export default async function VolunteerPage() {
         .order("full_name"),
     ]);
 
+    let adminListError: string | null = null;
     if (error || teamLeadsError) {
-      mapDbError(error || teamLeadsError, {
+      adminListError = mapDbError(error || teamLeadsError, {
         context: "volunteer-page.admin-list",
+        fallback: "Volunteer desk data could not be loaded.",
       });
-      throw new Error("Volunteer desk data could not be loaded");
     }
     const activeVolunteers =
       volunteers?.filter((volunteer) => !volunteer.disabled_at).length ?? 0;
@@ -76,6 +74,7 @@ export default async function VolunteerPage() {
         ]}
       >
         <div className="space-y-3 sm:space-y-4">
+          {adminListError ? <ErrorBox message={adminListError} /> : null}
           <Card className="bg-brand-soft">
             <p className="text-xs font-bold uppercase tracking-wide text-brand">
               Staff management
@@ -119,16 +118,17 @@ export default async function VolunteerPage() {
     .eq("is_active", true)
     .maybeSingle();
 
+  let campErrorMsg: string | null = null;
   if (campError) {
-    mapDbError(campError, { context: "volunteer-page.active-camp" });
-    throw new Error("Volunteer desk data could not be loaded");
+    campErrorMsg = mapDbError(campError, {
+      context: "volunteer-page.active-camp",
+      fallback: "Active camp could not be loaded. Refresh to retry.",
+    });
   }
 
   let teamVolunteers: StaffPerson[] = [];
   let rosterError: string | null = null;
 
-  // A team lead manages their own roster from the desk. Read it before the camp
-  // gate below: the roster exists whether or not a camp is active.
   if (teamLead && userId) {
     const { data: roster, error: rosterQueryError } = await supabase
       .from("profiles")
@@ -162,6 +162,7 @@ export default async function VolunteerPage() {
       ]}
     >
       <div className="space-y-3 sm:space-y-4">
+        {campErrorMsg ? <ErrorBox message={campErrorMsg} /> : null}
         {rosterError ? <ErrorBox message={rosterError} /> : null}
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
