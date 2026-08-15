@@ -4,7 +4,7 @@
 - **Framework**: Next.js 16 App Router with React Server Components and React 19 Client Components.
 - **Database & Auth**: Supabase PostgreSQL with Row Level Security (RLS) enabled on all 15 tables, 41 `SECURITY DEFINER` RPCs, and service-role locked operations.
 - **Security & Lifecycle**: Strictly `registered → seen` lifecycle (ADR 0013), presence recorded idempotently via `printed_at`, 2 desk actions (Print prescription & Mark seen, ADR 0008), zero realtime subscriptions on patients (`patients` table absent from `supabase_realtime`).
-- **Verification Gates**: TypeScript (`tsc --noEmit`), ESLint (`eslint.config.mjs`), Unit Suite (469 unit & empirical tests via `node:test`), DB Integration Suite (27 `.db.test.mjs` suites, zero skips permitted), JS Budget (`scripts/check-js-budget.mjs`), Env Drift (`scripts/check-env.mjs`), Migration Heads (`scripts/compare-migration-heads.mjs`), Full Composite (`npm run verify`).
+- **Verification Gates**: TypeScript (`tsc --noEmit`), ESLint (`eslint.config.mjs`), Unit Suite (458 unit & empirical tests via `node:test`, zero skips permitted), DB Integration Suite (30 `.db.test.mjs` suites, zero skips permitted), JS Budget (`scripts/check-js-budget.mjs`), Env Drift (`scripts/check-env.mjs`), Migration Heads (`scripts/compare-migration-heads.mjs`), Full Composite (`npm run verify`).
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
@@ -30,7 +30,11 @@
 
 ## Interface Contracts
 ### Database Test Harness
-- `connect(options)` in all `tests/*.db.test.mjs` MUST ONLY test database reachability (`await client.connect()`). It MUST NOT probe `to_regprocedure` to avoid suppressing test failures when RPCs are missing or altered.
+- Any connect helper in `tests/*.db.test.mjs` — whatever it is named (`connect`, `connectDb`, …) — MUST ONLY test database reachability (`await client.connect()`). It MUST NOT probe `to_regprocedure` to avoid suppressing test failures when RPCs are missing or altered.
+- A test that needs Postgres MUST live in a `tests/*.db.test.mjs` file. Both `scripts/run-unit-tests.mjs` and `scripts/run-db-tests.mjs` fail on any skip, so a DB test misfiled into the unit suite reports itself instead of passing silently ([ADR 0018](docs/adr/0018-the-unit-suite-is-db-free-and-skip-free.md)).
+
+### Client Bundle Boundary
+- A module reachable from a Client Component MUST NOT import a Node built-in. `node:crypto` and friends belong in a sibling module opening with `import "server-only"` ([ADR 0017](docs/adr/0017-server-only-crypto-stays-out-of-shared-modules.md)). `npm run check:js-budget` is the empirical guard.
 
 ### Server Component Resilience
 - Server Component pages (`src/app/admin/clinical-operators/page.tsx`, `src/app/volunteer/page.tsx`, `src/app/team-lead/page.tsx`) MUST catch query errors locally and render per-section fallback/retry UI components rather than throwing unhandled `Error`s.

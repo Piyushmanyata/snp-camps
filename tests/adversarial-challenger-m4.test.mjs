@@ -121,7 +121,7 @@ test("CHALLENGER PROBE 1.3: resolveTestDatabaseUrl rejects unsafe / non-loopback
 // PROBE 2: ALL 27 .db.test.mjs SUITES HAVE HONEST REACHABILITY GUARDS
 // --------------------------------------------------------------------------
 
-test("CHALLENGER PROBE 2: All 27 .db.test.mjs suites contain NO to_regprocedure in connect()", () => {
+test("CHALLENGER PROBE 2: All 30 .db.test.mjs suites contain NO to_regprocedure in their connect helper", () => {
   const testsDir = path.join(root, "tests");
   const dbTestFiles = fs
     .readdirSync(testsDir)
@@ -129,34 +129,28 @@ test("CHALLENGER PROBE 2: All 27 .db.test.mjs suites contain NO to_regprocedure 
 
   assert.equal(
     dbTestFiles.length,
-    27,
-    `Expected exactly 27 .db.test.mjs files, found ${dbTestFiles.length}`,
+    30,
+    `Expected exactly 30 .db.test.mjs files, found ${dbTestFiles.length}`,
   );
 
   for (const file of dbTestFiles) {
     const content = fs.readFileSync(path.join(testsDir, file), "utf8");
 
-    // Check if connect() function exists
-    if (content.includes("async function connect(")) {
-      const connectBlockMatch = content.match(
-        /async function connect\([^)]*\)\s*\{([\s\S]*?)\n\}/,
-      );
-      assert.ok(
-        connectBlockMatch,
-        `File ${file} has connect() but could not parse function body`,
-      );
-      const connectBody = connectBlockMatch[1];
+    // Any connect helper, however named (connect, connectDb, connectClient…).
+    // Matching only the exact name `connect` let three suites keep the banned
+    // probe behind a `connectDb` alias.
+    const helpers = [
+      ...content.matchAll(/async function (connect\w*)\([^)]*\)\s*\{([\s\S]*?)\n\}/g),
+    ];
 
-      // connectBody must NOT contain to_regprocedure
+    for (const [, name, body] of helpers) {
       assert.ok(
-        !connectBody.includes("to_regprocedure"),
-        `File ${file} contains to_regprocedure in connect() body! This suppresses broken RPC failures!`,
+        !body.includes("to_regprocedure"),
+        `File ${file} contains to_regprocedure in ${name}() body! This suppresses broken RPC failures!`,
       );
-
-      // connectBody must only perform client connection
       assert.ok(
-        connectBody.includes(".connect()"),
-        `File ${file} connect() does not call .connect()`,
+        body.includes(".connect()"),
+        `File ${file} ${name}() does not call .connect()`,
       );
     }
   }
