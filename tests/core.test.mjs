@@ -16,10 +16,10 @@ import {
   resolveOrigin,
 } from "../src/lib/qr.ts";
 import {
-  generateStaffPassword,
   isStaffPasswordStrong,
   MIN_PASSWORD_LENGTH,
 } from "../src/lib/staff-password.ts";
+import { generateStaffPassword } from "../src/lib/staff-password-generate.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
 import {

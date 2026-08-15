@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { loadSessionProfile, readJsonBody } from "@/lib/auth";
 import { mapDbError } from "@/lib/public-error";
-import { generateStaffPassword } from "@/lib/staff-password";
+import { generateStaffPassword } from "@/lib/staff-password-generate";
 
 export type StaffRole = "volunteer" | "team_lead" | "clinical_operator";
 
