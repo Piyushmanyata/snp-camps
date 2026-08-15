@@ -22,12 +22,14 @@ const result = spawnSync(
   { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
 );
 
-const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-process.stdout.write(output);
+const stdout = result.stdout ?? "";
+process.stdout.write(`${stdout}${result.stderr ?? ""}`);
 
-// Take the LAST summary line: suites that exercise the DB runner print their
-// own synthetic "ℹ skipped N" fixtures, which precede the real one.
-const skipMatches = [...output.matchAll(/^ℹ skipped (\d+)$/gm)];
+// Parse stdout alone — the reporter writes its summary there, and concatenating
+// stderr would append it after the summary regardless of when it was emitted.
+// Take the LAST match: suites that exercise the DB runner replay their own
+// synthetic "ℹ skipped N" fixtures, which precede the real one.
+const skipMatches = [...stdout.matchAll(/^ℹ skipped (\d+)$/gm)];
 const skipped = Number(skipMatches.at(-1)?.[1] ?? 0);
 
 if (result.error) {

@@ -136,11 +136,20 @@ test("CHALLENGER PROBE 2: All 30 .db.test.mjs suites contain NO to_regprocedure 
   for (const file of dbTestFiles) {
     const content = fs.readFileSync(path.join(testsDir, file), "utf8");
 
-    // Any connect helper, however named (connect, connectDb, connectClient…).
-    // Matching only the exact name `connect` let three suites keep the banned
-    // probe behind a `connectDb` alias.
+    // Any connect helper, however named (connect, connectDb, connectClient…)
+    // and however declared. Matching only `async function connect(` let three
+    // suites keep the banned probe behind a `connectDb` alias.
+    //
+    // This is a source-text probe and so is inherently partial — a helper named
+    // makeClient() still evades it. The authoritative guard is outcome-based:
+    // scripts/run-db-tests.mjs fails the run on any skip, whatever caused it.
     const helpers = [
-      ...content.matchAll(/async function (connect\w*)\([^)]*\)\s*\{([\s\S]*?)\n\}/g),
+      ...content.matchAll(
+        /async function (connect\w*)\([^)]*\)\s*\{([\s\S]*?)\n\}/g,
+      ),
+      ...content.matchAll(
+        /(?:const|let|var) (connect\w*)\s*=\s*async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)\n\}/g,
+      ),
     ];
 
     for (const [, name, body] of helpers) {

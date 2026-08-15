@@ -27,9 +27,15 @@ self-reporting rather than silent. The unit suite now runs 458 tests with 0
 skipped.
 
 `adversarial-challenger-m4.test.mjs` PROBE 2 already banned `to_regprocedure`
-in DB-suite connect helpers, but matched only the exact name `connect`. All
+in DB-suite connect helpers, but matched only `async function connect(`. All
 three offenders spelled it `connectDb` and passed. The probe now matches any
-`connect*` helper.
+`connect*` helper, declared as a function or as an async arrow.
+
+It is still a source-text probe, so it is still partial — a helper named
+`makeClient()` evades it, and AGENTS.md is right that such assertions pass on
+rot. It is kept as a fast, specific signal, not as the guarantee. The guarantee
+is outcome-based and unevadable: `run-db-tests.mjs` fails the run on any skip,
+whatever produced it.
 
 Rejected: adding the zero-skip guard to the unit runner and leaving the files
 where they were. One small change instead of a file move, but it makes
