@@ -53,6 +53,32 @@ test("updateCampSettings: throws error if surgery venue exceeds max length", asy
   );
 });
 
+test("updateCampSettings: an RPC refusal propagates and never falls back to a direct table write", async () => {
+  let tableWrites = 0;
+  const refusing = {
+    rpc: async () => ({
+      error: Object.assign(new Error("Spectacles collection venue exceeds maximum length of 35 characters"), {
+        code: "22001",
+      }),
+    }),
+    from: () => {
+      tableWrites += 1;
+      throw new Error("updateCampSettings bypassed the RPC refusal with a direct table write");
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      updateCampSettings(
+        "camp-1",
+        { spectaclesCollectionVenue: "Main Clinic" },
+        refusing,
+      ),
+    /exceeds maximum length of 35 characters/,
+  );
+  assert.equal(tableWrites, 0, "the database refusal is final");
+});
+
 test("getCampSettings & updateCampSettings: mock client handles independent settings", async () => {
   let storedData = {
     spectacles_collection_date: null,

@@ -22,11 +22,22 @@ export default async function TeamLeadPage() {
   if (isTeamLead(profile?.role)) redirect("/volunteer");
 
   const supabase = await createClient();
-  const { data: teamLeadsFull, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, phone, role, created_at, disabled_at, team_lead_id")
-    .eq("role", "team_lead")
-    .order("created_at", { ascending: false });
+  const [
+    { data: teamLeadsFull, error },
+    { data: volunteers, error: volunteersError },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, created_at, disabled_at, team_lead_id")
+      .eq("role", "team_lead")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, team_lead_id")
+      .eq("role", "volunteer")
+      .is("disabled_at", null)
+      .order("full_name", { ascending: true }),
+  ]);
 
   let loadError: string | null = null;
   if (error) {
@@ -39,12 +50,6 @@ export default async function TeamLeadPage() {
   const disabledTeamLeads = (teamLeadsFull?.length ?? 0) - activeTeamLeads;
 
   let assignmentsError: string | null = null;
-  const { data: volunteers, error: volunteersError } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, team_lead_id")
-    .eq("role", "volunteer")
-    .is("disabled_at", null)
-    .order("full_name", { ascending: true });
   if (volunteersError) {
     assignmentsError = mapDbError(volunteersError, {
       context: "team-lead-page.assignments",

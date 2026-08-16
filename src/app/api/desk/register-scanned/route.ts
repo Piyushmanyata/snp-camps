@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     if (knownDuplicate) {
       return failure(message, 409, "DUPLICATE");
     }
-    if (/full|seat/i.test(message)) {
+    if (/day is full|select a camp day/i.test(message)) {
       return failure("This camp day is full. Select another day.", 409, "DAY_FULL");
     }
     console.error("[desk-register-scanned] rpc failed", {

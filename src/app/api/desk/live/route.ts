@@ -33,11 +33,10 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
 
-  const { data: campRow, error: campErr } = await supabase
-    .from("camps")
-    .select("id, is_active")
-    .eq("id", campId)
-    .maybeSingle();
+  const [{ data: campRow, error: campErr }, dayStatsRes] = await Promise.all([
+    supabase.from("camps").select("id, is_active").eq("id", campId).maybeSingle(),
+    supabase.rpc("camp_day_stats", { p_camp_id: campId }),
+  ]);
 
   if (campErr || !campRow) {
     return NextResponse.json(
@@ -51,10 +50,6 @@ export async function GET(request: Request) {
       { status: 403, headers: NO_STORE },
     );
   }
-
-  const dayStatsRes = await supabase.rpc("camp_day_stats", {
-    p_camp_id: campId,
-  });
 
   if (dayStatsRes.error) {
     return NextResponse.json(

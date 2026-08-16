@@ -91,27 +91,8 @@ export async function updateCampSettings(
     p_post_camp_surgery_venue: surgVenue,
   });
 
-  if (!rpcErr) {
-    return { success: true };
-  }
-
-  const { data, error } = await supabase
-    .from("camps")
-    .update({
-      spectacles_collection_date: specDate,
-      spectacles_collection_venue: specVenue,
-      post_camp_surgery_date: surgDate,
-      post_camp_surgery_venue: surgVenue,
-    })
-    .eq("id", campId)
-    .select();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data || data.length === 0) {
-    throw new Error("Update refused or camp not found");
+  if (rpcErr) {
+    throw rpcErr;
   }
 
   return { success: true };

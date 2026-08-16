@@ -56,19 +56,6 @@ export function decodeQrFromImageData(
   return code?.data ?? null;
 }
 
-export function decodeQrPayloadFromImageData(
-  jsQR: JsQrFn,
-  imageData: ImageData,
-  options?: JsQrOptions,
-): { text: string; bytes: Uint8Array | null } | null {
-  const code = jsQR(imageData.data, imageData.width, imageData.height, options);
-  if (!code) return null;
-  return {
-    text: code.data ?? "",
-    bytes: code.binaryData?.length ? Uint8Array.from(code.binaryData) : null,
-  };
-}
-
 export async function applyBestEffortCameraConstraints(
   stream: MediaStream,
 ): Promise<void> {

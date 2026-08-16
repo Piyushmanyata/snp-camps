@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
 import { showErrorToast } from "@/lib/toast-bus";
+import { resolvePrintRun, type PrintRunResult } from "@/lib/print-run";
 import type { QueueStatus } from "@/lib/types";
 
 export type PrintActionPatient = {
@@ -99,31 +100,26 @@ export function PrintActions({
 
     try {
       const nextStatuses = { ...statuses };
-      let anyFail = false;
-      let failText = "";
+      const results: PrintRunResult[] = [];
 
       for (const p of patients) {
         const result = await markPrinted(p.id);
-        if (!result.ok) {
-          anyFail = true;
-          failText =
-            result.error || "Parchi print nahi ho payi. Dobara try karein.";
-          continue;
-        }
-        if (result.queueStatus) {
+        results.push(result);
+        if (result.ok && result.queueStatus) {
           nextStatuses[p.id] = result.queueStatus;
         }
       }
       setStatuses(nextStatuses);
 
-      if (anyFail) {
-        throw new Error(failText);
+      const outcome = resolvePrintRun(results);
+      if (!outcome.print) {
+        throw new Error(outcome.text);
       }
 
-      setMessage({
-        tone: "success",
-        text: "Parchi record ho gayi. Print dialog khul gaya hai.",
-      });
+      setMessage({ tone: outcome.tone, text: outcome.text });
+      if (outcome.tone === "error") {
+        showErrorToast(outcome.text);
+      }
       window.print();
     } catch (error) {
       const text =
