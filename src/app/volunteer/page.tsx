@@ -112,11 +112,21 @@ export default async function VolunteerPage() {
     );
   }
 
-  const { data: camp, error: campError } = await supabase
-    .from("camps")
-    .select("id, name, venue")
-    .eq("is_active", true)
-    .maybeSingle();
+  const [{ data: camp, error: campError }, rosterResult] = await Promise.all([
+    supabase
+      .from("camps")
+      .select("id, name, venue")
+      .eq("is_active", true)
+      .maybeSingle(),
+    teamLead && userId
+      ? supabase
+          .from("profiles")
+          .select("id, full_name, email, phone, role, created_at, disabled_at")
+          .eq("role", "volunteer")
+          .eq("team_lead_id", userId)
+          .order("created_at", { ascending: false })
+      : null,
+  ]);
 
   let campErrorMsg: string | null = null;
   if (campError) {
@@ -129,19 +139,12 @@ export default async function VolunteerPage() {
   let teamVolunteers: StaffPerson[] = [];
   let rosterError: string | null = null;
 
-  if (teamLead && userId) {
-    const { data: roster, error: rosterQueryError } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at, disabled_at")
-      .eq("role", "volunteer")
-      .eq("team_lead_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (rosterQueryError) {
-      mapDbError(rosterQueryError, { context: "volunteer-page.team-roster" });
+  if (rosterResult) {
+    if (rosterResult.error) {
+      mapDbError(rosterResult.error, { context: "volunteer-page.team-roster" });
       rosterError = "Your team roster could not be loaded. Refresh and try again.";
     } else {
-      teamVolunteers = roster ?? [];
+      teamVolunteers = rosterResult.data ?? [];
     }
   }
 

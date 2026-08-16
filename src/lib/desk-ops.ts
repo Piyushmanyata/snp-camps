@@ -127,7 +127,7 @@ export async function lookupPatientScanWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.lookup";
   const fallback =
-    options.errorFallback ?? "Could not look up this patient. Try again.";
+    options.errorFallback ?? "Patient lookup nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -195,7 +195,7 @@ export async function markSeenWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.mark-seen";
   const fallback =
-    options.errorFallback ?? "Could not mark this patient seen. Try again.";
+    options.errorFallback ?? "Dekha hua nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -218,7 +218,7 @@ export async function markSeenWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: "Could not mark this patient seen. Refresh and try again.",
+              error: "Dekha hua nahi ho paya. Page refresh karke dobara try karein.",
             },
           };
         }
@@ -235,7 +235,7 @@ export async function markSeenWithRetries(options: {
           done: true,
           value: {
             ok: false,
-            error: "Mark seen did not complete. No success was recorded.",
+            error: "Dekha hua record nahi hua. Dobara try karein.",
           },
         };
       } catch (thrown) {
@@ -267,7 +267,7 @@ export async function undoMarkSeenWithRetries(options: {
   type Out = { ok: true; row: UndoSeenRow } | { ok: false; error: string };
 
   const context = options.errorContext ?? "desk-ops.undo-mark-seen";
-  const fallback = options.errorFallback ?? "Could not undo. Try again.";
+  const fallback = options.errorFallback ?? "Undo nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -287,7 +287,7 @@ export async function undoMarkSeenWithRetries(options: {
         if (!row) {
           return {
             done: true,
-            value: { ok: false, error: "Could not undo. Refresh and try again." },
+            value: { ok: false, error: "Undo nahi ho paya. Page refresh karke dobara try karein." },
           };
         }
         if (row.error_code === "undo_window_expired") {
@@ -359,7 +359,7 @@ export async function changeCampDayWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.change-day";
   const fallback =
-    options.errorFallback ?? "Could not change the day. Try again.";
+    options.errorFallback ?? "Din change nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -384,7 +384,7 @@ export async function changeCampDayWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: "Could not change the day. Refresh and try again.",
+              error: "Din change nahi ho paya. Page refresh karke dobara try karein.",
             },
           };
         }
@@ -489,7 +489,7 @@ export async function searchRegisteredPatientsWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.search";
   const fallback =
-    options.errorFallback ?? "Could not search names. Try again.";
+    options.errorFallback ?? "Naam search nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -547,7 +547,7 @@ export async function searchDeskPatientsWithRetries(options: {
     | { ok: false; error: string };
   const context = options.errorContext ?? "desk-ops.desk-search";
   const fallback =
-    options.errorFallback ?? "Could not search patients. Try again.";
+    options.errorFallback ?? "Patient search nahi ho paya. Dobara try karein.";
 
   return withTransientSteps<Out>(
     async () => {

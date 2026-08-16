@@ -216,19 +216,25 @@ export async function POST(req: Request, { params }: RouteCtx) {
         );
       }
 
-      const { data: users, error: usersError } = await admin.auth.admin.listUsers({
-        page: 1,
-        perPage: 1000,
-      });
-      if (usersError) {
-        return NextResponse.json(
-          { error: `${label} account could not be reconciled. Try again.` },
-          { status: 502 },
-        );
+      let orphan: { id: string } | null = null;
+      let page: number | null = 1;
+      while (page && !orphan) {
+        const { data: users, error: usersError } = await admin.auth.admin.listUsers({
+          page,
+          perPage: 1000,
+        });
+        if (usersError) {
+          return NextResponse.json(
+            { error: `${label} account could not be reconciled. Try again.` },
+            { status: 502 },
+          );
+        }
+        orphan =
+          users.users.find(
+            (user) => user.email?.trim().toLowerCase() === email,
+          ) ?? null;
+        page = users.nextPage;
       }
-      const orphan = users.users.find(
-        (user) => user.email?.trim().toLowerCase() === email,
-      );
       if (!orphan) {
         return NextResponse.json(
           {

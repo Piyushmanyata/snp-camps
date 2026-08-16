@@ -26,15 +26,19 @@ export function ToastHost() {
 
   if (current.tone === "error") {
     return (
-      <button
-        type="button"
+      <div
         role="alert"
-        className="fixed left-4 right-4 z-[60] mx-auto min-h-12 max-w-md rounded-xl bg-red-600 px-4 py-3 text-left text-base font-semibold text-white shadow-lg"
+        className="fixed left-4 right-4 z-[60] mx-auto max-w-md"
         style={{ bottom: "calc(1rem + var(--safe-bottom))" }}
-        onClick={() => setCurrent(null)}
       >
-        {current.message}
-      </button>
+        <button
+          type="button"
+          className="pressable min-h-12 w-full rounded-xl bg-red-600 px-4 py-3 text-left text-base font-semibold text-white shadow-lg"
+          onClick={() => setCurrent(null)}
+        >
+          {current.message}
+        </button>
+      </div>
     );
   }
 

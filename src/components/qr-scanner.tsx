@@ -82,7 +82,8 @@ export function QrScanner({
   const [looking, setLooking] = useState(false);
   const [lookup, setLookup] = useState<LookupRow | null>(null);
   const [seen, setSeen] = useState<MarkSeenRow | null>(null);
-  const [assigning, setAssigning] = useState(false);
+  const [busy, setBusy] = useState<null | "print" | "seen" | "undo">(null);
+  const assigning = busy !== null;
 
   const handledRef = useRef(false);
   const autoScanDone = useRef(false);
@@ -177,7 +178,7 @@ export function QrScanner({
     async (opts: { id?: string; regNo?: number }) => {
       if (assigningRef.current) return null;
       assigningRef.current = true;
-      setAssigning(true);
+      setBusy("seen");
       setError(null);
 
       const outcome = await markSeenWithRetries({
@@ -185,13 +186,13 @@ export function QrScanner({
         regNo: opts.regNo ?? null,
         rpc: deskRpc(createClient()),
         errorContext: "qr-scanner.mark-seen",
-        errorFallback: "Could not mark this patient seen. Try again.",
+        errorFallback: "Dekha hua nahi ho paya. Dobara try karein.",
       });
 
       if (!outcome.ok) {
         setError(outcome.error);
         assigningRef.current = false;
-        setAssigning(false);
+        setBusy(null);
         return null;
       }
 
@@ -215,7 +216,7 @@ export function QrScanner({
       await stopScanner();
       router.refresh();
       assigningRef.current = false;
-      setAssigning(false);
+      setBusy(null);
       return row;
     },
     [deskRpc, router, setError, stopScanner],
@@ -225,7 +226,7 @@ export function QrScanner({
     async (row: LookupRow) => {
       if (assigningRef.current) return;
       assigningRef.current = true;
-      setAssigning(true);
+      setBusy("print");
       setError(null);
 
       const outcome = await printPrescriptionWithRetries({
@@ -238,12 +239,12 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
         assigningRef.current = false;
-        setAssigning(false);
+        setBusy(null);
         return;
       }
 
       assigningRef.current = false;
-      setAssigning(false);
+      setBusy(null);
       await stopScanner();
       router.push(`/print/${row.id}?auto=1`);
     },
@@ -254,7 +255,7 @@ export function QrScanner({
     async (patientId: string) => {
       if (assigningRef.current) return;
       assigningRef.current = true;
-      setAssigning(true);
+      setBusy("undo");
       setError(null);
 
       const outcome = await undoMarkSeenWithRetries({
@@ -272,7 +273,7 @@ export function QrScanner({
       }
 
       assigningRef.current = false;
-      setAssigning(false);
+      setBusy(null);
     },
     [deskRpc, readyForNext, router, setError],
   );
@@ -308,7 +309,7 @@ export function QrScanner({
           };
         },
         errorContext: "qr-scanner.lookup",
-        errorFallback: "Could not look up this patient. Try again.",
+        errorFallback: "Patient lookup nahi ho paya. Dobara try karein.",
       });
 
       if (!outcome.ok) {
@@ -355,8 +356,8 @@ export function QrScanner({
         const timer = setTimeout(() => {
           setError(
             err === "not_found"
-              ? "Patient not found for that QR."
-              : "Could not look up that QR. Try again or use reg number.",
+              ? "Is QR se koi patient nahi mila."
+              : "QR lookup nahi ho paya. Dobara try karein ya reg number daalein.",
           );
         }, 0);
         return () => clearTimeout(timer);
@@ -396,7 +397,7 @@ export function QrScanner({
       badScanAt.current = now;
       if (isMounted.current) {
         setError(
-          "That QR is not a patient staff-scan code. Enter the registration number or name beside the camera.",
+          "Yeh QR patient staff-scan code nahi hai. Camera ke bagal mein registration number ya naam daalein.",
         );
       }
     }
@@ -445,7 +446,7 @@ export function QrScanner({
       isMounted.current
     ) {
       setError(
-        "Camera unavailable or permission denied. Enter the registration number or name beside the camera.",
+        "Camera unavailable hai ya permission nahi mili. Camera ke bagal mein registration number ya naam daalein.",
       );
       setActive(false);
       setStarting(false);
@@ -564,7 +565,7 @@ export function QrScanner({
               await stopScanner();
               if (isMounted.current) {
                 setError(
-                  "Camera decoding stopped. Enter the registration number or name beside the camera.",
+                  "Camera decoding ruk gayi. Camera ke bagal mein registration number ya naam daalein.",
                 );
               }
               return;
@@ -702,7 +703,7 @@ export function QrScanner({
 
     const cleanedRaw = raw.trim();
     if (!cleanedRaw) {
-      setError("Enter a registration number or patient name.");
+      setError("Registration number ya patient ka naam daalein.");
       setLooking(false);
       return;
     }
@@ -714,7 +715,7 @@ export function QrScanner({
         return;
       }
       if (cleanedRaw.length < 2 || !campId) {
-        setError("Type at least 2 letters of the patient's name.");
+        setError("Naam ke kam se kam 2 akshar likhein.");
         setLooking(false);
         return;
       }
@@ -727,7 +728,7 @@ export function QrScanner({
       if (!outcome.ok) {
         setError(outcome.error);
       } else if (outcome.rows.length === 0) {
-        setError("No patient matches that name in the active camp.");
+        setError("Active camp mein is naam ka koi patient nahi mila.");
       } else {
         setNameMatches(outcome.rows);
         setLooking(false);
@@ -739,7 +740,7 @@ export function QrScanner({
 
     const reg = parseRegistrationNumber(raw);
     if (reg === null) {
-      setError("Enter registration number (e.g. 1001).");
+      setError("Registration number daalein (jaise 1001).");
       setLooking(false);
       return;
     }
@@ -770,22 +771,22 @@ export function QrScanner({
         </div>
       ) : null}
       <p className="prose-help text-sm text-muted">
-        <strong className="text-foreground">Scan</strong> the paper or phone QR,
-        or enter their registration number or name. Then{" "}
-        <strong className="text-foreground">Print prescription</strong> — that
-        prints the paper and records that they arrived — or{" "}
-        <strong className="text-foreground">Mark seen</strong> after the
-        consultation. A patient already seen is refused.
+        Paper ya phone ka QR <strong className="text-foreground">scan</strong>{" "}
+        karein, ya registration number ya naam likhein. Phir{" "}
+        <strong className="text-foreground">Parchi print karein</strong> — paper
+        print hota hai aur patient ka aana record ho jaata hai — ya consultation
+        ke baad <strong className="text-foreground">Dekha hua karein</strong>.
+        Pehle se dekha hua patient refuse ho jaata hai.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
         <div className="flex min-h-[16rem] flex-col gap-2 rounded-2xl border border-border bg-card p-3">
-          <p className="text-sm font-semibold text-foreground">Scan QR</p>
+          <p className="text-sm font-semibold text-foreground">QR scan karein</p>
           <div
             className={`relative flex-1 overflow-hidden rounded-xl border border-border bg-black/[0.03] ${
               active ? "min-h-[220px]" : "min-h-[8rem]"
             }`}
-            aria-label={active ? "Camera scanner active" : "Camera preview area"}
+            aria-label={active ? "Camera scanner chalu hai" : "Camera preview area"}
           >
             <video
               ref={videoRef}
@@ -808,7 +809,7 @@ export function QrScanner({
             ) : null}
             {!active ? (
               <div className="flex h-full min-h-[8rem] items-center justify-center px-3 text-center text-sm text-muted">
-                Camera preview appears here
+                Camera preview yahan dikhega
               </div>
             ) : null}
           </div>
@@ -818,7 +819,7 @@ export function QrScanner({
               disabled={Boolean(disabledReason) || assigning || looking || starting}
               onClick={() => void start()}
             >
-              {starting ? "Opening camera…" : "Camera kholein"}
+              {starting ? "Camera khul raha hai…" : "Camera kholein"}
             </Button>
           ) : (
             <Button
@@ -836,9 +837,9 @@ export function QrScanner({
           onSubmit={(e) => void openManual(e)}
           className="flex min-h-[16rem] flex-col gap-2 rounded-2xl border border-border bg-card p-3"
         >
-          <p className="text-sm font-semibold text-foreground">Type patient</p>
+          <p className="text-sm font-semibold text-foreground">Patient type karein</p>
           <p className="text-xs text-muted">
-            Enter their registration number or type their name.
+            Registration number ya patient ka naam likhein.
           </p>
           <Input
             label="Registration number ya naam"
@@ -854,13 +855,14 @@ export function QrScanner({
           {nameMatches.length > 0 ? (
             <>
               <p className="sr-only" role="status" aria-live="polite">
-                {nameMatches.length} matching{" "}
-                {nameMatches.length === 1 ? "patient" : "patients"} found.
-                Focus moved to the first result.
+                {nameMatches.length === 1
+                  ? "1 patient mila."
+                  : `${nameMatches.length} patient mile.`}{" "}
+                Pehla result focus mein hai.
               </p>
               <ul
                 className="divide-y divide-border overflow-hidden rounded-xl border border-border"
-                aria-label="Matching patients"
+                aria-label="Milte-julte patient"
               >
                 {nameMatches.map((patient, index) => (
                   <li key={patient.id}>
@@ -896,7 +898,7 @@ export function QrScanner({
               type="submit"
               disabled={looking || assigning || Boolean(disabledReason)}
             >
-              {looking ? "Searching…" : "Dhundein"}
+              {looking ? "Dhundh rahe hain…" : "Dhundein"}
             </Button>
           </div>
         </form>
@@ -912,19 +914,19 @@ export function QrScanner({
           data-testid="seen-result"
         >
           <p className="text-sm font-semibold text-brand">
-            {seen.already_seen ? "Already seen" : "Marked seen"}
+            {seen.already_seen ? "Pehle se dekha hua" : "Dekha hua ho gaya"}
           </p>
           <p className="mt-0.5 font-bold text-foreground">
             <span className="tabular">#{seen.reg_no}</span> · {seen.full_name}
           </p>
           {seen.seen_at ? (
             <p className="mt-1 text-sm text-brand">
-              {seen.already_seen ? "Seen at " : "At "}
+              {seen.already_seen ? "Dekha gaya: " : "Samay: "}
               {new Date(seen.seen_at).toLocaleTimeString("en-IN", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
-              {seen.seen_by_name ? ` · by ${seen.seen_by_name}` : ""}
+              {seen.seen_by_name ? ` · ${seen.seen_by_name}` : ""}
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -932,7 +934,7 @@ export function QrScanner({
               href={`/print/${seen.id}`}
               className="pressable inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90"
             >
-              Reprint prescription
+              Parchi dobara print karein
             </Link>
             {!seen.already_seen ? (
               <Button
@@ -941,6 +943,7 @@ export function QrScanner({
                 size="sm"
                 className="w-auto"
                 disabled={assigning}
+                loading={busy === "undo"}
                 onClick={() => void undoSeen(seen.id)}
               >
                 Wapas registered karein
@@ -953,7 +956,7 @@ export function QrScanner({
               className="w-auto"
               onClick={resetResult}
             >
-              Scan next
+              Agla scan karein
             </Button>
           </div>
         </div>
@@ -970,7 +973,7 @@ export function QrScanner({
           data-testid="scan-review"
         >
           <p className="text-sm font-semibold text-muted">
-            Check this is the right patient
+            Check karein — sahi patient hai?
           </p>
           <p
             id={reviewHeadingId}
@@ -986,17 +989,17 @@ export function QrScanner({
           {lookup.queue_status === "seen" ? (
             <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
               <p className="text-sm font-semibold text-amber-950">
-                Already seen
+                Pehle se dekha hua
                 {lookup.seen_at
-                  ? ` at ${new Date(lookup.seen_at).toLocaleTimeString("en-IN", {
+                  ? ` — ${new Date(lookup.seen_at).toLocaleTimeString("en-IN", {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}`
                   : ""}
-                {lookup.seen_by_name ? ` by ${lookup.seen_by_name}` : ""}
+                {lookup.seen_by_name ? ` · ${lookup.seen_by_name}` : ""}
               </p>
               <p className="mt-0.5 text-xs text-amber-900">
-                Nothing more to do here. Reprint if they need another form.
+                Yahan aur kuch karna nahi hai. Zaroorat ho to parchi dobara print karein.
               </p>
             </div>
           ) : null}
@@ -1007,7 +1010,7 @@ export function QrScanner({
               size="lg"
               className="w-auto flex-1 sm:flex-none"
               disabled={assigning}
-              loading={assigning}
+              loading={busy === "print"}
               data-testid="print-prescription"
               onClick={() => void printPrescription(lookup)}
             >
@@ -1020,11 +1023,11 @@ export function QrScanner({
                 size="lg"
                 className="w-auto flex-1 sm:flex-none"
                 disabled={assigning}
-                loading={assigning}
+                loading={busy === "seen"}
                 data-testid="mark-seen"
                 onClick={() => void markSeen({ id: lookup.id })}
               >
-                {assigning ? "Marking seen…" : "Dekha hua karein"}
+                Dekha hua karein
               </Button>
             ) : null}
 
@@ -1036,7 +1039,7 @@ export function QrScanner({
               disabled={assigning || looking}
               onClick={resetResult}
             >
-              Wrong patient
+              Galat patient
             </Button>
           </div>
         </div>

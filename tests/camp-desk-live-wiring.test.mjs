@@ -97,7 +97,7 @@ test("D22 desk offers exactly the two actions, and refuses an already-seen patie
   assert.doesNotMatch(scanner, /doctors\b/);
 
   // Already seen is terminal and says when (D25).
-  assert.match(scanner, /Already seen/);
+  assert.match(scanner, /Pehle se dekha hua/);
   assert.match(deskOps, /never_printed/);
   assert.match(deskOps, /NEVER_PRINTED_COPY/);
 });

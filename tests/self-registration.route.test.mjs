@@ -60,8 +60,10 @@ function fakeSupabase(
       from(table) {
         return {
           select() {
+            const filters = [];
             const chain = {
-              eq(_col, value) {
+              eq(col, value) {
+                filters.push([col, value]);
                 chain._eqValue = value;
                 return chain;
               },
@@ -72,6 +74,7 @@ function fakeSupabase(
                 return chain;
               },
               maybeSingle: () => {
+                calls.push({ fn: `select:${table}`, filters });
                 if (table === "patients" && existingByReg && chain._eqValue != null) {
                   const row = existingByReg[String(chain._eqValue)] ?? null;
                   return Promise.resolve({ error: null, data: row });
@@ -270,6 +273,13 @@ test("same-card re-scan returns existing reg and same-origin status link", async
   assert.equal(body.existing, true);
   assert.equal(body.registrationNumber, 99);
   assert.equal(body.statusUrl, "/s/existing_tok");
+  // The token lookup must stay inside the camp being registered into —
+  // reg_no alone is only unique per camp (UNIQUE(camp_id, reg_no)).
+  const lookup = fake.calls.find((call) => call.fn === "select:patients");
+  assert.deepEqual(lookup.filters, [
+    ["camp_id", CAMP_ID],
+    ["reg_no", 99],
+  ]);
 });
 
 test("soft likely-duplicate never returns a status link", async () => {

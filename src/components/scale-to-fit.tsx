@@ -28,8 +28,9 @@ export function ScaleToFit({ children }: { children: ReactNode }) {
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(outer);
+    ro.observe(inner);
     return () => ro.disconnect();
-  }, [children]);
+  }, []);
 
   return (
     <div

@@ -89,7 +89,7 @@ export function ChangeDay({
         };
       },
       errorContext: "change-day.rpc",
-      errorFallback: "Could not change the day. Try again.",
+      errorFallback: "Din change nahi ho paya. Dobara try karein.",
     });
     if (!outcome.ok) {
       setError(outcome.error);

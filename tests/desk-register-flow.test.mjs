@@ -194,7 +194,7 @@ test("retries twice on retryable=true then surfaces the plain failure sentence",
   assert.deepEqual(sleeps, [250, 750]);
   assert.equal(
     result.error,
-    "Could not save. Check the internet and press Try Again.",
+    "Save nahi ho paya. Internet check karke Try Again dabayein.",
   );
 });
 
@@ -351,7 +351,7 @@ test("connection-class error is retried then exhausted with showTryAgain", async
   if (outcome.ok) return;
   assert.equal(
     outcome.error,
-    "Could not save. Check the internet and press Try Again.",
+    "Save nahi ho paya. Internet check karke Try Again dabayein.",
   );
   assert.equal(outcome.showTryAgain, true);
   assert.equal(abandoned, true);
@@ -613,7 +613,7 @@ test("failed register never navigates print or resets", async () => {
   if (outcome.ok) return;
   assert.equal(
     outcome.error,
-    "Could not save. Check the internet and press Try Again.",
+    "Save nahi ho paya. Internet check karke Try Again dabayein.",
   );
   assert.equal(outcome.showTryAgain, true);
   assert.deepEqual(events, ["abandon"]);

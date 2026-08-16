@@ -459,7 +459,7 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
     );
   }
   const regHint = page.getByText(
-    "Enter their registration number or type their name.",
+    "Registration number ya patient ka naam likhein.",
     { exact: true },
   );
   if (await regHint.isVisible()) {
@@ -496,7 +496,7 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
     await assertFocusVisible(markSeen, "mark seen");
   }
 
-  const cancel = review.getByRole("button", { name: "Wrong patient" });
+  const cancel = review.getByRole("button", { name: "Galat patient" });
   if (await cancel.isVisible()) {
     measurements.cancel = await assertTouchTarget(cancel, "cancel review");
   }
@@ -713,12 +713,12 @@ test("lost-paper recovery: keyboard path and touch targets", async ({ page }) =>
   await patientInput.fill(env("E2E_PATIENT_NAME"));
   await page.getByRole("button", { name: "Dhundein" }).click();
   const match = page
-    .getByRole("list", { name: "Matching patients" })
+    .getByRole("list", { name: "Milte-julte patient" })
     .getByRole("button")
     .first();
   await expect(match).toBeVisible();
   await expect(match).toBeFocused();
-  await expect(page.getByRole("status")).toContainText(/matching patient/i);
+  await expect(page.getByRole("status")).toContainText(/patient (mila|mile)/i);
   await assertTouchTarget(match, "Name search result");
   await page.keyboard.press("Enter");
   const printBtn = page.getByTestId("print-prescription");

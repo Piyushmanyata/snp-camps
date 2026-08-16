@@ -424,7 +424,7 @@ test("exhausted transient failure preserves fields and shows Try Again", async (
   await expect(
     page
       .locator('[role="alert"]')
-      .filter({ hasText: /Could not save|connection|try again/i })
+      .filter({ hasText: /Save nahi ho paya|connection|try again/i })
       .first(),
   ).toBeVisible();
   // Three attempts (1 + 2 retries).
@@ -510,7 +510,7 @@ test("terminal business error is not auto-retried and has no connectivity Try Ag
     timeout: 10_000,
   });
   await expect(page.getByTestId("desk-register-try-again")).toHaveCount(0);
-  await expect(page.getByText(/Could not save.*internet/i)).toHaveCount(0);
+  await expect(page.getByText(/Save nahi ho paya.*Internet/i)).toHaveCount(0);
   expect(rpcCalls).toBe(1);
 });
 

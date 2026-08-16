@@ -186,7 +186,7 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   const firstLabel = await review.getByTestId("print-prescription").innerText();
   const firstHadMarkSeen = await review.getByTestId("mark-seen").count();
 
-  await page.getByRole("button", { name: "Wrong patient" }).click();
+  await page.getByRole("button", { name: "Galat patient" }).click();
   await page
     .getByLabel("Registration number ya naam")
     .fill(env("E2E_PATIENT_REG_NO"));
@@ -342,12 +342,12 @@ test("volunteer marks a printed-for patient seen, and a re-scan is refused", asy
   ).toBeVisible();
 
   // Re-scan is refused, says so, and offers no second Mark seen.
-  await page.getByRole("button", { name: "Scan next" }).click();
+  await page.getByRole("button", { name: "Agla scan karein" }).click();
   await page.getByLabel("Registration number ya naam").fill(reg);
   await page.getByRole("button", { name: "Dhundein" }).click();
   const again = page.getByRole("region", { name: `#${reg} ${name}` });
   await expect(again).toBeVisible({ timeout: 15_000 });
-  await expect(again.getByText(/Already seen/)).toBeVisible();
+  await expect(again.getByText(/Pehle se dekha hua/)).toBeVisible();
   await expect(again.getByTestId("mark-seen")).toHaveCount(0);
   // Paper is still reprintable for a seen patient — that must not be blocked.
   await expect(again.getByTestId("print-prescription")).toBeVisible();

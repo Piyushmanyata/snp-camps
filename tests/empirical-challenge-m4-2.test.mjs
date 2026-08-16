@@ -245,8 +245,8 @@ describe("EMPIRICAL CHALLENGE M4-2: Security & Boundary Verification", () => {
         assert.match(src, /\{campErrorMsg\s*\?\s*<ErrorBox\s*message=\{campErrorMsg\}\s*\/>\s*:\s*null\}/);
 
         // Team Lead roster query error handling
-        assert.match(src, /if\s*\(teamLead\s*&&\s*userId\)\s*\{/);
-        assert.match(src, /if\s*\(rosterQueryError\)\s*\{\s*mapDbError\(rosterQueryError/);
+        assert.match(src, /teamLead\s*&&\s*userId\s*\?/);
+        assert.match(src, /if\s*\(rosterResult\.error\)\s*\{\s*mapDbError\(rosterResult\.error/);
         assert.match(src, /rosterError\s*=\s*["']Your team roster could not be loaded\. Refresh and try again\.["'];/);
         assert.match(src, /\{rosterError\s*\?\s*<ErrorBox\s*message=\{rosterError\}\s*\/>\s*:\s*null\}/);
 

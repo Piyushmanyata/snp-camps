@@ -214,9 +214,8 @@ export async function POST(request: Request) {
       const existing = await supabase
         .from("patients")
         .select("id, reg_no, status_token, camp_day_id, queue_status")
+        .eq("camp_id", campId)
         .eq("reg_no", dupRegNo)
-        .order("created_at", { ascending: false })
-        .limit(1)
         .maybeSingle();
 
       const row = existing.data;
