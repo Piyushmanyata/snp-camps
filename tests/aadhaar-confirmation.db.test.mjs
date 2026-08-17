@@ -239,6 +239,14 @@ test("commit attaches a free key, overwrites identity, and locks the fields", as
   );
   const key = `commit-${randomUUID()}`;
 
+  const { rows: before } = await client.query(
+    `select pe.display_name
+       from public.patients p
+       join public.persons pe on pe.id = p.person_id
+      where p.id = $1`,
+    [patient.id],
+  );
+
   const row = await confirm([
     patient.id,
     "commit",
@@ -269,7 +277,11 @@ test("commit attaches a free key, overwrites identity, and locks the fields", as
   assert.equal(rows[0].gender, "F");
   assert.equal(rows[0].aadhaar_last4, "4321");
   assert.equal(rows[0].address, "Card address");
-  assert.equal(rows[0].display_name, "Latin Name");
+  assert.equal(
+    rows[0].display_name,
+    before[0].display_name,
+    "the Latin display name typed at manual registration survives the card overwrite",
+  );
   assert.equal(rows[0].aadhaar_locked, true);
   assert.equal(rows[0].address_locked, true);
   assert.equal(rows[0].retained_pre_overwrite, true);

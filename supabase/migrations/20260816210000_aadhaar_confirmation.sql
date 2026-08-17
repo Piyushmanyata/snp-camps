@@ -122,7 +122,7 @@ BEGIN
     RETURN QUERY SELECT
       'not_required'::text, r_person.reg_no, r_person.full_name,
       r_patient.age, r_person.gender, r_person.full_name, r_person.date_of_birth,
-      r_person.gender, r_person.aadhaar_last4, r_person.address;
+      r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     RETURN;
   END IF;
 
@@ -141,7 +141,7 @@ BEGIN
     RETURN QUERY SELECT
       'overridden'::text, r_person.reg_no, r_person.full_name,
       r_patient.age, r_person.gender, r_person.full_name, r_person.date_of_birth,
-      r_person.gender, r_person.aadhaar_last4, r_person.address;
+      r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     RETURN;
   END IF;
 
@@ -149,7 +149,7 @@ BEGIN
     RETURN QUERY SELECT
       'needs_scan'::text, r_person.reg_no, r_person.full_name,
       r_patient.age, r_person.gender, r_person.full_name, r_person.date_of_birth,
-      r_person.gender, r_person.aadhaar_last4, r_person.address;
+      r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     RETURN;
   END IF;
 
@@ -170,13 +170,13 @@ BEGIN
       RETURN QUERY SELECT
         'free'::text, r_person.reg_no, r_person.full_name,
         r_patient.age, r_person.gender, r_person.full_name, r_person.date_of_birth,
-        r_person.gender, r_person.aadhaar_last4, r_person.address;
+        r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     ELSE
       RETURN QUERY SELECT
         'collision'::text, r_other.reg_no, r_other.full_name,
         date_part('year', age(coalesce(r_other.date_of_birth, current_date)))::integer,
         r_other.gender, r_person.full_name, r_person.date_of_birth,
-        r_person.gender, r_person.aadhaar_last4, r_person.address;
+        r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     END IF;
     RETURN;
   END IF;
@@ -224,7 +224,7 @@ BEGIN
     RETURN QUERY SELECT
       'committed'::text, r_person.reg_no, r_person.full_name,
       v_age, r_person.gender, r_person.full_name, r_person.date_of_birth,
-      r_person.gender, r_person.aadhaar_last4, r_person.address;
+      r_person.gender, r_person.aadhaar_last4::text, r_person.address;
     RETURN;
   END IF;
 
@@ -265,7 +265,7 @@ BEGIN
     'merged'::text, r_other.reg_no, r_other.full_name,
     date_part('year', age(coalesce(r_other.date_of_birth, current_date)))::integer,
     r_other.gender, r_person.full_name, r_person.date_of_birth,
-    r_person.gender, r_person.aadhaar_last4, r_person.address;
+    r_person.gender, r_person.aadhaar_last4::text, r_person.address;
 END;
 $function$;
 
