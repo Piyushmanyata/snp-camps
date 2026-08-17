@@ -107,7 +107,7 @@ function post(body) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250) + 1}`,
+        "x-vercel-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250) + 1}`,
       },
        body: JSON.stringify({ requestId: DEFAULT_REQUEST_ID, ...body }),
     }),

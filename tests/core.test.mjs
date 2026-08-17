@@ -345,7 +345,7 @@ test("admin bootstrap sends its service key only to the exact Supabase project",
 
 test("rate limits enforce both client IP and supplied subject", () => {
   const request = new Request("https://camp.example/api", {
-    headers: { "x-forwarded-for": "198.51.100.10" },
+    headers: { "x-vercel-forwarded-for": "198.51.100.10" },
   });
   const options = {
     scope: "test-subject-limit-" + Math.random(),
@@ -358,9 +358,52 @@ test("rate limits enforce both client IP and supplied subject", () => {
   assert.equal(checkRateLimit(request, options).allowed, false);
 
   const rotatedIp = new Request("https://camp.example/api", {
-    headers: { "x-forwarded-for": "198.51.100.11" },
+    headers: { "x-vercel-forwarded-for": "198.51.100.11" },
   });
   assert.equal(checkRateLimit(rotatedIp, options).allowed, false);
+});
+
+test("off-Vercel, no forwarding header buys a fresh IP bucket", () => {
+  // Off the platform nothing overwrites these headers, so a caller can set any
+  // of them per request. Trusting one meant rotating it reset the bucket and
+  // the self-registration throttle was decorative.
+  const saved = { VERCEL: process.env.VERCEL, VERCEL_ENV: process.env.VERCEL_ENV };
+  delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
+  try {
+    for (const header of [
+      "x-forwarded-for",
+      "x-vercel-forwarded-for",
+      "x-real-ip",
+      "cf-connecting-ip",
+    ]) {
+      const options = {
+        scope: `test-untrusted-${header}-` + Math.random(),
+        limit: 2,
+        windowMs: 60_000,
+        keyType: "ip",
+      };
+      const allowed = [1, 2, 3].map(
+        (i) =>
+          checkRateLimit(
+            new Request("https://camp.example/api", {
+              headers: { [header]: `203.0.113.${i}` },
+            }),
+            options,
+          ).allowed,
+      );
+      assert.deepEqual(
+        allowed,
+        [true, true, false],
+        `rotating ${header} must not reset the bucket`,
+      );
+    }
+  } finally {
+    if (saved.VERCEL === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = saved.VERCEL;
+    if (saved.VERCEL_ENV === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = saved.VERCEL_ENV;
+  }
 });
 
 test("rate limits block IP burst and subject rotation independently", () => {
@@ -368,7 +411,7 @@ test("rate limits block IP burst and subject rotation independently", () => {
   const scopeIp = "test-ip-burst-" + Math.random();
   for (let i = 1; i <= 6; i += 1) {
     const req = new Request(reqBase, {
-      headers: { "x-forwarded-for": "10.0.0.1" },
+      headers: { "x-vercel-forwarded-for": "10.0.0.1" },
     });
     const res = checkRateLimit(req, {
       scope: scopeIp,
@@ -382,7 +425,7 @@ test("rate limits block IP burst and subject rotation independently", () => {
   const subject = "patient-uuid-target";
   for (let i = 1; i <= 5; i += 1) {
     const req = new Request(reqBase, {
-      headers: { "x-forwarded-for": `192.168.1.${i}` },
+      headers: { "x-vercel-forwarded-for": `192.168.1.${i}` },
     });
     const res = checkRateLimit(req, {
       scope: scopeSubject,
@@ -396,7 +439,7 @@ test("rate limits block IP burst and subject rotation independently", () => {
 
 test("rate-limit scopes can consume IP and subject buckets separately", () => {
   const request = new Request("https://camp.example/api/status", {
-    headers: { "x-forwarded-for": "203.0.113.10" },
+    headers: { "x-vercel-forwarded-for": "203.0.113.10" },
   });
   const scope = `separate-status-${Math.random()}`;
   const ip = {
@@ -417,7 +460,7 @@ test("rate-limit scopes can consume IP and subject buckets separately", () => {
   assert.equal(checkRateLimit(request, subject).allowed, true);
   assert.equal(
     checkRateLimit(
-      new Request(request, { headers: { "x-forwarded-for": "203.0.113.11" } }),
+      new Request(request, { headers: { "x-vercel-forwarded-for": "203.0.113.11" } }),
       ip,
     ).allowed,
     true,

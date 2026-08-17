@@ -53,6 +53,20 @@ const MAX_SECTIONS_TOTAL_HEIGHT_MM = 42;
 const MAX_SHORT_TEXT = 80;
 const MAX_FOOTER_TEXT = 180;
 
+const graphemes = new Intl.Segmenter("hi", { granularity: "grapheme" });
+
+// slice() cuts UTF-16 code units, printing a broken Devanagari glyph on the
+// paper record when the cap lands mid-cluster.
+function clip(value: string, max: number): string {
+  if (value.length <= max) return value;
+  let out = "";
+  for (const { segment } of graphemes.segment(value)) {
+    if (out.length + segment.length > max) break;
+    out += segment;
+  }
+  return out;
+}
+
 export function resolvePrescriptionTemplate(
   stored: unknown,
 ): PrescriptionTemplate {
@@ -61,13 +75,11 @@ export function resolvePrescriptionTemplate(
   }
   const raw = stored as Partial<Record<keyof PrescriptionTemplate, unknown>>;
   const str = (value: unknown, fallback: string, max = MAX_SHORT_TEXT) =>
-    typeof value === "string" && value.trim()
-      ? value.trim().slice(0, max)
-      : fallback;
+    typeof value === "string" && value.trim() ? clip(value.trim(), max) : fallback;
   const strList = (value: unknown, fallback: string[], maxItems: number) =>
     Array.isArray(value) && value.every((item) => typeof item === "string")
       ? (value as string[])
-          .map((item) => item.trim().slice(0, MAX_SHORT_TEXT))
+          .map((item) => clip(item.trim(), MAX_SHORT_TEXT))
           .filter(Boolean)
           .slice(0, maxItems)
       : fallback;

@@ -13,6 +13,11 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stubs = path.join(root, "tests", "stubs");
 
+// The rate limiter keys on a client address only on Vercel, which is where this
+// deploys. Set here, not in the runner, so a single `node --test tests/x.mjs`
+// behaves the same as `npm test`.
+process.env.VERCEL_ENV ||= "test";
+
 const exact = new Map([
   ["server-only", pathToFileURL(path.join(stubs, "server-only.mjs")).href],
   ["next/server", pathToFileURL(path.join(stubs, "next-server.mjs")).href],

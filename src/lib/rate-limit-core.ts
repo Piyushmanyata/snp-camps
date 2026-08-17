@@ -21,20 +21,14 @@ const globalStore = globalThis as typeof globalThis & {
 const store = globalStore.__snpRateLimits ?? new Map<string, Entry>();
 globalStore.__snpRateLimits = store;
 
+// Off-Vercel every forwarding header is attacker-settable, so none is trusted:
+// rotating one used to buy a fresh bucket and defeat the throttle.
 function clientAddress(request: Request) {
   const onVercel =
     process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
-  if (onVercel) {
-    return (
-      request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
-      "unknown"
-    );
-  }
+  if (!onVercel) return "unknown";
   return (
     request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip")?.trim() ||
-    request.headers.get("cf-connecting-ip")?.trim() ||
     "unknown"
   );
 }

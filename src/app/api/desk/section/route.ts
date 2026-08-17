@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile } from "@/lib/auth";
-import { isCampCrew, isStaff, isTeamLead } from "@/lib/roles";
+import { isCampCrew, isTeamLead } from "@/lib/roles";
 import { isPatientUuid } from "@/lib/qr";
 import {
   isSectionKey,
@@ -41,18 +41,9 @@ export async function GET(request: Request) {
       { status: 403, headers: NO_STORE },
     );
   }
-  if (section === "volunteer-kpis" && !isStaff(profile?.role)) {
-    return NextResponse.json(
-      { error: "Staff access required" },
-      { status: 403, headers: NO_STORE },
-    );
-  }
-  if (section === "staff-leaderboard" && !isStaff(profile?.role)) {
-    return NextResponse.json(
-      { error: "Staff access required" },
-      { status: 403, headers: NO_STORE },
-    );
-  }
+  // volunteer-kpis and staff-leaderboard carried an isStaff() check here. It was
+  // unreachable: isCampCrew is an alias of isStaff and already gated above, so
+  // the branch could never be true. Camp-crew-wide access is the intent.
 
   const campIdRaw = url.searchParams.get("campId")?.trim() ?? "";
   const campId =

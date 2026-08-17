@@ -76,7 +76,12 @@ export async function GET(_req: Request, { params }: RouteCtx) {
   if ("error" in auth) return auth.error;
 
   const scoped = auth.scopeTeamLeadId;
-  const supabase = scoped ? createServiceRoleClient() : await createClient();
+  // Read as the caller, never as service_role. The team lead path used to bypass
+  // RLS with only a .eq("team_lead_id") in the query builder standing between it
+  // and every profile's email and phone. The "authenticated read permitted
+  // profiles" policy (20260728090000) already scopes a lead to their own
+  // volunteers, so RLS enforces the same bound the query asks for.
+  const supabase = await createClient();
   if (!supabase) {
     return NextResponse.json({ error: "Account service is unavailable" }, { status: 500 });
   }

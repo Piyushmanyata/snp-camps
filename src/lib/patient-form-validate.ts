@@ -88,7 +88,17 @@ export function validatePatientForm(
   }
 
   const selected = days.find((d) => d.id === draft.campDayId);
-  if (selected && !isDeskDaySelectable(selected, todayIso)) {
+  // A day id absent from `days` — a stale tab, or a day closed since load — used
+  // to skip the guard entirely and validate ok with an unusable day.
+  if (!selected) {
+    return {
+      ok: false,
+      field: "campDay",
+      elementId: "patient-camp-day",
+      message: "Select a camp day.",
+    };
+  }
+  if (!isDeskDaySelectable(selected, todayIso)) {
     return {
       ok: false,
       field: "campDay",
@@ -129,7 +139,10 @@ export function validatePatientForm(
     }
   }
 
-  const ageValue = draft.age === "" ? null : Number(draft.age);
+  // Number() coerces " " to 0, "1e2" to 100 and "0x40" to 64, so a blank-looking
+  // field used to save an adult as age 0. Only plain digits are an age.
+  const ageText = draft.age.trim();
+  const ageValue = /^\d{1,3}$/.test(ageText) ? Number(ageText) : null;
   if (
     ageValue === null ||
     !Number.isInteger(ageValue) ||

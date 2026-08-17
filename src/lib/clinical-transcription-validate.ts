@@ -19,7 +19,10 @@ function sortKeys(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
     Object.entries(value)
-      .sort(([a], [b]) => a.localeCompare(b))
+      // Code-point order, not localeCompare: collation varies with the runtime's
+      // ICU locale, so identical records could compare unequal across
+      // server and browser and register as a spurious amendment.
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([key, child]) => [key, sortKeys(child)]),
   );
 }

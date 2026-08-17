@@ -8,6 +8,10 @@ export function getAadhaarPepper(
   return env.AADHAAR_HASH_PEPPER?.trim() || null;
 }
 
+// No Unicode normalisation here: NFC decomposes the precomposed nukta letters
+// U+0958..U+095F (composition exclusions), which are routine in Hindi and Urdu
+// names, so adding it silently rekeys every stored Person that has one. Unifying
+// the spellings needs a backfill, not a one-line change.
 export function normalizePersonName(name: string): string {
   return name
     .trim()
