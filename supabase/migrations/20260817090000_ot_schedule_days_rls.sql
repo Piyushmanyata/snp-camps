@@ -25,8 +25,25 @@ REVOKE ALL ON TABLE public.ot_schedule_days
 CREATE INDEX IF NOT EXISTS fulfilment_items_ot_schedule_day_id_idx
   ON public.fulfilment_items (ot_schedule_day_id);
 
+-- Every migration that becomes the head redefines this literal; readiness
+-- compares it against EXPECTED_MIGRATION_HEAD and the probe's
+-- migration_head_current fact is derived from it. Same signature and return
+-- type, so CREATE OR REPLACE keeps the existing grants.
+CREATE OR REPLACE FUNCTION public.latest_applied_migration()
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO pg_catalog, public
+AS $$ SELECT '20260817090000'::text $$;
+
 DO $$
 BEGIN
+  IF public.latest_applied_migration() <> '20260817090000' THEN
+    RAISE EXCEPTION 'latest_applied_migration must report this migration as head, got %',
+      public.latest_applied_migration();
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
