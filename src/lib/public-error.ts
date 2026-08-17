@@ -154,6 +154,29 @@ export function classifyOperationError(
   let publicCategory: PublicErrorCategory = "unknown";
   let publicMessage: string | null = null;
 
+  if (!publicMessage && /VOLUNTEER_OVERRIDE_FORBIDDEN/.test(message)) {
+    publicCategory = "permission";
+    publicMessage = "Team lead ya admin hi confirmation skip kar sakte hain.";
+  }
+  if (!publicMessage && /AADHAAR_KEY_TAKEN/.test(message)) {
+    publicCategory = "conflict";
+    publicMessage =
+      "Yeh card abhi kisi aur record se jud gaya. Dobara scan karein.";
+  }
+  if (!publicMessage && /AADHAAR_CONFIRMATION_REQUIRED/.test(message)) {
+    publicCategory = "validation";
+    publicMessage = "Pehle Aadhaar card confirm karein, phir print karein.";
+  }
+  if (!publicMessage && /OT_SCHEDULE_FULL/.test(message)) {
+    publicCategory = "capacity";
+    publicMessage =
+      "Saari OT dates bhar gayi — admin se nayi date add karwayein.";
+  }
+  if (!publicMessage && /PRINT_WINDOW_CLOSED/.test(message)) {
+    publicCategory = "validation";
+    publicMessage = "Print band hai. Admin se print window khulwaein.";
+  }
+
   const aadhaarDup = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
   if (aadhaarDup) {
     publicCategory = "duplicate";

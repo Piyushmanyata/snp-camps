@@ -3,12 +3,12 @@ import { formatCampDaySms } from "@/lib/format-camp-day";
 import { sendMsg91TemplateSms } from "@/lib/msg91";
 import { normalizePhoneE164 } from "@/lib/phone";
 import {
-  assertGsm7,
-  isGsm7,
+  DEVANAGARI_VENUE_FALLBACK,
   recordSmsFailure,
   SMS_VENUE_MAX,
   truncateVenueForSms,
 } from "@/lib/registration-sms";
+import { assertSmsSegments } from "@/lib/sms-segments";
 import {
   claimSmsDelivery,
   completeSmsDelivery,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/sms-deliveries";
 
 export const REMINDER_SMS_DLT_TEMPLATE =
-  "SNP Camp: Kal aana. Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein.";
+  "SNP नेत्र शिविर स्मरण: #{#var#}। {#var#} को {#var#} आएं।";
 
 export const REMINDER_SMS_VAR_ORDER = ["reg", "date", "venue"] as const;
 
@@ -32,21 +32,19 @@ export type ReminderSmsVars = {
 export function fillReminderSms(input: ReminderSmsVars): string {
   const vars = reminderSmsVariables(input);
   let i = 0;
-  return REMINDER_SMS_DLT_TEMPLATE.replace(/\{#var#\}/g, () => {
+  const text = REMINDER_SMS_DLT_TEMPLATE.replace(/\{#var#\}/g, () => {
     const key = REMINDER_SMS_VAR_ORDER[i++];
     return vars[key] ?? "";
   });
+  return assertSmsSegments(text, "reminder");
 }
 
 export function reminderSmsVariables(
   input: ReminderSmsVars,
 ): Record<(typeof REMINDER_SMS_VAR_ORDER)[number], string> {
   const reg = String(input.regNo);
-  assertGsm7(reg, "reg");
   const date = formatCampDaySms(input.dayDate);
-  assertGsm7(date, "date");
-  const venue = truncateVenueForSms(input.venue || "venue TBA");
-  assertGsm7(venue, "venue");
+  const venue = truncateVenueForSms(input.venue || DEVANAGARI_VENUE_FALLBACK);
   return { reg, date, venue };
 }
 
@@ -54,7 +52,7 @@ export function maxLengthReminderInputs(): ReminderSmsVars {
   return {
     regNo: 999999,
     dayDate: "2026-09-30",
-    venue: "A".repeat(SMS_VENUE_MAX),
+    venue: "क".repeat(SMS_VENUE_MAX),
   };
 }
 
@@ -144,11 +142,13 @@ export async function sendReminderSms(
 
   let variables: Record<string, string>;
   try {
-    variables = reminderSmsVariables({
+    const smsInput = {
       regNo: input.regNo,
       dayDate: input.dayDate,
       venue: input.venue,
-    });
+    };
+    fillReminderSms(smsInput);
+    variables = reminderSmsVariables(smsInput);
   } catch (err) {
     const detail =
       err instanceof Error ? err.message : "SMS variable build failed";
@@ -471,4 +471,3 @@ export function createReminderJobStore(
   };
 }
 
-export { isGsm7 };

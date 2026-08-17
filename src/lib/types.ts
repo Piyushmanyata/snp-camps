@@ -36,6 +36,7 @@ export type CampDayStats = {
   seats_taken: number;
   seats_left: number;
   is_full: boolean;
+  printing_open?: boolean;
 };
 
 export function queueLabel(status: string) {

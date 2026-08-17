@@ -60,14 +60,7 @@ export const ROUTE_FORBIDDEN_EAGER_MARKERS = {
   "/doctor": ["jsqr_lib", "qrcode_react"],
   "/admin/patients": ["jsqr_lib", "qrcode_react"],
   "/p/[id]": ["jsqr_lib", "qrcode_react"],
-  "/lookup": ["jsqr_lib", "qrcode_react"],
-  // Print routes may include qrcode_react eagerly (that is the page purpose).
   "/print/[id]": ["jsqr_lib"],
-  "/print/prescription/[id]": ["jsqr_lib"],
-  // The extended status page (#114) and the self-registration receipt (#113)
-  // both render the patient QR, so qrcode_react is eager there by design. The
-  // Aadhaar decoder must still never be: it is the heavy island.
-  "/s/[token]": ["jsqr_lib"],
   "/self-register": ["jsqr_lib"],
 };
 

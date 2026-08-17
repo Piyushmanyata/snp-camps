@@ -542,21 +542,29 @@ test("undo and first transcription cannot both commit", async (t) => {
     );
     assert.equal(undo.rows[0].error_code, null);
 
-    const saveStarted = claim(b, operator).then(() =>
-      b.query("select public.clinical_save_transcription($1,$2::jsonb)", [
-        patientId,
-        JSON.stringify({ diagnoses: ["Other"], remarks: "race" }),
-      ]),
-    );
+    const saveStarted = claim(b, operator)
+      .then(() =>
+        b.query("select public.clinical_save_transcription($1,$2::jsonb)", [
+          patientId,
+          JSON.stringify({ diagnoses: ["Other"], remarks: "race" }),
+        ]),
+      )
+      .then(
+        () => true,
+        () => false,
+      );
     await new Promise((resolve) => setTimeout(resolve, 150));
     await a.query("commit");
 
     let saveOk = false;
-    try {
-      await saveStarted;
-      await b.query("commit");
-      saveOk = true;
-    } catch {
+    if (await saveStarted) {
+      try {
+        await b.query("commit");
+        saveOk = true;
+      } catch {
+        await b.query("rollback").catch(() => {});
+      }
+    } else {
       await b.query("rollback").catch(() => {});
     }
 

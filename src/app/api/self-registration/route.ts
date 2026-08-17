@@ -53,10 +53,6 @@ function errorResponse(detail: string, status = 400) {
 
 const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-function statusPath(token: string) {
-  return `/s/${token}`;
-}
-
 export async function POST(request: Request) {
   const rate = checkRateLimit(request, SELF_REGISTRATION_IP_RATE_LIMIT);
   if (!rate.allowed) {
@@ -213,13 +209,13 @@ export async function POST(request: Request) {
       const dupRegNo = aadhaarDup.regNo;
       const existing = await supabase
         .from("patients")
-        .select("id, reg_no, status_token, camp_day_id, queue_status")
+        .select("id, reg_no, camp_day_id, queue_status")
         .eq("camp_id", campId)
         .eq("reg_no", dupRegNo)
         .maybeSingle();
 
       const row = existing.data;
-      if (row?.id && row.status_token && row.reg_no != null) {
+      if (row?.id && row.reg_no != null) {
         let dayDate: string | null = null;
         if (row.camp_day_id) {
           const day = await supabase
@@ -238,7 +234,6 @@ export async function POST(request: Request) {
           campDayId: row.camp_day_id,
           dayDate,
           queueStatus: row.queue_status ?? "registered",
-          statusUrl: statusPath(String(row.status_token)),
         });
       }
       return NextResponse.json({
@@ -273,23 +268,6 @@ export async function POST(request: Request) {
     return errorResponse("Registration adhoora raha. Kripya camp desk par milen.", 502);
   }
 
-  const patient = await supabase
-    .from("patients")
-    .select("status_token")
-    .eq("id", row.id)
-    .maybeSingle();
-  if (patient.error || !patient.data?.status_token) {
-    return NextResponse.json({
-      ok: true,
-      patientId: row.id,
-      registrationNumber: row.reg_no,
-      campDayId: row.camp_day_id,
-      dayDate: row.day_date,
-      queueStatus: "registered",
-      statusUrl: null,
-    });
-  }
-
   return NextResponse.json({
     ok: true,
     patientId: row.id,
@@ -297,6 +275,5 @@ export async function POST(request: Request) {
     campDayId: row.camp_day_id,
     dayDate: row.day_date,
     queueStatus: "registered",
-    statusUrl: statusPath(String(patient.data.status_token)),
   });
 }

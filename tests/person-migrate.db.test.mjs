@@ -454,8 +454,8 @@ test("Scanning card from previous Camp reuses Person entity across camps", async
     [camp2],
   );
   await client.query(
-    `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-     values ($1, $2, '2099-02-15', 50)`,
+    `insert into public.camp_days (id, camp_id, day_date, seat_limit, printing_open)
+     values ($1, $2, (timezone('Asia/Kolkata', now()))::date, 50, true)`,
     [day2, camp2],
   );
 

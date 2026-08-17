@@ -252,8 +252,12 @@ describe("EMPIRICAL CHALLENGE M4-2: Security & Boundary Verification", () => {
 
         // Graceful empty/no-camp handling
         assert.match(src, /\{camp\?\.name\s*\|\|\s*["']Koi nahi["']\}/);
-        assert.match(src, /disabled=\{!camp\}/);
+        assert.match(src, /<VolunteerDeskActions\b/);
         assert.match(src, /noCampReason=\s*\{\s*camp\s*\?\s*undefined\s*:\s*["']Koi active camp nahi\. Admin se camp chalu karwayein\.["']\s*\}/);
+        assert.match(
+          readSource("src/components/volunteer-desk-actions.tsx"),
+          /disabled=\{!campId\}/,
+        );
       });
     });
 

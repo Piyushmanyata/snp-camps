@@ -64,10 +64,10 @@ test("evaluateCatalogFacts fails closed on missing critical column", () => {
   let evald = evaluateCatalogFacts(facts);
   assert.equal(evald.schema_contract.ok, true);
 
-  facts.columns["patients.status_token"] = false;
+  facts.columns["camp_days.printing_open"] = false;
   evald = evaluateCatalogFacts(facts);
   assert.equal(evald.schema_contract.ok, false);
-  assert.match(evald.schema_contract.detail, /status_token/);
+  assert.match(evald.schema_contract.detail, /printing_open/);
 });
 
 

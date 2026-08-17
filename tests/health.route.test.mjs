@@ -358,11 +358,11 @@ test("patients in Realtime publication → 503", async () => {
   assertNoSecrets(body);
 });
 
-test("status_token grant to authenticated → 503 on rpc_grants", async () => {
+test("widened staff grant → 503 on rpc_grants", async () => {
   const facts = goodCatalogFacts();
   facts.grants = {
     ...facts.grants,
-    patients_status_token_authenticated_select: true,
+    patients_authenticated_select: true,
   };
   __setServiceRoleClient(mockServiceRole({ catalogFacts: facts }));
   const res = await GET(

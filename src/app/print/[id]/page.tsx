@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { canRegisterPatients, getSessionProfile, roleHome } from "@/lib/auth";
 import { isPatientUuid } from "@/lib/qr";
 import { loadPrintSlips } from "@/lib/print-slip-load";
@@ -10,6 +11,8 @@ import { resolvePrescriptionTemplate } from "@/lib/prescription-template";
 import { PrintActions } from "@/components/print-actions";
 import { ScaleToFit } from "@/components/scale-to-fit";
 import { Card } from "@/components/ui";
+import { isPrintWindowOpen } from "@/lib/print-window";
+import type { CampDayStats } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Print prescription" };
 
@@ -63,6 +66,47 @@ export default async function PrintPage({
       <NotPrintable
         title="Patient not found"
         detail="Check the QR or registration number and try again."
+      />
+    );
+  }
+
+  const { data: dayStats } = await supabase.rpc("camp_day_stats", {
+    p_camp_id: record.campId,
+  });
+  const days = (dayStats || []) as CampDayStats[];
+  const campDay = days.find((day) => day.day_date === record.campDayDate);
+  const admin = createServiceRoleClient();
+  if (admin) {
+    const { data: gate } = await admin
+      .from("patients")
+      .select("provenance, confirmation_override_at, persons(duplicate_key)")
+      .eq("id", id)
+      .maybeSingle();
+    const person = Array.isArray(gate?.persons) ? gate?.persons[0] : gate?.persons;
+    if (
+      gate?.provenance === "manual_exception" &&
+      !gate.confirmation_override_at &&
+      !person?.duplicate_key
+    ) {
+      return (
+        <NotPrintable
+          title="Pehle Aadhaar confirm karein"
+          detail="Manual exception print se pehle card scan ya team-lead override chahiye."
+        />
+      );
+    }
+  }
+
+  if (
+    !isPrintWindowOpen({
+      dayDate: record.campDayDate,
+      printingOpen: campDay?.printing_open === true,
+    })
+  ) {
+    return (
+      <NotPrintable
+        title="Print band hai"
+        detail="Admin se print window khulwaein. Register abhi ho sakta hai."
       />
     );
   }

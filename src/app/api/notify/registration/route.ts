@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   isMsg91Configured,
   sendRegistrationSms,
-  statusUrlForToken,
 } from "@/lib/registration-sms";
 import { isPatientUuid } from "@/lib/qr";
 
@@ -56,10 +55,9 @@ export async function POST(req: Request) {
   }
 
   const dayDate = row.day_date;
-  const statusToken = row.status_token;
-  if (!dayDate || row.reg_no == null || !statusToken) {
+  if (!dayDate || row.reg_no == null) {
     return NextResponse.json(
-      { ok: false, status: "failed", error: "Patient missing day or token" },
+      { ok: false, status: "failed", error: "Patient missing camp day" },
       { status: 400 },
     );
   }
@@ -82,7 +80,6 @@ export async function POST(req: Request) {
       regNo: Number(row.reg_no),
       dayDate: String(dayDate),
       venue: row.venue ?? null,
-      statusUrl: statusUrlForToken(String(statusToken)),
       patientId: body.patientId,
     },
     { template: "registration", ledger: supabase },

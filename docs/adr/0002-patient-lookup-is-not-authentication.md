@@ -1,8 +1,16 @@
 # Patient self-service lookup is token resolution, not authentication
 
 ---
-Status: accepted
+Status: superseded
 ---
+
+> **Superseded by [ADR 0023](0023-devanagari-sms-status-token-retired.md).**
+>
+> The status page, the lookup form, the status token, and
+> `patient_status_by_token` are retired. Patients do not have a public
+> self-service view. Recovery is desk name-search and Aadhaar re-scan. The
+> reasoning below is kept: lookup was never authentication, and patients still
+> hold no Supabase Auth session.
 
 Patients need to reach their own registration number, patient QR, queue position and
 treatment status without visiting the desk. Issue #59 retired patient Supabase Auth

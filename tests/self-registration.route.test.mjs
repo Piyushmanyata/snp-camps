@@ -138,7 +138,7 @@ test("a scanned card plus a typed phone registers and returns the receipt", asyn
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.registrationNumber, 4242);
-  assert.match(body.statusUrl, /\/s\/tok_abcdef$/);
+  assert.equal(body.statusUrl, undefined);
   // Registering for today must still not put a patient in the hall queue.
   assert.equal(body.queueStatus, "registered");
 });
@@ -272,7 +272,7 @@ test("same-card re-scan returns existing reg and same-origin status link", async
   assert.equal(body.ok, true);
   assert.equal(body.existing, true);
   assert.equal(body.registrationNumber, 99);
-  assert.equal(body.statusUrl, "/s/existing_tok");
+  assert.equal(body.statusUrl, undefined);
   // The token lookup must stay inside the camp being registered into —
   // reg_no alone is only unique per camp (UNIQUE(camp_id, reg_no)).
   const lookup = fake.calls.find((call) => call.fn === "select:patients");

@@ -227,7 +227,7 @@ and **Mark seen**. If a change adds a third, question it hard.
 
 When governing documentation conflicts, resolve in this order:
 
-1. **`docs/adr/`** — architectural decision records. ADR 0013 defines the lifecycle (no FCFS Queue). ADR 0008 still defines paper-as-record and the two desk actions. ADRs 0001, 0006 and 0007 are superseded and retained for the reasoning, not the decision.
+1. **`docs/adr/`** — architectural decision records. ADR 0013 defines the lifecycle (no FCFS Queue). ADR 0008 still defines paper-as-record and the two desk actions. ADRs 0001, 0002, 0006 and 0007 are superseded and retained for the reasoning, not the decision.
 2. **`CONTEXT.md`** — ubiquitous language, domain context, lifecycle invariants, role boundaries, accepted design-system rules.
 3. **`README.md`** — operations, deployment setup, build/verify gates, auth model reference, MSG91 configuration.
 
@@ -239,8 +239,8 @@ A spec under `docs/specs/` is a work order, not a governing document. An accepte
 * Migration `20260728119000` dropped the retired clinical tables irreversibly. That was a **one-time, explicitly authorised exception** taken while production held test data only and no real camp had run. It sets no precedent: once real camp data exists, removals must archive rather than drop, and any irreversible migration needs fresh explicit confirmation.
 * **Realtime Boundary**: Public patient Realtime channels are retired. The `patients` table is strictly absent from the `supabase_realtime` publication (`patients_realtime_absent` check).
 * **Polling**: Seat board and desk updates use manual Refresh or fixed polling — zero public WebSocket channels on patient rows.
-* **Least Privilege**: `is_staff()` (admin, team_lead, volunteer) gates every desk RPC. `is_camp_crew()` is an **alias** of it, not a wider set — the doctor role was retired. Patients do not sign in and hold no Supabase Auth sessions.
-* **Status Token Boundary**: `/s/<token>` resolves via `patient_status_by_token`, which is **service-role only** and returns camp day, venue, and `registered` / `seen` with PII, phone, address, Aadhaar details, and any position number stripped. Do not widen its grants.
+* **Least Privilege**: `is_staff()` (admin, team_lead, volunteer) gates every desk RPC. `is_camp_crew()` is an **alias** of it, not a wider set — the doctor role was retired. Patients do not sign in and hold no Supabase Auth sessions. There is no public patient-facing status route.
+* **Status Token Boundary**: The public status page, status token column, and `patient_status_by_token` are retired (ADR 0023). Do not reintroduce a public patient-facing route, a status token, or a grant on a token-resolution RPC. Recovery is desk name-search and Aadhaar re-scan.
 
 ## Postgres
 

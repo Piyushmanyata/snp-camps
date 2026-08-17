@@ -64,8 +64,12 @@ default font on any printing machine lacking those fonts — a failure you would
 discover on camp day, on the one day it matters. As an image it prints identically
 everywhere, and it doubles as the admin-replaceable asset the template editor needs.
 
+**The 58mm deferred slip is typeset Devanagari using a bundled subset font
+scoped to the slip route.** The failure this ADR guards against is the *machine*
+lacking the script. Bundling the font removes that dependency for the thermal
+slip without changing the A4 letterhead decision above.
+
 **What survived deliberately:** self-registration and Aadhaar card scanning (the
 duplicate-prevention backbone), Person/Registration split
-([ADR 0003](0003-person-registration-split.md)), team leads and KPI rollups
-([ADR 0005](0005-team-lead-role-and-kpi-rollup.md)), and the passwordless status
-page ([ADR 0002](0002-patient-lookup-is-not-authentication.md)).
+([ADR 0003](0003-person-registration-split.md)), and team leads and KPI rollups
+([ADR 0005](0005-team-lead-role-and-kpi-rollup.md)).

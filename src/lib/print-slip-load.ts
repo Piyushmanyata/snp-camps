@@ -7,6 +7,7 @@ import type { QueueStatus } from "@/lib/types";
 export type LoadedPrintPatient = {
   patient: PrescriptionSheetPatient;
   camp: { name: string; venue: string | null } | null;
+  campId: string;
   campDayDate: string | null;
   qrValue: string;
   queueStatus: QueueStatus;
@@ -41,6 +42,7 @@ function toLoaded(row: PatientRow, origin: string, published?: unknown): LoadedP
       phone: row.phone,
     },
     camp: { name: row.camp_name, venue: row.venue },
+    campId: row.camp_id,
     campDayDate: row.day_date,
     qrValue: patientScanUrl(row.id, origin),
     queueStatus: row.queue_status,

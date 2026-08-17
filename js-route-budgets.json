@@ -8,16 +8,15 @@
     "/admin": 297000,
     "/admin/clinical": 281000,
     "/admin/clinical-operators": 282000,
+    "/admin/manual-exceptions": 278000,
     "/admin/patients": 282000,
     "/clinical": 288000,
     "/clinical/slip/[id]": 200000,
     "/login": 273000,
-    "/lookup": 206000,
     "/p/[id]": 199000,
     "/print/[id]": 208000,
     "/register": 294000,
     "/self-register": 205000,
-    "/s/[token]": 199000,
     "/team-lead": 283000,
     "/volunteer": 285000
   }

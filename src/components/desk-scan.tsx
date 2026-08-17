@@ -7,9 +7,11 @@ import { QrScannerLazy } from "@/components/qr-scanner-lazy";
 export function DeskScan({
   campId,
   noCampReason,
+  userRole = null,
 }: {
   campId: string | null;
   noCampReason?: string;
+  userRole?: string | null;
 }) {
   return (
     <Card id="scan" className="!p-4 sm:!p-5">
@@ -23,7 +25,11 @@ export function DeskScan({
           </p>
         }
       >
-        <QrScannerLazy campId={campId} disabledReason={noCampReason} />
+        <QrScannerLazy
+          campId={campId}
+          disabledReason={noCampReason}
+          userRole={userRole}
+        />
       </Suspense>
     </Card>
   );

@@ -68,11 +68,15 @@ async function createNativeQrDetector(): Promise<BarcodeDetectorInstance | null>
   }
 }
 
-export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
+export function useAadhaarScanner(
+  onParsed: OnParsed,
+  onFailedScan?: () => void,
+  options?: { initialConsent?: boolean },
+): AadhaarScanner {
   const [isScanning, setIsScanning] = useState(false);
   const [isReadingPhoto, setIsReadingPhoto] = useState(false);
   const [isReadingUsb, setIsReadingUsb] = useState(false);
-  const [hasConsent, setHasConsent] = useState(false);
+  const [hasConsent, setHasConsent] = useState(options?.initialConsent === true);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanDiagnostic, setScanDiagnostic] = useState<string | null>(null);
   const sessionRef = useRef(new QrCameraSession());
@@ -80,9 +84,20 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
   const animFrameRef = useRef<number | null>(null);
 
   const onParsedRef = useRef(onParsed);
+  const onFailedScanRef = useRef(onFailedScan);
+  const failureTokenRef = useRef<number | null>(null);
   useEffect(() => {
     onParsedRef.current = onParsed;
   }, [onParsed]);
+  useEffect(() => {
+    onFailedScanRef.current = onFailedScan;
+  }, [onFailedScan]);
+
+  const recordFailure = useCallback((token: number) => {
+    if (failureTokenRef.current === token) return;
+    failureTokenRef.current = token;
+    onFailedScanRef.current?.();
+  }, []);
 
   const stop = useCallback(() => {
     sessionRef.current.invalidate();
@@ -123,6 +138,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         if (!sessionRef.current.isCurrent(token)) return true;
         setScanError(outcome.message);
         setScanDiagnostic(outcome.diagnostic);
+        recordFailure(token);
         stop();
         return true;
       }
@@ -130,6 +146,7 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         if (!sessionRef.current.isCurrent(token)) return true;
         setScanError(outcome.message);
         setScanDiagnostic(outcome.diagnostic);
+        recordFailure(token);
         return false;
       }
 
@@ -147,10 +164,11 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         setScanError(
           `Card read was incomplete. Hold the QR steady and try again, or ${MANUAL_HINT.toLowerCase()}`,
         );
+        recordFailure(token);
       }
       return accepted;
     },
-    [stop],
+    [recordFailure, stop],
   );
 
   const start = useCallback(async () => {
@@ -434,18 +452,20 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
         setScanError(
           `No Aadhaar QR found in this photo. Take a closer, well-lit photo, or ${MANUAL_HINT.toLowerCase()}`,
         );
+        recordFailure(token);
       } catch {
         if (!sessionRef.current.isCurrent(token)) return;
         setScanError(
           `Photo unavailable or unreadable. Try another photo, or ${MANUAL_HINT.toLowerCase()}`,
         );
+        recordFailure(token);
       } finally {
         bitmap?.close();
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         if (sessionRef.current.isCurrent(token)) setIsReadingPhoto(false);
       }
     },
-    [handleOutcome, hasConsent, stop],
+    [handleOutcome, hasConsent, recordFailure, stop],
   );
 
   const readPayload = useCallback(
@@ -471,11 +491,12 @@ export function useAadhaarScanner(onParsed: OnParsed): AadhaarScanner {
       } catch {
         if (!sessionRef.current.isCurrent(token)) return;
         setScanError("USB scanner payload could not be read. Scan the card again.");
+        recordFailure(token);
       } finally {
         if (sessionRef.current.isCurrent(token)) setIsReadingUsb(false);
       }
     },
-    [handleOutcome, hasConsent, stop],
+    [handleOutcome, hasConsent, recordFailure, stop],
   );
 
   return {

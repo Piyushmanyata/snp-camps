@@ -1,137 +1,18 @@
-/**
- * #70 — App-level: mapper + status page wiring (no secondary count, RPC only).
- */
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GET as rateLimitResponse } from "../src/app/api/status-rate-limit/route.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pagePath = path.join(root, "src", "app", "s", "[token]", "page.tsx");
 
-function readPage() {
-  return fs.readFileSync(pagePath, "utf8");
-}
-
-test("status page is a Server Component (no use client)", () => {
-  const src = readPage();
-  assert.doesNotMatch(src, /^\s*["']use client["']/m);
-  assert.match(src, /export default async function PatientStatusPage/);
-});
-
-test("status page refreshes on a timer the user is not trapped by", () => {
-  const src = readPage();
-  // A `<meta http-equiv="refresh">` reloaded the whole document on a timer the
-  // patient could neither pause nor extend — WCAG 2.2 SC 2.2.1 — and restarted
-  // every screen reader mid-sentence. Refreshing now happens in a client island
-  // that swaps content in place and pauses while the tab is hidden.
-  assert.doesNotMatch(src, /httpEquiv/);
-  assert.doesNotMatch(src, /<head>/);
-  assert.match(src, /<StatusAutoRefresh\s*\/>/);
-});
-
-test("the refresh island keeps its 30s cadence and pauses when hidden", () => {
-  const src = fs.readFileSync(
-    path.join(root, "src", "components", "status-auto-refresh.tsx"),
-    "utf8",
+test("status page and rate-limit route are retired", () => {
+  assert.equal(
+    fs.existsSync(path.join(root, "src/app/s/[token]/page.tsx")),
+    false,
   );
-  assert.match(src, /ms\s*=\s*30_000/);
-  // useFixedPoll is the shared helper that skips ticks while the tab is hidden.
-  assert.match(src, /useFixedPoll\(/);
-});
-
-test("status page validates token format before consuming separate IP/token limits", () => {
-  const src = readPage();
-  assert.match(src, /checkRateLimit/);
-  assert.match(src, /scope:\s*["']status-ip["']/);
-  assert.match(src, /limit:\s*1_200/);
-  assert.match(src, /scope:\s*["']status-token["']/);
-  assert.match(src, /limit:\s*12/);
-  assert.match(src, /keyType:\s*["']ip["']/);
-  assert.match(src, /keyType:\s*["']subject["']/);
-  assert.ok(
-    src.indexOf("if (!isStatusTokenFormat") <
-      src.indexOf("const ipRate = checkRateLimit"),
-    "invalid token formats must not consume a rate-limit bucket",
+  assert.equal(
+    fs.existsSync(path.join(root, "src/app/api/status-rate-limit/route.ts")),
+    false,
   );
-  assert.match(src, /status-rate-limit\?retry=/);
-  assert.match(src, /Retry-After/);
-});
-
-test("status throttling endpoint returns a retryable 429 response", async () => {
-  const response = rateLimitResponse(
-    new Request("http://localhost/api/status-rate-limit?retry=17"),
-  );
-  assert.equal(response.status, 429);
-  assert.equal(response.headers.get("Retry-After"), "17");
-  assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
-});
-
-test("status page uses patient_status_by_token RPC only", () => {
-  const src = readPage();
-  assert.match(src, /patient_status_by_token/);
-  assert.match(src, /\.rpc\s*\(\s*["']patient_status_by_token["']/);
-  // No secondary count query path
-  assert.doesNotMatch(src, /count:\s*["']exact["']/);
-  assert.doesNotMatch(src, /\.lte\s*\(\s*["']queued_at["']/);
-  assert.doesNotMatch(src, /from\s*\(\s*["']patients["']\s*\)/);
-  // Does not ignore count errors via count ?? null pattern on queue position
-  assert.doesNotMatch(src, /queuePosition\s*=\s*count\s*\?\?/);
-});
-
-test("status page treats RPC error as safe retry UI, zero rows as notFound", () => {
-  const src = readPage();
-  assert.match(src, /if\s*\(\s*error\s*\)/);
-  // Patients read Hinglish (CONTEXT.md §Language).
-  assert.match(src, /Status abhi load nahi ho paaya/);
-  assert.match(src, /notFound\s*\(\s*\)/);
-  // Error path must not call notFound for calculation failure
-  const errorBlock = src.slice(
-    src.indexOf("if (error)"),
-    src.indexOf("const rows"),
-  );
-  assert.doesNotMatch(errorBlock, /notFound/);
-});
-
-test("mapStatusRpcRow never produces a position, whatever the RPC sends", async () => {
-  // The real module only — a local re-implementation would pass while the page
-  // rotted (AGENTS.md, Testing & Evidence Governance). The mapper lives in a
-  // .ts lib precisely so the node runner can load it.
-  const { mapStatusRpcRow } = await import("../src/lib/status-view.ts");
-
-  assert.deepEqual(
-    mapStatusRpcRow({
-      reg_no: 42,
-      queue_status: "registered",
-      camp_name: "Camp A",
-      venue: "Hall",
-      day_date: "2099-10-15",
-    }),
-    {
-      regNo: 42,
-      queueStatus: "registered",
-      campName: "Camp A",
-      venue: "Hall",
-      dayDate: "2099-10-15",
-      patientId: null,
-    },
-  );
-
-  // A residual position column from an older deployment must not leak through.
-  const withStalePosition = mapStatusRpcRow({
-    reg_no: 2,
-    queue_status: "seen",
-    queue_position: 99,
-    camp_name: "  ",
-    venue: "",
-    day_date: null,
-  });
-  assert.ok(
-    !("queuePosition" in withStalePosition),
-    `status view must carry no position, got ${JSON.stringify(withStalePosition)}`,
-  );
-  assert.equal(withStalePosition.campName, "—");
-  assert.equal(withStalePosition.venue, "—");
 });

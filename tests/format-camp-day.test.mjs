@@ -65,9 +65,9 @@ test("malformed input is returned unchanged", () => {
   assert.equal(formatCampDay("2026/01/01"), "2026/01/01");
 });
 
-test("formatCampDaySms is compact GSM-7 (no weekday)", () => {
-  assert.equal(formatCampDaySms("2026-09-30"), "30 Sep 2026");
-  assert.equal(formatCampDaySms("2026-01-01"), "1 Jan 2026");
+test("formatCampDaySms is Devanagari months with ASCII digits", () => {
+  assert.equal(formatCampDaySms("2026-09-30"), "30 सितंबर 2026");
+  assert.equal(formatCampDaySms("2026-01-01"), "1 जनवरी 2026");
   assert.equal(formatCampDaySms("not-a-date"), "not-a-date");
 });
 

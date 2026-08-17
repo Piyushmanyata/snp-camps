@@ -145,9 +145,12 @@ async function seedCamp() {
       `insert into public.camps (id, name, is_active, venue) values ($1, $2, true, $3)`,
       [campId, `M2-1 Camp ${campId.slice(0, 8)}`, VENUE]
     );
+    const { rows: todayRows } = await client.query(
+      `select (timezone('Asia/Kolkata', now()))::date as d`,
+    );
     await client.query(
-      `insert into public.camp_days (id, camp_id, day_date, seat_limit) values ($1, $2, '2099-11-15', 100)`,
-      [futureDayId, campId]
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit, printing_open) values ($1, $2, $3, 100, true)`,
+      [futureDayId, campId, todayRows[0].d],
     );
     await client.query(`update public.camps set is_active = (id = $1)`, [campId]);
     await client.query("commit");

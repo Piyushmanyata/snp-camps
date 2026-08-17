@@ -25,6 +25,14 @@ import { DeskScan } from "@/components/desk-scan";
 import { SeatBoard } from "@/components/seat-board";
 import { AdminCamps } from "@/components/admin-camps";
 import { AdminCampDays } from "@/components/admin-camp-days";
+import type { OtScheduleRow } from "@/components/admin-ot-schedule";
+import { createClient } from "@/lib/supabase/server";
+import dynamic from "next/dynamic";
+
+const AdminOtSchedule = dynamic(
+  () =>
+    import("@/components/admin-ot-schedule").then((m) => m.AdminOtSchedule),
+);
 import { AdminSettingsPanel } from "@/components/admin-settings-panel";
 import { ChangePasswordLazySection } from "@/components/admin-optional-lazy";
 
@@ -67,6 +75,7 @@ export default async function AdminPage() {
   let days: CampDayStats[] = [];
   let seatsKnown = false;
   let leaderboard: StaffKpiRow[] = [];
+  let otDays: OtScheduleRow[] = [];
 
   if (active) {
     const [statsRes, seatsRes, leaderboardRes] = await Promise.all([
@@ -80,6 +89,11 @@ export default async function AdminPage() {
       days = seatsRes.data.days;
       seatsKnown = true;
     }
+    const supabase = await createClient();
+    const { data: otRows } = await supabase.rpc("list_ot_schedule_days", {
+      p_camp_id: active.id,
+    });
+    otDays = (otRows ?? []) as OtScheduleRow[];
   }
 
   const leadCount = leaderboard.filter((r) => r.role === "team_lead").length;
@@ -142,6 +156,9 @@ export default async function AdminPage() {
               <NavLink href="/admin/clinical-operators" variant="soft">
                 Clinical accounts
               </NavLink>
+              <NavLink href="/admin/manual-exceptions" variant="soft">
+                Manual exceptions
+              </NavLink>
             </div>
           </div>
           <div className="desk-inline-actions mt-4 gap-2.5 sm:grid-cols-2">
@@ -162,6 +179,9 @@ export default async function AdminPage() {
             </NavLink>
             <NavLink href="/admin/clinical-operators" variant="soft">
               Clinical Desk Accounts
+            </NavLink>
+            <NavLink href="/admin/manual-exceptions" variant="soft">
+              Manual exceptions
             </NavLink>
           </div>
         </Card>
@@ -204,6 +224,12 @@ export default async function AdminPage() {
                 </div>
                 <div className="border-t border-border pt-4">
                   <p className="mb-2 text-sm font-semibold text-foreground">
+                    OT schedule — {active.name}
+                  </p>
+                  <AdminOtSchedule campId={active.id} initialDays={otDays} />
+                </div>
+                <div className="border-t border-border pt-4">
+                  <p className="mb-2 text-sm font-semibold text-foreground">
                     All camps
                   </p>
                   <AdminCamps camps={camps} />
@@ -215,7 +241,7 @@ export default async function AdminPage() {
 
         {active ? (
           <div className="space-y-3 sm:space-y-4">
-            <DeskScan campId={active.id} />
+            <DeskScan campId={active.id} userRole="admin" />
 
             <CollapsibleSection
               title="Teams & leaderboards"

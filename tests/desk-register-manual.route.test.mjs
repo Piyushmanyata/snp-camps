@@ -27,7 +27,7 @@ function validBody(overrides = {}) {
     age: 50,
     address: "Sikar",
     phone: "9876543210",
-    reason: "QR unreadable after three tries",
+    reason: "QR unreadable after two tries",
     failedScanAttempts: 3,
     ...overrides,
   };
@@ -72,7 +72,7 @@ test("rejects non-UUID campDayId without calling RPC", async () => {
   const res = await POST(request(validBody({ campDayId: "not-a-uuid" })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session is invalid/);
+  assert.match(body.error.message, /Registration session galat hai/);
   assert.equal(rpcCalls, 0);
 });
 
@@ -88,7 +88,7 @@ test("rejects invalid gender without calling RPC", async () => {
   const res = await POST(request(validBody({ gender: "X" })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session is invalid/);
+  assert.match(body.error.message, /Registration session galat hai/);
   assert.equal(rpcCalls, 0);
 });
 
@@ -104,6 +104,60 @@ test("rejects age 200 without calling RPC", async () => {
   const res = await POST(request(validBody({ age: 200 })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session is invalid/);
+  assert.match(body.error.message, /Registration session galat hai/);
   assert.equal(rpcCalls, 0);
+});
+
+function mockRpc() {
+  let rpcCalls = 0;
+  let lastArgs = null;
+  __setServiceRoleClient({
+    rpc(_name, args) {
+      rpcCalls += 1;
+      lastArgs = args;
+      return Promise.resolve({
+        data: [{ id: USER_ID, reg_no: 1, full_name: "Ramesh Kumar" }],
+        error: null,
+      });
+    },
+  });
+  return {
+    get calls() {
+      return rpcCalls;
+    },
+    get args() {
+      return lastArgs;
+    },
+  };
+}
+
+test("accepts two failed scans from a volunteer", async () => {
+  signIn("volunteer");
+  const rpc = mockRpc();
+  const res = await POST(
+    request(validBody({ failedScanAttempts: 2 })),
+  );
+  assert.equal(res.status, 200);
+  assert.equal(rpc.calls, 1);
+  assert.equal(rpc.args.p_failed_scan_attempts, 2);
+});
+
+test("refuses a Clinical Desk Operator", async () => {
+  signIn("clinical_operator");
+  const rpc = mockRpc();
+  const res = await POST(request(validBody({ failedScanAttempts: 2 })));
+  const body = await res.json();
+  assert.equal(res.status, 403);
+  assert.equal(rpc.calls, 0);
+  assert.match(body.error.message, /Team Lead|staff|volunteer/i);
+});
+
+test("refuses a single failed scan", async () => {
+  signIn("volunteer");
+  const rpc = mockRpc();
+  const res = await POST(request(validBody({ failedScanAttempts: 1 })));
+  const body = await res.json();
+  assert.equal(res.status, 400);
+  assert.equal(rpc.calls, 0);
+  assert.match(body.error.message, /Do baar scan fail/i);
 });

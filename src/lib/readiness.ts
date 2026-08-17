@@ -44,7 +44,8 @@ export function integrationConfig(env: Record<string, string | undefined> = proc
       env.MSG91_AUTH_KEY?.trim() &&
         env.MSG91_SENDER_ID?.trim() &&
         (env.MSG91_DLT_TE_ID_REGISTRATION?.trim() || env.MSG91_TEMPLATE_REGISTRATION?.trim()) &&
-        (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()),
+        (env.MSG91_DLT_TE_ID_REMINDER?.trim() || env.MSG91_TEMPLATE_REMINDER?.trim()) &&
+        env.MSG91_TEMPLATE_DEFERRAL?.trim(),
     ),
     aadhaarPepper: Boolean(env.AADHAAR_HASH_PEPPER?.trim()),
     rateLimitSecret: Boolean(env.RATE_LIMIT_SECRET?.trim()),
