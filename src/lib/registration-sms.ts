@@ -1,5 +1,6 @@
 
 import { formatCampDaySms } from "@/lib/format-camp-day";
+import { assertSmsSegments } from "@/lib/sms-segments";
 import { sendMsg91TemplateSms } from "@/lib/msg91";
 import { normalizePhoneE164 } from "@/lib/phone";
 import {
@@ -11,80 +12,55 @@ import {
 } from "@/lib/sms-deliveries";
 
 export const REGISTRATION_SMS_DLT_TEMPLATE =
-  "SNP Camp: Reg #{#var#}. {#var#} pe aana, {#var#}. Slip rakhein. {#var#}";
+  "SNP नेत्र शिविर: पंजीकरण #{#var#}। {#var#} को {#var#} आएं। पर्ची रखें।";
 
-export const REGISTRATION_SMS_VAR_ORDER = [
-  "reg",
-  "date",
-  "venue",
-  "link",
-] as const;
+export const REGISTRATION_SMS_VAR_ORDER = ["reg", "date", "venue"] as const;
 
 export const SMS_VENUE_MAX = 35;
+export const DEVANAGARI_VENUE_FALLBACK = "स्थान बाद में";
 
-const GSM7_RE =
-  /^[\n\r !"#%&'()*+,\-./0-9:;<=>?@A-Z_a-z£¥èéùìòÇØøÅåÆæßÉ¤¡¿ÄÖÑÜ§äöñüà]*$/;
-
-export function isGsm7(text: string): boolean {
-  return GSM7_RE.test(text);
-}
-
-export function assertGsm7(text: string, label = "value"): string {
-  if (!isGsm7(text)) {
-    throw new Error(`${label} contains non-GSM-7 characters`);
-  }
-  return text;
-}
+const graphemes = new Intl.Segmenter("hi", { granularity: "grapheme" });
 
 export function truncateVenueForSms(venue: string): string {
-  const cleaned = venue.replace(/\s+/g, " ").trim() || "venue TBA";
-  const slice =
-    cleaned.length <= SMS_VENUE_MAX
-      ? cleaned
-      : cleaned.slice(0, SMS_VENUE_MAX);
+  const cleaned = venue.replace(/\s+/g, " ").trim() || DEVANAGARI_VENUE_FALLBACK;
   let out = "";
-  for (const ch of slice) {
-    if (isGsm7(ch)) out += ch;
+  for (const { segment } of graphemes.segment(cleaned)) {
+    if (out.length + segment.length > SMS_VENUE_MAX) break;
+    out += segment;
   }
-  return out || "venue TBA";
+  return out.trim() || DEVANAGARI_VENUE_FALLBACK;
 }
 
 export type RegistrationSmsVars = {
   regNo: number;
   dayDate: string;
   venue: string | null | undefined;
-  statusUrl: string;
 };
 
 export function fillRegistrationSms(input: RegistrationSmsVars): string {
   const vars = registrationSmsVariables(input);
   let i = 0;
-  return REGISTRATION_SMS_DLT_TEMPLATE.replace(/\{#var#\}/g, () => {
+  const text = REGISTRATION_SMS_DLT_TEMPLATE.replace(/\{#var#\}/g, () => {
     const key = REGISTRATION_SMS_VAR_ORDER[i++];
     return vars[key] ?? "";
   });
+  return assertSmsSegments(text, "registration");
 }
 
 export function registrationSmsVariables(
   input: RegistrationSmsVars,
 ): Record<(typeof REGISTRATION_SMS_VAR_ORDER)[number], string> {
   const reg = String(input.regNo);
-  assertGsm7(reg, "reg");
   const date = formatCampDaySms(input.dayDate);
-  assertGsm7(date, "date");
-  const venue = truncateVenueForSms(input.venue || "venue TBA");
-  assertGsm7(venue, "venue");
-  const link = String(input.statusUrl || "").trim();
-  assertGsm7(link, "link");
-  return { reg, date, venue, link };
+  const venue = truncateVenueForSms(input.venue || DEVANAGARI_VENUE_FALLBACK);
+  return { reg, date, venue };
 }
 
 export function maxLengthRegistrationInputs(): RegistrationSmsVars {
   return {
     regNo: 999999,
     dayDate: "2026-09-30",
-    venue: "A".repeat(SMS_VENUE_MAX),
-    statusUrl: "https://snp-camps.vercel.app/s/" + "a".repeat(32),
+    venue: "क".repeat(SMS_VENUE_MAX),
   };
 }
 
@@ -98,7 +74,7 @@ export function isMsg91Configured(): boolean {
 
 export type SmsFailureRecord = {
   at: string;
-  template: "registration" | "test" | "reminder";
+  template: "registration" | "test" | "reminder" | "deferral";
   detail: string;
   phoneLast4?: string;
 };
@@ -148,7 +124,6 @@ export async function sendRegistrationSms(
     regNo: number;
     dayDate: string;
     venue: string | null | undefined;
-    statusUrl: string;
     patientId?: string | null;
   },
   options: {
@@ -199,12 +174,13 @@ export async function sendRegistrationSms(
 
   let variables: Record<string, string>;
   try {
-    variables = registrationSmsVariables({
+    const smsInput = {
       regNo: input.regNo,
       dayDate: input.dayDate,
       venue: input.venue,
-      statusUrl: input.statusUrl,
-    });
+    };
+    fillRegistrationSms(smsInput);
+    variables = registrationSmsVariables(smsInput);
   } catch (err) {
     const detail =
       err instanceof Error ? err.message : "SMS variable build failed";
@@ -296,9 +272,4 @@ export async function sendRegistrationSms(
   }
 }
 
-export function statusUrlForToken(token: string): string {
-  const base = (
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
-  ).replace(/\/$/, "");
-  return `${base}/s/${token}`;
-}
+

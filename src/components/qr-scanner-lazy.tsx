@@ -19,4 +19,5 @@ export const QrScannerLazy = dynamic(
 export type QrScannerLazyProps = {
   campId: string | null;
   disabledReason?: string;
+  userRole?: string | null;
 };

@@ -22,6 +22,8 @@ import {
 } from "@/lib/patient-form-validate";
 import { printPrescriptionWithRetries, type DeskRpc } from "@/lib/desk-ops";
 import { formatCampDay, type CampDayStats, type QueueStatus } from "@/lib/types";
+import { useCampDeskLive } from "@/lib/use-camp-desk-live";
+import { deskPrintWindowOpen } from "@/lib/print-window";
 import {
   Button,
   Input,
@@ -33,6 +35,11 @@ import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
 import { AadhaarUsbInput } from "@/components/aadhaar-usb-input";
+import {
+  MANUAL_EXCEPTION_ATTEMPT_THRESHOLD,
+  manualExceptionUnlocked,
+  nextFailedScanAttempts,
+} from "@/lib/manual-exception-attempts";
 import { validateHouseholdPhone } from "@/lib/phone";
 import { useToastedError } from "@/lib/use-toasted-error";
 
@@ -63,10 +70,12 @@ export function PatientForm({
   defaultPhone = "",
   createdBy = null,
   isStaff = false,
-  userRole = null,
 }: Props) {
   const todayIso = kolkataTodayIso();
-  const openDays = days.filter((d) => isDeskDaySelectable(d, todayIso));
+  const live = useCampDeskLive(campId, { days });
+  const liveDays = live.days.length ? live.days : days;
+  const printWindowOpen = deskPrintWindowOpen(liveDays);
+  const openDays = liveDays.filter((d) => isDeskDaySelectable(d, todayIso));
   const firstOpen = openDays[0]?.id || "";
 
   const [campDayId, setCampDayId] = useState(firstOpen);
@@ -79,6 +88,7 @@ export function PatientForm({
   const [phone, setPhone] = useState(defaultPhone);
   const phoneValidation = validateHouseholdPhone(phone);
   const [failedScanAttempts, setFailedScanAttempts] = useState(0);
+  const [manualEntry, setManualEntry] = useState(false);
   const [manualReason, setManualReason] = useState("");
   const [error, setError] = useToastedError(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -102,6 +112,7 @@ export function PatientForm({
     age: false,
     gender: false,
     aadhaarLast4: false,
+    address: false,
   });
 
   const isCardScanned = provenance === "card_scanned" || Boolean(scannedIdentity);
@@ -109,6 +120,7 @@ export function PatientForm({
   const isAgeLocked = isCardScanned && cardProvided.age;
   const isGenderLocked = isCardScanned && cardProvided.gender;
   const isAadhaarLocked = isCardScanned && cardProvided.aadhaarLast4;
+  const isAddressLocked = isCardScanned && cardProvided.address;
   const aadhaarOverrideOnceRef = useRef(false);
   const likelyOverrideOnceRef = useRef(false);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -166,10 +178,11 @@ export function PatientForm({
           age: false,
           gender: false,
           aadhaarLast4: false,
+          address: false,
         });
         setPartialScanDiagnostic(diagnostic);
         setScannedBanner(
-          "Aadhaar scan poora nahi hua. Dobara scan karein. 3 baar fail ho to Team Lead se kahein.",
+          "Aadhaar scan poora nahi hua. Dobara scan karein. 2 baar fail ho to manual entry karein.",
         );
         return false;
       }
@@ -180,6 +193,7 @@ export function PatientForm({
         age: true,
         gender: true,
         aadhaarLast4: true,
+        address: Boolean(parsed.address),
       });
       setScannedIdentity({
         fullName: parsed.fullName!,
@@ -202,18 +216,20 @@ export function PatientForm({
       return true;
   };
 
-  const scanner = useAadhaarScanner(onCardScanned);
+  const onFailedScan = useCallback(() => {
+    setFailedScanAttempts((count) =>
+      nextFailedScanAttempts(count, "failed-scan"),
+    );
+  }, []);
+
+  function resetScanAttempts() {
+    setFailedScanAttempts(nextFailedScanAttempts(0, "new-registration"));
+    setManualEntry(false);
+    setManualReason("");
+  }
+  const scanner = useAadhaarScanner(onCardScanned, onFailedScan);
   const { clearError: clearScanError } = scanner;
   const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
-  const lastDiagnostic = useRef<string | null>(null);
-  useEffect(() => {
-    if (scanDiagnostic && scanDiagnostic !== lastDiagnostic.current) {
-      lastDiagnostic.current = scanDiagnostic;
-      setFailedScanAttempts((count) => count + 1);
-    }
-  }, [scanDiagnostic]);
-
-  const [manualEntry, setManualEntry] = useState(false);
   const identityVisible = isCardScanned || manualEntry;
 
   const focusName = useCallback(() => {
@@ -289,7 +305,7 @@ export function PatientForm({
         email: "",
         aadhaar,
       },
-      days,
+      liveDays,
     );
 
     if (!validated.ok) {
@@ -316,15 +332,19 @@ export function PatientForm({
       setAadhaar("");
       setProvenance("self_declared");
       setScannedIdentity(null);
-    setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
+    setCardProvided({
+          fullName: false,
+          age: false,
+          gender: false,
+          aadhaarLast4: false,
+          address: false,
+        });
       setScannedBanner(null);
-      setManualEntry(false);
       setLegacyQrWarning(null);
       setPartialScanDiagnostic(null);
       clearScanError();
       scanner.setConsent(false);
-      setFailedScanAttempts(0);
-      setManualReason("");
+      resetScanAttempts();
       setLookupState("idle");
       setLookupMsg(null);
       setFieldErrors({});
@@ -593,17 +613,24 @@ export function PatientForm({
     setAadhaar("");
     setProvenance("self_declared");
     setScannedIdentity(null);
-    setCardProvided({ fullName: false, age: false, gender: false, aadhaarLast4: false });
+    setCardProvided({
+          fullName: false,
+          age: false,
+          gender: false,
+          aadhaarLast4: false,
+          address: false,
+        });
     setLookupState("idle");
     setLookupMsg(null);
     setFieldErrors({});
     setCampDayId(firstOpen);
+    resetScanAttempts();
     focusName();
     setLoading(false);
   }
 
   function moveDay(currentId: string, direction: -1 | 1) {
-    const selectable = days.filter((d) => isDeskDaySelectable(d, todayIso));
+    const selectable = liveDays.filter((d) => isDeskDaySelectable(d, todayIso));
     const currentIndex = selectable.findIndex((d) => d.id === currentId);
     if (currentIndex < 0 || selectable.length < 2) return;
     const next =
@@ -639,7 +666,7 @@ export function PatientForm({
     );
   }
 
-  if (!days.length) {
+  if (!liveDays.length) {
     return (
       <p className="text-sm text-muted">
         No camp days are available. Ask an admin to add them.
@@ -719,25 +746,18 @@ export function PatientForm({
           </div>
         ) : null}
 
-        {!identityVisible &&
-        failedScanAttempts >= 3 &&
-        (userRole === "team_lead" || userRole === "admin") ? (
+        {!identityVisible && manualExceptionUnlocked(failedScanAttempts) ? (
           <button
             type="button"
             data-testid="desk-manual-entry-escape"
             className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
             onClick={() => setManualEntry(true)}
           >
-            Team Lead manual entry (audit hoti hai)
+            Manual entry (audit hoti hai)
           </button>
         ) : null}
-        {!identityVisible && failedScanAttempts >= 3 && userRole === "volunteer" ? (
-          <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
-            Team Lead ko bulayein — volunteer manual entry nahi kar sakte.
-          </p>
-        ) : null}
         <p className="text-xs font-semibold text-muted">
-          Fail scan: {failedScanAttempts}/3
+          Fail scan: {failedScanAttempts}/{MANUAL_EXCEPTION_ATTEMPT_THRESHOLD}
         </p>
       </div>
       ) : (
@@ -755,7 +775,7 @@ export function PatientForm({
         </p>
       ) : null}
 
-      {printRecovery ? (
+      {printRecovery && printWindowOpen ? (
         <div
           role="status"
           data-testid="desk-print-recovery"
@@ -799,7 +819,7 @@ export function PatientForm({
             fieldErrors.campDay ? "patient-camp-day-error" : undefined
           }
         >
-          {days.map((d) => {
+          {liveDays.map((d) => {
             const active = campDayId === d.id;
             const selectable = isDeskDaySelectable(d, todayIso);
             const fullToday =
@@ -850,7 +870,7 @@ export function PatientForm({
           onChange={(e) => setCampDayId(e.target.value)}
         >
           <option value="">Select day…</option>
-          {days.map((d) => (
+          {liveDays.map((d) => (
             <option
               key={d.id}
               value={d.id}
@@ -1016,10 +1036,23 @@ export function PatientForm({
 
       <Input
         id="patient-address"
-        label="Address (optional)"
+        label={
+          isAddressLocked ? "Address (Aadhaar locked 🔒)" : "Address (optional)"
+        }
         error={fieldErrors.address}
         value={address}
-        onChange={(e) => setAddress(e.target.value)}
+        readOnly={isAddressLocked}
+        aria-readonly={isAddressLocked ? true : undefined}
+        data-locked={isAddressLocked ? "true" : undefined}
+        className={
+          isAddressLocked
+            ? "bg-slate-100 text-slate-700 font-medium cursor-not-allowed"
+            : ""
+        }
+        onChange={(e) => {
+          if (isAddressLocked) return;
+          setAddress(e.target.value);
+        }}
         placeholder="Area / locality"
         enterKeyHint="next"
       />
@@ -1055,17 +1088,23 @@ export function PatientForm({
             exists.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              disabled={loading}
-              loading={loading}
-              onClick={() => {
-                void printLikelyDuplicateInstead();
-              }}
-              data-testid="print-likely-duplicate"
-            >
-              Print for them instead
-            </Button>
+            {printWindowOpen ? (
+              <Button
+                type="button"
+                disabled={loading}
+                loading={loading}
+                onClick={() => {
+                  void printLikelyDuplicateInstead();
+                }}
+                data-testid="print-likely-duplicate"
+              >
+                Print for them instead
+              </Button>
+            ) : (
+              <p className="text-sm text-amber-950">
+                Print band hai. Admin se print window khulwaein.
+              </p>
+            )}
             <Button
               type="button"
               variant="secondary"

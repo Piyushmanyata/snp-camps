@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parsePatientIdFromQr, parseRegistrationNumber } from "@/lib/qr";
 import {
@@ -20,6 +20,16 @@ import { showSuccessToast } from "@/lib/toast-bus";
 import { useToastedError } from "@/lib/use-toasted-error";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 import { ClinicalRecordView } from "@/components/clinical-record-view";
+import {
+  CLINICAL_LINES,
+  CLINICAL_LINE_LABELS,
+  lineDecisions,
+  lineKind,
+  otherSpecsLine,
+  type ClinicalLine,
+} from "@/lib/clinical-line-map";
+import { needsOtScheduleDay, pickEarliestFreeOtDay } from "@/lib/ot-day-select";
+import { formatCampDay } from "@/lib/format-camp-day";
 
 type Patient = {
   id: string;
@@ -73,7 +83,7 @@ const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
 type ResolveKind = keyof typeof KIND_HEADINGS;
 
 const CLINICAL_ERRORS: Array<
-  [RegExp, string | ((kind: ResolveKind) => string)]
+  [RegExp, string | ((kind: ResolveKind, line?: ClinicalLine) => string)]
 > = [
   [
     /diagnos/i,
@@ -135,17 +145,27 @@ const CLINICAL_ERRORS: Array<
   [/seen transcription required/i, SAVE_FIRST],
   [
     /outcome conflict/i,
-    "Is item ka pehle se alag faisla hai. Admin se reverse karwayein.",
+    (kind, line) => {
+      const other = kind === "specs" && line ? otherSpecsLine(line) : null;
+      return other
+        ? `${CLINICAL_LINE_LABELS[other]} line ne pehle faisla kar diya. Admin se reverse karwayein.`
+        : "Is item ka pehle se alag faisla hai. Admin se reverse karwayein.";
+    },
   ],
   [
     /clinical operator only/i,
     "Sirf Clinical Desk Operator faisla save kar sakta hai.",
+  ],
+  [
+    /OT_SCHEDULE_FULL/i,
+    "Saari OT dates bhar gayi — admin se nayi date add karwayein.",
   ],
 ];
 
 function clinicalRefusal(
   message: string | null | undefined,
   kind?: ResolveKind,
+  line?: ClinicalLine,
 ): string {
   const text = message?.trim();
   if (!text) {
@@ -153,7 +173,7 @@ function clinicalRefusal(
   }
   const matched = CLINICAL_ERRORS.find(([pattern]) => pattern.test(text));
   const entry = matched?.[1];
-  if (typeof entry === "function") return kind ? entry(kind) : text;
+  if (typeof entry === "function") return kind ? entry(kind, line) : text;
   return entry ?? text;
 }
 
@@ -174,6 +194,31 @@ function outcomeLabel(outcome: string): string {
   return OUTCOME_LABELS[outcome] ?? outcome.replaceAll("_", " ");
 }
 
+const CLINICAL_LINE_KEY = "clinical-line";
+const DEFAULT_CLINICAL_LINE: ClinicalLine = "medicine";
+const clinicalLineListeners = new Set<() => void>();
+
+function subscribeClinicalLine(onChange: () => void): () => void {
+  clinicalLineListeners.add(onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    clinicalLineListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function readClinicalLine(): ClinicalLine {
+  const stored = window.localStorage.getItem(CLINICAL_LINE_KEY);
+  return CLINICAL_LINES.includes(stored as ClinicalLine)
+    ? (stored as ClinicalLine)
+    : DEFAULT_CLINICAL_LINE;
+}
+
+function writeClinicalLine(next: ClinicalLine): void {
+  window.localStorage.setItem(CLINICAL_LINE_KEY, next);
+  for (const listener of clinicalLineListeners) listener();
+}
+
 export function ClinicalDesk({
   canMutate = true,
   initialScan = null,
@@ -182,6 +227,12 @@ export function ClinicalDesk({
   initialScan?: string | null;
 }) {
   const supabase = createClient();
+  const line = useSyncExternalStore(
+    subscribeClinicalLine,
+    readClinicalLine,
+    () => DEFAULT_CLINICAL_LINE,
+  );
+  const setLine = writeClinicalLine;
   const [exact, setExact] = useState(initialScan ?? "");
   const [record, setRecord] = useState<Lookup | null>(null);
   const [followup, setFollowup] = useState<
@@ -219,6 +270,17 @@ export function ClinicalDesk({
   const [otEye, setOtEye] = useState("");
   const [otProcedure, setOtProcedure] = useState("");
   const [otNotes, setOtNotes] = useState("");
+  const [otDaysFailed, setOtDaysFailed] = useState(false);
+  const [otDays, setOtDays] = useState<
+    Array<{
+      id: string;
+      dayDate: string;
+      venue: string;
+      seatLimit: number;
+      seatsTaken: number;
+    }>
+  >([]);
+  const [otDayId, setOtDayId] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useToastedError(null);
@@ -342,7 +404,40 @@ export function ClinicalDesk({
     setOtEye(String(savedOt.eye ?? ""));
     setOtProcedure(String(savedOt.procedure ?? ""));
     setOtNotes(String(savedOt.notes ?? ""));
+    await loadOtDays(next.patient.camp_id);
     setBusy(false);
+  }
+
+  async function loadOtDays(campId: string) {
+    const { data, error: listError } = await supabase.rpc(
+      "list_ot_schedule_days",
+      { p_camp_id: campId },
+    );
+    if (listError || !data) {
+      setOtDays([]);
+      setOtDayId("");
+      setOtDaysFailed(true);
+      return;
+    }
+    setOtDaysFailed(false);
+    const rows = (
+      data as Array<{
+        id: string;
+        day_date: string;
+        venue: string;
+        seat_limit: number;
+        seats_taken: number;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      dayDate: String(row.day_date).slice(0, 10),
+      venue: row.venue,
+      seatLimit: Number(row.seat_limit),
+      seatsTaken: Number(row.seats_taken),
+    }));
+    setOtDays(rows);
+    const picked = pickEarliestFreeOtDay(rows);
+    setOtDayId(picked?.id ?? "");
   }
 
   useEffect(() => {
@@ -360,6 +455,7 @@ export function ClinicalDesk({
     },
     [],
   );
+
 
   async function lookupFollowup(
     value = exact,
@@ -571,6 +667,15 @@ export function ClinicalDesk({
       }
       unavailableList = validated.medicines;
     }
+    if (needsOtScheduleDay(kind, outcome, otDayId)) {
+      printTarget?.abandon();
+      setError(
+        otDaysFailed
+          ? "OT dates load nahi hui. Patient dobara kholein."
+          : "Saari OT dates bhar gayi — admin se nayi date add karwayein.",
+      );
+      return;
+    }
     const patientId = record.patient.id;
     const generation = lookupGenerationRef.current;
     setBusy(true);
@@ -580,11 +685,14 @@ export function ClinicalDesk({
       p_kind: kind,
       p_outcome: outcome,
       p_unavailable_medicines: unavailableList,
+      ...(kind === "ot" && outcome === "deferred"
+        ? { p_ot_schedule_day_id: otDayId }
+        : {}),
     });
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      setError(clinicalRefusal(rpcError.message, kind));
+      setError(clinicalRefusal(rpcError.message, kind, line));
     } else {
       const slip = (data as { slip?: { id?: string } } | null)?.slip;
       const navigated =
@@ -596,6 +704,11 @@ export function ClinicalDesk({
       const base = `${heading} ka faisla save ho gaya.`;
       if (slip?.id) {
         setLastSlipId(slip.id);
+        void fetch("/api/notify/deferral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slipId: slip.id }),
+        });
         setMessage(
           printTarget && !navigated ? `${base} ${BLOCKED_SLIP_SUFFIX}` : base,
         );
@@ -626,7 +739,7 @@ export function ClinicalDesk({
   }, [slipReplace]);
 
   function toggleDiagnosis(option: string) {
-    if (retiredDiagnoses.includes(option)) return;
+    if (retiredDiagnoses.includes(option) || record?.transcription?.id) return;
     setDiagnosisSelected((current) =>
       current.includes(option)
         ? current.filter((item) => item !== option)
@@ -635,6 +748,15 @@ export function ClinicalDesk({
   }
 
   const hasTranscription = Boolean(record?.transcription?.id);
+  const kind = lineKind(line);
+  const fields = canMutate
+    ? {
+        medicines: kind === "medicine",
+        specs: kind === "specs",
+        ot: kind === "ot",
+      }
+    : { medicines: true, specs: true, ot: true };
+  const openOtDays = otDays.filter((day) => day.seatsTaken < day.seatLimit);
   const selectClass =
     "mt-1 min-h-12 w-full rounded-xl border border-border bg-white px-3 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]";
 
@@ -651,6 +773,26 @@ export function ClinicalDesk({
       ) : null}
       <Card className="space-y-3">
         <SectionTitle>Marij dhundein</SectionTitle>
+        <div
+          className="flex flex-wrap gap-2"
+          data-testid="clinical-line-switcher"
+        >
+          <p className="w-full text-sm font-semibold">
+            Line: {CLINICAL_LINE_LABELS[line]}
+          </p>
+          {CLINICAL_LINES.map((item) => (
+            <Button
+              key={item}
+              type="button"
+              size="sm"
+              variant={item === line ? "secondary" : "ghost"}
+              data-testid={`clinical-line-${item}`}
+              onClick={() => setLine(item)}
+            >
+              {CLINICAL_LINE_LABELS[item]}
+            </Button>
+          ))}
+        </div>
         <form
           className="space-y-3"
           onSubmit={(event) => {
@@ -744,7 +886,7 @@ export function ClinicalDesk({
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={!canMutate}
+                        disabled={!canMutate || hasTranscription}
                         onChange={() => toggleDiagnosis(option)}
                       />
                       {option}
@@ -769,7 +911,7 @@ export function ClinicalDesk({
                   setDiagnosisOther(e.target.value);
                   setDiagnosisOtherEdited(true);
                 }}
-                disabled={!canMutate}
+                disabled={!canMutate || hasTranscription}
                 hint="Free text — commas se alag nahi hoga"
                 maxLength={120}
               />
@@ -781,7 +923,7 @@ export function ClinicalDesk({
                 label="Blood sugar (optional)"
                 value={bloodSugar}
                 onChange={(e) => setBloodSugar(e.target.value)}
-                disabled={!canMutate}
+                disabled={!canMutate || hasTranscription}
                 hint="mg/dL, 20–1000"
                 inputMode="decimal"
                 pattern="[0-9]+([.][0-9]+)?"
@@ -792,7 +934,7 @@ export function ClinicalDesk({
                 label="Blood pressure (optional)"
                 value={bloodPressure}
                 onChange={(e) => setBloodPressure(e.target.value)}
-                disabled={!canMutate}
+                disabled={!canMutate || hasTranscription}
                 hint="systolic/diastolic, e.g. 120/80"
                 inputMode="numeric"
                 pattern="[0-9]{2,3}/[0-9]{2,3}"
@@ -804,9 +946,10 @@ export function ClinicalDesk({
               label="Remarks / salaah"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              disabled={!canMutate}
+              disabled={!canMutate || hasTranscription}
               maxLength={2000}
             />
+            {fields.medicines ? (
             <Input
               id="clinical-medicines"
               label="Parchi ki dawaiyan"
@@ -815,6 +958,8 @@ export function ClinicalDesk({
               disabled={!canMutate}
               maxLength={2000}
             />
+            ) : null}
+            {fields.specs ? (
             <Card className="space-y-3">
               <SectionTitle>Chashme ka number (Specs)</SectionTitle>
               <label className="block text-sm font-semibold">
@@ -872,6 +1017,8 @@ export function ClinicalDesk({
                 pattern="[0-9]+([.][0-9]+)?"
               />
             </Card>
+            ) : null}
+            {fields.ot ? (
             <Card className="space-y-3">
               <SectionTitle>Operation (OT) detail</SectionTitle>
               <label className="block text-sm font-semibold">
@@ -907,6 +1054,7 @@ export function ClinicalDesk({
                 maxLength={1000}
               />
             </Card>
+            ) : null}
             {canMutate ? (
               <>
                 <Button
@@ -927,8 +1075,10 @@ export function ClinicalDesk({
             ) : null}
             </form>
           </Card>
-          <div className="grid gap-3 md:grid-cols-3">
-            {(Object.keys(OUTCOMES) as Array<keyof typeof OUTCOMES>).map((kind) => {
+          <div className="grid gap-3 md:grid-cols-1">
+            {(Object.keys(OUTCOMES) as Array<keyof typeof OUTCOMES>)
+              .filter((kind) => kind === lineKind(line))
+              .map((kind) => {
               const current = record.items.find((item) => item.kind === kind);
               const medicineNotAvailableOpen =
                 kind === "medicine" &&
@@ -942,6 +1092,31 @@ export function ClinicalDesk({
                       ? `Abhi tak: ${outcomeLabel(current.outcome)}`
                       : "Abhi tak: koi faisla nahi"}
                   </p>
+                  {kind === "ot" && canMutate && !current ? (
+                    openOtDays.length ? (
+                      <label className="block text-sm font-semibold">
+                        OT date
+                        <select
+                          className={selectClass}
+                          data-testid="ot-day-picker"
+                          value={otDayId}
+                          onChange={(event) => setOtDayId(event.target.value)}
+                        >
+                          {openOtDays.map((day) => (
+                            <option key={day.id} value={day.id}>
+                              {formatCampDay(day.dayDate)} · {day.venue} ·{" "}
+                              {day.seatLimit - day.seatsTaken} seats
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <p className="text-sm text-danger">
+                        Saari OT dates bhar gayi — admin se nayi date add
+                        karwayein.
+                      </p>
+                    )
+                  ) : null}
                   {canMutate && medicineNotAvailableOpen ? (
                     <div className="space-y-3">
                       <label
@@ -980,12 +1155,19 @@ export function ClinicalDesk({
                     </div>
                   ) : null}
                   {canMutate && !medicineNotAvailableOpen
-                    ? OUTCOMES[kind].map((outcome) => (
+                    ? lineDecisions(line).map((outcome) => (
                         <Button
                           key={outcome}
                           type="button"
                           variant="secondary"
-                          disabled={busy || Boolean(current) || !hasTranscription}
+                          disabled={
+                            busy ||
+                            Boolean(current) ||
+                            !hasTranscription ||
+                            (kind === "ot" &&
+                              outcome === "deferred" &&
+                              !otDayId)
+                          }
                           onClick={() => {
                             if (kind === "medicine" && outcome === "not_available") {
                               setMedicineIntent("not_available");

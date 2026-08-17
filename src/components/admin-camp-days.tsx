@@ -41,7 +41,9 @@ export function AdminCampDays({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
-  const mutationBusy = loading || savingId !== null || deletingId !== null;
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const mutationBusy =
+    loading || savingId !== null || deletingId !== null || togglingId !== null;
 
   async function refresh() {
     router.refresh();
@@ -145,6 +147,38 @@ export function AdminCampDays({
     }
   }
 
+  async function togglePrinting(dayId: string, nextOpen: boolean) {
+    if (mutationBusy) return;
+    setTogglingId(dayId);
+    setDayError(null);
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("set_camp_day_printing_open", {
+        p_day_id: dayId,
+        p_open: nextOpen,
+      });
+      if (err) {
+        setDayError({
+          dayId,
+          message: mapDbError(err, {
+            context: "admin-camp-days.printing-open",
+            fallback: "Could not update the print window. Try again.",
+          }),
+        });
+      } else {
+        await refresh();
+      }
+    } catch {
+      setDayError({
+        dayId,
+        message:
+          "Could not update the print window. Check your connection and try again.",
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function removeDay(dayId: string) {
     if (mutationBusy) return;
     if (!window.confirm("Delete this camp day? Only empty days can be deleted.")) {
@@ -223,6 +257,22 @@ export function AdminCampDays({
                   onClick={() => saveSeats(d.id, d.day_date, d.seats_taken)}
                 >
                   {savingId === d.id ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={d.printing_open ? "secondary" : "ghost"}
+                  size="sm"
+                  className="w-auto"
+                  disabled={mutationBusy}
+                  loading={togglingId === d.id}
+                  data-testid={`print-window-toggle-${d.id}`}
+                  onClick={() => togglePrinting(d.id, !d.printing_open)}
+                >
+                  {togglingId === d.id
+                    ? "Updating…"
+                    : d.printing_open
+                      ? "Close printing"
+                      : "Open printing"}
                 </Button>
                 <Button
                   type="button"

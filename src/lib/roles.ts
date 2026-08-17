@@ -29,7 +29,6 @@ export function roleHome(role?: UserRole | string | null) {
   if (role === "team_lead") return "/volunteer";
   if (role === "volunteer") return "/volunteer";
   if (role === "clinical_operator") return "/clinical";
-  // Patients do not authenticate (#59). Passwordless status is /s/<token>.
   return null;
 }
 

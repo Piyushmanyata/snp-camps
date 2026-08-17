@@ -14,7 +14,7 @@ fulfilment/follow-up history. See
 
 1. **Registration**
    - **Desk (staff):** Full name + age required; phone, Aadhaar last-4, gender, address optional. Scanning the card's QR fills the form and locks the identity fields.
-   - **Self-registration (patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, patient QR, camp day, venue, status link) is the receipt. Status is **always `registered`**. Needs only `AADHAAR_HASH_PEPPER`.
+   - **Self-registration (patient):** Patient scans the QR on their own Aadhaar card at `/self-register`. **No OTP, no eKYC provider, no registration SMS** — the confirmation screen (reg number, patient QR, camp day, venue) is the receipt. Status is **always `registered`**. Needs only `AADHAAR_HASH_PEPPER`.
 2. **Print prescription** → scan the patient QR or type the reg number. Printing prints the paper and **records presence once** (`printed_at`). It does not change status. A reprint — including for a `seen` patient — keeps the original `printed_at`, so it never looks like a second arrival.
 3. The doctor writes on the printed form by hand.
 4. **Clinical Desk:** a separate Clinical Desk Operator may transcribe the
@@ -22,7 +22,6 @@ fulfilment/follow-up history. See
    for an eligible `seen` registration. This operational record never replaces
    the paper prescription.
 5. **Mark seen** → scan or type the reg number. Refuses a Registration that was never printed for (`never_printed`). Records the time and the volunteer who scanned. A double scan is a no-op; a mis-scan can be undone for ten minutes, which restores `registered` and keeps `printed_at`.
-6. **Patient status (passwordless):** `/s/<token>` with no sign-in.
 
 Seat caps apply to **pre-registration only** — a walk-in at the desk is never turned away.
 
@@ -40,8 +39,10 @@ no doctor login role — see ADR 0008.
 **Patients** do not authenticate. Self-registration needs no OTP and creates no
 account or session; the Aadhaar card QR is parsed offline and assumed authentic (see
 [`docs/adr/0004-aadhaar-parsed-not-verified.md`](docs/adr/0004-aadhaar-parsed-not-verified.md)).
-Status tracking is passwordless via `/s/<token>`. The former desk-slip passcode +
-phone-OTP model is **superseded** (see
+There is no public status page. Recovery is desk name-search and Aadhaar
+re-scan (see
+[`docs/adr/0023-devanagari-sms-status-token-retired.md`](docs/adr/0023-devanagari-sms-status-token-retired.md)).
+The former desk-slip passcode + phone-OTP model is **superseded** (see
 [`docs/adr/0001-passcode-on-desk-slip.md`](docs/adr/0001-passcode-on-desk-slip.md)).
 Any future change to this model updates `README.md`, `CONTEXT.md`, and a new or
 amended ADR together — or none of them.
@@ -219,7 +220,7 @@ seconds before treating the result as a capacity signal.
 | Team Lead | Everything a volunteer does, plus creating volunteers on their team and seeing team KPIs |
 | Volunteer | Register, print prescription (records presence), mark seen |
 | Clinical Desk Operator | Eligible `seen` registration lookup, operational transcription, fulfilment and follow-up records; no registration-desk access |
-| Patient | No app login; self-registration by Aadhaar card scan; staff-scan QR; passwordless status at `/s/<token>` |
+| Patient | No app login; self-registration by Aadhaar card scan; staff-scan QR |
 
 ## Privacy
 
@@ -235,17 +236,14 @@ last four digits are stored.
 The scan is not cryptographically verified, so the data carries the same assurance as
 typing (ADR 0004). Set `AADHAAR_HASH_PEPPER` so scanned registrations can compute the
 Person duplicate key.
-The passwordless status page and status link contain only the registration number,
-`registered` / `seen`, camp/day and venue — **no position number**; they do not
-expose patient name, contact details, Aadhaar data, date of birth, or audit fields. Patients can use the public
-`/lookup` form to resolve a status link, but lookup is token resolution—not login.
+There is no public status page and no status token (ADR 0023).
 
 ### Registration SMS via MSG91 (optional)
 
-Transactional Hinglish SMS for **desk registrations only**, when the patient has a
+Transactional SMS for **desk registrations only**, when the patient has a
 phone. Two messages: one at registration, one the day before the camp. **No SMS for
-self-registrants** — a database trigger enforces this, because the registration SMS
-embeds a live status link. **No SMS for camp-day walk-ins.** SMS never blocks
+self-registrants** — a database trigger enforces this; recovery is desk
+name-search and Aadhaar re-scan. **No SMS for camp-day walk-ins.** SMS never blocks
 registration.
 
 Set:
@@ -258,6 +256,10 @@ MSG91_DLT_TE_ID_REMINDER=…        # (or MSG91_TEMPLATE_REMINDER) separate Flow
 AADHAAR_HASH_PEPPER=…             # Required Person HMAC secret (do not rotate during active camp)
 CRON_SECRET=…                     # Bearer secret for Vercel Cron (/api/cron/reminder-sms)
 ```
+
+ADR 0023 retires the status-link variable and replaces these templates with
+Devanagari, link-free wording (Phase 5 of the 2026-08-16 spec). The templates
+below are the ones currently registered with DLT:
 
 **Registration DLT template** (Roman script only — exact text, four `{#var#}` slots in
 order: **reg**, **date**, **venue**, **link**):

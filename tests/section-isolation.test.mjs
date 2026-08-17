@@ -347,7 +347,7 @@ test("admin page section loaders do not throw inside Suspense children", () => {
 
 test("volunteer page always mounts the scanner for a camp (no SectionLoadError gate)", () => {
   const volunteer = read("src/app/volunteer/page.tsx");
-  assert.match(volunteer, /<DeskScan\b/);
+  assert.match(volunteer, /<VolunteerDeskActions\b/);
   assert.match(volunteer, /<VolunteerDeskMore\b/);
   // The Live Queue panel is gone; seats load behind Aur dekhein (ADR 0013).
   assert.doesNotMatch(volunteer, /LiveQueue|loadQueueSection/);

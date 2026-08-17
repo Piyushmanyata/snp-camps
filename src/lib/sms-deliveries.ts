@@ -1,5 +1,11 @@
 
-export type SmsDeliveryKind = "registration" | "reminder";
+export type SmsDeliveryKind =
+  | "registration"
+  | "reminder"
+  | "spectacles_deferral"
+  | "surgery_deferral"
+  | "spectacles_deferral_t1"
+  | "surgery_deferral_t1";
 export type SmsDeliveryOutcome = "sent" | "failed" | "ambiguous" | "release";
 
 export type SmsClaim = {
@@ -78,7 +84,7 @@ export async function markSmsDispatchStarted(
 
 export type SmsDeliveryIssue = {
   at: string;
-  template: "registration" | "reminder" | "test";
+  template: "registration" | "reminder" | "test" | "deferral";
   detail: string;
   phoneLast4?: string;
   state?: string;
@@ -101,9 +107,11 @@ export async function listRecentSmsDeliveryIssues(
   }>;
   return rows.map((r) => ({
     at: r.at,
-    template: (r.template === "reminder" ? "reminder" : "registration") as
-      | "registration"
-      | "reminder",
+    template: (r.template === "reminder"
+      ? "reminder"
+      : r.template === "deferral"
+        ? "deferral"
+        : "registration") as "registration" | "reminder" | "deferral",
     detail: String(r.detail || "").slice(0, 300),
     phoneLast4: r.phone_last4 ?? undefined,
     state: r.state,

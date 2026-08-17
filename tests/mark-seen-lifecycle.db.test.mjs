@@ -190,8 +190,8 @@ async function seedCampFutureDay() {
       [campId, `Assign lifecycle ${campId.slice(0, 8)}`, VENUE],
     );
     await client.query(
-      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, '2099-07-15', 50)`,
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit, printing_open)
+       values ($1, $2, (timezone('Asia/Kolkata', now()))::date, 50, true)`,
       [dayId, campId],
     );
     await client.query("commit");

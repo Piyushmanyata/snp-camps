@@ -1,7 +1,7 @@
 
 export const READINESS_CONTRACT_VERSION = 10;
 
-export const EXPECTED_MIGRATION_HEAD = "20260814100000";
+export const EXPECTED_MIGRATION_HEAD = "20260816240000";
 
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
 
@@ -33,6 +33,7 @@ export const REQUIRED_TABLES = [
   "fulfilment_items",
   "fulfilment_events",
   "deferred_slips",
+  "ot_schedule_days",
   "prescription_template_versions",
   "sponsor_assets",
   "aadhaar_extraction_events",
@@ -41,11 +42,11 @@ export const REQUIRED_TABLES = [
 export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   patients: [
     "id",
-    "status_token",
     "queue_status",
     "printed_at",
     "seen_at",
     "seen_by",
+    "confirmation_override_actor",
     "reg_no",
     "camp_id",
     "camp_day_id",
@@ -66,9 +67,11 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     "duplicate_key",
     "aadhaar_locked_at",
     "name_locked_at",
+    "address_locked_at",
+    "merged_into",
   ],
   camps: ["id", "name", "is_active", "venue", "prescription_template"],
-  camp_days: ["id", "camp_id", "day_date", "seat_limit"],
+  camp_days: ["id", "camp_id", "day_date", "seat_limit", "printing_open"],
   profiles: ["id", "role", "disabled_at", "team_lead_id"],
   sms_deliveries: [
     "id",
@@ -99,11 +102,13 @@ export const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   fulfilment_items: [
     "id", "transcription_id", "kind", "outcome", "current_version",
     "resolved_by", "resolved_at", "unavailable_medicines",
+    "ot_schedule_day_id",
   ],
   fulfilment_events: [
     "id", "item_id", "event", "from_outcome", "to_outcome", "reason",
     "created_by", "created_at",
   ],
+  ot_schedule_days: ["id", "camp_id", "day_date", "venue", "seat_limit"],
   deferred_slips: [
     "id", "item_id", "reference", "version", "service", "date_snapshot",
     "venue_snapshot", "issued_by", "issued_at", "status", "replaced_by",
@@ -129,6 +134,8 @@ export const REQUIRED_FUNCTIONS = [
   "clinical_save_transcription",
   "clinical_add_correction",
   "clinical_resolve_item",
+  "upsert_ot_schedule_day",
+  "list_ot_schedule_days",
   "clinical_followup_fulfil",
   "clinical_followup_lookup",
   "clinical_slip_by_id",
@@ -143,14 +150,14 @@ export const REQUIRED_FUNCTIONS = [
   "audit_scanned_aadhaar_registration",
   "latest_applied_migration",
   "readiness_catalog_probe",
-  "patient_status_by_token",
   "upsert_camp_day",
+  "set_camp_day_printing_open",
+  "confirm_manual_exception_aadhaar",
   "register_patient_idempotent",
   "mark_patient_printed",
   "lookup_patient_scan",
   "mark_seen",
   "undo_mark_seen",
-  "lookup_patient_status_token",
   "consume_public_rate_limit",
   "active_registration_id",
   "staff_person_kpis",
@@ -197,17 +204,20 @@ export const REQUIRED_INVARIANTS = [
 ] as const;
 
 export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
-  // Bearer status tokens are not selectable by ordinary authenticated sessions (#56).
-  patients_status_token_authenticated_select: false,
-  // Status page uses service_role only (#70).
-  patient_status_by_token_authenticated_execute: false,
-  patient_status_by_token_anon_execute: false,
-  patient_status_by_token_service_role_execute: true,
   // SMS ledger is service/staff RPC only; no direct authenticated table select (#65).
   sms_deliveries_authenticated_select: false,
   claim_sms_delivery_service_role_execute: true,
   complete_sms_delivery_service_role_execute: true,
   upsert_camp_day_authenticated_execute: true,
+  set_camp_day_printing_open_authenticated_execute: true,
+  set_camp_day_printing_open_anon_execute: false,
+  upsert_ot_schedule_day_authenticated_execute: true,
+  upsert_ot_schedule_day_anon_execute: false,
+  list_ot_schedule_days_authenticated_execute: true,
+  list_ot_schedule_days_anon_execute: false,
+  confirm_manual_exception_aadhaar_authenticated_execute: false,
+  confirm_manual_exception_aadhaar_anon_execute: false,
+  confirm_manual_exception_aadhaar_service_role_execute: true,
   mark_patient_printed_authenticated_execute: true,
   lookup_patient_scan_authenticated_execute: true,
   search_desk_patients_authenticated_execute: true,
@@ -216,9 +226,6 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   mark_seen_anon_execute: false,
   undo_mark_seen_authenticated_execute: true,
   register_patient_idempotent_authenticated_execute: true,
-  lookup_patient_status_token_anon_execute: false,
-  lookup_patient_status_token_authenticated_execute: false,
-  lookup_patient_status_token_service_role_execute: true,
   consume_public_rate_limit_anon_execute: false,
   consume_public_rate_limit_authenticated_execute: false,
   consume_public_rate_limit_service_role_execute: true,
@@ -281,14 +288,21 @@ export const SMS_DELIVERY_STATES = [
   "ambiguous",
 ] as const;
 
-export const SMS_DELIVERY_KINDS = ["registration", "reminder"] as const;
+export const SMS_DELIVERY_KINDS = [
+  "registration",
+  "reminder",
+  "spectacles_deferral",
+  "surgery_deferral",
+  "spectacles_deferral_t1",
+  "surgery_deferral_t1",
+] as const;
 
 export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =
   {
     database_reachability:
       "Database did not answer within the readiness budget. Check Supabase status and service-role configuration.",
     required_configuration:
-      "AADHAAR_HASH_PEPPER is required for stable Person identity, and RATE_LIMIT_SECRET is required for durable public rate limiting. Without RATE_LIMIT_SECRET every /s/<token> status link returns 404 and self-registration and patient lookup fail closed. Configure the existing production values; never rotate the pepper during an active Camp.",
+      "AADHAAR_HASH_PEPPER is required for stable Person identity, and RATE_LIMIT_SECRET is required for durable public rate limiting. Self-registration fails closed without RATE_LIMIT_SECRET. Configure the existing production values; never rotate the pepper during an active Camp.",
     migration_head_discovery:
       "Could not read the applied migration ledger. Treat the environment as not ready until discovery succeeds.",
     applied_head_agreement:
@@ -296,7 +310,7 @@ export const CHECK_OPERATOR_HINTS: Readonly<Record<ReadinessCheckId, string>> =
     schema_contract:
       "A runtime-critical table, column, or function from the readiness contract is missing. Re-run clean migration replay on a disposable database and compare heads.",
     rpc_grants:
-      "Least-privilege grant expectations failed (status token, status RPC, SMS ledger, or staff RPCs). Review recent privilege migrations; do not widen grants casually.",
+      "Least-privilege grant expectations failed (SMS ledger or staff RPCs). Review recent privilege migrations; do not widen grants casually.",
     patients_realtime_absent:
       "patients appears in the supabase_realtime publication. Product is poll-only after #56; drop the table from the publication.",
     sms_ledger:

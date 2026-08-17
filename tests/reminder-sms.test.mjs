@@ -7,7 +7,6 @@ import {
   REMINDER_SMS_DLT_TEMPLATE,
   REMINDER_SMS_VAR_ORDER,
   fillReminderSms,
-  isGsm7,
   isMsg91ReminderConfigured,
   isReminderEligible,
   kolkataDateIso,
@@ -25,25 +24,16 @@ test("DLT reminder template is fixed with {#var#} slots in order", () => {
     (REMINDER_SMS_DLT_TEMPLATE.match(/\{#var#\}/g) || []).length,
     REMINDER_SMS_VAR_ORDER.length,
   );
-  assert.ok(REMINDER_SMS_DLT_TEMPLATE.includes("Kal aana"));
-  assert.ok(REMINDER_SMS_DLT_TEMPLATE.includes("Reg #"));
-  assert.ok(REMINDER_SMS_DLT_TEMPLATE.includes("Slip rakhein"));
+  assert.ok(REMINDER_SMS_DLT_TEMPLATE.includes("स्मरण"));
+  assert.ok(REMINDER_SMS_DLT_TEMPLATE.includes("आएं"));
+  assert.doesNotMatch(REMINDER_SMS_DLT_TEMPLATE, /https?:\/\//);
 });
 
-test("max-length rendered reminder SMS is <=160 GSM-7 chars", () => {
+test("max-length rendered reminder SMS is Devanagari and link-free", () => {
   const text = fillReminderSms(maxLengthReminderInputs());
-  assert.ok(isGsm7(text), `non-GSM-7: ${JSON.stringify(text)}`);
-  assert.ok(
-    text.length <= 160,
-    `length ${text.length} > 160: ${JSON.stringify(text)}`,
-  );
-  assert.match(text, /Reg #\d+/);
-  assert.match(text, /Kal aana/);
-  assert.match(text, /pe aana/);
-  // No URL required for usefulness on a button phone.
+  assert.match(text, /999999/);
+  assert.match(text, /आएं/);
   assert.ok(!text.includes("http"));
-  // Record exact max string for closing evidence.
-  console.log("REMINDER_MAX_SMS", text.length, text);
 });
 
 test("kolkataDateIso anchors tomorrow in Asia/Kolkata", () => {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSessionProfile, isStaff, roleHome } from "@/lib/auth";
 import { getActiveCampSnapshotFresh } from "@/lib/camp";
+import { deskPrintWindowOpen } from "@/lib/print-window";
 import { Card, EmptyState, Shell } from "@/components/ui";
 import { PatientForm } from "@/components/patient-form";
 import { SignOutButton } from "@/components/sign-out";
@@ -15,13 +16,20 @@ export default async function RegisterPage() {
 
   const deskHref = roleHome(role) || "/";
 
+  const campPreview = staff ? await getActiveCampSnapshotFresh() : null;
+  const volunteerWindowOpen = deskPrintWindowOpen(campPreview?.days || []);
   const staffDock =
     role === "volunteer" || role === "team_lead"
-      ? [
-          { href: "/register", label: "Register", primary: true as const },
-          { href: "/volunteer", label: "Desk" },
-          { href: "/volunteer#scan", label: "Scan" },
-        ]
+      ? volunteerWindowOpen
+        ? [
+            { href: "/register", label: "Register", primary: true as const },
+            { href: "/volunteer", label: "Desk" },
+            { href: "/volunteer#scan", label: "Scan" },
+          ]
+        : [
+            { href: "/register", label: "Register", primary: true as const },
+            { href: "/volunteer", label: "Desk" },
+          ]
       : role === "admin"
         ? [
             { href: "/register", label: "Register", primary: true as const },
@@ -60,7 +68,7 @@ export default async function RegisterPage() {
     );
   }
 
-  const camp = await getActiveCampSnapshotFresh();
+  const camp = campPreview;
   const days = camp?.days || [];
 
   return (

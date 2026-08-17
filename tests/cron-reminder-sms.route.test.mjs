@@ -61,6 +61,19 @@ test("cron with valid secret runs job (empty candidates)", async () => {
             },
           };
         }
+        if (table === "deferred_slips") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    eq: async () => ({ data: [], error: null }),
+                  };
+                },
+              };
+            },
+          };
+        }
         return {
           select() {
             return {

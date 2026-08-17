@@ -16,7 +16,7 @@ test("sendMsg91TemplateSms posts flow payload with authkey header", async () => 
       templateId: "tpl-1",
       senderId: "SNPCP",
       authKey: "secret-key",
-      variables: { reg: "12", date: "30 Sep 2026", venue: "Hall", link: "https://x/s/t" },
+      variables: { reg: "12", date: "30 सितंबर 2026", venue: "Hall" },
     },
     {
       fetchImpl: async (input, options) => {
@@ -53,7 +53,7 @@ test("sendMsg91TemplateSms maps HTTP errors without throwing", async () => {
       templateId: "tpl-1",
       senderId: "SNPCP",
       authKey: "secret-key",
-      variables: { reg: "1", date: "1 Jan 2026", venue: "H", link: "https://x/s/t" },
+      variables: { reg: "1", date: "1 जनवरी 2026", venue: "H" },
     },
     {
       fetchImpl: async () =>

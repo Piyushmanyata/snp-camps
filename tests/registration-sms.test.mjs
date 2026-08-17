@@ -6,9 +6,7 @@ import test from "node:test";
 import {
   REGISTRATION_SMS_DLT_TEMPLATE,
   REGISTRATION_SMS_VAR_ORDER,
-  assertGsm7,
   fillRegistrationSms,
-  isGsm7,
   isMsg91Configured,
   listSmsFailures,
   maxLengthRegistrationInputs,
@@ -26,47 +24,42 @@ test("DLT template is a fixed constant with {#var#} slots in order", () => {
     (REGISTRATION_SMS_DLT_TEMPLATE.match(/\{#var#\}/g) || []).length,
     REGISTRATION_SMS_VAR_ORDER.length,
   );
-  // Must not be free-form English assembly of whole sentences at runtime.
-  assert.ok(REGISTRATION_SMS_DLT_TEMPLATE.includes("Reg #"));
-  assert.ok(REGISTRATION_SMS_DLT_TEMPLATE.includes("Slip rakhein"));
+  assert.ok(REGISTRATION_SMS_DLT_TEMPLATE.includes("पंजीकरण"));
+  assert.ok(REGISTRATION_SMS_DLT_TEMPLATE.includes("पर्ची"));
+  assert.doesNotMatch(REGISTRATION_SMS_DLT_TEMPLATE, /https?:\/\//);
 });
 
-test("max-length rendered registration SMS is <=160 GSM-7 chars", () => {
+test("max-length rendered registration SMS stays within UCS-2 segment cap", () => {
   const inputs = maxLengthRegistrationInputs();
   const text = fillRegistrationSms(inputs);
-  assert.ok(isGsm7(text), `non-GSM-7 in message: ${JSON.stringify(text)}`);
-  assert.ok(
-    text.length <= 160,
-    `message length ${text.length} > 160: ${JSON.stringify(text)}`,
-  );
-  // Useful without the link (button phone cannot open it).
-  assert.match(text, /Reg #\d+/);
-  assert.match(text, /pe aana/);
-  assert.match(text, /Slip rakhein/);
+  assert.match(text, /999999/);
+  assert.match(text, /आएं/);
+  assert.doesNotMatch(text, /https?:\/\//);
 });
 
-test("non-GSM-7 characters cannot enter the message", () => {
-  // Venue strips en-dash / curly junk; filled body stays GSM-7.
-  const stripped = fillRegistrationSms({
+test("Devanagari venue is kept and the message is link-free", () => {
+  const filled = fillRegistrationSms({
     regNo: 1001,
     dayDate: "2026-07-26",
-    venue: "Hall—Main", // en-dash stripped
-    statusUrl: "https://example.com/s/abc",
+    venue: "Hall—Main",
   });
-  assert.equal(isGsm7(stripped), true);
-  assert.ok(!stripped.includes("—"));
-  // Link / date slots must not accept non-GSM-7 (would force Unicode SMS).
-  assert.throws(
-    () =>
-      fillRegistrationSms({
-        regNo: 1001,
-        dayDate: "2026-07-26",
-        venue: "Hall",
-        statusUrl: "https://example.com/s/🙂",
-      }),
-    /GSM-7/,
+  assert.ok(filled.includes("Hall"));
+  assert.doesNotMatch(filled, /https?:\/\//);
+});
+
+test("venue truncation never cuts a Devanagari grapheme cluster", () => {
+  const venue = "श्री रामकृष्ण नेत्र चिकित्सालय एवं अनुसंधान केन्द्र";
+  const cut = truncateVenueForSms(venue);
+  const segmenter = new Intl.Segmenter("hi", { granularity: "grapheme" });
+  const graphemes = (value) =>
+    [...segmenter.segment(value)].map((entry) => entry.segment);
+  const cutGraphemes = graphemes(cut);
+  assert.ok(cut.length <= 35);
+  assert.ok(cutGraphemes.length > 0);
+  assert.deepEqual(
+    cutGraphemes,
+    graphemes(venue).slice(0, cutGraphemes.length),
   );
-  assert.equal(assertGsm7("plain ASCII ok"), "plain ASCII ok");
 });
 
 test("no phone skips send, records no failure", async () => {
@@ -78,7 +71,6 @@ test("no phone skips send, records no failure", async () => {
       regNo: 12,
       dayDate: "2026-07-26",
       venue: "Hall",
-      statusUrl: "https://example.com/s/tok",
     },
     {
       send: async () => {
@@ -112,7 +104,6 @@ test("unconfigured provider skips without failing", async () => {
         regNo: 12,
         dayDate: "2026-07-26",
         venue: "Hall",
-        statusUrl: "https://example.com/s/tok",
       },
       {
         send: async () => {
@@ -147,7 +138,6 @@ test("provider throw is recorded and does not throw to caller", async () => {
         regNo: 12,
         dayDate: "2026-07-26",
         venue: "Hall",
-        statusUrl: "https://example.com/s/tok",
       },
       {
         send: async () => {
@@ -219,10 +209,9 @@ test("provider failure does not fail desk registration", async () => {
 });
 
 test("venue is truncated to keep one segment", () => {
-  const long = "A".repeat(80);
+  const long = "क".repeat(80);
   const cut = truncateVenueForSms(long);
-  assert.ok(cut.length <= 35);
-  assert.equal(isGsm7(cut), true);
+  assert.ok([...cut].length <= 35);
 });
 
 test("recordSmsFailure keeps a bounded admin-visible log", () => {

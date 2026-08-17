@@ -4,6 +4,7 @@ import {
   createReminderJobStore,
   runDayBeforeReminders,
 } from "@/lib/reminder-sms";
+import { runDayBeforeDeferralSms } from "@/lib/deferral-sms";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
@@ -46,10 +47,14 @@ async function handleCron(request: Request) {
   try {
     const store = createReminderJobStore(supabase);
     const summary = await runDayBeforeReminders(store);
-    if (!summary.ok) {
-      return NextResponse.json(summary, { status: 500 });
+    const deferral = await runDayBeforeDeferralSms(supabase);
+    if (!summary.ok || !deferral.ok) {
+      return NextResponse.json(
+        { ...summary, deferral },
+        { status: 500 },
+      );
     }
-    return NextResponse.json(summary);
+    return NextResponse.json({ ...summary, deferral });
   } catch (err) {
     const detail = err instanceof Error ? err.message : "reminder job failed";
     console.error("[reminder-sms] unexpected", detail.slice(0, 300));

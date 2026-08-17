@@ -52,7 +52,7 @@ function skipIfNoDb(t) {
   return false;
 }
 
-async function seedCampWithDay(dayDate = "2099-09-01") {
+async function seedCampWithDay(dayDate) {
   const campId = randomUUID();
   const dayId = randomUUID();
   await client.query("begin");
@@ -66,10 +66,17 @@ async function seedCampWithDay(dayDate = "2099-09-01") {
        values ($1, $2, true, 'likely-dup-test')`,
       [campId, `Likely dup camp ${campId.slice(0, 8)}`],
     );
+    const resolvedDate =
+      dayDate ??
+      (
+        await client.query(
+          `select (timezone('Asia/Kolkata', now()))::date as d`,
+        )
+      ).rows[0].d;
     await client.query(
-      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, $3::date, 50)`,
-      [dayId, campId, dayDate],
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit, printing_open)
+       values ($1, $2, $3::date, 50, true)`,
+      [dayId, campId, resolvedDate],
     );
     await client.query("commit");
   } catch (err) {

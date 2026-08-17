@@ -27,6 +27,7 @@ import {
   type MarkSeenRow,
 } from "@/lib/desk-ops";
 import { Button, ErrorBox, Input } from "@/components/ui";
+import { AadhaarConfirmation } from "@/components/aadhaar-confirmation";
 import { showSuccessToast } from "@/lib/toast-bus";
 import { useToastedError } from "@/lib/use-toasted-error";
 
@@ -67,9 +68,11 @@ function loadJsQr(): Promise<JsQrFn> {
 export function QrScanner({
   campId,
   disabledReason,
+  userRole = null,
 }: {
   campId: string | null;
   disabledReason?: string;
+  userRole?: string | null;
 }) {
   const router = useRouter();
   const uid = useId().replace(/:/g, "");
@@ -83,6 +86,7 @@ export function QrScanner({
   const [lookup, setLookup] = useState<LookupRow | null>(null);
   const [seen, setSeen] = useState<MarkSeenRow | null>(null);
   const [busy, setBusy] = useState<null | "print" | "seen" | "undo">(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const assigning = busy !== null;
 
   const handledRef = useRef(false);
@@ -223,11 +227,35 @@ export function QrScanner({
   );
 
   const printPrescription = useCallback(
-    async (row: LookupRow) => {
+    async (row: LookupRow, skipConfirm = false) => {
       if (assigningRef.current) return;
       assigningRef.current = true;
       setBusy("print");
       setError(null);
+
+      if (!skipConfirm) {
+        const gate = await fetch("/api/desk/aadhaar-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patientId: row.id, mode: "inspect" }),
+        });
+        const json = (await gate.json()) as {
+          data: { outcome?: string } | null;
+          error: { message: string } | null;
+        };
+        if (!gate.ok || !json.data) {
+          setError(json.error?.message || "Confirmation check failed.");
+          assigningRef.current = false;
+          setBusy(null);
+          return;
+        }
+        if (json.data.outcome === "needs_scan") {
+          assigningRef.current = false;
+          setBusy(null);
+          setConfirmingId(row.id);
+          return;
+        }
+      }
 
       const outcome = await printPrescriptionWithRetries({
         patientId: row.id,
@@ -1004,6 +1032,17 @@ export function QrScanner({
             </div>
           ) : null}
 
+          {confirmingId === lookup.id ? (
+            <AadhaarConfirmation
+              patientId={lookup.id}
+              canOverride={userRole === "admin" || userRole === "team_lead"}
+              onConfirmed={() => {
+                setConfirmingId(null);
+                void printPrescription(lookup, true);
+              }}
+              onCancel={() => setConfirmingId(null)}
+            />
+          ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -1042,6 +1081,7 @@ export function QrScanner({
               Galat patient
             </Button>
           </div>
+          )}
         </div>
       ) : null}
 

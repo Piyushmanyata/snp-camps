@@ -4,7 +4,13 @@ import { useRef } from "react";
 import { Button } from "@/components/ui";
 import type { AadhaarScanner } from "@/components/use-aadhaar-scanner";
 
-export function AadhaarUsbInput({ scanner }: { scanner: AadhaarScanner }) {
+export function AadhaarUsbInput({
+  scanner,
+  requireConsent = true,
+}: {
+  scanner: AadhaarScanner;
+  requireConsent?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const read = () => {
     const payload = inputRef.current?.value ?? "";
@@ -33,7 +39,9 @@ export function AadhaarUsbInput({ scanner }: { scanner: AadhaarScanner }) {
           type="password"
           autoComplete="off"
           inputMode="none"
-          disabled={!scanner.hasConsent || scanner.isReadingUsb}
+          disabled={
+            (requireConsent && !scanner.hasConsent) || scanner.isReadingUsb
+          }
           className="min-h-12 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 font-mono"
           aria-label="USB Aadhaar scanner input"
           onKeyDown={(event) => {
@@ -45,7 +53,9 @@ export function AadhaarUsbInput({ scanner }: { scanner: AadhaarScanner }) {
         <Button
           type="button"
           size="sm"
-          disabled={!scanner.hasConsent || scanner.isReadingUsb}
+          disabled={
+            (requireConsent && !scanner.hasConsent) || scanner.isReadingUsb
+          }
           loading={scanner.isReadingUsb}
           onClick={read}
         >

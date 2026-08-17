@@ -418,15 +418,19 @@ export default async function globalSetup() {
     createdCampId = camp.id;
     process.env.E2E_CAMP_ID = camp.id;
 
-    const dayDate = new Date(Date.now() + 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+    const dayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
     const createdDay = await admin
       .from("camp_days")
       .insert({
         camp_id: camp.id,
         day_date: dayDate,
         seat_limit: 100,
+        printing_open: true,
       })
       .select("id")
       .single();

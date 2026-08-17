@@ -162,8 +162,8 @@ async function seedCampWithDays({ futureDate = "2099-06-15" } = {}) {
     );
     const today = todayRows[0].d;
     await client.query(
-      `insert into public.camp_days (id, camp_id, day_date, seat_limit)
-       values ($1, $2, $3, 50), ($4, $2, $5, 50)`,
+      `insert into public.camp_days (id, camp_id, day_date, seat_limit, printing_open)
+       values ($1, $2, $3, 50, false), ($4, $2, $5, 50, true)`,
       [futureDayId, campId, futureDate, todayDayId, today],
     );
     await client.query("commit");

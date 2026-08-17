@@ -9,7 +9,6 @@ import {
   roleHome,
 } from "@/lib/auth";
 import {
-  ActionCard,
   Card,
   ErrorBox,
   NavLink,
@@ -17,7 +16,9 @@ import {
 } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 import { mapDbError } from "@/lib/public-error";
-import { DeskScan } from "@/components/desk-scan";
+import { VolunteerDeskActions } from "@/components/volunteer-desk-actions";
+import { deskPrintWindowOpen } from "@/lib/print-window";
+import type { CampDayStats } from "@/lib/types";
 import { AdminStaff } from "@/components/admin-staff";
 import { VolunteerDeskMore } from "@/components/volunteer-desk-more";
 import type { StaffPerson } from "@/components/staff-detail";
@@ -128,6 +129,12 @@ export default async function VolunteerPage() {
       : null,
   ]);
 
+  const { data: dayStats } = camp
+    ? await supabase.rpc("camp_day_stats", { p_camp_id: camp.id })
+    : { data: [] as CampDayStats[] };
+  const seedDays = (dayStats || []) as CampDayStats[];
+  const printWindowOpen = deskPrintWindowOpen(seedDays);
+
   let campErrorMsg: string | null = null;
   if (campError) {
     campErrorMsg = mapDbError(campError, {
@@ -153,16 +160,26 @@ export default async function VolunteerPage() {
       title="Volunteer desk"
       subtitle={
         profile?.full_name
-          ? `${profile.full_name} · ${teamLead ? "Team Lead Desk" : "Register · Print · Scan"}`
-          : "Register · Print · Scan"
+          ? `${profile.full_name} · ${
+              teamLead ? "Team Lead Desk" : printWindowOpen
+                ? "Register · Print · Scan"
+                : "Register"
+            }`
+          : printWindowOpen
+            ? "Register · Print · Scan"
+            : "Register"
       }
       width="xl"
       roleLabel={teamLead ? "Team Lead" : "Volunteer"}
       actions={<SignOutButton place="header" />}
-      dock={[
-        { href: "/register", label: "Register", primary: true },
-        { href: "#scan", label: "Scan patient" },
-      ]}
+      dock={
+        printWindowOpen
+          ? [
+              { href: "/register", label: "Register", primary: true },
+              { href: "#scan", label: "Scan patient" },
+            ]
+          : [{ href: "/register", label: "Register", primary: true }]
+      }
     >
       <div className="space-y-3 sm:space-y-4">
         {campErrorMsg ? <ErrorBox message={campErrorMsg} /> : null}
@@ -180,17 +197,10 @@ export default async function VolunteerPage() {
           ) : null}
         </Card>
 
-        <ActionCard
-          href="/register"
-          title="Naya marij register karein"
-          description="Naam, phone, Aadhaar — phir parchi print"
-          variant="primary"
-          disabled={!camp}
-          disabledReason="Koi active camp nahi. Admin se camp chalu karwayein."
-        />
-
-        <DeskScan
+        <VolunteerDeskActions
           campId={camp?.id ?? null}
+          seedDays={seedDays}
+          userRole={profile?.role ?? null}
           noCampReason={
             camp
               ? undefined

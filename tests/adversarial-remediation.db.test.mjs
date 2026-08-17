@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
 import { createHash, randomUUID } from "node:crypto";
+import { MANUAL_EXCEPTION_ATTEMPT_THRESHOLD } from "../src/lib/manual-exception-attempts.ts";
 
 const DATABASE_URL =
   process.env.SNP_TEST_DATABASE_URL ||
@@ -348,6 +349,94 @@ test("register_manual_exception returns narrow projection without status_token",
   }
 });
 
+async function callManualException({
+  actorId,
+  campId,
+  dayId,
+  attempts,
+  reason = "scanner failed in field",
+}) {
+  await client.query("begin");
+  try {
+    await client.query(
+      `select set_config('request.jwt.claim.role', 'service_role', true)`,
+    );
+    const result = await client.query(
+      `select * from public.register_manual_exception(
+         $1::uuid, $2::uuid, $3::uuid,
+         'Manual Exception Patient', 'Manual Ex',
+         'M', 55, 'Manual address', '9876501999',
+         $4, $5::int, $6::uuid
+       )`,
+      [randomUUID(), campId, dayId, reason, attempts, actorId],
+    );
+    await client.query("commit");
+    return { ok: true, row: result.rows[0] };
+  } catch (err) {
+    await client.query("rollback");
+    return { ok: false, message: String(err.message || err) };
+  }
+}
+
+test("register_manual_exception accepts a volunteer at the TypeScript threshold", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const today = await todayInKolkata();
+  const actorId = await seedStaff("volunteer");
+  const { campId, dayId } = await seedCampWithDay(today, 20);
+  try {
+    const result = await callManualException({
+      actorId,
+      campId,
+      dayId,
+      attempts: MANUAL_EXCEPTION_ATTEMPT_THRESHOLD,
+    });
+    assert.equal(result.ok, true, result.message);
+    assert.ok(result.row?.id);
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(actorId);
+  }
+});
+
+test("register_manual_exception refuses a Clinical Desk Operator", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const today = await todayInKolkata();
+  const actorId = await seedStaff("clinical_operator");
+  const { campId, dayId } = await seedCampWithDay(today, 20);
+  try {
+    const result = await callManualException({
+      actorId,
+      campId,
+      dayId,
+      attempts: MANUAL_EXCEPTION_ATTEMPT_THRESHOLD,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /staff/i);
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(actorId);
+  }
+});
+
+test("register_manual_exception refuses fewer attempts than the TypeScript threshold", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const today = await todayInKolkata();
+  const actorId = await seedStaff("team_lead");
+  const { campId, dayId } = await seedCampWithDay(today, 20);
+  try {
+    const result = await callManualException({
+      actorId,
+      campId,
+      dayId,
+      attempts: MANUAL_EXCEPTION_ATTEMPT_THRESHOLD - 1,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /invalid manual exception evidence/i);
+  } finally {
+    await cleanupCamp(campId);
+    await cleanupStaff(actorId);
+  }
+});
 
 test("exactly one register_patient_idempotent and no register_patient_v2", async (t) => {
   if (skipIfNoDb(t)) return;
