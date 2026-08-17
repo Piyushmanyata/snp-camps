@@ -27,7 +27,7 @@ function clearRateLimits() {
 
 function healthRequest(path, ip) {
   return new Request(`http://127.0.0.1${path}`, {
-    headers: { "x-forwarded-for": ip },
+    headers: { "x-vercel-forwarded-for": ip },
   });
 }
 

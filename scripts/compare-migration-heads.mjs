@@ -37,8 +37,24 @@ function repoHeads() {
   return {
     count: files.length,
     head: files.length ? files[files.length - 1].slice(0, 14) : null,
+    headFile: files.length ? files[files.length - 1] : null,
     files: files.map((f) => f.slice(0, 14)),
   };
+}
+
+// latest_applied_migration() returns a hard-coded literal that the head
+// migration has to bump; readiness compares it against the ledger. The DB check
+// below catches a stale one, but only when Postgres is reachable — so read the
+// literal out of the head migration file too, and catch it with no Docker.
+function headMigrationProbeLiteral(headFile) {
+  const text = fs.readFileSync(
+    path.join(root, "supabase", "migrations", headFile),
+    "utf8",
+  );
+  const m = text.match(
+    /FUNCTION\s+public\.latest_applied_migration\s*\(\s*\)[\s\S]*?SELECT\s*'(\d{14})'/i,
+  );
+  return m ? m[1] : null;
 }
 
 function contractExpectedHead() {
@@ -131,6 +147,17 @@ async function main() {
     exit = 1;
   } else if (expected === repo.head) {
     console.log("OK: contract head matches repository head");
+  }
+
+  const probeLiteral = headMigrationProbeLiteral(repo.headFile);
+  console.log(`head_probe_sql:  ${probeLiteral ?? "(absent)"}`);
+  if (probeLiteral === repo.head) {
+    console.log("OK: head migration bumps latest_applied_migration()");
+  } else {
+    console.error(
+      `FAIL: ${repo.headFile} must redefine latest_applied_migration() to return '${repo.head}' (found ${probeLiteral ?? "no definition"}). Readiness compares this literal against the ledger, so a stale one fails test:db with a head mismatch.`,
+    );
+    exit = 1;
   }
 
   let local = null;

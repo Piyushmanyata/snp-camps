@@ -37,6 +37,30 @@ test("name + age + household phone succeeds", () => {
   assert.equal(result.values.aadhaarLast4, null);
 });
 
+test("a whitespace age is refused, not coerced to 0", () => {
+  const result = validatePatientForm(draft({ age: " " }), days);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.field, "age");
+});
+
+test("an exponent or hex age is refused, not coerced", () => {
+  for (const age of ["1e2", "0x40", "4.0", "+7"]) {
+    const result = validatePatientForm(draft({ age }), days);
+    assert.equal(result.ok, false, `expected ${age} to be refused`);
+  }
+});
+
+test("a camp day id absent from the day list is refused", () => {
+  const result = validatePatientForm(
+    draft({ campDayId: "33333333-3333-4333-8333-333333333333" }),
+    days,
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.field, "campDay");
+});
+
 test("missing name fails", () => {
   const result = validatePatientForm(draft({ fullName: "  " }), days);
   assert.equal(result.ok, false);

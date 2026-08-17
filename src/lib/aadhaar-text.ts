@@ -47,6 +47,18 @@ export function parseDateOfBirth(
     return null;
   }
 
+  // day <= 31 alone accepts 31/02. A bogus DOB reaches derivePersonDuplicateKey
+  // and is stored, so the same card rescanned with a real DOB keys differently
+  // and registers a second person. Round-trip to reject impossible calendar days.
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
   return `${year.toString().padStart(4, "0")}-${month
     .toString()
     .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;

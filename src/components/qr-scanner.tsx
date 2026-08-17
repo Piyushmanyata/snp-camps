@@ -234,17 +234,28 @@ export function QrScanner({
       setError(null);
 
       if (!skipConfirm) {
-        const gate = await fetch("/api/desk/aadhaar-confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patientId: row.id, mode: "inspect" }),
-        });
-        const json = (await gate.json()) as {
+        // A dropped field hotspot rejects here. Without the catch the guard is
+        // never released and every desk action stays dead until a reload.
+        let gate: Response;
+        let json: {
           data: { outcome?: string } | null;
           error: { message: string } | null;
         };
+        try {
+          gate = await fetch("/api/desk/aadhaar-confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patientId: row.id, mode: "inspect" }),
+          });
+          json = await gate.json();
+        } catch {
+          setError("Aadhaar check nahi ho paya. Dobara try karein.");
+          assigningRef.current = false;
+          setBusy(null);
+          return;
+        }
         if (!gate.ok || !json.data) {
-          setError(json.error?.message || "Confirmation check failed.");
+          setError("Aadhaar check nahi ho paya. Dobara try karein.");
           assigningRef.current = false;
           setBusy(null);
           return;
@@ -271,8 +282,9 @@ export function QrScanner({
         return;
       }
 
-      assigningRef.current = false;
-      setBusy(null);
+      // Stay guarded across the navigation. Releasing before these awaits left
+      // the Print button live and unguarded while it was still on screen, so a
+      // second tap printed the slip twice and re-attributed printed_at.
       await stopScanner();
       router.push(`/print/${row.id}?auto=1`);
     },
