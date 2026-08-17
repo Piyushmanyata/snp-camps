@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -76,6 +77,21 @@ function livePayload(printingOpen: boolean) {
   };
 }
 
+async function setPrintingOpen(printingOpen: boolean) {
+  const admin = createClient(
+    env("E2E_SUPABASE_URL"),
+    env("E2E_SUPABASE_SERVICE_ROLE_KEY"),
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const updated = await admin
+    .from("camp_days")
+    .update({ printing_open: printingOpen })
+    .eq("id", env("E2E_CAMP_DAY_ID"));
+  if (updated.error) {
+    throw new Error(`printing_open update failed: ${updated.error.message}`);
+  }
+}
+
 async function mockDeskLive(page: Page, printingOpen: boolean) {
   await page.route("**/api/desk/live**", async (route) => {
     await route.fulfill({
@@ -134,12 +150,16 @@ test("a team lead sees the same print window as a volunteer", async ({
 test("the print URL renders a refusal card while the window is closed", async ({
   page,
 }) => {
-  await mockDeskLive(page, false);
   await loginStaff(page, "volunteer");
-  await gotoHydrated(page, `/print/${env("E2E_PATIENT_ID")}`);
-  await expect(page.getByText("Print band hai")).toBeVisible();
-  await expect(
-    page.getByText("Admin se print window khulwaein"),
-  ).toBeVisible();
-  await expect(page.getByTestId("prescription-sheet")).toHaveCount(0);
+  await setPrintingOpen(false);
+  try {
+    await gotoHydrated(page, `/print/${env("E2E_PATIENT_ID")}`);
+    await expect(page.getByText("Print band hai")).toBeVisible();
+    await expect(
+      page.getByText("Admin se print window khulwaein"),
+    ).toBeVisible();
+    await expect(page.getByTestId("prescription-sheet")).toHaveCount(0);
+  } finally {
+    await setPrintingOpen(true);
+  }
 });
