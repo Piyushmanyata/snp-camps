@@ -155,7 +155,6 @@ async function seedCampPatient(status = "registered") {
   const campId = randomUUID();
   const dayId = randomUUID();
   const patientId = randomUUID();
-  const token = (randomUUID() + randomUUID()).replace(/-/g, "").slice(0, 32);
   await client.query("begin");
   try {
     await client.query("select pg_advisory_xact_lock(918273659)");
@@ -176,12 +175,12 @@ async function seedCampPatient(status = "registered") {
     await client.query(
       `insert into public.patients (
          id, camp_id, camp_day_id, reg_no, full_name, gender, age,
-         phone, queue_status, status_token
+         phone, queue_status
        ) values (
-         $1, $2, $3, $5, 'Auth Retire Patient', 'M', 40,
-         '9999000111', $6, $4
+         $1, $2, $3, $4, 'Auth Retire Patient', 'M', 40,
+         '9999000111', $5
        )`,
-      [patientId, campId, dayId, token, regNo, status],
+      [patientId, campId, dayId, regNo, status],
     );
     await client.query("commit");
   } catch (err) {

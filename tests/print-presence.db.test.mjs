@@ -487,14 +487,12 @@ test("no desk RPC writes waiting or queued_at", async (t) => {
   const { campId, todayDayId, futureDayId } = await seedCampWithDays();
 
   const walkIn = await register(campId, todayDayId, "No Line Walkin", staffId);
-  const preReg = await register(campId, futureDayId, "No Line PreReg", staffId);
+  await register(campId, futureDayId, "No Line PreReg", staffId);
 
   await asStaff(staffId, async () => {
-    for (const id of [walkIn.id, preReg.id]) {
-      await client.query(`select * from public.mark_patient_printed($1, null)`, [
-        id,
-      ]);
-    }
+    await client.query(`select * from public.mark_patient_printed($1, null)`, [
+      walkIn.id,
+    ]);
     await client.query(`select * from public.mark_seen($1, null)`, [walkIn.id]);
     await client.query(`select * from public.undo_mark_seen($1)`, [walkIn.id]);
   });
@@ -553,68 +551,28 @@ test("a residual waiting row is still markable seen on presence alone", async (t
   assert.equal(seen.queue_status, "seen");
 });
 
-test("status token exposes no position and no waiting metric", async (t) => {
-  if (skipIfNoDb(t)) return;
-  const { rows: cols } = await client.query(
-    `select a.attname
-       from pg_proc p
-       join pg_namespace n on n.oid = p.pronamespace
-       join unnest(p.proallargtypes, p.proargmodes, p.proargnames)
-         as a(atttype, attmode, attname) on true
-      where n.nspname = 'public'
-        and p.proname = 'patient_status_by_token'
-        and a.attmode = 't'`,
-  );
-  const names = cols.map((c) => c.attname);
-  assert.ok(names.length > 0, "expected a table-returning signature");
-  assert.ok(
-    !names.includes("queue_position"),
-    `status token must not return a position, got ${JSON.stringify(names)}`,
-  );
-  assert.ok(names.includes("queue_status"));
-  assert.ok(names.includes("camp_name"));
-  assert.ok(names.includes("venue"));
-  assert.ok(names.includes("day_date"));
-});
-
-test("status token reports registered then seen for a real patient", async (t) => {
+test("printing a future camp day is refused while its window is closed", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedStaffVolunteer();
-  const { campId, todayDayId } = await seedCampWithDays();
-  const patient = await register(campId, todayDayId, "Token Patient", staffId);
+  const { campId, futureDayId } = await seedCampWithDays();
+  const preReg = await register(campId, futureDayId, "Future Day", staffId);
 
-  const { rows: tokenRows } = await client.query(
-    `select status_token from public.patients where id = $1`,
-    [patient.id],
-  );
-  const token = tokenRows[0].status_token;
-
-  const readToken = () =>
-    asServiceRole(async () => {
-      const { rows } = await client.query(
-        `select * from public.patient_status_by_token($1)`,
-        [token],
-      );
-      return rows[0];
-    });
-
-  assert.equal((await readToken()).queue_status, "registered");
-
-  await asStaff(staffId, async () => {
-    await client.query(`select * from public.mark_patient_printed($1, null)`, [
-      patient.id,
-    ]);
-  });
-  assert.equal(
-    (await readToken()).queue_status,
-    "registered",
-    "printing does not move the public status",
+  await assert.rejects(
+    () =>
+      asStaff(staffId, async () => {
+        await client.query(
+          `select * from public.mark_patient_printed($1, null)`,
+          [preReg.id],
+        );
+      }),
+    /PRINT_WINDOW_CLOSED/,
   );
 
-  await asStaff(staffId, async () => {
-    await client.query(`select * from public.mark_seen($1, null)`, [patient.id]);
-  });
-  assert.equal((await readToken()).queue_status, "seen");
+  const { rows } = await client.query(
+    `select printed_at from public.patients where id = $1`,
+    [preReg.id],
+  );
+  assert.equal(rows[0].printed_at, null);
 });
 
 test("staff KPIs no longer return a waiting column", async (t) => {

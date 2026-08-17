@@ -273,7 +273,6 @@ BEGIN
   );
 
   v_grants := jsonb_build_object(
-    'patients_status_token_authenticated_select', has_column_privilege('authenticated','public.patients','status_token','SELECT'),
     'patient_status_by_token_authenticated_execute', CASE WHEN to_regprocedure('public.patient_status_by_token(text)') IS NOT NULL THEN has_function_privilege('authenticated','public.patient_status_by_token(text)','EXECUTE') ELSE false END,
     'patient_status_by_token_anon_execute', CASE WHEN to_regprocedure('public.patient_status_by_token(text)') IS NOT NULL THEN has_function_privilege('anon','public.patient_status_by_token(text)','EXECUTE') ELSE false END,
     'patient_status_by_token_service_role_execute', CASE WHEN to_regprocedure('public.patient_status_by_token(text)') IS NOT NULL THEN has_function_privilege('service_role','public.patient_status_by_token(text)','EXECUTE') ELSE false END,

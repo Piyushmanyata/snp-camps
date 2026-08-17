@@ -4,6 +4,49 @@ DROP FUNCTION IF EXISTS public.patient_status_by_token(text);
 REVOKE ALL ON FUNCTION public.lookup_patient_status_token(integer, date) FROM PUBLIC, anon, authenticated, service_role;
 DROP FUNCTION IF EXISTS public.lookup_patient_status_token(integer, date);
 
+DROP FUNCTION IF EXISTS public.patient_registration_notify_fields(uuid);
+
+CREATE FUNCTION public.patient_registration_notify_fields(
+  p_patient_id uuid
+) RETURNS TABLE(
+  id uuid,
+  reg_no integer,
+  phone text,
+  venue text,
+  day_date date
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+BEGIN
+  IF NOT public.is_staff() THEN
+    RAISE EXCEPTION 'staff only';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.reg_no,
+    p.phone,
+    c.venue,
+    d.day_date
+  FROM public.patients AS p
+  JOIN public.camps AS c ON c.id = p.camp_id
+  JOIN public.camp_days AS d ON d.id = p.camp_day_id
+  WHERE p.id = p_patient_id
+    AND p.created_by IS NOT NULL
+    AND d.day_date > (timezone('Asia/Kolkata', now()))::date;
+END;
+$function$;
+
+ALTER FUNCTION public.patient_registration_notify_fields(uuid) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.patient_registration_notify_fields(uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.patient_registration_notify_fields(uuid)
+  TO authenticated, service_role;
+
 ALTER TABLE public.patients DROP COLUMN IF EXISTS status_token;
 
 CREATE OR REPLACE FUNCTION public.readiness_catalog_probe()

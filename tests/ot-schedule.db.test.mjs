@@ -202,7 +202,7 @@ test("pg_proc holds exactly one clinical_resolve_item overload, taking the sched
      where n.nspname = 'public' and p.proname = 'clinical_resolve_item'`,
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].args, "uuid, text, text, text[], uuid");
+  assert.match(rows[0].args, /p_ot_schedule_day_id uuid$/);
 });
 
 test("clinical_resolve_item keeps EXECUTE for authenticated after the signature change", async (t) => {

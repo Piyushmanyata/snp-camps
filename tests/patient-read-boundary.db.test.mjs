@@ -175,13 +175,13 @@ async function seedActiveCampPatient() {
     await client.query(
       `insert into public.patients (
          id, camp_id, camp_day_id, reg_no, full_name, gender, age,
-         address, phone, email, aadhaar_last4, queue_status, status_token
+         address, phone, email, aadhaar_last4, queue_status
        ) values (
-         $1, $2, $3, $5, 'Unrelated Patient', 'M', 44,
+         $1, $2, $3, $4, 'Unrelated Patient', 'M', 44,
          'Private Address Lane', '+919999000111', 'secret@example.test', '4321',
-         'waiting', $4
+         'waiting'
        )`,
-      [patientId, campId, dayId, hexToken, regNo],
+      [patientId, campId, dayId, regNo],
     );
     await client.query("commit");
   } catch (err) {
@@ -210,23 +210,22 @@ async function seedInactiveCampPatient() {
   await client.query(
     `insert into public.patients (
        id, camp_id, camp_day_id, reg_no, full_name, gender, age,
-       address, phone, email, aadhaar_last4, queue_status, status_token
+       address, phone, email, aadhaar_last4, queue_status
      ) values (
-       $1, $2, $3, $5, 'Inactive Camp Patient', 'F', 30,
+       $1, $2, $3, $4, 'Inactive Camp Patient', 'F', 30,
        'Hidden Road', '+919999000222', 'hidden@example.test', '9999',
-       'registered', $4
+       'registered'
      )`,
-    [patientId, campId, dayId, token, regNo],
+    [patientId, campId, dayId, regNo],
   );
   return { campId, patientId, token };
 }
 
-test("doctor cannot select unrelated patient PHI or status_token", async (t) => {
+test("doctor cannot select unrelated patient PHI", async (t) => {
   if (skipIfNoDb(t)) return;
   const doctorId = await seedProfile("doctor");
-  const { patientId, token } = await seedActiveCampPatient();
+  const { patientId } = await seedActiveCampPatient();
 
-  // PHI columns without status_token: RLS must hide the row entirely.
   const rows = await asAuthenticated(doctorId, async (c) => {
     const { rows: r } = await c.query(
       `select full_name, address, phone, email, aadhaar_last4
@@ -238,25 +237,6 @@ test("doctor cannot select unrelated patient PHI or status_token", async (t) => 
   });
 
   assert.equal(rows.length, 0, "doctor must not see unrelated patient rows");
-
-  // Column grant: status_token is not selectable by authenticated.
-  await asAuthenticated(doctorId, async (c) => {
-    await assert.rejects(
-      () =>
-        c.query(`select status_token from public.patients where id = $1`, [
-          patientId,
-        ]),
-      /permission denied|column/i,
-    );
-  });
-
-  // Prove token still exists for service/postgres (value redacted in evidence).
-  const { rows: proof } = await client.query(
-    `select length(status_token) as n from public.patients where id = $1`,
-    [patientId],
-  );
-  assert.equal(proof[0].n, 32);
-  assert.equal(token.length, 32);
 });
 
 test("non-admin staff cannot select patients directly, even on active camp", async (t) => {
@@ -274,19 +254,9 @@ test("non-admin staff cannot select patients directly, even on active camp", asy
     return r;
   });
   assert.equal(rows.length, 0);
-
-  await asAuthenticated(volunteerId, async (c) => {
-    await assert.rejects(
-      () =>
-        c.query(`select status_token from public.patients where id = $1`, [
-          patientId,
-        ]),
-      /permission denied|column/i,
-    );
-  });
 });
 
-test("admin can select active-camp patients but not status_token via table grant", async (t) => {
+test("admin can select active-camp patients", async (t) => {
   if (skipIfNoDb(t)) return;
   const adminId = await seedProfile("admin");
   const { patientId } = await seedActiveCampPatient();
@@ -299,16 +269,6 @@ test("admin can select active-camp patients but not status_token via table grant
     return r;
   });
   assert.equal(rows.length, 1);
-
-  await asAuthenticated(adminId, async (c) => {
-    await assert.rejects(
-      () =>
-        c.query(`select status_token from public.patients where id = $1`, [
-          patientId,
-        ]),
-      /permission denied|column/i,
-    );
-  });
 });
 
 test("disabled volunteer cannot select patients", async (t) => {
@@ -341,11 +301,11 @@ test("volunteer cannot select patients on inactive camp", async (t) => {
   assert.equal(rows.length, 0);
 });
 
-test("staff registration notify RPC returns status_token; doctor cannot", async (t) => {
+test("staff registration notify RPC carries no token; doctor cannot call it", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");
   const doctorId = await seedProfile("doctor");
-  const { patientId, token } = await seedActiveCampPatient();
+  const { patientId } = await seedActiveCampPatient();
   await client.query(
     `update public.patients set created_by = $1 where id = $2`,
     [volunteerId, patientId],
@@ -359,7 +319,7 @@ test("staff registration notify RPC returns status_token; doctor cannot", async 
     return r;
   });
   assert.equal(staffRows.length, 1);
-  assert.equal(staffRows[0].status_token, token);
+  assert.ok(!("status_token" in staffRows[0]));
   assert.ok(Number(staffRows[0].reg_no) >= 900000);
 
   await asAuthenticated(doctorId, async (c) => {

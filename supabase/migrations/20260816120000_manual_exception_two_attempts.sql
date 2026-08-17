@@ -1,3 +1,15 @@
+ALTER TABLE public.patients DROP CONSTRAINT IF EXISTS patients_manual_exception_check;
+ALTER TABLE public.patients ADD CONSTRAINT patients_manual_exception_check CHECK (
+  (provenance <> 'manual_exception' AND manual_exception_actor IS NULL
+    AND manual_exception_at IS NULL AND manual_exception_reason IS NULL
+    AND failed_scan_attempts IS NULL)
+  OR
+  (provenance = 'manual_exception' AND manual_exception_actor IS NOT NULL
+    AND manual_exception_at IS NOT NULL
+    AND nullif(btrim(manual_exception_reason), '') IS NOT NULL
+    AND failed_scan_attempts >= 2)
+);
+
 CREATE OR REPLACE FUNCTION public.register_manual_exception(
   p_request_id uuid,
   p_camp_id uuid,

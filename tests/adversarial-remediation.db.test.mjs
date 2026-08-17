@@ -334,13 +334,11 @@ test("register_manual_exception returns narrow projection without status_token",
       ["camp_day_id", "day_date", "full_name", "id", "queue_status", "reg_no"].sort(),
     );
 
-    // Token still exists on the row in DB, just must not appear in RPC payload.
     const { rows: stored } = await client.query(
-      `select status_token is not null as has_token, provenance, manual_exception_actor
+      `select provenance, manual_exception_actor
        from public.patients where id = $1`,
       [row.id],
     );
-    assert.equal(stored[0].has_token, true);
     assert.equal(stored[0].provenance, "manual_exception");
     assert.equal(stored[0].manual_exception_actor, actorId);
   } finally {
