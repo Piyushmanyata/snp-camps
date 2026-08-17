@@ -45,9 +45,9 @@ test("each clinical line station shows only its own decisions", async ({
   await page.getByTestId("clinical-line-fixed_power").click();
   await expect(page.getByText("Line: Ready chashma")).toBeVisible();
   await page.getByTestId("clinical-line-medicine").click();
-  await expect(page.getByText("Line: Medicine")).toBeVisible();
+  await expect(page.getByText("Line: Dawai")).toBeVisible();
   await page.getByTestId("clinical-line-ot").click();
-  await expect(page.getByText("Line: OT")).toBeVisible();
+  await expect(page.getByText("Line: Operation (OT)")).toBeVisible();
 });
 
 test("shared clinical fields are editable first then read-only after saving", async ({

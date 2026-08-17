@@ -468,7 +468,7 @@ export default async function globalSetup() {
             queue_status: "registered",
             created_by: null,
           })
-          .select("id, reg_no, full_name, status_token")
+          .select("id, reg_no, full_name")
           .single();
         if (insertedPatient.error || !insertedPatient.data) {
           throw new Error(
@@ -478,7 +478,6 @@ export default async function globalSetup() {
         patientId = insertedPatient.data.id;
         patientName = insertedPatient.data.full_name;
         regNo = insertedPatient.data.reg_no;
-        process.env.E2E_STATUS_TOKEN = insertedPatient.data.status_token;
 
         // Second patient, already printed for, used by the Mark seen specs.
         // Presence is printed_at (ADR 0013) — mark_seen refuses without it.

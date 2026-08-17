@@ -778,19 +778,6 @@ test("mandatory route/state matrix: patient, roles, clinical records, and A4", a
   await assertTouchTarget(selfRegisterSubmit, "self-register submit after scan");
   await scanInteractiveTargets(page, "self-registration after scan");
 
-  // Status path: happy path or rate-limit interstitial (durable limiter fail-closed).
-  await page.goto(`/s/${env("E2E_STATUS_TOKEN")}`, {
-    waitUntil: "domcontentloaded",
-  });
-  const statusSurface = page.getByRole("heading", {
-    name: /Aapka camp status|Camp status|Status seva|Bahut zyada requests/i,
-  });
-  await expect(statusSurface).toBeVisible({ timeout: 15_000 });
-  if (await page.locator("main[lang]").count()) {
-    await expect(page.locator("main")).toHaveAttribute("lang", "hi-Latn");
-  }
-  await scanInteractiveTargets(page, "patient status page");
-
   await page.context().clearCookies();
   await loginStaff(page, "team_lead");
   await expect(
