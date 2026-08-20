@@ -48,20 +48,27 @@ test("focus-visible ring and prefers-reduced-motion stay on", () => {
   assert.match(css, /\.pressable:active:not\(:disabled\)\s*\{\s*transform:\s*none/);
 });
 
-test("toasts clear the dock and the sticky submit bar", () => {
-  // The error toast persists until tapped. At bottom: 1rem it sat on top of
-  // the dock and the register submit bar — the two controls the desk needs.
-  assert.match(css, /\.app-toast\s*\{[^}]*position:\s*fixed/);
-  const raised = [
-    ...css.matchAll(
-      /body:has\(\.mobile-dock\)\s*\.app-toast,\s*body:has\(\.sticky-submit\)\s*\.app-toast\s*\{([^}]*)\}/g,
-    ),
-  ].map((match) => match[1]);
-  assert.ok(raised.length > 0, "no .app-toast dock offset rule");
-  assert.ok(
-    raised.some((body) => /bottom:\s*calc\(var\(--dock-height\)/.test(body)),
-    "toast is not raised above the dock / sticky submit bar",
+test("nothing floats into the phone bottom action band", () => {
+  // Measured at 375x812: with bottom: 0.25rem the primary Register + Print
+  // button sat entirely inside the dock band, so elementFromPoint at its
+  // centre returned the dock's Register link — taps navigated away and threw
+  // the typed form out. The sticky bar must clear the dock outright.
+  const stickyOverDock = css.match(
+    /\.has-mobile-dock \.sticky-submit \{([^}]*)\}/,
   );
+  assert.ok(stickyOverDock, "no .has-mobile-dock .sticky-submit rule");
+  assert.match(
+    stickyOverDock[1],
+    /bottom:\s*calc\(var\(--dock-height\)/,
+  );
+
+  // The error toast persists until tapped, so it must not be anchored into
+  // that same band on phones. Desktop has neither dock nor sticky bar.
+  const toast = css.match(/\.app-toast \{([^}]*)\}/);
+  assert.ok(toast, "no .app-toast rule");
+  assert.match(toast[1], /position:\s*fixed/);
+  assert.match(toast[1], /top:\s*calc\(/);
+  assert.doesNotMatch(toast[1], /bottom:/);
 });
 
 test("skip link + field Input errors use alert role", () => {

@@ -256,20 +256,16 @@ h3 {
   hyphens: auto;
 }
 
-/* Toasts must never sit on top of the dock or the sticky submit bar — the
-   error toast persists until tapped, and the actions under it are the whole
-   job of the desk. */
+/* The bottom band belongs to the dock and the register sticky submit bar.
+   The error toast persists until tapped, so on phones it is anchored to the
+   top rather than stacked above bars whose height it cannot measure.
+   Desktop has neither bar. */
 .app-toast {
   position: fixed;
   left: 1rem;
   right: 1rem;
   z-index: 60;
-  bottom: calc(1rem + var(--safe-bottom));
-}
-
-body:has(.mobile-dock) .app-toast,
-body:has(.sticky-submit) .app-toast {
-  bottom: calc(var(--dock-height) + 0.75rem + var(--safe-bottom));
+  top: calc(0.75rem + var(--safe-top));
 }
 
 /* Reserve space so content is not hidden under the dock */
@@ -286,8 +282,8 @@ body:has(.sticky-submit) .app-toast {
     padding-bottom: calc(2.5rem + var(--safe-bottom)) !important;
   }
 
-  body:has(.mobile-dock) .app-toast,
-  body:has(.sticky-submit) .app-toast {
+  .app-toast {
+    top: auto;
     bottom: calc(1rem + var(--safe-bottom));
   }
 }
@@ -414,7 +410,10 @@ body:has(.sticky-submit) .app-toast {
 }
 
 .has-mobile-dock .sticky-submit {
-  bottom: 0.25rem;
+  /* Clear the fixed dock. At 0.25rem the primary Register + Print button sat
+     entirely inside the dock band, so taps landed on the dock's Register link
+     and navigated away from the typed form. */
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 0.25rem);
 }
 
 @media (min-width: 1024px) {
