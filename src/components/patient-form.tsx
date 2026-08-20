@@ -78,7 +78,13 @@ export function PatientForm({
   const openDays = liveDays.filter((d) => isDeskDaySelectable(d, todayIso));
   const firstOpen = openDays[0]?.id || "";
 
-  const [campDayId, setCampDayId] = useState(firstOpen);
+  const [pickedDayId, setCampDayId] = useState(firstOpen);
+  // Days arrive from the live poll and can fill mid-shift. Deriving the
+  // selection keeps a tabbable chip in the radiogroup and stops the submit
+  // buttons locking up when the picked day is no longer selectable.
+  const campDayId = openDays.some((d) => d.id === pickedDayId)
+    ? pickedDayId
+    : firstOpen;
   const [aadhaar, setAadhaar] = useState("");
   const [fullName, setFullName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -256,7 +262,7 @@ export function PatientForm({
     }
     setLookupState(d.length >= 4 ? "skipped" : "idle");
     setLookupMsg(
-      d.length >= 4 ? "Optional · only the last 4 digits are stored." : null,
+      d.length >= 4 ? "Optional · sirf aakhri 4 digit store hote hain." : null,
     );
   }
 
@@ -428,7 +434,7 @@ export function PatientForm({
               data: null,
               error: {
                 message:
-                  "Registration service is unavailable. Check your connection and try again.",
+                  "Registration service band hai. Internet check karke dobara koshish karein.",
                 code: "NETWORK_ERROR",
               },
             };
@@ -462,7 +468,9 @@ export function PatientForm({
         } catch {
           return {
             data: null,
-            error: { message: "Manual registration service is unavailable." },
+            error: {
+              message: "Manual registration service band hai. Dobara koshish karein.",
+            },
           };
         }
       },
@@ -483,10 +491,10 @@ export function PatientForm({
         setPhase("registered-print-ready");
         const flash =
           print === "navigated"
-            ? `Reg #${row.reg_no} — registered. Print window open.`
+            ? `Reg #${row.reg_no} — register ho gaya. Print window open.`
             : print === "skipped"
-              ? `Reg #${row.reg_no} — registered. Print later from the patient list if needed.`
-              : `Reg #${row.reg_no} — registered. Print blocked — use Print below.`;
+              ? `Reg #${row.reg_no} — register ho gaya. Zaroorat ho to patient list se baad mein print karein.`
+              : `Reg #${row.reg_no} — register ho gaya. Print blocked — neeche Print dabayein.`;
         setFlash(flash);
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
@@ -597,8 +605,8 @@ export function PatientForm({
     });
     setFlash(
       printOpened
-        ? `Registration #${reg} — print window open. No duplicate was created.`
-        : `Registration #${reg} is recorded as present. Print blocked — use Print below. No duplicate was created.`,
+        ? `Registration #${reg} — print window open. Duplicate nahi bana.`
+        : `Registration #${reg} ka aana record ho gaya. Print blocked — neeche Print dabayein. Duplicate nahi bana.`,
     );
     setLikelyDuplicateRegNo(null);
     setAadhaarDuplicateRegNo(null);
@@ -669,7 +677,7 @@ export function PatientForm({
   if (!liveDays.length) {
     return (
       <p className="text-sm text-muted">
-        No camp days are available. Ask an admin to add them.
+        Koi camp day nahi hai. Admin se camp day add karwayein.
       </p>
     );
   }
@@ -677,8 +685,8 @@ export function PatientForm({
   if (!openDays.length) {
     return (
       <WarningBox>
-        All camp days are full. Wait for seats to open or ask an admin to
-        increase the limit.
+        Saare camp din full hain. Seat khaali hone ka intezaar karein ya admin se
+        limit badhwayein.
       </WarningBox>
     );
   }
@@ -789,8 +797,8 @@ export function PatientForm({
             </p>
             <p className="text-xs text-muted">
               {printRecovery.printNavigated
-                ? "Print window opened. Reprint anytime without re-registering."
-                : "Print was blocked or closed. Use Print — patient is already saved."}
+                ? "Print window khul gayi. Dobara register kiye bina kabhi bhi print kar sakte hain."
+                : "Print block ya band ho gaya. Print dabayein — marij save ho chuka hai."}
             </p>
           </div>
           <Button
@@ -800,7 +808,7 @@ export function PatientForm({
             data-testid="desk-print-recovery-button"
             onClick={openPrintRecovery}
           >
-            Print prescription
+            Parchi print karein
           </Button>
         </div>
       ) : null}
@@ -831,7 +839,7 @@ export function PatientForm({
                 type="button"
                 role="radio"
                 aria-checked={active}
-                tabIndex={active ? 0 : -1}
+                tabIndex={d.id === campDayId ? 0 : -1}
                 disabled={!selectable}
                 onClick={() => setCampDayId(d.id)}
                 onKeyDown={(e) => {
@@ -855,31 +863,12 @@ export function PatientForm({
                     ? "FULL · walk-in OK"
                     : d.is_full
                       ? "FULL"
-                      : `${d.seats_left} left`}
+                      : `${d.seats_left} seat baaki`}
                 </span>
               </button>
             );
           })}
         </div>
-        <select
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden
-          required
-          value={campDayId}
-          onChange={(e) => setCampDayId(e.target.value)}
-        >
-          <option value="">Select day…</option>
-          {liveDays.map((d) => (
-            <option
-              key={d.id}
-              value={d.id}
-              disabled={!isDeskDaySelectable(d, todayIso)}
-            >
-              {formatCampDay(d.day_date)}
-            </option>
-          ))}
-        </select>
         {fieldErrors.campDay ? (
           <p
             id="patient-camp-day-error"
@@ -1084,8 +1073,8 @@ export function PatientForm({
           className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
         >
           <p className="text-sm font-medium text-amber-950">
-            This looks like registration #{likelyDuplicateRegNo}, which already
-            exists.
+            Lagta hai yeh registration #{likelyDuplicateRegNo} hai, jo pehle se
+            bana hua hai.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             {printWindowOpen ? (
@@ -1098,7 +1087,7 @@ export function PatientForm({
                 }}
                 data-testid="print-likely-duplicate"
               >
-                Print for them instead
+                Unhi ki parchi print karein
               </Button>
             ) : (
               <p className="text-sm text-amber-950">
@@ -1114,7 +1103,7 @@ export function PatientForm({
                 formRef.current?.requestSubmit();
               }}
             >
-              Register anyway
+              Phir bhi register karein
             </Button>
           </div>
         </div>
@@ -1124,8 +1113,7 @@ export function PatientForm({
           <p className="text-sm text-amber-950">
             Conflict:{" "}
             <span className="font-bold tabular">#{aadhaarDuplicateRegNo}</span>.
-            The override will be recorded against your account and applies only
-            to this patient.
+            Override aapke account par record hoga aur sirf isi marij par lagega.
           </p>
           <Button
             type="button"
@@ -1137,7 +1125,7 @@ export function PatientForm({
               formRef.current?.requestSubmit();
             }}
           >
-            Override — different person
+            Override — alag insaan hai
           </Button>
         </div>
       ) : null}

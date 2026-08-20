@@ -155,7 +155,7 @@ export function PrintActions({
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">
           {statusCopy.heading}
         </p>
-        <p className="truncate text-base font-semibold">
+        <p className="break-words text-base font-semibold">
           {`${primary?.regNo != null ? `#${primary.regNo}` : "Parchi"}${
             primary?.name ? ` · ${primary.name}` : ""
           }`}

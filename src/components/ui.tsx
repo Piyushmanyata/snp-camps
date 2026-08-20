@@ -253,14 +253,8 @@ export function Button({
       className={`pressable inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-brand/40 ${sizes} ${styles} ${className}`}
       {...props}
     >
-      {loading ? (
-        <>
-          <Spinner className="h-4 w-4" />
-          <span>{typeof children === "string" ? children : "Working…"}</span>
-        </>
-      ) : (
-        children
-      )}
+      {loading ? <Spinner className="h-4 w-4" /> : null}
+      {children}
     </button>
   );
 }
@@ -348,6 +342,7 @@ export function Select({
   children,
   id,
   hint,
+  className = "",
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & {
   label: string;
@@ -366,7 +361,7 @@ export function Select({
       <select
         id={selectId}
         aria-describedby={hintId}
-        className="min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-card px-3.5 text-[1.0625rem] text-foreground outline-none transition-[border-color] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
+        className={`min-h-[3.25rem] w-full cursor-pointer rounded-xl border border-border bg-card px-3.5 text-[1.0625rem] text-foreground outline-none transition-[border-color] duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70 ${className}`}
         {...props}
       >
         {children}

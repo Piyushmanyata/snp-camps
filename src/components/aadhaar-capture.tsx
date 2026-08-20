@@ -31,21 +31,21 @@ type Props = {
 
 const COPY = {
   desk: {
-    scan: "Live camera fallback",
-    stop: "Stop scanner",
+    scan: "Live camera se try karein",
+    stop: "Scanner band karein",
     photo: "Photo khinch kar scan karein",
-    gallery: "Choose existing photo",
-    readingPhoto: "Reading photo…",
-    aim: "Hold the Aadhaar QR inside the frame",
-    preview: "Aadhaar QR camera preview",
+    gallery: "Gallery se photo chunein",
+    readingPhoto: "Photo padh rahe hain…",
+    aim: "Aadhaar QR ko frame ke andar rakhein",
+    preview: "Aadhaar QR camera ka preview",
     consentNote:
-      "Details are extracted for autofill only. Aadhaar identity is not verified.",
-    diagnosticTitle: "Card did not read fully — report this format",
+      "Details sirf form bharne ke liye li ja rahi hain. Aadhaar identity verify nahi hoti.",
+    diagnosticTitle: "Card poora nahi padha — yeh format report karein",
     diagnosticBody:
-      "This describes the QR's structure only. It contains no name, number, or address.",
-    copyDiagnostic: "Copy",
+      "Ismein sirf QR ka structure hai. Naam, number ya pata nahi hota.",
+    copyDiagnostic: "Copy karein",
     consent:
-      "The patient has consented to extracting Aadhaar card details for registration.",
+      "Marij ne registration ke liye Aadhaar card ki details nikalne ki sahmati di hai.",
   },
   patient: {
     scan: "Live camera se try karein",

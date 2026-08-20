@@ -47,6 +47,7 @@ export function VolunteerDeskActions({
       ) : (
         <p
           data-testid="desk-print-window-closed"
+          lang="hi-Latn"
           className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
         >
           Print aur Mark seen band hain. Admin se print window khulwaein.

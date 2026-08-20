@@ -66,7 +66,7 @@ export function StaffLoginForm() {
         // Residual/non-staff profiles cannot use staff login (#59).
         await supabase.auth.signOut();
         setError(
-          "This account is not staff login. Use camp crew credentials, or open the passwordless status link from SMS.",
+          "This account is not staff login. Use camp crew credentials, or ask an admin for access.",
         );
       }
     } catch {
@@ -116,9 +116,9 @@ export function StaffLoginForm() {
 
       <div className="mt-4 space-y-3">
         <InfoBox>
-          Need an account? Ask an admin to create one for you. Patients
-          register at the camp desk and check status via the SMS link when
-          available — there is no patient login.
+          Need an account? Ask an admin to create one for you. Patients do not
+          sign in — they register at the camp desk or via self-registration,
+          and the desk looks them up by name or Aadhaar re-scan.
         </InfoBox>
         <p className="text-center text-sm text-muted">
           <Link
