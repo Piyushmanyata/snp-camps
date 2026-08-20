@@ -48,9 +48,9 @@ export function StaticLoginFormShell() {
 
       <div className="mt-4 space-y-3">
         <InfoBox>
-          Need an account? Ask an admin to create one for you. Patients
-          register at the camp desk and check status via the SMS link when
-          available — there is no patient login.
+          Need an account? Ask an admin to create one for you. Patients do not
+          sign in — they register at the camp desk or via self-registration,
+          and the desk looks them up by name or Aadhaar re-scan.
         </InfoBox>
         <p className="text-center text-sm text-muted">
           <Link

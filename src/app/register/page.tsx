@@ -48,6 +48,7 @@ export default async function RegisterPage() {
       >
         <Card>
           <EmptyState>
+            <span lang="hi-Latn">
             Registration desk par hoti hai. Patient khud register karna chahein to{" "}
             <Link
               href="/self-register"
@@ -56,6 +57,7 @@ export default async function RegisterPage() {
               self-registration
             </Link>{" "}
             kholen.
+            </span>
           </EmptyState>
           <Link
             href="/"
@@ -98,7 +100,10 @@ export default async function RegisterPage() {
       ) : (
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-5 lg:items-start">
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
-            <p className="prose-help mb-3 text-sm text-muted sm:mb-4">
+            <p
+              lang="hi-Latn"
+              className="prose-help mb-3 text-sm text-muted sm:mb-4"
+            >
               Ek patient, ek din. Sirf naam aur umar zaroori. Register karein
               aur parchi print karein.
             </p>

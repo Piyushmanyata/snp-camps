@@ -801,7 +801,7 @@ export function QrScanner({
   }
 
   return (
-    <div className="space-y-3">
+    <div lang="hi-Latn" className="space-y-3">
       {disabledReason ? (
         <div
           className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
@@ -826,13 +826,13 @@ export function QrScanner({
             className={`relative flex-1 overflow-hidden rounded-xl border border-border bg-black/[0.03] ${
               active ? "min-h-[220px]" : "min-h-[8rem]"
             }`}
-            aria-label={active ? "Camera scanner chalu hai" : "Camera preview area"}
           >
             <video
               ref={videoRef}
               playsInline
               autoPlay
               muted
+              aria-label="Aadhaar QR camera ka preview"
               className={
                 active
                   ? "h-full min-h-[220px] w-full object-cover rounded-xl"
@@ -884,7 +884,7 @@ export function QrScanner({
           <Input
             label="Registration number ya naam"
             enterKeyHint="go"
-            placeholder="e.g. 1001 or Ramesh"
+            placeholder="jaise 1001 ya Ramesh"
             disabled={Boolean(disabledReason) || assigning || looking}
             value={manual}
             onChange={(e) => {
@@ -923,9 +923,11 @@ export function QrScanner({
                         {patient.full_name}
                       </span>
                       <span className="text-xs text-muted">
-                        {patient.age != null ? `Age ${patient.age}` : "Age —"}
+                        {patient.age != null ? `Umar ${patient.age}` : "Umar —"}
                         {patient.address ? ` · ${patient.address}` : ""}
-                        {` · ${patient.queue_status}`}
+                        {patient.queue_status === "seen"
+                          ? " · Dekha hua"
+                          : " · Registered"}
                       </span>
                     </button>
                   </li>

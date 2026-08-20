@@ -46,8 +46,8 @@ export default async function PrintPage({
   if (!isPatientUuid(id)) {
     return (
       <NotPrintable
-        title="Invalid patient link"
-        detail="Check the QR or registration number and try again."
+        title="Yeh patient link galat hai"
+        detail="QR ya registration number check karke dobara koshish karein."
       />
     );
   }
@@ -64,8 +64,8 @@ export default async function PrintPage({
   if (!record) {
     return (
       <NotPrintable
-        title="Patient not found"
-        detail="Check the QR or registration number and try again."
+        title="Patient nahi mila"
+        detail="QR ya registration number check karke dobara koshish karein."
       />
     );
   }

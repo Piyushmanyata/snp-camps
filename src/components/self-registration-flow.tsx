@@ -13,7 +13,7 @@ import type { ParsedAadhaarQr } from "@/lib/aadhaar-qr";
 import { formatCampDay } from "@/lib/format-camp-day";
 import { createRequestId } from "@/lib/request-id";
 import { validateHouseholdPhone } from "@/lib/phone";
-import type { CampDayStats } from "@/lib/types";
+import { genderLabel, type CampDayStats } from "@/lib/types";
 import { Button, ErrorBox, Input, Select, WarningBox } from "@/components/ui";
 import { useAadhaarScanner } from "@/components/use-aadhaar-scanner";
 import { AadhaarCapture } from "@/components/aadhaar-capture";
@@ -246,7 +246,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
               [
                 ["Naam", card.fullName],
                 ["Umar", String(card.age)],
-                ["Ling", card.gender],
+                ["Ling", genderLabel(card.gender)],
                 ["Pata", card.address],
                 ["Aadhaar", `xxxx xxxx ${card.aadhaarLast4}`],
               ] as const
@@ -297,13 +297,13 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
                 .join(" ") || undefined
             }
             label="Camp ka din"
-            hint={`Camp: ${venue || "venue TBA"}.`}
+            hint={`Camp: ${venue || "jagah baad mein batayi jaayegi"}.`}
             value={dayId}
             onChange={(event) => setDayId(event.target.value)}
           >
             {openDays.map((day) => (
               <option key={day.id} value={day.id}>
-                {formatCampDay(day.day_date)} · {day.seats_left} seats left
+                {formatCampDay(day.day_date)} · {day.seats_left} seat baaki
               </option>
             ))}
           </Select>

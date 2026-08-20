@@ -113,6 +113,8 @@ A deliberate split, and leaks in either direction are bugs:
 * **Patients and field staff read Hinglish or Hindi** — the self-registration flow, SMS (Devanagari), the public home page, and every field desk surface: register, volunteer desk, clinical desk, scanner, print actions.
 * **Admin reads English** — `/admin/**`, staff management, exports, and every admin-facing banner.
 * Mixing the two inside one surface is a bug. Where a string's meaning would have to be guessed, keep it English rather than invent Hinglish.
+* **Never render a raw database enum.** `queue_status`, `gender`, and `user_role` are storage values, not copy. Field surfaces map them through a labeller (`genderLabel` in `src/lib/types.ts`); admin surfaces use `queueLabel`.
+* The document is `lang="en"`. A Hinglish subtree carries its own `lang="hi-Latn"` so screen readers do not read it with English phonetics (WCAG 3.1.2). `/self-register` sets it on `<main>`; shared surfaces set it on the Hinglish block.
 
 No i18n framework. There are exactly two audiences and they never share a screen.
 
@@ -122,6 +124,7 @@ No i18n framework. There are exactly two audiences and they never share a screen
 * **Theme & Palette**: Emerald & Slate medical-tech aesthetic (Primary Emerald `#059669` / `#047857`, Slate `#0f172a`, high-contrast field cards, clean solid status badges).
 * **Typography**: Plus Jakarta Sans (`next/font/google`) with tabular numeric alignment for registration numbers, seat counts, and timestamps.
 * **Micro-Interactions**: Tactile press scaling (`scale(0.98)`), solid high-contrast toast notifications, smooth focus rings (`ring-emerald-500/40`), and `prefers-reduced-motion` compliance.
+* **Toasts never cover the actions.** The error toast persists until tapped, so it is positioned above the mobile dock and the sticky submit bar (`.app-toast` in `globals.css`), never on top of them.
 * **Accessibility**: WCAG 2.2 AA, held on all new UI — 44×44 minimum touch targets, contrast that survives bright outdoor light, visible focus rings, and text scaling. Measured by the Playwright a11y suite, not by eye.
 * **Design Philosophy**: High polish, high contrast for field visibility, mobile-first with a verified desktop print path, minimal diffs, and zero unnecessary friction.
 

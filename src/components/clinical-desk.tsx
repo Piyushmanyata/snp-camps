@@ -17,6 +17,7 @@ import {
   validateUnavailableMedicines,
 } from "@/lib/clinical-diagnoses";
 import { showSuccessToast } from "@/lib/toast-bus";
+import { genderLabel } from "@/lib/types";
 import { useToastedError } from "@/lib/use-toasted-error";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 import { ClinicalRecordView } from "@/components/clinical-record-view";
@@ -495,7 +496,7 @@ export function ClinicalDesk({
       p_item_id: id,
     });
     if (!isCurrentLookup(generation)) return;
-    if (rpcError) setError("Follow-up fulfilment conflicted with current state.");
+    if (rpcError) setError("Follow-up abhi ke record se mel nahi khata. Patient dobara kholein.");
     else {
       setMessage("Item pura ho gaya; purana record surakshit hai.");
       await lookupFollowup();
@@ -542,7 +543,7 @@ export function ClinicalDesk({
     const { slip, date, venue, reason } = slipReplace;
     if (!date || !venue.trim() || !reason.trim()) {
       printTarget?.abandon();
-      setError("Date, venue, and reason are required to replace a slip.");
+      setError("Slip badalne ke liye date, jagah aur reason teenon zaroori hain.");
       return;
     }
     const generation = lookupGenerationRef.current;
@@ -843,7 +844,7 @@ export function ClinicalDesk({
                 #{record.patient.reg_no} · {record.patient.full_name}
               </SectionTitle>
               <p className="text-sm text-muted">
-                {record.patient.age ?? "—"} years · {record.patient.gender ?? "—"}
+                Umar {record.patient.age ?? "—"} · {genderLabel(record.patient.gender)}
               </p>
             </div>
             {canMutate && record.transcription?.locked_at ? (
@@ -1357,7 +1358,7 @@ export function ClinicalDesk({
                   )
                 }
               >
-                Save replacement
+                Replacement save karein
               </Button>
               <Button
                 type="button"
@@ -1365,7 +1366,7 @@ export function ClinicalDesk({
                 disabled={busy}
                 onClick={closeSlipReplace}
               >
-                Cancel
+                Rehne dein
               </Button>
             </div>
           </Card>

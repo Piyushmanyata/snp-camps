@@ -27,7 +27,7 @@ import {
   validateRegistrationIdentity,
   validateRegistrationIds,
 } from "../src/lib/registration-input.ts";
-import { queueLabel, queueTone } from "../src/lib/types.ts";
+import { genderLabel, queueLabel, queueTone } from "../src/lib/types.ts";
 import {
   canRegisterPatients,
   isAdmin,
@@ -492,6 +492,17 @@ test("status labels and tones cover the two-state lifecycle", () => {
   // as Registered, never as a line position (ADR 0013).
   assert.equal(queueLabel("waiting"), "Registered");
   assert.equal(queueTone("waiting"), "default");
+});
+
+test("gender never reaches a field surface as a raw M/F/O column", () => {
+  assert.equal(genderLabel("M"), "Purush");
+  assert.equal(genderLabel("F"), "Mahila");
+  assert.equal(genderLabel("O"), "Anya");
+  // Unset and unexpected values render as an em dash, never the raw value.
+  assert.equal(genderLabel(null), "—");
+  assert.equal(genderLabel(undefined), "—");
+  assert.equal(genderLabel(""), "—");
+  assert.equal(genderLabel("m"), "—");
 });
 
 test("team_lead role predicates and roleHome route correctly", () => {

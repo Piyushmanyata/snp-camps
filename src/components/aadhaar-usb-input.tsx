@@ -19,9 +19,7 @@ export function AadhaarUsbInput({
   };
 
   return (
-    <div
-      className="rounded-xl border border-border bg-card p-3"
-    >
+    <div lang="hi-Latn" className="rounded-xl border border-border bg-card p-3">
       <label
         htmlFor="aadhaar-usb-payload"
         className="text-sm font-semibold text-foreground"
@@ -29,8 +27,8 @@ export function AadhaarUsbInput({
         USB Aadhaar scanner
       </label>
       <p className="mt-1 text-xs text-muted">
-        Click the protected field, scan once, then press Enter if the scanner
-        does not send it automatically. Raw data is cleared immediately.
+        Neeche wale box par click karein, ek baar scan karein, aur zaroorat ho
+        to Enter dabayein. Raw data turant mit jaata hai.
       </p>
       <div className="mt-2 flex gap-2">
         <input
@@ -59,7 +57,7 @@ export function AadhaarUsbInput({
           loading={scanner.isReadingUsb}
           onClick={read}
         >
-          Read
+          Padhein
         </Button>
       </div>
     </div>

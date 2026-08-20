@@ -48,6 +48,22 @@ test("focus-visible ring and prefers-reduced-motion stay on", () => {
   assert.match(css, /\.pressable:active:not\(:disabled\)\s*\{\s*transform:\s*none/);
 });
 
+test("toasts clear the dock and the sticky submit bar", () => {
+  // The error toast persists until tapped. At bottom: 1rem it sat on top of
+  // the dock and the register submit bar — the two controls the desk needs.
+  assert.match(css, /\.app-toast\s*\{[^}]*position:\s*fixed/);
+  const raised = [
+    ...css.matchAll(
+      /body:has\(\.mobile-dock\)\s*\.app-toast,\s*body:has\(\.sticky-submit\)\s*\.app-toast\s*\{([^}]*)\}/g,
+    ),
+  ].map((match) => match[1]);
+  assert.ok(raised.length > 0, "no .app-toast dock offset rule");
+  assert.ok(
+    raised.some((body) => /bottom:\s*calc\(var\(--dock-height\)/.test(body)),
+    "toast is not raised above the dock / sticky submit bar",
+  );
+});
+
 test("skip link + field Input errors use alert role", () => {
   assert.match(css, /\.skip-link\s*\{/);
   assert.match(ui, /role="alert"/);

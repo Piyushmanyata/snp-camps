@@ -44,7 +44,10 @@ export default async function HomePage() {
               <h1 className="mt-1 text-[2rem] font-bold tracking-tight text-foreground sm:text-4xl">
                 Medical Camp Desk
               </h1>
-              <p className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0">
+              <p
+                lang="hi-Latn"
+                className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0"
+              >
                 Aankhon ka camp — seats limited hain. Online khud register
                 karein, desk par parchi milegi.
               </p>
@@ -67,12 +70,15 @@ export default async function HomePage() {
               ) : null}
             </Card>
           ) : (
-            <p className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-5 text-sm text-muted">
+            <p
+              lang="hi-Latn"
+              className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-5 text-sm text-muted"
+            >
               Abhi koi active camp nahi. Baad mein dekhein, ya staff se poochein.
             </p>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div lang="hi-Latn" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <ActionCard
               href="/self-register"
               title="Khud register karein"
@@ -100,12 +106,12 @@ export default async function HomePage() {
             />
           </div>
 
-          <p className="text-center text-xs text-muted lg:text-left">
+          <p lang="hi-Latn" className="text-center text-xs text-muted lg:text-left">
             Naye staff? Admin se account banwayein. Marij: Aadhaar card se khud
             register karein — login nahi chahiye.
           </p>
 
-          <div className="pt-1 text-left">
+          <div lang="hi-Latn" className="pt-1 text-left">
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
               Kaise hota hai
             </p>
