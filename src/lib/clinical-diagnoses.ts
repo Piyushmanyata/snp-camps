@@ -68,6 +68,9 @@ export function diagnosesEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(flattenDiagnoses(a)) === JSON.stringify(flattenDiagnoses(b));
 }
 
+// Clinical Desk is Hinglish-only, and this validator is its only caller.
+const UNAVAILABLE_REQUIRED =
+  "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.";
 const MAX_UNAVAILABLE = 12;
 const MAX_UNAVAILABLE_LEN = 120;
 
@@ -75,27 +78,27 @@ export function validateUnavailableMedicines(
   list: unknown,
 ): { ok: true; medicines: string[] } | { ok: false; message: string } {
   if (list == null) {
-    return { ok: false, message: "List the unavailable medicines." };
+    return { ok: false, message: UNAVAILABLE_REQUIRED };
   }
   if (!Array.isArray(list)) {
-    return { ok: false, message: "List the unavailable medicines." };
+    return { ok: false, message: UNAVAILABLE_REQUIRED };
   }
   if (list.length < 1 || list.length > MAX_UNAVAILABLE) {
     return {
       ok: false,
-      message: `List 1–${MAX_UNAVAILABLE} unavailable medicines.`,
+      message: `1 se ${MAX_UNAVAILABLE} tak unavailable dawaiyan likhein.`,
     };
   }
   const medicines: string[] = [];
   for (const item of list) {
     if (typeof item !== "string") {
-      return { ok: false, message: "Each unavailable medicine must be text." };
+      return { ok: false, message: UNAVAILABLE_REQUIRED };
     }
     const trimmed = item.trim();
     if (trimmed.length < 1 || trimmed.length > MAX_UNAVAILABLE_LEN) {
       return {
         ok: false,
-        message: `Each unavailable medicine must be 1–${MAX_UNAVAILABLE_LEN} characters.`,
+        message: `Har dawai ka naam 1 se ${MAX_UNAVAILABLE_LEN} akshar tak rakhein.`,
       };
     }
     medicines.push(trimmed);

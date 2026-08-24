@@ -16,6 +16,7 @@ import {
   normalizeDiagnoses,
   validateUnavailableMedicines,
 } from "@/lib/clinical-diagnoses";
+import { logDbError } from "@/lib/public-error";
 import { showSuccessToast } from "@/lib/toast-bus";
 import { genderLabel } from "@/lib/types";
 import { useToastedError } from "@/lib/use-toasted-error";
@@ -163,6 +164,9 @@ const CLINICAL_ERRORS: Array<
   ],
 ];
 
+const CLINICAL_REFUSAL_FALLBACK =
+  "Yeh kaam poora nahi hua. Dobara koshish karein ya admin se poochein.";
+
 function clinicalRefusal(
   message: string | null | undefined,
   kind?: ResolveKind,
@@ -174,8 +178,12 @@ function clinicalRefusal(
   }
   const matched = CLINICAL_ERRORS.find(([pattern]) => pattern.test(text));
   const entry = matched?.[1];
-  if (typeof entry === "function") return kind ? entry(kind, line) : text;
-  return entry ?? text;
+  if (typeof entry === "function") {
+    return kind ? entry(kind, line) : CLINICAL_REFUSAL_FALLBACK;
+  }
+  if (entry) return entry;
+  logDbError(text, "clinical-desk.refusal");
+  return CLINICAL_REFUSAL_FALLBACK;
 }
 
 const NOT_FOUND_MESSAGE =
