@@ -279,6 +279,40 @@ export function PatientForm({
     });
   }
 
+  function resetFormFields() {
+    setFullName("");
+    setDisplayName("");
+    setGender("");
+    setAge("");
+    setAddress("");
+    setPhone(defaultPhone);
+    setAadhaar("");
+    setProvenance("self_declared");
+    setScannedIdentity(null);
+    setCardProvided({
+      fullName: false,
+      age: false,
+      gender: false,
+      aadhaarLast4: false,
+      address: false,
+    });
+    setScannedBanner(null);
+    setLegacyQrWarning(null);
+    setPartialScanDiagnostic(null);
+    clearScanError();
+    scanner.setConsent(false);
+    resetScanAttempts();
+    setLookupState("idle");
+    setLookupMsg(null);
+    setFieldErrors({});
+    setAadhaarDuplicateRegNo(null);
+    setLikelyDuplicateRegNo(null);
+    aadhaarOverrideOnceRef.current = false;
+    likelyOverrideOnceRef.current = false;
+    setCampDayId(firstOpen);
+    focusName();
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isStaff) return;
@@ -327,40 +361,6 @@ export function PatientForm({
           window.open(url, target, features),
         )
       : null;
-
-    const resetFormFields = () => {
-      setFullName("");
-      setDisplayName("");
-      setGender("");
-      setAge("");
-      setAddress("");
-      setPhone(defaultPhone);
-      setAadhaar("");
-      setProvenance("self_declared");
-      setScannedIdentity(null);
-    setCardProvided({
-          fullName: false,
-          age: false,
-          gender: false,
-          aadhaarLast4: false,
-          address: false,
-        });
-      setScannedBanner(null);
-      setLegacyQrWarning(null);
-      setPartialScanDiagnostic(null);
-      clearScanError();
-      scanner.setConsent(false);
-      resetScanAttempts();
-      setLookupState("idle");
-      setLookupMsg(null);
-      setFieldErrors({});
-      setAadhaarDuplicateRegNo(null);
-      setLikelyDuplicateRegNo(null);
-      aadhaarOverrideOnceRef.current = false;
-      likelyOverrideOnceRef.current = false;
-      setCampDayId(firstOpen);
-      focusName();
-    };
 
     const outcome = await runDeskRegisterAndPrint({
       attempt: registrationAttempt.current,
@@ -608,32 +608,8 @@ export function PatientForm({
         ? `Registration #${reg} — print window open. Duplicate nahi bana.`
         : `Registration #${reg} ka aana record ho gaya. Print blocked — neeche Print dabayein. Duplicate nahi bana.`,
     );
-    setLikelyDuplicateRegNo(null);
-    setAadhaarDuplicateRegNo(null);
-    aadhaarOverrideOnceRef.current = false;
-    likelyOverrideOnceRef.current = false;
     registrationAttempt.current.rotate();
-    setFullName("");
-    setGender("");
-    setAge("");
-    setAddress("");
-    setPhone(defaultPhone);
-    setAadhaar("");
-    setProvenance("self_declared");
-    setScannedIdentity(null);
-    setCardProvided({
-          fullName: false,
-          age: false,
-          gender: false,
-          aadhaarLast4: false,
-          address: false,
-        });
-    setLookupState("idle");
-    setLookupMsg(null);
-    setFieldErrors({});
-    setCampDayId(firstOpen);
-    resetScanAttempts();
-    focusName();
+    resetFormFields();
     setLoading(false);
   }
 

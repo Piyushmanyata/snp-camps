@@ -51,27 +51,6 @@ export function isValidAadhaarNumber(raw: string): boolean {
   return c === 0;
 }
 
-export type AadhaarProfile = {
-  full_name?: string | null;
-  gender?: "M" | "F" | "O" | null;
-  age?: number | null;
-  address?: string | null;
-  phone?: string | null;
-  email?: string | null;
-};
-
-export function ageFromDob(dob: string | null | undefined): number | null {
-  if (!dob) return null;
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
-  if (age < 0 || age > 149) return null;
-  return age;
-}
-
 export function normalizeGender(
   raw: string | null | undefined,
 ): "M" | "F" | "O" | null {

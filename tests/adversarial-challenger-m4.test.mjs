@@ -118,10 +118,10 @@ test("CHALLENGER PROBE 1.3: resolveTestDatabaseUrl rejects unsafe / non-loopback
 });
 
 // --------------------------------------------------------------------------
-// PROBE 2: ALL 27 .db.test.mjs SUITES HAVE HONEST REACHABILITY GUARDS
+// PROBE 2: ALL 34 .db.test.mjs SUITES HAVE HONEST REACHABILITY GUARDS
 // --------------------------------------------------------------------------
 
-test("CHALLENGER PROBE 2: All 33 .db.test.mjs suites contain NO to_regprocedure in their connect helper", () => {
+test("CHALLENGER PROBE 2: All 34 .db.test.mjs suites contain NO to_regprocedure in their connect helper", () => {
   const testsDir = path.join(root, "tests");
   const dbTestFiles = fs
     .readdirSync(testsDir)
@@ -129,8 +129,8 @@ test("CHALLENGER PROBE 2: All 33 .db.test.mjs suites contain NO to_regprocedure 
 
   assert.equal(
     dbTestFiles.length,
-    33,
-    `Expected exactly 33 .db.test.mjs files, found ${dbTestFiles.length}`,
+    34,
+    `Expected exactly 34 .db.test.mjs files, found ${dbTestFiles.length}`,
   );
 
   for (const file of dbTestFiles) {
