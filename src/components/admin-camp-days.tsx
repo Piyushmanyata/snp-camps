@@ -217,7 +217,7 @@ export function AdminCampDays({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        {campName}: each day has a seat cap for pre-registration.
+        {campName}: seat cap for pre-registration, and the switch that lets the desk print prescriptions. Printing is live only on that calendar day (Asia/Kolkata).
       </p>
 
       <ul className="mb-4 divide-y divide-border">
@@ -260,7 +260,7 @@ export function AdminCampDays({
                 </Button>
                 <Button
                   type="button"
-                  variant={d.printing_open ? "secondary" : "ghost"}
+                  variant={d.printing_open ? "secondary" : "primary"}
                   size="sm"
                   className="w-auto"
                   disabled={mutationBusy}
@@ -271,8 +271,8 @@ export function AdminCampDays({
                   {togglingId === d.id
                     ? "Updating…"
                     : d.printing_open
-                      ? "Close printing"
-                      : "Open printing"}
+                      ? "Stop prescription printing"
+                      : "Enable prescription printing"}
                 </Button>
                 <Button
                   type="button"

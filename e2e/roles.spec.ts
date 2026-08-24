@@ -146,7 +146,7 @@ test("admin can sign in, inspect the patient desk, and sign out", async ({
 
   await page.goto("/admin");
   await expect(
-    page.getByText("Camps & camp days", { exact: true }),
+    page.getByText("Camp days & print window", { exact: true }),
   ).toBeVisible();
 
   await page.goto("/admin/patients");
