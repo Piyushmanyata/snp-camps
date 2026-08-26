@@ -180,7 +180,7 @@ test.describe("throttled primary desk action", () => {
       const printResponse = await printResponsePromise;
       expect(printResponse.status()).toBe(200);
       await expect(
-        popup.getByText(/Print dialog khul gaya|print dialog is open/i),
+        popup.getByText(/Print dialog (opened|is open)|Print dialog khul gaya/i),
       ).toBeVisible({ timeout: DESK_ACTION_BUDGET_MS });
       await expect
         .poll(
