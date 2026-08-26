@@ -13,6 +13,7 @@ import {
 } from "../scripts/compare-migration-heads.mjs";
 import {
   discoverLocalSupabase,
+  resolveNpmCli,
   spawnProductionBuild,
 } from "../e2e/run-local.mjs";
 import {
@@ -532,6 +533,23 @@ test("E2E production build spawn is argument-safe and does not use a shell", () 
   assert.deepEqual(spawnArgs.slice(1), ["run", "build"]);
   assert.notEqual(spawnOptions.shell, true);
   assert.equal(typeof spawnArgs, "object");
+});
+
+test("E2E npm CLI resolution uses npm_execpath when npm is not beside Node", () => {
+  const npmExecPath = "/opt/hostedtoolcache/node/lib/node_modules/npm/bin/npm-cli.js";
+  const resolved = resolveNpmCli({
+    env: { npm_execpath: npmExecPath },
+    execPath: "/opt/hostedtoolcache/node/bin/node",
+    existsImpl(path) {
+      return path === npmExecPath;
+    },
+    requireImpl: {
+      resolve() {
+        throw new Error("Cannot find module 'npm/bin/npm-cli.js'");
+      },
+    },
+  });
+  assert.equal(resolved, npmExecPath);
 });
 
 test("Auth setup diagnostics keep only safe structured fields", () => {

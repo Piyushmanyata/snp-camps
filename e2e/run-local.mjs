@@ -53,8 +53,12 @@ function discoveryError(detail) {
 export function resolveNpmCli({
   existsImpl = existsSync,
   requireImpl = require,
+  env = process.env,
   execPath = process.execPath,
 } = {}) {
+  if (env.npm_execpath && existsImpl(env.npm_execpath)) {
+    return env.npm_execpath;
+  }
   const bundled = join(dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js");
   if (existsImpl(bundled)) return bundled;
   return requireImpl.resolve("npm/bin/npm-cli.js");
