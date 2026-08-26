@@ -355,7 +355,7 @@ export function PatientForm({
     }
 
     // any await (#62). Register-only: no window (#107).
-    const wantPrint = wantPrintRef.current;
+    const wantPrint = wantPrintRef.current && printWindowOpen;
     const printTarget = wantPrint
       ? acquireDeskPrintTarget((url, target, features) =>
           window.open(url, target, features),

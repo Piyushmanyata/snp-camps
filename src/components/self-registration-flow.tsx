@@ -161,6 +161,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         patientId: String(body.patientId),
         registrationNumber: Number(body.registrationNumber),
         dayDate: typeof body.dayDate === "string" ? body.dayDate : null,
+        existing: body.existing === true,
       });
     } catch (err) {
       if (generation !== generationRef.current) return;

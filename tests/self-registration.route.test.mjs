@@ -75,9 +75,22 @@ function fakeSupabase(
               },
               maybeSingle: () => {
                 calls.push({ fn: `select:${table}`, filters });
-                if (table === "patients" && existingByReg && chain._eqValue != null) {
-                  const row = existingByReg[String(chain._eqValue)] ?? null;
-                  return Promise.resolve({ error: null, data: row });
+                if (table === "patients") {
+                  if (existingByReg) {
+                    for (const [, value] of filters) {
+                      const row = existingByReg[String(value)];
+                      if (row) {
+                        return Promise.resolve({ error: null, data: row });
+                      }
+                    }
+                  }
+                  return Promise.resolve({
+                    error: null,
+                    data: {
+                      status_token: statusToken,
+                      registration_request_id: DEFAULT_REQUEST_ID,
+                    },
+                  });
                 }
                 if (table === "camp_days") {
                   return Promise.resolve({
@@ -138,6 +151,7 @@ test("a scanned card plus a typed phone registers and returns the receipt", asyn
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.registrationNumber, 4242);
+  assert.equal(body.existing, false);
   assert.equal(body.statusUrl, undefined);
   // Registering for today must still not put a patient in the hall queue.
   assert.equal(body.queueStatus, "registered");
@@ -388,6 +402,36 @@ test("an existing registration sends the patient to the desk with their number",
   assert.equal(body.ok, false);
   assert.equal(body.deskReferral, true);
   assert.equal(body.registrationNumber, 10042);
+});
+
+test("same-card replay of an existing row returns existing:true and the original number", async () => {
+  const fake = fakeSupabase(okRpc, { allowed: true, retry_after_seconds: 30 }, {
+    existingByReg: {
+      [PATIENT_ID]: {
+        id: PATIENT_ID,
+        reg_no: 4242,
+        camp_day_id: DAY_ID,
+        queue_status: "seen",
+        registration_request_id: "99999999-9999-4999-8999-999999999999",
+      },
+    },
+  });
+  __setServiceRoleClient(fake.client);
+
+  const body = await (
+    await post({
+      campId: CAMP_ID,
+      campDayId: DAY_ID,
+      phone: "9876543210",
+      card: VALID_CARD,
+    })
+  ).json();
+
+  assert.equal(body.ok, true);
+  assert.equal(body.existing, true);
+  assert.equal(body.registrationNumber, 4242);
+  assert.equal(body.patientId, PATIENT_ID);
+  assert.equal(body.queueStatus, "seen");
 });
 
 test("a full camp day is refused with a message that names the cause", async () => {

@@ -123,7 +123,7 @@ export default async function PrintPage({
     return (
       <NotPrintable
         title="Print band hai"
-        detail="Admin se print window khulwaein. Register abhi ho sakta hai."
+        detail={`Reg #${record.patient.reg_no}. Admin se print window khulwaein. Register abhi ho sakta hai.`}
       />
     );
   }

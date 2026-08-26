@@ -207,9 +207,9 @@ export default async function AdminPage() {
               initialLoadKnown={seatsKnown}
             />
             <CollapsibleSection
-              title="Camps & camp days"
+              title="Camp days & print window"
               hint={`${camps.length} camp${camps.length === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}`}
-              defaultOpen={!days.length}
+              defaultOpen
             >
               <div className="space-y-6">
                 <div>
