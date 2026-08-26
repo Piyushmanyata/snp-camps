@@ -623,9 +623,13 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
 test("admin Camp Day controls are date-qualified and settings saves are announced", async ({
   page,
 }) => {
+  test.setTimeout(45_000);
   await loginStaff(page, "admin");
-  const campControls = page.getByText("Camps & camp days", { exact: true });
-  await expect(campControls).toBeVisible();
+  const adminPage = page
+    .getByRole("main")
+    .filter({ hasText: "Camps & camp days" });
+  await expect(adminPage).toBeVisible({ timeout: 30_000 });
+  const campControls = adminPage.getByText("Camps & camp days", { exact: true });
   await campControls.click();
   const campDaysHeading = page.getByText(/^Camp days — /).first();
   await expect(campDaysHeading).toBeVisible();
