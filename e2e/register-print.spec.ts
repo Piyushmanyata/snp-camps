@@ -251,6 +251,42 @@ test("delayed success navigates pre-opened print target (no noopener open)", asy
   await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
 });
 
+function kolkataTodayIso() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function livePayload(printingOpen: boolean) {
+  return {
+    days: [
+      {
+        id: env("E2E_CAMP_DAY_ID"),
+        camp_id: env("E2E_CAMP_ID"),
+        day_date: kolkataTodayIso(),
+        seat_limit: 100,
+        seats_taken: 0,
+        seats_left: 100,
+        is_full: false,
+        printing_open: printingOpen,
+      },
+    ],
+  };
+}
+
+async function mockDeskLive(page: Page, printingOpen: boolean) {
+  await page.route("**/api/desk/live**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(livePayload(printingOpen)),
+    });
+  });
+}
+
 /** #107 — Register-only saves without opening a print window. */
 test("register-only saves with no print window", async ({ page }) => {
   await page.addInitScript(() => {
@@ -266,6 +302,7 @@ test("register-only saves with no print window", async ({ page }) => {
     }) as typeof window.open;
   });
 
+  await mockDeskLive(page, false);
   const mock = await mockRegisterSuccess(page);
   await loginStaff(page, "admin");
   await gotoHydrated(page, "/register");
@@ -274,7 +311,7 @@ test("register-only saves with no print window", async ({ page }) => {
   await fillMinimalRegistration(page, name);
 
   await expect(page.getByTestId("desk-register-only")).toBeVisible();
-  await expect(page.getByTestId("desk-register-submit")).toBeVisible();
+  await expect(page.getByTestId("desk-register-submit")).toHaveCount(0);
 
   await page.getByTestId("desk-register-only").click();
 

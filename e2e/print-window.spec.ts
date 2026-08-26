@@ -163,3 +163,23 @@ test("the print URL renders a refusal card while the window is closed", async ({
     await setPrintingOpen(true);
   }
 });
+
+test("registration form shows Register only when printing is disabled", async ({
+  page,
+}) => {
+  await mockDeskLive(page, false);
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, "/register");
+  await expect(page.getByTestId("desk-register-only")).toBeVisible();
+  await expect(page.getByTestId("desk-register-submit")).toHaveCount(0);
+});
+
+test("registration form shows Register + Print when printing is enabled", async ({
+  page,
+}) => {
+  await mockDeskLive(page, true);
+  await loginStaff(page, "volunteer");
+  await gotoHydrated(page, "/register");
+  await expect(page.getByTestId("desk-register-submit")).toBeVisible();
+  await expect(page.getByTestId("desk-register-only")).toHaveCount(0);
+});
