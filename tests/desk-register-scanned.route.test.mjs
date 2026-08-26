@@ -135,3 +135,19 @@ test("rejects unauthenticated, non-staff, incomplete, and oversized requests", a
   response = await POST(request(`{"padding":"${"x".repeat(17_000)}"}`));
   assert.equal(response.status, 400);
 });
+
+test("rejects contradictory age and date of birth before registration", async () => {
+  signIn();
+  let rpcCalls = 0;
+  __setServiceRoleClient({
+    rpc() {
+      rpcCalls += 1;
+      return Promise.resolve({ data: null, error: null });
+    },
+  });
+  const response = await POST(
+    request(validBody({ age: 50, dateOfBirth: "2000-05-15" })),
+  );
+  assert.equal(response.status, 400);
+  assert.equal(rpcCalls, 0);
+});

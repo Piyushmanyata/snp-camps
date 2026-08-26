@@ -175,7 +175,11 @@ export function AdminSettingsPanel({ camp }: { camp: Camp }) {
 
         <ErrorBox message={error} />
         {success && (
-          <p className="text-xs font-semibold text-success">
+          <p
+            className="text-xs font-semibold text-success"
+            role="status"
+            aria-live="polite"
+          >
             ✓ Admin settings updated successfully.
           </p>
         )}

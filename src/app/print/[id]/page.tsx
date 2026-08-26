@@ -11,7 +11,7 @@ import { resolvePrescriptionTemplate } from "@/lib/prescription-template";
 import { PrintActions } from "@/components/print-actions";
 import { ScaleToFit } from "@/components/scale-to-fit";
 import { Card } from "@/components/ui";
-import { isPrintWindowOpen } from "@/lib/print-window";
+import { isPrintWindowOpen, printConfirmationGate } from "@/lib/print-window";
 import type { CampDayStats } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Print prescription" };
@@ -76,25 +76,42 @@ export default async function PrintPage({
   const days = (dayStats || []) as CampDayStats[];
   const campDay = days.find((day) => day.day_date === record.campDayDate);
   const admin = createServiceRoleClient();
-  if (admin) {
-    const { data: gate } = await admin
-      .from("patients")
-      .select("provenance, confirmation_override_at, persons(duplicate_key)")
-      .eq("id", id)
-      .maybeSingle();
-    const person = Array.isArray(gate?.persons) ? gate?.persons[0] : gate?.persons;
-    if (
-      gate?.provenance === "manual_exception" &&
-      !gate.confirmation_override_at &&
-      !person?.duplicate_key
-    ) {
-      return (
-        <NotPrintable
-          title="Pehle Aadhaar confirm karein"
-          detail="Manual exception print se pehle card scan ya team-lead override chahiye."
-        />
-      );
-    }
+  const gateQuery = admin
+    ? await admin
+        .from("patients")
+        .select("provenance, confirmation_override_at, persons(duplicate_key)")
+        .eq("id", id)
+        .maybeSingle()
+    : null;
+  const person = Array.isArray(gateQuery?.data?.persons)
+    ? gateQuery?.data?.persons[0]
+    : gateQuery?.data?.persons;
+  const gateState = printConfirmationGate({
+    clientMissing: !admin,
+    queryError: Boolean(gateQuery?.error),
+    gate: gateQuery?.data
+      ? {
+          provenance: gateQuery.data.provenance,
+          confirmation_override_at: gateQuery.data.confirmation_override_at,
+          duplicateKey: person?.duplicate_key ?? null,
+        }
+      : null,
+  });
+  if (gateState === "unavailable") {
+    return (
+      <NotPrintable
+        title="Confirmation check nahi ho paya"
+        detail="Print abhi band rakhein. Connection check karke page refresh karein."
+      />
+    );
+  }
+  if (gateState === "required") {
+    return (
+      <NotPrintable
+        title="Pehle Aadhaar confirm karein"
+        detail="Manual exception print se pehle card scan ya team-lead override chahiye."
+      />
+    );
   }
 
   if (

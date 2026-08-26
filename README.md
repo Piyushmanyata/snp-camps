@@ -191,8 +191,32 @@ QR links), and `CRON_SECRET` (the nightly reminder job rejects itself without it
 npm run verify
 ```
 
-Runs, in order: lint → `tsc --noEmit` → unit → DB → production build → JS budget →
+Runs, in order: lint → `tsc --noEmit` → local migration comparison (`--require-local --skip-linked`) → unit → DB → production build → JS budget →
 e2e → env check. Treat these as the gate, not as diagnostics.
+
+Database tests and E2E prove they target this repository's `project_id` (`snp-camps`)
+before they mutate anything. Auto-discovery matches the owning Supabase container.
+An explicit `SNP_TEST_DATABASE_URL` is deliberate authorization but still has to pass
+loopback, migration-ledger head, readiness-probe head, and an SNP catalog check.
+Failures print `BLOCKER[UNSAFE-DB-TARGET]` and do not spawn the child.
+
+If several local Supabase projects are running, set one of:
+
+```
+SNP_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:<db-port>/postgres
+E2E_SUPABASE_PROJECT_ID=snp-camps
+E2E_SUPABASE_URL=http://127.0.0.1:<api-port>
+E2E_SUPABASE_ANON_KEY=…
+E2E_SUPABASE_SERVICE_ROLE_KEY=…
+```
+
+Do not change the repository's default ports to work around a workstation collision.
+
+Three comparison modes:
+
+- **Offline compare:** `npm run compare:migrations -- --skip-linked` — repo files and the contract only. A connection failure is unavailable; a successful connection followed by a schema/query error is a mismatch, not offline.
+- **Local verification:** `npm run compare:migrations -- --require-local --skip-linked` (this is what `npm run verify` runs) — the local disposable database must be reachable and current.
+- **Clean replay:** `npm run test:db:replay` — empty local database, every migration, then the full DB suite. Never against production.
 
 Two rules that have caught real regressions here:
 

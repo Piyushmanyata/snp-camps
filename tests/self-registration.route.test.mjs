@@ -341,6 +341,21 @@ test("a half-read card is refused rather than registered with gaps", async () =>
   assert.equal(fake.calls.length, 0);
 });
 
+test("a card with contradictory age and date of birth is refused", async () => {
+  const fake = fakeSupabase(okRpc);
+  __setServiceRoleClient(fake.client);
+
+  const response = await post({
+    campId: CAMP_ID,
+    campDayId: DAY_ID,
+    phone: "9876543210",
+    card: { ...VALID_CARD, age: 50, dateOfBirth: "2000-05-15" },
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(fake.calls.length, 0);
+});
+
 test("a non-Latin card name is blocked until a Latin spelling is supplied", async () => {
   const devanagari = { ...VALID_CARD, fullName: "रमेश कुमार" };
 

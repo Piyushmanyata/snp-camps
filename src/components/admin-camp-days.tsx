@@ -238,6 +238,7 @@ export function AdminCampDays({
                 <div className="min-w-[7rem] flex-1">
                   <Input
                     label="Seat limit"
+                    aria-label={`Seat limit ${formatCampDay(d.day_date)}`}
                     type="number"
                     min={d.seats_taken}
                     disabled={mutationBusy}
@@ -254,6 +255,7 @@ export function AdminCampDays({
                   className="w-auto"
                   disabled={mutationBusy}
                   loading={savingId === d.id}
+                  aria-label={`Save seat limit ${formatCampDay(d.day_date)}`}
                   onClick={() => saveSeats(d.id, d.day_date, d.seats_taken)}
                 >
                   {savingId === d.id ? "Saving…" : "Save"}
@@ -266,6 +268,11 @@ export function AdminCampDays({
                   disabled={mutationBusy}
                   loading={togglingId === d.id}
                   data-testid={`print-window-toggle-${d.id}`}
+                  aria-label={
+                    d.printing_open
+                      ? `Close printing ${formatCampDay(d.day_date)}`
+                      : `Open printing ${formatCampDay(d.day_date)}`
+                  }
                   onClick={() => togglePrinting(d.id, !d.printing_open)}
                 >
                   {togglingId === d.id
@@ -281,6 +288,7 @@ export function AdminCampDays({
                   className="w-auto text-danger"
                   disabled={mutationBusy}
                   loading={deletingId === d.id}
+                  aria-label={`Delete ${formatCampDay(d.day_date)}`}
                   onClick={() => removeDay(d.id)}
                 >
                   {deletingId === d.id ? "Deleting…" : "Delete"}

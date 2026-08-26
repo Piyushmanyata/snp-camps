@@ -1,7 +1,7 @@
 
 export const READINESS_CONTRACT_VERSION = 10;
 
-export const EXPECTED_MIGRATION_HEAD = "20260824090000";
+export const EXPECTED_MIGRATION_HEAD = "20260826120000";
 
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
 
@@ -215,7 +215,7 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   upsert_ot_schedule_day_anon_execute: false,
   list_ot_schedule_days_authenticated_execute: true,
   list_ot_schedule_days_anon_execute: false,
-  confirm_manual_exception_aadhaar_authenticated_execute: false,
+  confirm_manual_exception_aadhaar_authenticated_execute: true,
   confirm_manual_exception_aadhaar_anon_execute: false,
   confirm_manual_exception_aadhaar_service_role_execute: true,
   mark_patient_printed_authenticated_execute: true,

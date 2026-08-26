@@ -451,3 +451,35 @@ test("register_patient wrapper is gone from the catalog", async (t) => {
     "register_patient(…) must be dropped (non-idempotent wrapper)",
   );
 });
+
+test("date of birth stores derived age, not a contradictory client age", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+  const { campId, dayId } = await seedCampWithDay({
+    seatLimit: 5,
+    dayDate: today,
+  });
+  try {
+    const { rows } = await asServiceRole(() =>
+      client.query(
+        `select id from public.register_patient_idempotent(
+           $1::uuid, $2::uuid, 'Derived Age',
+           'M', 99, 'Ward', null, null, null,
+           null, null, $3::uuid, false, false, false, 'self_declared', null, '2000-01-01', null)`,
+        [randomUUID(), campId, dayId],
+      ),
+    );
+    const { rows: stored } = await client.query(
+      `select age from public.patients where id = $1`,
+      [rows[0].id],
+    );
+    const [y] = today.split("-").map(Number);
+    const expected = y - 2000;
+    assert.equal(stored[0].age, expected);
+    assert.notEqual(stored[0].age, 99);
+  } finally {
+    await cleanupCamp(campId);
+  }
+});

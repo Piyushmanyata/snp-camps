@@ -247,13 +247,13 @@ describe("EMPIRICAL CHALLENGE M4-2: Security & Boundary Verification", () => {
         // Team Lead roster query error handling
         assert.match(src, /teamLead\s*&&\s*userId\s*\?/);
         assert.match(src, /if\s*\(rosterResult\.error\)\s*\{\s*mapDbError\(rosterResult\.error/);
-        assert.match(src, /rosterError\s*=\s*["']Your team roster could not be loaded\. Refresh and try again\.["'];/);
+        assert.match(src, /rosterError\s*=\s*["']Team list load nahi hui\. Refresh karke dobara try karein\.["'];/);
         assert.match(src, /\{rosterError\s*\?\s*<ErrorBox\s*message=\{rosterError\}\s*\/>\s*:\s*null\}/);
 
         // Graceful empty/no-camp handling
         assert.match(src, /\{camp\?\.name\s*\|\|\s*["']Koi nahi["']\}/);
         assert.match(src, /<VolunteerDeskActions\b/);
-        assert.match(src, /noCampReason=\s*\{\s*camp\s*\?\s*undefined\s*:\s*["']Koi active camp nahi\. Admin se camp chalu karwayein\.["']\s*\}/);
+        assert.match(src, /noCampReason=\s*\{\s*camp\s*\?\s*undefined\s*:\s*["']Koi chalu camp nahi\. Admin se camp chalu karwayein\.["']\s*\}/);
         assert.match(
           readSource("src/components/volunteer-desk-actions.tsx"),
           /disabled=\{!campId\}/,

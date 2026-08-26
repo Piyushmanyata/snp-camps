@@ -176,6 +176,10 @@ export function classifyOperationError(
     publicCategory = "validation";
     publicMessage = "Print band hai. Admin se print window khulwaein.";
   }
+  if (!publicMessage && /PRINT_WINDOW_NOT_TODAY/.test(message)) {
+    publicCategory = "validation";
+    publicMessage = "Printing can only be opened for today's camp day.";
+  }
 
   const aadhaarDup = message.match(/AADHAAR_DUPLICATE:reg=(\d+)/i);
   if (aadhaarDup) {

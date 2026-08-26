@@ -82,7 +82,9 @@ test("cron with valid secret runs job (empty candidates)", async () => {
                   not() {
                     return {
                       eq() {
-                        return Promise.resolve({ data: [], error: null });
+                        return {
+                          eq: async () => ({ data: [], error: null }),
+                        };
                       },
                     };
                   },
@@ -128,10 +130,12 @@ test("cron list failure returns non-2xx and ok:false", async () => {
                   not() {
                     return {
                       eq() {
-                        return Promise.resolve({
-                          data: null,
-                          error: { message: "relation missing" },
-                        });
+                        return {
+                          eq: async () => ({
+                            data: null,
+                            error: { message: "relation missing" },
+                          }),
+                        };
                       },
                     };
                   },
@@ -158,4 +162,128 @@ test("cron list failure returns non-2xx and ok:false", async () => {
       __resetServiceRoleClient();
     }
   });
+});
+
+test("cron returns non-2xx for rejected and ambiguous provider outcomes", async () => {
+  const previous = {
+    key: process.env.MSG91_AUTH_KEY,
+    sender: process.env.MSG91_SENDER_ID,
+    template: process.env.MSG91_TEMPLATE_REMINDER,
+    fetch: globalThis.fetch,
+  };
+  process.env.MSG91_AUTH_KEY = "key";
+  process.env.MSG91_SENDER_ID = "SNPCMP";
+  process.env.MSG91_TEMPLATE_REMINDER = "reminder-template";
+
+  function providerClient() {
+    return {
+      from(table) {
+        if (table === "sms_deliveries") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return { in: async () => ({ data: [], error: null }) };
+                },
+              };
+            },
+          };
+        }
+        if (table === "deferred_slips") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return { eq: async () => ({ data: [], error: null }) };
+                },
+              };
+            },
+          };
+        }
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  not() {
+                    return {
+                      eq() {
+                        return {
+                          eq: async () => ({
+                            data: [
+                              {
+                                id: "patient-provider",
+                                reg_no: 1501,
+                                phone: "9876543210",
+                                queue_status: "registered",
+                                reminder_sms_sent_at: null,
+                                camp_days: { day_date: "2026-08-27" },
+                                camps: { venue: "Hall", is_active: true },
+                              },
+                            ],
+                            error: null,
+                          }),
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+      async rpc(fn) {
+        if (fn === "claim_sms_delivery") {
+          return {
+            data: { delivery_id: "delivery-provider", claim_token: "token-provider" },
+            error: null,
+          };
+        }
+        if (fn === "prune_sms_deliveries") return { data: 0, error: null };
+        return { data: true, error: null };
+      },
+    };
+  }
+
+  try {
+    await withCronSecret("super-secret", async () => {
+      const cases = [
+        {
+          counter: "failed",
+          fetch: async () => new Response("bad request", { status: 400 }),
+        },
+        {
+          counter: "ambiguous",
+          fetch: async () => {
+            throw new Error("fetch failed");
+          },
+        },
+      ];
+      for (const scenario of cases) {
+        __setServiceRoleClient(providerClient());
+        globalThis.fetch = scenario.fetch;
+        const res = await POST(
+          new Request("http://local/api/cron/reminder-sms", {
+            method: "POST",
+            headers: { authorization: "Bearer super-secret" },
+          }),
+        );
+        assert.equal(res.status, 500);
+        const body = await res.json();
+        assert.equal(body.ok, false);
+        assert.equal(body[scenario.counter], 1);
+        assert.equal(body.deferral.ok, true);
+      }
+    });
+  } finally {
+    __resetServiceRoleClient();
+    globalThis.fetch = previous.fetch;
+    if (previous.key === undefined) delete process.env.MSG91_AUTH_KEY;
+    else process.env.MSG91_AUTH_KEY = previous.key;
+    if (previous.sender === undefined) delete process.env.MSG91_SENDER_ID;
+    else process.env.MSG91_SENDER_ID = previous.sender;
+    if (previous.template === undefined) delete process.env.MSG91_TEMPLATE_REMINDER;
+    else process.env.MSG91_TEMPLATE_REMINDER = previous.template;
+  }
 });

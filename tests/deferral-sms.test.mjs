@@ -6,6 +6,7 @@ import {
   deferralIssueKind,
   deferralT1Kind,
   fillDeferralSms,
+  runDayBeforeDeferralSms,
   sendDeferralSms,
 } from "../src/lib/deferral-sms.ts";
 
@@ -169,5 +170,87 @@ test("sendDeferralSms claims the given kind then completes sent", async () => {
       venue: "सीकर",
     }),
     /https?:\/\//,
+  );
+});
+
+test("deferral job reports provider failure and ledger ambiguity as unsuccessful", async () => {
+  function client(completeResult) {
+    return {
+      from(table) {
+        if (table === "deferred_slips") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    eq: async () => ({
+                      data: [
+                        {
+                          id: "slip-1",
+                          service: "ot",
+                          date_snapshot: "2026-08-21",
+                          venue_snapshot: "सीकर",
+                          item_id: "item-1",
+                        },
+                      ],
+                      error: null,
+                    }),
+                  };
+                },
+              };
+            },
+          };
+        }
+        const rows =
+          table === "fulfilment_items"
+            ? [{ id: "item-1", transcription_id: "transcription-1" }]
+            : table === "prescription_transcriptions"
+              ? [{ id: "transcription-1", patient_id: "patient-1" }]
+              : [{ id: "patient-1", phone: "9876543210", reg_no: 1401 }];
+        return {
+          select() {
+            return { in: async () => ({ data: rows, error: null }) };
+          },
+        };
+      },
+      async rpc(fn) {
+        if (fn === "claim_sms_delivery") {
+          return {
+            data: { delivery_id: "delivery-1", claim_token: "token-1" },
+            error: null,
+          };
+        }
+        if (fn === "complete_sms_delivery") {
+          return { data: completeResult, error: null };
+        }
+        return { data: true, error: null };
+      },
+    };
+  }
+
+  const failed = await runDayBeforeDeferralSms(client(true), {
+    now: new Date("2026-08-20T03:00:00.000Z"),
+    send: async () => ({
+      ok: false,
+      detail: "provider rejected request",
+      failureKind: "rejected",
+    }),
+  });
+  assert.deepEqual(
+    { ok: failed.ok, failed: failed.failed, ambiguous: failed.ambiguous },
+    { ok: false, failed: 1, ambiguous: 0 },
+  );
+
+  const ambiguous = await runDayBeforeDeferralSms(client(false), {
+    now: new Date("2026-08-20T03:00:00.000Z"),
+    send: async () => ({ ok: true, requestId: "provider-accepted" }),
+  });
+  assert.deepEqual(
+    {
+      ok: ambiguous.ok,
+      failed: ambiguous.failed,
+      ambiguous: ambiguous.ambiguous,
+    },
+    { ok: false, failed: 0, ambiguous: 1 },
   );
 });

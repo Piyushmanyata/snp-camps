@@ -1,12 +1,32 @@
+import { kolkataTodayIso } from "@/lib/patient-form-validate";
+
 export const PRINT_WINDOW_CLOSED = "PRINT_WINDOW_CLOSED";
 
-function kolkataTodayIso(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
+export function printConfirmationGate(input: {
+  clientMissing: boolean;
+  queryError: boolean;
+  gate: {
+    provenance?: string | null;
+    confirmation_override_at?: string | null;
+    duplicateKey?: string | null;
+  } | null;
+}): "unavailable" | "required" | "ok" {
+  if (
+    input.clientMissing ||
+    input.queryError ||
+    !input.gate ||
+    !input.gate.provenance
+  ) {
+    return "unavailable";
+  }
+  if (
+    input.gate.provenance === "manual_exception" &&
+    !input.gate.confirmation_override_at &&
+    !input.gate.duplicateKey
+  ) {
+    return "required";
+  }
+  return "ok";
 }
 
 export function isPrintWindowOpen(input: {

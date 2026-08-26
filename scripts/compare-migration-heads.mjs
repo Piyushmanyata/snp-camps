@@ -21,14 +21,50 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import pg from "pg";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const requireLocal = process.argv.includes("--require-local");
-const skipLinked = process.argv.includes("--skip-linked");
+const DEFAULT_LOCAL_DATABASE_URL =
+  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
-function repoHeads() {
+function readConfiguredProjectId() {
+  const text = fs.readFileSync(path.join(root, "supabase", "config.toml"), "utf8");
+  const match = text.match(/^\s*project_id\s*=\s*"([^"]+)"/m);
+  if (!match) throw new Error("supabase/config.toml is missing project_id");
+  return match[1];
+}
+
+function inspectConfiguredDbProject({
+  projectId,
+  commandImpl = (file, args) =>
+    execFileSync(file, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim(),
+}) {
+  const names = String(
+    commandImpl("docker", [
+      "ps",
+      "--filter",
+      "name=supabase_db_",
+      "--format",
+      "{{.Names}}",
+    ]),
+  )
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const containerName = names.find(
+    (name) => name === `supabase_db_${projectId}`,
+  );
+  if (!containerName) return null;
+  const portText = commandImpl("docker", ["port", containerName, "5432"]);
+  const hostPort = Number(String(portText).match(/:(\d+)/)?.[1]);
+  if (!hostPort) return null;
+  return { projectId, containerName, hostPort };
+}
+
+export function repoHeads() {
   const migDir = path.join(root, "supabase", "migrations");
   const files = fs
     .readdirSync(migDir)
@@ -42,11 +78,7 @@ function repoHeads() {
   };
 }
 
-// latest_applied_migration() returns a hard-coded literal that the head
-// migration has to bump; readiness compares it against the ledger. The DB check
-// below catches a stale one, but only when Postgres is reachable — so read the
-// literal out of the head migration file too, and catch it with no Docker.
-function headMigrationProbeLiteral(headFile) {
+export function headMigrationProbeLiteral(headFile) {
   const text = fs.readFileSync(
     path.join(root, "supabase", "migrations", headFile),
     "utf8",
@@ -57,7 +89,7 @@ function headMigrationProbeLiteral(headFile) {
   return m ? m[1] : null;
 }
 
-function contractExpectedHead() {
+export function contractExpectedHead() {
   const contractPath = path.join(root, "src", "lib", "readiness-contract.ts");
   const text = fs.readFileSync(contractPath, "utf8");
   const m = text.match(
@@ -66,26 +98,84 @@ function contractExpectedHead() {
   return m ? m[1] : null;
 }
 
-async function localAppliedHead() {
-  const url =
-    process.env.SNP_TEST_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-  // Never log the URL (may contain credentials on non-local envs).
-  const client = new pg.Client({
-    connectionString: url,
-    connectionTimeoutMillis: 3_000,
-    query_timeout: 3_000,
-  });
-  try {
+export function isLocalConnectionError(err) {
+  if (err?.snpPhase === "query") return false;
+  if (err?.snpPhase === "connect") return true;
+  const code = err?.code;
+  if (
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNRESET" ||
+    code === "ENETUNREACH" ||
+    code === "EHOSTUNREACH" ||
+    code === "EAI_AGAIN" ||
+    code === "ECONNABORTED"
+  ) {
+    return true;
+  }
+  const msg = String(err?.message || err);
+  return (
+    /connect(ion)? (timeout|refused|terminated)/i.test(msg) &&
+    !/(does not exist|schema|relation|function)/i.test(msg)
+  );
+}
+
+export function redact(text) {
+  return String(text)
+    .replace(/postgres:\/\/[^\s]+/gi, "postgres://***")
+    .replace(/postgresql:\/\/[^\s]+/gi, "postgresql://***")
+    .replace(/password[=:]\s*\S+/gi, "password=[REDACTED]")
+    .replace(/sb_secret_[A-Za-z0-9_-]+/g, "sb_secret_***")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "jwt:***");
+}
+
+export async function localAppliedHead({
+  env = process.env,
+  configuredProjectId = readConfiguredProjectId(),
+  inspectProjectImpl = inspectConfiguredDbProject,
+  connect = async (url) => {
+    const client = new pg.Client({
+      connectionString: url,
+      connectionTimeoutMillis: 3_000,
+      query_timeout: 3_000,
+    });
     await client.connect();
+    return client;
+  },
+} = {}) {
+  let url = env.SNP_TEST_DATABASE_URL || env.DATABASE_URL;
+  if (!url) {
+    let owner;
+    try {
+      owner = inspectProjectImpl({ projectId: configuredProjectId });
+    } catch (err) {
+      if (err && typeof err === "object") err.snpPhase = "connect";
+      throw err;
+    }
+    if (!owner || owner.projectId !== configuredProjectId) {
+      const err = new Error(
+        `configured local Supabase project ${configuredProjectId} is not running`,
+      );
+      err.snpPhase = "connect";
+      throw err;
+    }
+    const discovered = new URL(DEFAULT_LOCAL_DATABASE_URL);
+    discovered.port = String(owner.hostPort);
+    url = discovered.toString();
+  }
+  let client;
+  try {
+    client = await connect(url);
+  } catch (err) {
+    if (err && typeof err === "object") err.snpPhase = "connect";
+    throw err;
+  }
+  try {
     const { rows } = await client.query(
       `select version from supabase_migrations.schema_migrations
        order by version desc limit 1`,
     );
-    // The ledger advances on its own; the readiness probe only advances when a
-    // migration remembers to bump it. Read both so a lagging probe is caught
-    // offline instead of at deploy time.
     const { rows: probe } = await client.query(
       `select public.latest_applied_migration() as version`,
     );
@@ -93,6 +183,9 @@ async function localAppliedHead() {
       ledger: rows[0]?.version ?? null,
       probe: probe[0]?.version ?? null,
     };
+  } catch (err) {
+    if (err && typeof err === "object") err.snpPhase = "query";
+    throw err;
   } finally {
     try {
       await client.end();
@@ -116,15 +209,13 @@ function linkedMigrationList() {
   };
 }
 
-function redact(text) {
-  return text
-    .replace(/postgres:\/\/[^\s]+/gi, "postgres://***")
-    .replace(/password[=:]\s*\S+/gi, "password=***")
-    .replace(/sb_secret_[A-Za-z0-9_-]+/g, "sb_secret_***")
-    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "jwt:***");
-}
-
-async function main() {
+export async function compareMigrationHeads({
+  argv = process.argv,
+  env = process.env,
+  queryLocal = () => localAppliedHead({ env }),
+} = {}) {
+  const requireLocal = argv.includes("--require-local");
+  const skipLinked = argv.includes("--skip-linked");
   const repo = repoHeads();
   const expected = contractExpectedHead();
 
@@ -137,7 +228,7 @@ async function main() {
 
   if (!repo.head) {
     console.error("FAIL: no migration files found");
-    process.exit(1);
+    return 1;
   }
 
   if (expected && expected !== repo.head) {
@@ -164,17 +255,18 @@ async function main() {
   let localHead = null;
   let localProbe = null;
   let localError = null;
+  let localPhase = null;
   try {
-    local = await localAppliedHead();
+    local = await queryLocal();
     localHead = local.ledger;
     localProbe = local.probe;
     console.log(`local_applied:   ${localHead ?? "(empty ledger)"}`);
     console.log(`local_probe:     ${localProbe ?? "(no probe)"}`);
   } catch (err) {
     localError = err instanceof Error ? err.message : String(err);
-    // Do not print connection strings that might appear in driver messages.
+    localPhase = err?.snpPhase ?? (isLocalConnectionError(err) ? "connect" : "query");
     console.log(
-      `local_applied:   (unavailable) ${redact(localError).slice(0, 120)}`,
+      `local_applied:   (${localPhase === "query" ? "query error" : "unavailable"}) ${redact(localError).slice(0, 120)}`,
     );
   }
 
@@ -195,6 +287,11 @@ async function main() {
       );
       exit = 1;
     }
+  } else if (localPhase === "query") {
+    console.error(
+      "FAIL: local database connected but schema/query failed (mismatch, not offline)",
+    );
+    exit = 1;
   } else if (requireLocal) {
     console.error("FAIL: --require-local set but local head could not be read");
     exit = 1;
@@ -213,7 +310,6 @@ async function main() {
         console.log(redact(linked.stderr).trim().slice(0, 400));
       }
     } else {
-      // Print a redacted summary only — never full env dumps.
       const lines = redact(linked.stdout)
         .split(/\r?\n/)
         .filter((l) => l.trim().length > 0);
@@ -230,10 +326,17 @@ async function main() {
   }
 
   console.log("=== end (no mutations performed) ===");
+  return exit;
+}
+
+async function main() {
+  const exit = await compareMigrationHeads();
   process.exit(exit);
 }
 
-main().catch((err) => {
-  console.error("compare-migration-heads error:", redact(String(err.message || err)));
-  process.exit(2);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error("compare-migration-heads error:", redact(String(err.message || err)));
+    process.exit(2);
+  });
+}

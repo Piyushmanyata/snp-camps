@@ -347,8 +347,15 @@ export async function runDayBeforeDeferralSms(
       );
       if (result.status === "sent") summary.sent += 1;
       else if (result.status === "skipped") summary.skipped += 1;
-      else if (result.status === "ambiguous") summary.ambiguous += 1;
-      else summary.failed += 1;
+      else if (result.status === "ambiguous") {
+        summary.ambiguous += 1;
+        summary.ok = false;
+        summary.error = "Deferral delivery was ambiguous.";
+      } else {
+        summary.failed += 1;
+        summary.ok = false;
+        summary.error = "Deferral delivery failed.";
+      }
     }
     return summary;
   } catch (err) {

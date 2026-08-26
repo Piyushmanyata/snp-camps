@@ -28,9 +28,164 @@ type CredentialShare = {
   name: string;
 };
 
-function roleCopy(role: ManageableStaffRole) {
+function roleCopy(role: ManageableStaffRole, fieldCopy: boolean) {
+  const localized = role === "volunteer" && fieldCopy;
+  const surface = localized
+    ? {
+        lang: "hi-Latn",
+        networkError:
+          "Internet nahi mila. Connection check karke dobara koshish karein.",
+        responseError: (message: string | undefined, fallback: string) =>
+          message && /changed during/i.test(message)
+            ? "Volunteer ki jaankari beech mein badal gayi. Refresh karke dobara koshish karein."
+            : fallback,
+        credentialText: (
+          credential: CredentialShare,
+          origin: string,
+          title: string,
+        ) =>
+          [
+            title,
+            `Naam: ${credential.name}`,
+            `Email: ${credential.email}`,
+            `Temporary password: ${credential.password}`,
+            `Login: ${origin}/login`,
+            "Login ke baad yeh password badlein.",
+          ].join("\n"),
+        credentialCopied: "Login ki jaankari copy ho gayi.",
+        credentialCopyFail: "Copy nahi hua — password ko khud select karein.",
+        fallbackLabel: "is volunteer",
+        resetPrompt: (label: string) =>
+          `${label} ka temporary password reset karein? Abhi wala password turant band ho jayega.`,
+        resetOk:
+          "Temporary password reset ho gaya. Neeche ek baar share karein.",
+        reactivatePrompt: (label: string) =>
+          `${label} ko dobara chalu karein? Woh phir se login kar payenge.`,
+        reactivateOk: (label: string) => `${label} dobara chalu ho gaya.`,
+        deactivatePrompt: (label: string, history: string) =>
+          `${label} ko band karein? ${history}`,
+        deactivateOk: (label: string) => `${label} band ho gaya.`,
+        creatingStatus: "Volunteer ka account ban raha hai.",
+        resettingStatus: "Volunteer ka password reset ho raha hai.",
+        reactivatingStatus: "Volunteer ka account dobara chalu ho raha hai.",
+        deactivatingStatus: "Volunteer ka account band ho raha hai.",
+        noEmail: "email nahi",
+        disabledSuffix: " · band",
+        viewingSuffix: " · hisaab khula hai",
+        tapSuffix: " · hisaab ke liye tap karein",
+        metricLabel: "alag marij",
+        roleBadge: "Volunteer ka role",
+        disabledBadge: "Band",
+        reactivating: "Chalu ho raha hai…",
+        reactivate: "Dobara chalu karein",
+        resetting: "Reset ho raha hai…",
+        reset: "Password reset karein",
+        deactivating: "Band ho raha hai…",
+        deactivate: "Band karein",
+        credentialHeading: "Temporary login share karein (sirf ek baar dikhega)",
+        credentialHelp:
+          "Band karne se pehle yeh jaankari copy karein. Password dobara nahi dikhega; nayi copy ke liye use reset karein.",
+        passwordLabel: "Ek-baar ka password",
+        copied: "Copy ho gaya",
+        copyLogin: "Login ki jaankari copy karein",
+        dismissPrompt:
+          "Kya aapne yeh temporary password safe rakh ya share kar diya hai?",
+        dismiss: "Band karein",
+        createHelp:
+          "Volunteer banne ke baad safe temporary password sirf ek baar dikhega. Woh Staff login se login karenge.",
+        fullNameLabel: "Poora naam",
+        cancel: "Radd karein",
+      }
+    : {
+        lang: undefined,
+        networkError: "Network error. Check your connection and try again.",
+        responseError: (message: string | undefined, fallback: string) =>
+          message || fallback,
+        credentialText: (
+          credential: CredentialShare,
+          origin: string,
+          title: string,
+        ) =>
+          [
+            title,
+            `Name: ${credential.name}`,
+            `Email: ${credential.email}`,
+            `Temporary password: ${credential.password}`,
+            `Sign in: ${origin}/login`,
+            "Change this password after signing in.",
+          ].join("\n"),
+        credentialCopied: "Login details copied.",
+        credentialCopyFail: "Could not copy — select the password manually.",
+        fallbackLabel: `this ${role}`,
+        resetPrompt: (label: string) =>
+          `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
+        resetOk: "Temporary password reset. Share it below (shown once).",
+        reactivatePrompt: (label: string) =>
+          `Reactivate ${label}? They will be able to sign in again.`,
+        reactivateOk: (label: string) => `Reactivated ${label}.`,
+        deactivatePrompt: (label: string, history: string) =>
+          `Deactivate ${label}? ${history}`,
+        deactivateOk: (label: string) => `Deactivated ${label}.`,
+        creatingStatus: `Creating ${role} account.`,
+        resettingStatus: `Resetting ${role} password.`,
+        reactivatingStatus: `Reactivating ${role} account.`,
+        deactivatingStatus: `Deactivating ${role} account.`,
+        noEmail: "no email",
+        disabledSuffix: " · disabled",
+        viewingSuffix: " · viewing KPIs",
+        tapSuffix: " · tap for KPIs",
+        metricLabel: "distinct patients",
+        roleBadge: role,
+        disabledBadge: "disabled",
+        reactivating: "Reactivating…",
+        reactivate: "Reactivate",
+        resetting: "Resetting…",
+        reset: "Reset password",
+        deactivating: "Deactivating…",
+        deactivate: "Deactivate",
+        credentialHeading: "Share temporary login (shown once)",
+        credentialHelp:
+          "Copy these details before dismissing them. The password cannot be retrieved again; reset it if another copy is needed.",
+        passwordLabel: "Temporary password",
+        copied: "Copied",
+        copyLogin: "Copy login details",
+        dismissPrompt:
+          "Have you securely saved or shared this temporary password?",
+        dismiss: "Dismiss",
+        createHelp:
+          "A secure temporary password is generated after creation and shown only once. They sign in at Staff login.",
+        fullNameLabel: "Full name",
+        cancel: "Cancel",
+      };
+
+  if (localized) {
+    return {
+      ...surface,
+      intro:
+        "Naam aur email se volunteer jodein. Share karne ke liye ek temporary password sirf ek baar dikhega.",
+      empty: "Abhi koi volunteer nahi — pehla volunteer neeche jodein.",
+      addButton: "Naya volunteer jodein",
+      createSubmit: "Volunteer banayein aur password lein",
+      createOk: "Volunteer ban gaya. Temporary password neeche ek baar share karein.",
+      createFail: "Volunteer nahi ban paya. Dobara koshish karein.",
+      resetFail: "Volunteer ka password reset nahi hua. Dobara koshish karein.",
+      reactivateFail: "Volunteer dobara chalu nahi hua. Dobara koshish karein.",
+      deactivateFail: "Volunteer band nahi hua. Dobara koshish karein.",
+      credentialTitle: "SNP Camps volunteer ka login",
+      defaultName: "Volunteer",
+      formId: "volunteer-create-form",
+      credentialHeadingId: "volunteer-credential-heading",
+      detailIdPrefix: "volunteer-detail",
+      historyOnDeactivate:
+        "Login turant band ho jayega; pehle ka kaam safe rahega.",
+      namePlaceholder: "Volunteer ka naam",
+      emailPlaceholder: "volunteer@example.com",
+      emailHint: "Isi email se login hoga — ise badlein nahi",
+    };
+  }
   if (role === "clinical_operator") {
     return {
+      ...surface,
       intro: "Create a least-privilege Clinical Desk Operator account.",
       empty: "No Clinical Desk Operators yet.",
       addButton: "Add Clinical Desk Operator",
@@ -54,6 +209,7 @@ function roleCopy(role: ManageableStaffRole) {
   }
   if (role === "team_lead") {
     return {
+      ...surface,
       intro:
         "Create a team lead with name + email. A temporary password is generated for you to share once. Tap a name for KPIs.",
       empty: "No team leads yet — add the first below.",
@@ -77,6 +233,7 @@ function roleCopy(role: ManageableStaffRole) {
     };
   }
   return {
+    ...surface,
     intro:
       "Create a volunteer with name + email. A temporary password is generated for you to share once. Tap a name for KPIs.",
     empty: "No volunteers yet — add the first below.",
@@ -105,6 +262,7 @@ export function AdminStaff({
   initial,
   canManage = true,
   canViewDetail = true,
+  fieldCopy = false,
   teamLeadOptions,
   metricById,
 }: {
@@ -112,10 +270,11 @@ export function AdminStaff({
   initial: StaffPerson[];
   canManage?: boolean;
   canViewDetail?: boolean;
+  fieldCopy?: boolean;
   teamLeadOptions?: Array<{ id: string; full_name: string | null }>;
   metricById?: Record<string, number>;
 }) {
-  const copy = roleCopy(role);
+  const copy = roleCopy(role, fieldCopy);
   const apiBase = `/api/admin/staff/${role}`;
   const router = useRouter();
   const [list, setList] = useState(initial);
@@ -172,7 +331,7 @@ export function AdminStaff({
         temporaryPassword?: string;
       };
       if (!res.ok || !json.staff || !json.temporaryPassword) {
-        setError(json.error || copy.createFail);
+        setError(copy.responseError(json.error, copy.createFail));
         return;
       }
 
@@ -193,7 +352,7 @@ export function AdminStaff({
       setShowForm(false);
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(copy.networkError);
     } finally {
       setLoading(false);
     }
@@ -201,33 +360,26 @@ export function AdminStaff({
 
   async function copyCredential() {
     if (!credential) return;
-    const text = [
+    const text = copy.credentialText(
+      credential,
+      window.location.origin,
       copy.credentialTitle,
-      `Name: ${credential.name}`,
-      `Email: ${credential.email}`,
-      `Temporary password: ${credential.password}`,
-      `Sign in: ${window.location.origin}/login`,
-      "Change this password after signing in.",
-    ].join("\n");
+    );
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setError(null);
-      setOk("Login details copied.");
+      setOk(copy.credentialCopied);
     } catch {
       setCopied(false);
-      setError("Could not copy — select the password manually.");
+      setError(copy.credentialCopyFail);
     }
   }
 
   async function onReset(person: StaffPerson) {
     if (busy) return;
-    const label = person.full_name || person.email || `this ${role}`;
-    if (
-      !window.confirm(
-        `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
-      )
-    ) {
+    const label = person.full_name || person.email || copy.fallbackLabel;
+    if (!window.confirm(copy.resetPrompt(label))) {
       return;
     }
 
@@ -246,7 +398,7 @@ export function AdminStaff({
         staff?: Pick<StaffPerson, "id" | "full_name" | "email">;
       };
       if (!res.ok || !json.temporaryPassword) {
-        setError(json.error || copy.resetFail);
+        setError(copy.responseError(json.error, copy.resetFail));
         return;
       }
 
@@ -256,9 +408,9 @@ export function AdminStaff({
         password: json.temporaryPassword,
         name: json.staff?.full_name || person.full_name || copy.defaultName,
       });
-      setOk("Temporary password reset. Share it below (shown once).");
+      setOk(copy.resetOk);
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(copy.networkError);
     } finally {
       setResettingId(null);
     }
@@ -266,10 +418,8 @@ export function AdminStaff({
 
   async function onReactivate(person: StaffPerson) {
     if (busy || !person.disabled_at) return;
-    const label = person.full_name || person.email || `this ${role}`;
-    if (
-      !window.confirm(`Reactivate ${label}? They will be able to sign in again.`)
-    ) {
+    const label = person.full_name || person.email || copy.fallbackLabel;
+    if (!window.confirm(copy.reactivatePrompt(label))) {
       return;
     }
 
@@ -287,7 +437,7 @@ export function AdminStaff({
         staff?: StaffPerson;
       };
       if (!res.ok || !json.staff) {
-        setError(json.error || copy.reactivateFail);
+        setError(copy.responseError(json.error, copy.reactivateFail));
         return;
       }
       setList((prev) =>
@@ -297,10 +447,10 @@ export function AdminStaff({
             : row,
         ),
       );
-      setOk(`Reactivated ${label}.`);
+      setOk(copy.reactivateOk(label));
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(copy.networkError);
     } finally {
       setReactivatingId(null);
     }
@@ -308,10 +458,8 @@ export function AdminStaff({
 
   async function onDelete(person: StaffPerson) {
     if (busy) return;
-    const label = person.full_name || person.email || `this ${role}`;
-    if (
-      !window.confirm(`Deactivate ${label}? ${copy.historyOnDeactivate}`)
-    ) {
+    const label = person.full_name || person.email || copy.fallbackLabel;
+    if (!window.confirm(copy.deactivatePrompt(label, copy.historyOnDeactivate))) {
       return;
     }
     setDeletingId(person.id);
@@ -327,7 +475,7 @@ export function AdminStaff({
         disabledAt?: string;
       };
       if (!res.ok) {
-        setError(json.error || copy.deactivateFail);
+        setError(copy.responseError(json.error, copy.deactivateFail));
         return;
       }
       setList((prev) =>
@@ -341,17 +489,17 @@ export function AdminStaff({
         ),
       );
       if (selectedId === person.id) setSelectedId(null);
-      setOk(`Deactivated ${label}.`);
+      setOk(copy.deactivateOk(label));
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(copy.networkError);
     } finally {
       setDeletingId(null);
     }
   }
 
   return (
-    <div className="space-y-3">
+    <div lang={copy.lang} className="space-y-3">
       <p className="text-sm text-muted">
         {canViewDetail
           ? copy.intro
@@ -364,13 +512,13 @@ export function AdminStaff({
         aria-atomic="true"
       >
         {loading
-          ? `Creating ${role} account.`
+          ? copy.creatingStatus
           : resettingId
-            ? `Resetting ${role} password.`
+            ? copy.resettingStatus
             : reactivatingId
-              ? `Reactivating ${role} account.`
+              ? copy.reactivatingStatus
               : deletingId
-                ? `Deactivating ${role} account.`
+                ? copy.deactivatingStatus
                 : ""}
       </p>
       <ErrorBox message={error} />
@@ -395,12 +543,12 @@ export function AdminStaff({
                       {person.full_name || "—"}
                     </p>
                     <p className="truncate text-xs text-muted">
-                      {person.email || "no email"}
+                      {person.email || copy.noEmail}
                       {person.disabled_at
-                        ? " · disabled"
+                        ? copy.disabledSuffix
                         : open
-                          ? " · viewing KPIs"
-                          : " · tap for KPIs"}
+                          ? copy.viewingSuffix
+                          : copy.tapSuffix}
                     </p>
                   </button>
                 ) : (
@@ -409,20 +557,20 @@ export function AdminStaff({
                       {person.full_name || "—"}
                     </p>
                     <p className="truncate text-xs text-muted">
-                      {person.email || "no email"}
-                      {person.disabled_at ? " · disabled" : ""}
+                      {person.email || copy.noEmail}
+                      {person.disabled_at ? copy.disabledSuffix : ""}
                     </p>
                   </div>
                 )}
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
                   {metricById ? (
                     <Badge>
-                      {metricById[person.id] ?? 0} distinct patients
+                      {metricById[person.id] ?? 0} {copy.metricLabel}
                     </Badge>
                   ) : null}
-                  <Badge tone="ok">{role}</Badge>
+                  <Badge tone="ok">{copy.roleBadge}</Badge>
                   {person.disabled_at ? (
-                    <Badge tone="danger">disabled</Badge>
+                    <Badge tone="danger">{copy.disabledBadge}</Badge>
                   ) : null}
                   {canManage ? (
                     person.disabled_at ? (
@@ -436,8 +584,8 @@ export function AdminStaff({
                         className="pressable min-h-12 min-w-12 rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                       >
                         {reactivatingId === person.id
-                          ? "Reactivating…"
-                          : "Reactivate"}
+                          ? copy.reactivating
+                          : copy.reactivate}
                       </button>
                     ) : (
                       <>
@@ -451,8 +599,8 @@ export function AdminStaff({
                           className="pressable min-h-12 min-w-12 rounded-lg border border-border bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                         >
                           {resettingId === person.id
-                            ? "Resetting…"
-                            : "Reset password"}
+                            ? copy.resetting
+                            : copy.reset}
                         </button>
                         <button
                           type="button"
@@ -462,8 +610,8 @@ export function AdminStaff({
                           className="pressable min-h-12 min-w-12 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
                         >
                           {deletingId === person.id
-                            ? "Deactivating…"
-                            : "Deactivate"}
+                            ? copy.deactivating
+                            : copy.deactivate}
                         </button>
                       </>
                     )
@@ -500,11 +648,10 @@ export function AdminStaff({
             tabIndex={-1}
             className="text-sm font-bold text-brand"
           >
-            Share temporary login (shown once)
+            {copy.credentialHeading}
           </h3>
           <p className="mt-1 text-xs text-muted">
-            Copy these details before dismissing them. The password cannot be
-            retrieved again; reset it if another copy is needed.
+            {copy.credentialHelp}
           </p>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex flex-wrap justify-between gap-2">
@@ -512,7 +659,9 @@ export function AdminStaff({
               <dd className="break-all font-semibold">{credential.email}</dd>
             </div>
             <div className="flex flex-wrap justify-between gap-2">
-              <dt className="text-muted">Temporary password</dt>
+              <dt className="text-muted">
+                {copy.passwordLabel}
+              </dt>
               <dd className="break-all font-mono font-bold tracking-wide text-brand">
                 {credential.password}
               </dd>
@@ -525,7 +674,7 @@ export function AdminStaff({
               className="sm:w-auto"
               onClick={() => void copyCredential()}
             >
-              {copied ? "Copied" : "Copy login details"}
+              {copied ? copy.copied : copy.copyLogin}
             </Button>
             <Button
               type="button"
@@ -534,7 +683,7 @@ export function AdminStaff({
               onClick={() => {
                 if (
                   window.confirm(
-                    "Have you securely saved or shared this temporary password?",
+                    copy.dismissPrompt,
                   )
                 ) {
                   setCredential(null);
@@ -542,7 +691,7 @@ export function AdminStaff({
                 }
               }}
             >
-              Dismiss
+              {copy.dismiss}
             </Button>
           </div>
         </section>
@@ -568,11 +717,10 @@ export function AdminStaff({
           ) : (
             <form id={copy.formId} onSubmit={onSubmit} className="space-y-3">
               <p className="text-sm text-muted">
-                A secure temporary password is generated after creation and
-                shown only once. They sign in at <strong>Staff login</strong>.
+                {copy.createHelp}
               </p>
               <Input
-                label="Full name"
+                label={copy.fullNameLabel}
                 required
                 disabled={busy}
                 value={fullName}
@@ -623,7 +771,7 @@ export function AdminStaff({
                     setError(null);
                   }}
                 >
-                  Cancel
+                  {copy.cancel}
                 </Button>
               </div>
             </form>
