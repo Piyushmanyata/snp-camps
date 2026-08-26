@@ -268,12 +268,25 @@ export async function POST(request: Request) {
     return errorResponse("Registration adhoora raha. Kripya camp desk par milen.", 502);
   }
 
+  const stored = await supabase
+    .from("patients")
+    .select("registration_request_id, queue_status")
+    .eq("id", row.id)
+    .maybeSingle();
+  const storedRequestId =
+    typeof stored.data?.registration_request_id === "string"
+      ? stored.data.registration_request_id
+      : null;
+  const existing = Boolean(storedRequestId && storedRequestId !== requestId);
+  const queueStatus = stored.data?.queue_status === "seen" ? "seen" : "registered";
+
   return NextResponse.json({
     ok: true,
+    existing,
     patientId: row.id,
     registrationNumber: row.reg_no,
     campDayId: row.camp_day_id,
     dayDate: row.day_date,
-    queueStatus: "registered",
+    queueStatus,
   });
 }

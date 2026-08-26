@@ -8,6 +8,7 @@ export type SelfRegistrationReceiptData = {
   patientId: string;
   registrationNumber: number;
   dayDate: string | null;
+  existing?: boolean;
 };
 
 export function SelfRegistrationReceipt({
@@ -28,11 +29,11 @@ export function SelfRegistrationReceipt({
         tabIndex={-1}
         className="text-xl font-bold outline-none"
       >
-        Registration ho gaya
+        {result.existing ? "Pehle se register hain" : "Registration ho gaya"}
       </h2>
       <p className="rounded-2xl bg-brand-soft p-6 text-center">
         <span className="block text-xs font-bold uppercase text-brand">
-          Registration number
+          {result.existing ? "Aapka registration number" : "Registration number"}
         </span>
         <strong className="text-5xl tracking-tight">
           #{result.registrationNumber}
@@ -67,8 +68,7 @@ export function SelfRegistrationReceipt({
       </dl>
 
       <p className="text-sm text-muted">
-        Aap <strong>registered</strong> hain. Camp ke din apne venue par
-        jaayein — desk par aapki parchi print hogi.
+        Camp ke din apne venue par jaayein — desk par aapki parchi print hogi.
       </p>
 
       <p className="rounded-xl border border-border p-3 text-sm text-muted">
