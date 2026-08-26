@@ -453,4 +453,23 @@ test("a volunteer cannot override confirmation; a team lead can", async (t) => {
   );
   assert.equal(rows[0].confirmation_override_actor, leadId);
   assert.equal(rows[0].confirmation_override_reason, "card will not scan");
+
+  const inspected = await confirm([
+    patient.id,
+    "inspect",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    volunteerId,
+    null,
+  ]);
+  assert.equal(inspected.outcome, "not_required");
+  assert.equal(inspected.typed_full_name, null);
+  assert.equal(inspected.typed_date_of_birth, null);
+  assert.equal(inspected.typed_aadhaar_last4, null);
+  assert.equal(inspected.typed_address, null);
+  assert.equal(inspected.surviving_name, null);
 });

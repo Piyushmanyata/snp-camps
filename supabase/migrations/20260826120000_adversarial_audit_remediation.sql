@@ -301,9 +301,6 @@ BEGIN
       END IF;
       v_created_by := NULL;
     ELSE
-      -- service_role is already the trusted backend boundary. It may seed or
-      -- recover a manual registration, but a named scanned-card creator must
-      -- still be an active desk operator.
       IF v_duplicate_key IS NOT NULL AND NOT EXISTS (
         SELECT 1
         FROM public.profiles AS p
@@ -432,9 +429,6 @@ BEGIN
     RAISE EXCEPTION 'No active camp';
   END IF;
 
-  -- Card identity is the idempotency key across retries and Camp visits.
-  -- Resolve an existing registration before checking capacity, so a retry
-  -- remains successful even after the selected day fills.
   IF v_duplicate_key IS NOT NULL THEN
     PERFORM pg_advisory_xact_lock(
       hashtext('person-duplicate-key:' || v_duplicate_key)
@@ -499,8 +493,6 @@ BEGIN
   WHERE p.camp_day_id = p_camp_day_id;
 
   v_today := (timezone('Asia/Kolkata', now()))::date;
-  -- Seat caps apply to pre-registration only (self-service or non-today days).
-  -- Desk walk-ins on today are never turned away for capacity (CONTEXT).
   IF v_taken >= v_day.seat_limit
      AND (
        coalesce(p_self_service, false)
@@ -711,7 +703,6 @@ CREATE OR REPLACE FUNCTION public.register_patient_idempotent(p_request_id uuid,
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
--- requires card_scanned provenance
 DECLARE
   v_provenance text := lower(
     btrim(coalesce(p_provenance, 'self_declared'))
@@ -1111,6 +1102,7 @@ BEGIN
 
   IF r_patient.provenance IS DISTINCT FROM 'manual_exception'
      OR r_person.duplicate_key IS NOT NULL
+     OR r_patient.confirmation_override_at IS NOT NULL
   THEN
     RETURN QUERY SELECT
       'not_required'::text, NULL::integer, NULL::text,

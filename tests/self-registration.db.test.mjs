@@ -472,7 +472,6 @@ test("rollout alias stored card_scanned and final public RPC rejects card_verifi
       THEN 'card_scanned'
     ELSE lower(btrim(coalesce(p_provenance, 'self_declared')))
   END;`;
-    assert.match(definitions[0].definition, /requires card_scanned provenance/);
     assert.ok(definitions[0].definition.includes(strict));
 
     await client.query("begin");
