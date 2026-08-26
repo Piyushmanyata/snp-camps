@@ -13,9 +13,10 @@ Sources: [Dcode DC7121 product page](https://www.dcodeinternational.in/DC7121.ph
 and [official DC7121 specification sheet, page 1](https://www.dcodeinternational.in/images/DC7121.pdf#page=1).
 
 The current app needs keyboard-wedge behavior: the scanner types the complete
-payload into the password input focused after consent, and `Enter` submits and
-clears it
-([`aadhaar-usb-input.tsx`](../../src/components/aadhaar-usb-input.tsx#L15-L49)).
+payload into the password input focused after consent, and the payload is
+automatically captured upon input completion or on `Enter`, clearing the input
+immediately
+([`aadhaar-usb-input.tsx`](../../src/components/aadhaar-usb-input.tsx#L15-L65)).
 Leading and trailing whitespace is removed before decoding
 ([`aadhaar-attempt.ts`](../../src/lib/aadhaar-attempt.ts#L20-L29)). USB payloads
 outside 20-16,384 characters are rejected, and numeric Aadhaar Secure QR
