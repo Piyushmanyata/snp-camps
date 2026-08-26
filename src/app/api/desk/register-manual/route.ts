@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const { userId, profile } = await loadSessionProfile();
   if (!userId) return fail("Not signed in", 401);
   if (!isStaff(profile?.role)) {
-    return fail("Registration Staff hi manual exception kar sakte hain.", 403);
+    return fail("Only Registration Staff can record a manual exception.", 403);
   }
   const body = await readJsonBody<Body>(request, 16_384);
   if (!body) return fail("Invalid JSON body");
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     !phone.ok
   ) {
     return fail(
-      "Do baar scan fail hona, kaaran, aur sahi ghar ka phone number zaroori hai.",
+      "Two failed scan attempts, a reason, and a valid household phone number are required.",
     );
   }
   const requestId = text(body.requestId);
@@ -61,11 +61,11 @@ export async function POST(request: Request) {
   });
   if (!idValidation.ok || !identityValidation.ok) {
     return fail(
-      "Registration session galat hai. Desk reload karke dobara try karein.",
+      "Invalid registration session. Reload desk and try again.",
     );
   }
   const supabase = createServiceRoleClient();
-  if (!supabase) return fail("Registration service band hai. Admin ko batayein.", 503);
+  if (!supabase) return fail("Registration service is unavailable. Contact admin.", 503);
   const { data, error } = await supabase.rpc("register_manual_exception", {
     p_request_id: requestId,
     p_camp_id: campId,
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     return fail(
       mapDbError(error, {
         context: "manual-registration",
-        fallback: "Manual registration nahi hui. Dobara try karein.",
+        fallback: "Manual registration failed. Please try again.",
       }),
       409,
     );

@@ -10,17 +10,16 @@ export default async function SelfRegisterPage() {
   return (
     <main
       id="main"
-      lang="hi-Latn"
       className="mx-auto w-full max-w-lg px-4 py-10 sm:px-6"
     >
       <Card>
         <p className="text-xs font-bold uppercase tracking-wide text-brand">
           SNP Medical Camp
         </p>
-        <h1 className="mt-1 text-2xl font-bold">Khud registration karein</h1>
+        <h1 className="mt-1 text-2xl font-bold">Self-registration</h1>
         {!camp || days.length === 0 ? (
           <p className="mt-5 text-sm text-muted">
-            Abhi koi Camp Day available nahi hai. Kripya baad mein try karein.
+            No camp days available right now. Please check back later.
           </p>
         ) : (
           <SelfRegistrationFlowLazy

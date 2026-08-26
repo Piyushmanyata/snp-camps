@@ -17,7 +17,7 @@ export const SelfRegistrationFlowLazy = dynamic(
         aria-live="polite"
         className="rounded-xl border border-border bg-background px-3 py-4 text-sm text-muted"
       >
-        Registration load ho rahi hai…
+        Loading registration…
       </p>
     ),
   },
@@ -31,37 +31,37 @@ type Props = {
 
 const COPY = {
   desk: {
-    scan: "Live camera se try karein",
-    stop: "Scanner band karein",
-    photo: "Photo khinch kar scan karein",
-    gallery: "Gallery se photo chunein",
-    readingPhoto: "Photo padh rahe hain…",
-    aim: "Aadhaar QR ko frame ke andar rakhein",
-    preview: "Aadhaar QR camera ka preview",
+    scan: "Try live camera",
+    stop: "Stop scanner",
+    photo: "Take photo to scan",
+    gallery: "Choose photo from gallery",
+    readingPhoto: "Reading photo…",
+    aim: "Align Aadhaar QR inside the frame",
+    preview: "Aadhaar QR camera preview",
     consentNote:
-      "Details sirf form bharne ke liye li ja rahi hain. Aadhaar identity verify nahi hoti.",
-    diagnosticTitle: "Card poora nahi padha — yeh format report karein",
+      "Details are used only to prefill the registration form. Aadhaar identity is not verified.",
+    diagnosticTitle: "Card not fully read — report this format",
     diagnosticBody:
-      "Ismein sirf QR ka structure hai. Naam, number ya pata nahi hota.",
-    copyDiagnostic: "Copy karein",
+      "This contains only QR structure metadata. No name, number, or address.",
+    copyDiagnostic: "Copy diagnostic",
     consent:
-      "Marij ne registration ke liye Aadhaar card ki details nikalne ki sahmati di hai.",
+      "Patient consents to extracting details from their Aadhaar card for registration.",
   },
   patient: {
-    scan: "Live camera se try karein",
-    stop: "Scanner band karein",
-    photo: "Aadhaar ka photo lein",
-    gallery: "Gallery se photo chunein",
-    readingPhoto: "Photo padh rahe hain…",
-    aim: "Aadhaar QR ko frame ke andar rakhein",
-    preview: "Aadhaar QR camera ka preview",
+    scan: "Try live camera",
+    stop: "Stop scanner",
+    photo: "Take Aadhaar photo",
+    gallery: "Choose photo from gallery",
+    readingPhoto: "Reading photo…",
+    aim: "Align Aadhaar QR inside the frame",
+    preview: "Aadhaar QR camera preview",
     consentNote:
-      "Details sirf form bharne ke liye li ja rahi hain. Aadhaar identity verify nahi hoti.",
-    diagnosticTitle: "Card dobara scan karein",
-    diagnosticBody: "QR details poori nahi padh paayi.",
+      "Details are used only to prefill the registration form. Aadhaar identity is not verified.",
+    diagnosticTitle: "Scan card again",
+    diagnosticBody: "Could not read complete QR details.",
     copyDiagnostic: "Copy",
     consent:
-      "Main registration ke liye Aadhaar card ki details nikalne ki sahmati deta/deti hoon.",
+      "I consent to extracting details from my Aadhaar card for registration.",
   },
 } as const;
 
@@ -81,7 +81,7 @@ export function AadhaarCapture({ scanner, tone = "desk", diagnostic }: Props) {
   const shownDiagnostic = diagnostic ?? scanner.scanDiagnostic;
   const shownError =
     tone === "patient" && scanError
-      ? "QR nahi padha. Dobara try karein ya camp desk par jaakar madad lein."
+      ? "Could not read QR code. Please try again or ask for help at the camp desk."
       : scanError;
   const visibleDiagnostic = tone === "patient" ? null : shownDiagnostic;
 

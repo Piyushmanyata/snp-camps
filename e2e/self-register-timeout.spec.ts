@@ -51,14 +51,14 @@ test("stalled self-registration times out, keeps entered data, and reuses the re
       contentType: "application/json",
       body: JSON.stringify({
         ok: false,
-        error: "Registration nahi ho paaya. Camp desk par madad lein.",
+        error: "Could not complete registration. Please ask for help at the camp desk.",
       }),
     });
   });
 
   await page.goto("/self-register", { waitUntil: "domcontentloaded" });
   const cachedNoDay = page.getByText(
-    "Abhi koi Camp Day available nahi hai. Kripya baad mein try karein.",
+    "No Camp Days available right now. Please try again later.",
     { exact: true },
   );
   if (await cachedNoDay.isVisible().catch(() => false)) {
@@ -67,13 +67,13 @@ test("stalled self-registration times out, keeps entered data, and reuses the re
   }
   await page
     .getByRole("checkbox", {
-      name: /Main registration ke liye Aadhaar card ki details/,
+      name: /I consent to sharing my Aadhaar card details/,
     })
     .check();
   const photo = page.getByTestId("aadhaar-gallery-input");
   await photo.setInputFiles(env("E2E_FAKE_AADHAAR_PHOTO_PATH"));
   await expect(
-    page.getByRole("heading", { name: "Details confirm karein" }),
+    page.getByRole("heading", { name: "Confirm details" }),
   ).toBeVisible({ timeout: 20_000 });
   await page.clock.install();
   await page.getByLabel(/mobile|phone|number/i).fill("9876501234");
@@ -89,14 +89,14 @@ test("stalled self-registration times out, keeps entered data, and reuses the re
       await select.selectOption({ index: 1 });
     }
   }
-  await page.getByRole("button", { name: "Registration pakki karein" }).click();
+  await page.getByRole("button", { name: "Complete registration" }).click();
   await page.clock.fastForward(20_001);
-  await expect(page.getByText(/Request time out ho gaya/i)).toBeVisible({
+  await expect(page.getByText(/Request timed out/i)).toBeVisible({
     timeout: 5_000,
   });
   await expect(page.getByLabel(/mobile|phone|number/i)).toHaveValue("9876501234");
-  await page.getByRole("button", { name: "Registration pakki karein" }).click();
-  await expect(page.getByText(/Camp desk par madad lein/i)).toBeVisible({
+  await page.getByRole("button", { name: "Complete registration" }).click();
+  await expect(page.getByText(/ask for help at the camp desk/i)).toBeVisible({
     timeout: 10_000,
   });
   expect(requestIds.length).toBeGreaterThanOrEqual(2);
@@ -117,6 +117,6 @@ test("stalled self-registration times out, keeps entered data, and reuses the re
     })
     .catch(() => {});
   await page.clock.fastForward(1_000);
-  await expect(page.getByText(/Camp desk par madad lein/i)).toBeVisible();
+  await expect(page.getByText(/ask for help at the camp desk/i)).toBeVisible();
   await expect(page.getByText(/9999/)).toHaveCount(0);
 });

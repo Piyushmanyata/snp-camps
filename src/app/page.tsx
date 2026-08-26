@@ -45,11 +45,10 @@ export default async function HomePage() {
                 Medical Camp Desk
               </h1>
               <p
-                lang="hi-Latn"
                 className="prose-help mx-auto mt-2 max-w-md leading-relaxed text-muted lg:mx-0"
               >
-                Aankhon ka camp — seats limited hain. Online khud register
-                karein, desk par parchi milegi.
+                Free eye camp — seats are limited. Register online, then get
+                your printed slip at the desk.
               </p>
             </div>
           </div>
@@ -71,30 +70,29 @@ export default async function HomePage() {
             </Card>
           ) : (
             <p
-              lang="hi-Latn"
               className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-5 text-sm text-muted"
             >
-              Abhi koi active camp nahi. Baad mein dekhein, ya staff se poochein.
+              No active camp right now. Please check back later or ask camp staff.
             </p>
           )}
 
-          <div lang="hi-Latn" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <ActionCard
               href="/self-register"
-              title="Khud register karein"
+              title="Self-register"
               description={
                 !camp
-                  ? "Abhi koi camp nahi"
+                  ? "No active camp"
                   : anyOpen
-                    ? "Aadhaar card se · desk par line nahi"
-                    : "Sab din full hain — baad mein dekhein"
+                    ? "Using Aadhaar card · save time at the desk"
+                    : "All days are full — check back later"
               }
               variant="primary"
               disabled={!camp || !anyOpen}
               disabledReason={
                 !camp
-                  ? "Abhi koi camp nahi"
-                  : "Sab din full hain — baad mein dekhein"
+                  ? "No active camp"
+                  : "All days are full — check back later"
               }
             />
 
@@ -106,28 +104,28 @@ export default async function HomePage() {
             />
           </div>
 
-          <p lang="hi-Latn" className="text-center text-xs text-muted lg:text-left">
-            Naye staff? Admin se account banwayein. Marij: Aadhaar card se khud
-            register karein — login nahi chahiye.
+          <p className="text-center text-xs text-muted lg:text-left">
+            New staff? Ask an admin to create your account. Patients: register
+            online using your Aadhaar card — no sign in required.
           </p>
 
-          <div lang="hi-Latn" className="pt-1 text-left">
+          <div className="pt-1 text-left">
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-              Kaise hota hai
+              How it works
             </p>
             <StepList
               steps={[
                 {
-                  title: "Khud registration",
-                  detail: "Aadhaar scan karein · reg number milega",
+                  title: "Self-register",
+                  detail: "Scan Aadhaar · get your registration number",
                 },
                 {
-                  title: "Desk par parchi",
-                  detail: "Desk aapki parchi print karega",
+                  title: "Prescription slip",
+                  detail: "Desk prints your prescription slip on camp day",
                 },
                 {
-                  title: "Doctor se milna",
-                  detail: "Staff QR scan karke seen karega",
+                  title: "Doctor consultation",
+                  detail: "Staff scans QR code to record consultation",
                 },
               ]}
             />

@@ -156,25 +156,25 @@ export function classifyOperationError(
 
   if (!publicMessage && /VOLUNTEER_OVERRIDE_FORBIDDEN/.test(message)) {
     publicCategory = "permission";
-    publicMessage = "Team lead ya admin hi confirmation skip kar sakte hain.";
+    publicMessage = "Only a team lead or admin can skip confirmation.";
   }
   if (!publicMessage && /AADHAAR_KEY_TAKEN/.test(message)) {
     publicCategory = "conflict";
     publicMessage =
-      "Yeh card abhi kisi aur record se jud gaya. Dobara scan karein.";
+      "This card was just linked to another record. Please scan again.";
   }
   if (!publicMessage && /AADHAAR_CONFIRMATION_REQUIRED/.test(message)) {
     publicCategory = "validation";
-    publicMessage = "Pehle Aadhaar card confirm karein, phir print karein.";
+    publicMessage = "Confirm Aadhaar card first before printing.";
   }
   if (!publicMessage && /OT_SCHEDULE_FULL/.test(message)) {
     publicCategory = "capacity";
     publicMessage =
-      "Saari OT dates bhar gayi — admin se nayi date add karwayein.";
+      "All surgery dates are full — ask admin to add a new date.";
   }
   if (!publicMessage && /PRINT_WINDOW_CLOSED/.test(message)) {
     publicCategory = "validation";
-    publicMessage = "Print band hai. Admin se print window khulwaein.";
+    publicMessage = "Printing is closed. Ask an admin to open the print window.";
   }
   if (!publicMessage && /PRINT_WINDOW_NOT_TODAY/.test(message)) {
     publicCategory = "validation";

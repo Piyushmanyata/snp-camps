@@ -19,12 +19,12 @@ const PRINT_STATUS_COPY: Record<
   { printLabel: string; heading: string }
 > = {
   seen: {
-    printLabel: "Dobara print karein (1 page)",
-    heading: "Print · dekha hua marij",
+    printLabel: "Reprint prescription (1 page)",
+    heading: "Print · seen patient",
   },
   registered: {
-    printLabel: "Parchi print karein",
-    heading: "Parchi print ke liye taiyaar",
+    printLabel: "Print prescription",
+    heading: "Prescription ready to print",
   },
 };
 
@@ -78,7 +78,7 @@ export function PrintActions({
     if (!response.ok || !payload.ok) {
       return {
         ok: false,
-        error: payload.error || "Print taiyaar nahi ho paya. Dobara try karein.",
+        error: payload.error || "Could not prepare print. Please try again.",
       };
     }
     return {
@@ -90,7 +90,7 @@ export function PrintActions({
 
   async function handlePrint() {
     if (patients.length === 0) {
-      const text = "Is sheet par koi marij nahi.";
+      const text = "No patients on this sheet.";
       setMessage({ tone: "error", text });
       showErrorToast(text);
       return;
@@ -127,7 +127,7 @@ export function PrintActions({
         error.message &&
         !/postgres|supabase|postgrest|stack|at\s+\w+/i.test(error.message)
           ? error.message
-          : "Print taiyaar nahi ho paya. Dobara try karein.";
+          : "Could not prepare print. Please try again.";
       setMessage({
         tone: "error",
         text,
@@ -156,7 +156,7 @@ export function PrintActions({
           {statusCopy.heading}
         </p>
         <p className="break-words text-base font-semibold">
-          {`${primary?.regNo != null ? `#${primary.regNo}` : "Parchi"}${
+          {`${primary?.regNo != null ? `#${primary.regNo}` : "Prescription"}${
             primary?.name ? ` · ${primary.name}` : ""
           }`}
         </p>
@@ -187,13 +187,13 @@ export function PrintActions({
           onClick={handlePrint}
           data-testid="print-sheet-button"
         >
-          {isPrinting ? "Print taiyaar…" : statusCopy.printLabel}
+          {isPrinting ? "Preparing print…" : statusCopy.printLabel}
         </Button>
         <Link
           href={deskHref}
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-brand-soft px-4 text-sm font-semibold text-brand transition hover:bg-white"
         >
-          Desk par wapas
+          Back to desk
         </Link>
       </div>
     </div>

@@ -68,19 +68,19 @@ const OUTCOMES = {
 } as const;
 
 const KIND_HEADINGS: Record<keyof typeof OUTCOMES, string> = {
-  medicine: "DAWAI",
-  specs: "CHASHMA",
-  ot: "OPERATION (OT)",
+  medicine: "MEDICINES",
+  specs: "SPECTACLES",
+  ot: "SURGERY (OT)",
 };
 
 const OUTCOME_LABELS: Record<string, string> = {
-  fulfilled: "De diya",
-  not_available: "Available nahi",
-  not_required: "Zaroorat nahi",
-  deferred: "Baad mein milega",
+  fulfilled: "Dispensed",
+  not_available: "Not available",
+  not_required: "Not required",
+  deferred: "Deferred",
 };
 
-const SAVE_FIRST = "Pehle record save karein, phir faisla likhein.";
+const SAVE_FIRST = "Save record first before recording outcome.";
 
 type ResolveKind = keyof typeof KIND_HEADINGS;
 
@@ -89,60 +89,60 @@ const CLINICAL_ERRORS: Array<
 > = [
   [
     /diagnos/i,
-    "Kam se kam ek diagnosis chunein (zyada se zyada 12).",
+    "Select at least 1 diagnosis (maximum 12).",
   ],
   [
     /blood sugar/i,
-    "Blood sugar 20 se 1000 mg/dL ke beech likhein.",
+    "Blood sugar must be between 20 and 1000 mg/dL.",
   ],
   [
     /blood pressure/i,
-    "Blood pressure systolic/diastolic likhein, jaise 120/80.",
+    "Enter blood pressure as systolic/diastolic, e.g. 120/80.",
   ],
   [
     /\bpd\b|pupillary/i,
-    "PD 30 se 80 mm ke beech likhein.",
+    "PD must be between 30 and 80 mm.",
   ],
   [
     /sphere|cylinder|axis|spectacle|specs type/i,
-    "Chashme ka number poora aur sahi range mein bharein.",
+    "Enter complete spectacle measurements within valid range.",
   ],
   [
     /ot (eye|procedure)|procedure/i,
-    "OT ki aankh aur procedure likhein.",
+    "Enter surgery eye and procedure.",
   ],
   [
     /locked|lock/i,
-    "Yeh record lock ho chuka hai. Reason ke saath correction jodein.",
+    "This record is locked. Add a correction with a reason.",
   ],
   [
     /reason/i,
-    "Correction ke liye reason likhein.",
+    "Enter a reason for the correction.",
   ],
   [
     /too large|32768|payload/i,
-    "Record bahut bada hai. Remarks aur dawaiyan chhota karein.",
+    "Record is too large. Shorten remarks and medicine details.",
   ],
   [
     /unavailable medicines/i,
-    "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.",
+    "Enter unavailable medicines before saving as Not Available.",
   ],
   [
     /medicine detail/i,
-    "Pehle parchi ki dawaiyan likhein, phir faisla save karein.",
+    "Enter prescription medicines before saving outcome.",
   ],
   [
     /Specs measurements/i,
-    "Pehle chashme ka number bharein, phir faisla save karein.",
+    "Enter spectacle measurements before saving outcome.",
   ],
   [
     /OT detail/i,
-    "Pehle OT ki aankh aur procedure likhein, phir faisla save karein.",
+    "Enter surgery eye and procedure before saving outcome.",
   ],
   [
     /date and venue/i,
     (kind) =>
-      `Admin se is camp ke liye ${KIND_HEADINGS[kind]} collection date aur venue set karwayein, phir defer karein.`,
+      `Ask admin to set collection date and venue for ${KIND_HEADINGS[kind]}, then defer.`,
   ],
   [/seen transcription required/i, SAVE_FIRST],
   [
@@ -150,22 +150,22 @@ const CLINICAL_ERRORS: Array<
     (kind, line) => {
       const other = kind === "specs" && line ? otherSpecsLine(line) : null;
       return other
-        ? `${CLINICAL_LINE_LABELS[other]} line ne pehle faisla kar diya. Admin se reverse karwayein.`
-        : "Is item ka pehle se alag faisla hai. Admin se reverse karwayein.";
+        ? `The ${CLINICAL_LINE_LABELS[other]} station already recorded an outcome. Ask an admin to reverse it.`
+        : "An outcome is already recorded for this item. Ask an admin to reverse it.";
     },
   ],
   [
     /clinical operator only/i,
-    "Sirf Clinical Desk Operator faisla save kar sakta hai.",
+    "Only Clinical Desk Operators can record outcomes.",
   ],
   [
     /OT_SCHEDULE_FULL/i,
-    "Saari OT dates bhar gayi — admin se nayi date add karwayein.",
+    "All surgery dates are full — ask admin to add a new date.",
   ],
 ];
 
 const CLINICAL_REFUSAL_FALLBACK =
-  "Yeh kaam poora nahi hua. Dobara koshish karein ya admin se poochein.";
+  "Could not complete this action. Please try again or ask an admin.";
 
 function clinicalRefusal(
   message: string | null | undefined,
@@ -174,7 +174,7 @@ function clinicalRefusal(
 ): string {
   const text = message?.trim();
   if (!text) {
-    return "Network nahi mila. Internet check karke dobara try karein.";
+    return "Network issue. Check your connection and try again.";
   }
   const matched = CLINICAL_ERRORS.find(([pattern]) => pattern.test(text));
   const entry = matched?.[1];
@@ -187,10 +187,10 @@ function clinicalRefusal(
 }
 
 const NOT_FOUND_MESSAGE =
-  "Yeh number kisi dekhe hue marij ka nahi mila. Number check karke dobara try karein.";
+  "No seen patient found with this number. Check the number and try again.";
 
 const BLOCKED_SLIP_SUFFIX =
-  'Slip window browser ne rok di — "Slip kholein" link dabayen.';
+  'Slip window was blocked by browser — click the "Open slip" link.';
 
 type SlipReplaceState = {
   slip: { id: string; date: string; venue: string };
@@ -346,7 +346,7 @@ export function ClinicalDesk({
     const patientId = parsePatientIdFromQr(value);
     const regNo = patientId ? null : parseRegistrationNumber(value);
     if (!patientId && !regNo) {
-      setError("Patient QR scan karein ya sahi registration number likhein.");
+      setError("Scan patient QR or enter a valid registration number.");
       setBusy(false);
       return;
     }
@@ -362,7 +362,7 @@ export function ClinicalDesk({
           setError(NOT_FOUND_MESSAGE);
         }
       } else {
-        setError("Registration lookup fail ho gaya. Dobara koshish karein.");
+        setError("Registration lookup failed. Please try again.");
         setBusy(false);
       }
       return;
@@ -476,7 +476,7 @@ export function ClinicalDesk({
     const patientId = parsePatientIdFromQr(value);
     const regNo = patientId ? null : parseRegistrationNumber(value);
     if (!patientId && !regNo) {
-      setError("Patient QR scan karein ya sahi registration number likhein.");
+      setError("Scan patient QR or enter a valid registration number.");
       setBusy(false);
       return "error";
     }
@@ -486,7 +486,7 @@ export function ClinicalDesk({
     });
     if (!isCurrentLookup(generation)) return "stale";
     if (rpcError) {
-      setError("Follow-up lookup fail ho gaya. Dobara koshish karein.");
+      setError("Follow-up lookup failed. Please try again.");
       setBusy(false);
       return "error";
     }
@@ -504,9 +504,9 @@ export function ClinicalDesk({
       p_item_id: id,
     });
     if (!isCurrentLookup(generation)) return;
-    if (rpcError) setError("Follow-up abhi ke record se mel nahi khata. Patient dobara kholein.");
+    if (rpcError) setError("Follow-up does not match current record. Please reopen patient.");
     else {
-      setMessage("Item pura ho gaya; purana record surakshit hai.");
+      setMessage("Item fulfilled; existing record preserved.");
       await lookupFollowup();
       return;
     }
@@ -551,7 +551,7 @@ export function ClinicalDesk({
     const { slip, date, venue, reason } = slipReplace;
     if (!date || !venue.trim() || !reason.trim()) {
       printTarget?.abandon();
-      setError("Slip badalne ke liye date, jagah aur reason teenon zaroori hain.");
+      setError("Date, venue, and reason are all required to replace a slip.");
       return;
     }
     const generation = lookupGenerationRef.current;
@@ -567,7 +567,7 @@ export function ClinicalDesk({
     if (!isCurrentLookup(generation, patientId)) return;
     if (rpcError) {
       printTarget?.abandon();
-      setError("Slip badal nahi payi. Dobara koshish karein.");
+      setError("Could not replace slip. Please try again.");
     } else {
       const replacement = data as { id: string };
       closeSlipReplace();
@@ -576,7 +576,7 @@ export function ClinicalDesk({
       if (printTarget && !navigated) printTarget.abandon();
       setLastSlipId(replacement.id);
       setMessage(
-        navigated ? "Nayi slip ban gayi." : `Nayi slip ban gayi. ${BLOCKED_SLIP_SUFFIX}`,
+        navigated ? "New slip created." : `New slip created. ${BLOCKED_SLIP_SUFFIX}`,
       );
       await lookup();
       return;
@@ -598,7 +598,7 @@ export function ClinicalDesk({
       });
       if (rpcError) throw rpcError;
       if (!isCurrentLookup(generation, patientId)) return;
-      setMessage("Record save ho gaya.");
+      setMessage("Record saved.");
       await lookup();
     } catch (thrown) {
       if (isCurrentLookup(generation, patientId)) {
@@ -616,12 +616,12 @@ export function ClinicalDesk({
   async function addCorrection() {
     if (!canMutate) return;
     if (!record || !correctionReason.trim()) {
-      setError("Correction ke liye reason likhein.");
+      setError("Please provide a reason for correction.");
       return;
     }
     const data = transcriptionData();
     if (isSameTranscription(data, record.effective_data)) {
-      setError("Pehle koi field badlein, tabhi correction jud sakta hai.");
+      setError("Change a field first before adding a correction.");
       return;
     }
     const patientId = record.patient.id;
@@ -637,7 +637,7 @@ export function ClinicalDesk({
       if (rpcError) throw rpcError;
       if (!isCurrentLookup(generation, patientId)) return;
       setCorrectionReason("");
-      setMessage("Correction jud gaya; purana record surakshit hai.");
+      setMessage("Correction added; existing record preserved.");
       await lookup();
     } catch (thrown) {
       if (isCurrentLookup(generation, patientId)) {
@@ -680,8 +680,8 @@ export function ClinicalDesk({
       printTarget?.abandon();
       setError(
         otDaysFailed
-          ? "OT dates load nahi hui. Patient dobara kholein."
-          : "Saari OT dates bhar gayi — admin se nayi date add karwayein.",
+          ? "OT dates failed to load. Please reopen patient."
+          : "All surgery dates are full — ask admin to add a new date.",
       );
       return;
     }
@@ -710,7 +710,7 @@ export function ClinicalDesk({
           : false;
       if (printTarget && (!slip?.id || !navigated)) printTarget.abandon();
       const heading = KIND_HEADINGS[kind];
-      const base = `${heading} ka faisla save ho gaya.`;
+      const base = `${heading} decision saved.`;
       if (slip?.id) {
         setLastSlipId(slip.id);
         void fetch("/api/notify/deferral", {
@@ -781,7 +781,7 @@ export function ClinicalDesk({
         </p>
       ) : null}
       <Card className="space-y-3">
-        <SectionTitle>Marij dhundein</SectionTitle>
+        <SectionTitle>Find patient</SectionTitle>
         <div
           className="flex flex-wrap gap-2"
           data-testid="clinical-line-switcher"
@@ -811,16 +811,16 @@ export function ClinicalDesk({
         >
           <Input
             id="clinical-exact-lookup"
-            label="Patient QR ya registration number"
+            label="Patient QR or registration number"
             value={exact}
             onChange={(event) => {
               lookupGenerationRef.current += 1;
               setExact(event.target.value);
             }}
-            placeholder="USB scanner se scan karein ya number type karein"
+            placeholder="Scan with USB scanner or type number"
           />
           <Button type="submit" disabled={busy}>
-            Dhundein
+            Search
           </Button>
         </form>
       </Card>
@@ -839,7 +839,7 @@ export function ClinicalDesk({
               rel="noopener"
               className="ml-2 text-brand font-semibold underline"
             >
-              Slip kholein
+              Open slip
             </a>
           ) : null}
         </p>
@@ -852,18 +852,18 @@ export function ClinicalDesk({
                 #{record.patient.reg_no} · {record.patient.full_name}
               </SectionTitle>
               <p className="text-sm text-muted">
-                Umar {record.patient.age ?? "—"} · {genderLabel(record.patient.gender)}
+                Age {record.patient.age ?? "—"} · {genderLabel(record.patient.gender)}
               </p>
             </div>
             {canMutate && record.transcription?.locked_at ? (
               <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <p>
-                  Pehla record lock ho gaya hai. Neeche fields badlein aur reason ke
-                  saath correction jodein — purana record surakshit rehta hai.
+                  First record is locked. Edit fields below and add a correction with a
+                  reason — original record is preserved.
                 </p>
                 <Input
                   id="clinical-correction-reason"
-                  label="Correction ka reason"
+                  label="Reason for correction"
                   value={correctionReason}
                   onChange={(event) => setCorrectionReason(event.target.value)}
                 />
@@ -914,14 +914,14 @@ export function ClinicalDesk({
               </div>
               <Input
                 id="clinical-diagnosis-other"
-                label="Anya diagnosis (optional)"
+                label="Other diagnosis (optional)"
                 value={diagnosisOther}
                 onChange={(e) => {
                   setDiagnosisOther(e.target.value);
                   setDiagnosisOtherEdited(true);
                 }}
                 disabled={!canMutate || hasTranscription}
-                hint="Free text — commas se alag nahi hoga"
+                hint="Free text — will not be split by commas"
                 maxLength={120}
               />
             </fieldset>
@@ -952,7 +952,7 @@ export function ClinicalDesk({
             </div>
             <Input
               id="clinical-remarks"
-              label="Remarks / salaah"
+              label="Remarks / Advice"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               disabled={!canMutate || hasTranscription}
@@ -961,7 +961,7 @@ export function ClinicalDesk({
             {fields.medicines ? (
             <Input
               id="clinical-medicines"
-              label="Parchi ki dawaiyan"
+              label="Prescription medicines"
               value={medicines}
               onChange={(e) => setMedicines(e.target.value)}
               disabled={!canMutate}
@@ -970,9 +970,9 @@ export function ClinicalDesk({
             ) : null}
             {fields.specs ? (
             <Card className="space-y-3">
-              <SectionTitle>Chashme ka number (Specs)</SectionTitle>
+              <SectionTitle>Spectacle prescription (Specs)</SectionTitle>
               <label className="block text-sm font-semibold">
-                Chashme ka type
+                Spectacle type
                 <select
                   className={selectClass}
                   value={specType}
@@ -1029,9 +1029,9 @@ export function ClinicalDesk({
             ) : null}
             {fields.ot ? (
             <Card className="space-y-3">
-              <SectionTitle>Operation (OT) detail</SectionTitle>
+              <SectionTitle>Surgery (OT) details</SectionTitle>
               <label className="block text-sm font-semibold">
-                Aankh
+                Eye
                 <select
                   className={selectClass}
                   value={otEye}
@@ -1070,14 +1070,14 @@ export function ClinicalDesk({
                   type="submit"
                   disabled={busy || Boolean(record.transcription?.locked_at)}
                 >
-                  Record save karein
+                  Save record
                 </Button>
                 {record.transcription?.locked_at ? (
                   <Button
                     type="submit"
                     disabled={busy || !correctionReason.trim()}
                   >
-                    Correction jodein
+                    Add correction
                   </Button>
                 ) : null}
               </>
@@ -1098,13 +1098,13 @@ export function ClinicalDesk({
                   <SectionTitle>{KIND_HEADINGS[kind]}</SectionTitle>
                   <p className="text-sm text-muted">
                     {current?.outcome
-                      ? `Abhi tak: ${outcomeLabel(current.outcome)}`
-                      : "Abhi tak: koi faisla nahi"}
+                      ? `Status: ${outcomeLabel(current.outcome)}`
+                      : "Status: no outcome yet"}
                   </p>
                   {kind === "ot" && canMutate && !current ? (
                     openOtDays.length ? (
                       <label className="block text-sm font-semibold">
-                        OT date
+                        Surgery date
                         <select
                           className={selectClass}
                           data-testid="ot-day-picker"
@@ -1121,8 +1121,8 @@ export function ClinicalDesk({
                       </label>
                     ) : (
                       <p className="text-sm text-danger">
-                        Saari OT dates bhar gayi — admin se nayi date add
-                        karwayein.
+                        All surgery dates are full — ask admin to add a new
+                        date.
                       </p>
                     )
                   ) : null}
@@ -1132,7 +1132,7 @@ export function ClinicalDesk({
                         htmlFor="unavailable-medicines"
                         className="block text-sm font-semibold"
                       >
-                        Kaunsi dawaiyan available nahi thin?
+                        Which medicines were not available?
                         <textarea
                           id="unavailable-medicines"
                           className="mt-1 min-h-24 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
@@ -1148,7 +1148,7 @@ export function ClinicalDesk({
                         disabled={busy || !hasTranscription}
                         onClick={() => void resolve("medicine", "not_available")}
                       >
-                        Save karein: dawai available nahi
+                        Save: medicine not available
                       </Button>
                       <Button
                         type="button"
@@ -1211,7 +1211,7 @@ export function ClinicalDesk({
                           window.open(`/clinical/slip/${current.slip!.id}`, "_blank")
                         }
                       >
-                        Slip dobara print karein
+                        Reprint slip
                       </Button>
                       {canMutate ? (
                         <Button
@@ -1229,7 +1229,7 @@ export function ClinicalDesk({
                             });
                           }}
                         >
-                          Slip badlein
+                          Replace slip
                         </Button>
                       ) : null}
                     </div>
@@ -1240,7 +1240,7 @@ export function ClinicalDesk({
           </div>
           {record.history.length ? (
             <Card className="space-y-3">
-              <SectionTitle>Pichhle camps ka record · sirf padhne ke liye</SectionTitle>
+              <SectionTitle>Previous camp history · read-only</SectionTitle>
               {record.history.map((entry) => (
                 <div
                   key={`${entry.camp_id}-${entry.created_at}`}
@@ -1283,7 +1283,7 @@ export function ClinicalDesk({
       ) : null}
       {followup.length ? (
         <Card className="space-y-3">
-          <SectionTitle>Purane camp ke baaki kaam</SectionTitle>
+          <SectionTitle>Pending follow-up from previous camps</SectionTitle>
           {followup.map((item) => (
             <div
               key={item.id}
@@ -1300,7 +1300,7 @@ export function ClinicalDesk({
                   disabled={busy}
                   onClick={() => void fulfilFollowup(item.id)}
                 >
-                  De diya — pura karein
+                  Dispensed — mark complete
                 </Button>
               ) : null}
             </div>
@@ -1321,11 +1321,11 @@ export function ClinicalDesk({
         >
           <Card className="w-full max-w-md space-y-3">
             <SectionTitle>
-              <span id="slip-replace-title">Deferred slip badlein</span>
+              <span id="slip-replace-title">Replace deferred slip</span>
             </SectionTitle>
             <Input
               id="slip-replace-date"
-              label="Nayi date"
+              label="New date"
               type="date"
               value={slipReplace.date}
               onChange={(e) =>
@@ -1336,7 +1336,7 @@ export function ClinicalDesk({
             />
             <Input
               id="slip-replace-venue"
-              label="Nayi jagah (venue)"
+              label="New venue"
               value={slipReplace.venue}
               onChange={(e) =>
                 setSlipReplace((current) =>
@@ -1346,7 +1346,7 @@ export function ClinicalDesk({
             />
             <Input
               id="slip-replace-reason"
-              label="Badalne ka reason"
+              label="Reason for replacement"
               value={slipReplace.reason}
               onChange={(e) =>
                 setSlipReplace((current) =>
@@ -1366,7 +1366,7 @@ export function ClinicalDesk({
                   )
                 }
               >
-                Replacement save karein
+                Save replacement
               </Button>
               <Button
                 type="button"
@@ -1374,7 +1374,7 @@ export function ClinicalDesk({
                 disabled={busy}
                 onClick={closeSlipReplace}
               >
-                Rehne dein
+                Cancel
               </Button>
             </div>
           </Card>

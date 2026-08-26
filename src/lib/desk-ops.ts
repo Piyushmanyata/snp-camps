@@ -127,7 +127,7 @@ export async function lookupPatientScanWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.lookup";
   const fallback =
-    options.errorFallback ?? "Patient lookup nahi ho paya. Dobara try karein.";
+    options.errorFallback ?? "Could not look up patient. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -176,7 +176,7 @@ export async function lookupPatientScanWithRetries(options: {
 }
 
 export const NEVER_PRINTED_COPY =
-  "Pehle inki parchi print karein — tabhi dekha hua kar sakte hain.";
+  "Print this patient's prescription first — cannot mark as seen before printing.";
 
 export async function markSeenWithRetries(options: {
   patientId?: string | null;
@@ -195,7 +195,7 @@ export async function markSeenWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.mark-seen";
   const fallback =
-    options.errorFallback ?? "Dekha hua nahi ho paya. Dobara try karein.";
+    options.errorFallback ?? "Could not mark as seen. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -218,7 +218,7 @@ export async function markSeenWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: "Dekha hua nahi ho paya. Page refresh karke dobara try karein.",
+              error: "Could not mark as seen. Please refresh the page and try again.",
             },
           };
         }
@@ -235,7 +235,7 @@ export async function markSeenWithRetries(options: {
           done: true,
           value: {
             ok: false,
-            error: "Dekha hua record nahi hua. Dobara try karein.",
+            error: "Could not record seen status. Please try again.",
           },
         };
       } catch (thrown) {
@@ -267,7 +267,7 @@ export async function undoMarkSeenWithRetries(options: {
   type Out = { ok: true; row: UndoSeenRow } | { ok: false; error: string };
 
   const context = options.errorContext ?? "desk-ops.undo-mark-seen";
-  const fallback = options.errorFallback ?? "Undo nahi ho paya. Dobara try karein.";
+  const fallback = options.errorFallback ?? "Could not undo seen status. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -287,7 +287,7 @@ export async function undoMarkSeenWithRetries(options: {
         if (!row) {
           return {
             done: true,
-            value: { ok: false, error: "Undo nahi ho paya. Page refresh karke dobara try karein." },
+            value: { ok: false, error: "Could not undo seen status. Please refresh the page and try again." },
           };
         }
         if (row.error_code === "undo_window_expired") {
@@ -359,7 +359,7 @@ export async function changeCampDayWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.change-day";
   const fallback =
-    options.errorFallback ?? "Din change nahi ho paya. Dobara try karein.";
+    options.errorFallback ?? "Could not change camp day. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -384,7 +384,7 @@ export async function changeCampDayWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: "Din change nahi ho paya. Page refresh karke dobara try karein.",
+              error: "Could not change camp day. Please refresh the page and try again.",
             },
           };
         }
@@ -425,7 +425,7 @@ export async function printPrescriptionWithRetries(options: {
   const context = options.errorContext ?? "desk-ops.print-prescription";
   const fallback =
     options.errorFallback ??
-    "Parchi print nahi ho payi. Dobara try karein.";
+    "Could not print prescription. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -448,7 +448,7 @@ export async function printPrescriptionWithRetries(options: {
             done: true,
             value: {
               ok: false,
-              error: "Parchi print nahi ho payi. Refresh karke try karein.",
+              error: "Could not print prescription. Please refresh and try again.",
             },
           };
         }
@@ -489,7 +489,7 @@ export async function searchRegisteredPatientsWithRetries(options: {
 
   const context = options.errorContext ?? "desk-ops.search";
   const fallback =
-    options.errorFallback ?? "Naam search nahi ho paya. Dobara try karein.";
+    options.errorFallback ?? "Could not search by name. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {
@@ -547,7 +547,7 @@ export async function searchDeskPatientsWithRetries(options: {
     | { ok: false; error: string };
   const context = options.errorContext ?? "desk-ops.desk-search";
   const fallback =
-    options.errorFallback ?? "Patient search nahi ho paya. Dobara try karein.";
+    options.errorFallback ?? "Could not search patients. Please try again.";
 
   return withTransientSteps<Out>(
     async () => {

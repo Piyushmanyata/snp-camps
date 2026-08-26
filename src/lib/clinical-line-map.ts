@@ -8,10 +8,10 @@ export const CLINICAL_LINES = [
 export type ClinicalLine = (typeof CLINICAL_LINES)[number];
 
 export const CLINICAL_LINE_LABELS: Record<ClinicalLine, string> = {
-  fixed_power: "Ready chashma",
-  medicine: "Dawai",
-  specs_to_make: "Chashma banwana",
-  ot: "Operation (OT)",
+  fixed_power: "Ready spectacles",
+  medicine: "Medicines",
+  specs_to_make: "Custom spectacles",
+  ot: "Surgery (OT)",
 };
 
 export function lineKind(line: ClinicalLine): "specs" | "medicine" | "ot" {

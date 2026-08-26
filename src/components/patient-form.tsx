@@ -21,7 +21,7 @@ import {
   type PatientFormField,
 } from "@/lib/patient-form-validate";
 import { printPrescriptionWithRetries, type DeskRpc } from "@/lib/desk-ops";
-import { formatCampDay, type CampDayStats, type QueueStatus } from "@/lib/types";
+import { formatCampDay, genderLabel, type CampDayStats, type QueueStatus } from "@/lib/types";
 import { useCampDeskLive } from "@/lib/use-camp-desk-live";
 import { deskPrintWindowOpen } from "@/lib/print-window";
 import {
@@ -188,7 +188,7 @@ export function PatientForm({
         });
         setPartialScanDiagnostic(diagnostic);
         setScannedBanner(
-          "Aadhaar scan poora nahi hua. Dobara scan karein. 2 baar fail ho to manual entry karein.",
+          "Incomplete Aadhaar scan. Scan again. If scan fails twice, use manual entry.",
         );
         return false;
       }
@@ -209,7 +209,7 @@ export function PatientForm({
 
       if (parsed.source === "legacy_xml") {
         setLegacyQrWarning(
-          "Purana Aadhaar QR — details bina digital verify ke aayi hain. Card se milaan karein.",
+          "Legacy Aadhaar QR — details imported without digital signature verification. Please verify against physical card.",
         );
       } else {
         setLegacyQrWarning(null);
@@ -217,7 +217,7 @@ export function PatientForm({
 
       setPartialScanDiagnostic(null);
       setScannedBanner(
-        "Aadhaar scan ho gaya — details bhar gayi aur lock ho gayi.",
+        "Aadhaar scanned — details filled and locked.",
       );
       return true;
   };
@@ -297,7 +297,7 @@ export function PatientForm({
     }
     setLookupState(d.length >= 4 ? "skipped" : "idle");
     setLookupMsg(
-      d.length >= 4 ? "Optional · sirf aakhri 4 digit store hote hain." : null,
+      d.length >= 4 ? "Optional · only last 4 digits are stored." : null,
     );
   }
 
@@ -469,7 +469,7 @@ export function PatientForm({
               data: null,
               error: {
                 message:
-                  "Registration service band hai. Internet check karke dobara koshish karein.",
+                  "Registration service unavailable. Check connection and try again.",
                 code: "NETWORK_ERROR",
               },
             };
@@ -504,7 +504,7 @@ export function PatientForm({
           return {
             data: null,
             error: {
-              message: "Manual registration service band hai. Dobara koshish karein.",
+              message: "Manual registration service unavailable. Please try again.",
             },
           };
         }
@@ -526,10 +526,10 @@ export function PatientForm({
         setPhase("registered-print-ready");
         const flash =
           print === "navigated"
-            ? `Reg #${row.reg_no} — register ho gaya. Print window open.`
+            ? `Reg #${row.reg_no} — registered. Print window open.`
             : print === "skipped"
-              ? `Reg #${row.reg_no} — register ho gaya. Zaroorat ho to patient list se baad mein print karein.`
-              : `Reg #${row.reg_no} — register ho gaya. Print blocked — neeche Print dabayein.`;
+              ? `Reg #${row.reg_no} — registered. Print later from patient list if needed.`
+              : `Reg #${row.reg_no} — registered. Print blocked — click Print below.`;
         setFlash(flash);
         setAadhaarDuplicateRegNo(null);
         setLikelyDuplicateRegNo(null);
@@ -557,7 +557,7 @@ export function PatientForm({
       if (outcome.aadhaarDuplicateRegNo) {
         setAadhaarDuplicateRegNo(outcome.aadhaarDuplicateRegNo);
         setLikelyDuplicateRegNo(null);
-        const dupMsg = `Yeh naam aur Aadhaar ke aakhri 4 digit registration #${outcome.aadhaarDuplicateRegNo} ke hain.`;
+        const dupMsg = `This name and last 4 digits of Aadhaar match registration #${outcome.aadhaarDuplicateRegNo}.`;
         setError(dupMsg);
         setPhase("idle");
       } else {
@@ -640,8 +640,8 @@ export function PatientForm({
     });
     setFlash(
       printOpened
-        ? `Registration #${reg} — print window open. Duplicate nahi bana.`
-        : `Registration #${reg} ka aana record ho gaya. Print blocked — neeche Print dabayein. Duplicate nahi bana.`,
+        ? `Registration #${reg} — print window open. No duplicate created.`
+        : `Registration #${reg} arrival recorded. Print blocked — click Print below. No duplicate created.`,
     );
     registrationAttempt.current.rotate();
     resetFormFields();
@@ -665,15 +665,14 @@ export function PatientForm({
   if (!isStaff) {
     return (
       <div
-        lang="hi-Latn"
         className="space-y-3 rounded-2xl border border-border bg-card p-4"
       >
         <p className="text-sm font-semibold text-foreground">
-          Registration sirf camp desk pe
+          Registration only at camp desk
         </p>
         <p className="prose-help text-sm text-muted">
-          Volunteer ke paas jao. Staff register karega, parcha print hoga.
-          Public online registration nahi hai.
+          Please see a volunteer at the desk. Staff will register and print prescription slip.
+          Public online registration is not available.
         </p>
         <Link
           href="/"
@@ -688,7 +687,7 @@ export function PatientForm({
   if (!liveDays.length) {
     return (
       <p className="text-sm text-muted">
-        Koi camp day nahi hai. Admin se camp day add karwayein.
+        No camp days available. Ask admin to add a camp day.
       </p>
     );
   }
@@ -696,8 +695,7 @@ export function PatientForm({
   if (!openDays.length) {
     return (
       <WarningBox>
-        Saare camp din full hain. Seat khaali hone ka intezaar karein ya admin se
-        limit badhwayein.
+        All camp days are full. Wait for open seats or ask admin to increase capacity.
       </WarningBox>
     );
   }
@@ -710,12 +708,12 @@ export function PatientForm({
       noValidate
     >
       <div className="rounded-xl border border-brand/15 bg-brand-soft/50 px-3.5 py-2.5 text-sm text-brand">
-        Desk · sirf naam aur umar zaroori hai
+        Desk · only name and age required
       </div>
 
       <Input
         id="patient-phone"
-        label="Ghar ka mobile number *"
+        label="Household mobile number *"
         error={fieldErrors.phone}
         inputMode="numeric"
         autoComplete="tel"
@@ -723,7 +721,7 @@ export function PatientForm({
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         placeholder="10 digit mobile"
-        hint="Sirf contact ke liye — ghar ke log same number de sakte hain."
+        hint="For contact only — family members can share the same number."
       />
 
       {phoneValidation.ok ? (
@@ -731,11 +729,11 @@ export function PatientForm({
           <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
             <div>
               <p className="text-sm font-semibold text-brand">
-                Aadhaar se form bharein
+                Fill form from Aadhaar
               </p>
               <p className="text-xs text-muted">
-                Aadhaar card ka QR scan karein — details apne aap bhar jaayengi. Sirf
-                mobile number type karna hai.
+                Scan Aadhaar card QR — details are prefilled automatically. Only
+                mobile number is typed.
               </p>
             </div>
 
@@ -773,11 +771,11 @@ export function PatientForm({
                 className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
                 onClick={() => setManualEntry(true)}
               >
-                Manual entry (audit hoti hai)
+                Manual entry (audited)
               </button>
             ) : null}
             <p className="text-xs font-semibold text-muted">
-              Fail scan: {failedScanAttempts}/{MANUAL_EXCEPTION_ATTEMPT_THRESHOLD}
+              Failed scans: {failedScanAttempts}/{MANUAL_EXCEPTION_ATTEMPT_THRESHOLD}
             </p>
           </div>
         ) : isCardScanned ? (
@@ -809,7 +807,7 @@ export function PatientForm({
                   className="sm:w-auto shrink-0"
                   onClick={rescanCard}
                 >
-                  Dobara scan karein
+                  Scan again
                 </Button>
               </div>
             ) : null}
@@ -817,7 +815,7 @@ export function PatientForm({
         ) : (
           <div className="flex items-center justify-between rounded-xl border border-brand/20 bg-brand-soft/30 p-3">
             <span className="text-xs font-semibold text-brand">
-              Manual entry mode (audit hoti hai)
+              Manual entry mode (audited)
             </span>
             <Button
               type="button"
@@ -826,13 +824,13 @@ export function PatientForm({
               className="sm:w-auto"
               onClick={cancelManualEntry}
             >
-              Aadhaar scan karein
+              Scan Aadhaar
             </Button>
           </div>
         )
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-          Pehle sahi mobile number daalein, tab Aadhaar scanner khulega.
+          Enter a valid mobile number first to unlock Aadhaar scanner.
         </p>
       )}
       {flash ? (
@@ -859,8 +857,8 @@ export function PatientForm({
             </p>
             <p className="text-xs text-muted">
               {printRecovery.printNavigated
-                ? "Print window khul gayi. Dobara register kiye bina kabhi bhi print kar sakte hain."
-                : "Print block ya band ho gaya. Print dabayein — marij save ho chuka hai."}
+                ? "Print window opened. You can print again anytime without re-registering."
+                : "Print was blocked or closed. Click Print — patient is already saved."}
             </p>
           </div>
           <Button
@@ -870,7 +868,7 @@ export function PatientForm({
             data-testid="desk-print-recovery-button"
             onClick={openPrintRecovery}
           >
-            Parchi print karein
+            Print prescription
           </Button>
         </div>
       ) : null}
@@ -925,7 +923,7 @@ export function PatientForm({
                     ? "FULL · walk-in OK"
                     : d.is_full
                       ? "FULL"
-                      : `${d.seats_left} seat baaki`}
+                      : `${d.seats_left} seats left`}
                 </span>
               </button>
             );
@@ -968,13 +966,13 @@ export function PatientForm({
       {isNonLatinText(fullName) ? (
         <Input
           id="patient-display-name"
-          label="Latin Display Name / नाम (अंग्रेजी में) *"
+          label="Latin Display Name / English name *"
           error={fieldErrors.displayName}
           required
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="e.g. Ramesh Kumar"
-          hint="Devanagari/non-Latin scanned name requires a Latin display name for printed slips and search."
+          hint="Non-Latin scanned name requires a Latin display name for printed slips and search."
         />
       ) : null}
 
@@ -1062,13 +1060,7 @@ export function PatientForm({
             data-locked="true"
             aria-readonly="true"
           >
-            {gender === "M"
-              ? "Male"
-              : gender === "F"
-                ? "Female"
-                : gender === "O"
-                  ? "Other"
-                  : "—"}
+            {genderLabel(gender)}
           </p>
         ) : (
           <SegmentedControl
@@ -1135,8 +1127,7 @@ export function PatientForm({
           className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
         >
           <p className="text-sm font-medium text-amber-950">
-            Lagta hai yeh registration #{likelyDuplicateRegNo} hai, jo pehle se
-            bana hua hai.
+            Possible duplicate: this matches registration #{likelyDuplicateRegNo}, which already exists.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             {printWindowOpen ? (
@@ -1149,11 +1140,11 @@ export function PatientForm({
                 }}
                 data-testid="print-likely-duplicate"
               >
-                Unhi ki parchi print karein
+                Print existing prescription
               </Button>
             ) : (
               <p className="text-sm text-amber-950">
-                Print band hai. Admin se print window khulwaein.
+                Printing is closed. Ask admin to open print window.
               </p>
             )}
             <Button
@@ -1165,7 +1156,7 @@ export function PatientForm({
                 formRef.current?.requestSubmit();
               }}
             >
-              Phir bhi register karein
+              Register anyway
             </Button>
           </div>
         </div>
@@ -1175,7 +1166,7 @@ export function PatientForm({
           <p className="text-sm text-amber-950">
             Conflict:{" "}
             <span className="font-bold tabular">#{aadhaarDuplicateRegNo}</span>.
-            Override aapke account par record hoga aur sirf isi marij par lagega.
+            Override will be audited under your account and applies only to this patient.
           </p>
           <Button
             type="button"
@@ -1187,7 +1178,7 @@ export function PatientForm({
               formRef.current?.requestSubmit();
             }}
           >
-            Override — alag insaan hai
+            Override — different person
           </Button>
         </div>
       ) : null}
@@ -1212,7 +1203,7 @@ export function PatientForm({
             wantPrintRef.current = false;
           }}
         >
-          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Sirf register"}
+          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Register only"}
         </Button>
         <Button
           type="submit"

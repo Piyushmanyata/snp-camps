@@ -46,8 +46,8 @@ export default async function PrintPage({
   if (!isPatientUuid(id)) {
     return (
       <NotPrintable
-        title="Yeh patient link galat hai"
-        detail="QR ya registration number check karke dobara koshish karein."
+        title="Invalid patient link"
+        detail="Check QR code or registration number and try again."
       />
     );
   }
@@ -64,8 +64,8 @@ export default async function PrintPage({
   if (!record) {
     return (
       <NotPrintable
-        title="Patient nahi mila"
-        detail="QR ya registration number check karke dobara koshish karein."
+        title="Patient not found"
+        detail="Check QR code or registration number and try again."
       />
     );
   }
@@ -100,16 +100,16 @@ export default async function PrintPage({
   if (gateState === "unavailable") {
     return (
       <NotPrintable
-        title="Confirmation check nahi ho paya"
-        detail="Print abhi band rakhein. Connection check karke page refresh karein."
+        title="Confirmation check failed"
+        detail="Printing is suspended. Check connection and refresh page."
       />
     );
   }
   if (gateState === "required") {
     return (
       <NotPrintable
-        title="Pehle Aadhaar confirm karein"
-        detail="Manual exception print se pehle card scan ya team-lead override chahiye."
+        title="Confirm Aadhaar first"
+        detail="Manual exception requires card scan or Team Lead override before printing."
       />
     );
   }
@@ -122,8 +122,8 @@ export default async function PrintPage({
   ) {
     return (
       <NotPrintable
-        title="Print band hai"
-        detail={`Reg #${record.patient.reg_no}. Admin se print window khulwaein. Register abhi ho sakta hai.`}
+        title="Printing is closed"
+        detail={`Reg #${record.patient.reg_no}. Ask admin to open print window. Registration is still open.`}
       />
     );
   }
@@ -155,8 +155,8 @@ export default async function PrintPage({
         />
       </ScaleToFit>
       <p className="no-print mt-3 text-center text-xs text-muted">
-        Parchi · clinical fields haath se likhe jaate hain · QR sirf staff scan
-        ke liye
+        Prescription form · clinical fields written by hand · QR for staff scan
+        only
       </p>
     </main>
   );

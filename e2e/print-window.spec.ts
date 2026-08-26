@@ -117,7 +117,7 @@ test("volunteer sees Register only while the window is closed", async ({
   await expect(page.getByTestId("print-prescription")).toHaveCount(0);
   await expect(page.getByTestId("mark-seen")).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Naya marij register karein" }),
+    page.getByRole("link", { name: "Register new patient" }),
   ).toBeVisible();
 });
 
@@ -128,9 +128,9 @@ test("volunteer sees Register plus Print plus Mark seen when open", async ({
   await loginStaff(page, "volunteer");
   await expect(page.getByTestId("desk-print-window-open")).toBeVisible();
   await page
-    .getByLabel("Registration number ya naam")
+    .getByLabel("Registration number or name")
     .fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
@@ -154,9 +154,9 @@ test("the print URL renders a refusal card while the window is closed", async ({
   await setPrintingOpen(false);
   try {
     await gotoHydrated(page, `/print/${env("E2E_PATIENT_ID")}`);
-    await expect(page.getByText("Print band hai")).toBeVisible();
+    await expect(page.getByText("Printing is closed")).toBeVisible();
     await expect(
-      page.getByText("Admin se print window khulwaein"),
+      page.getByText("Ask admin to open print window"),
     ).toBeVisible();
     await expect(page.getByTestId("prescription-sheet")).toHaveCount(0);
   } finally {

@@ -29,11 +29,11 @@ export function SelfRegistrationReceipt({
         tabIndex={-1}
         className="text-xl font-bold outline-none"
       >
-        {result.existing ? "Pehle se register hain" : "Registration ho gaya"}
+        {result.existing ? "Already registered" : "Registration complete"}
       </h2>
       <p className="rounded-2xl bg-brand-soft p-6 text-center">
         <span className="block text-xs font-bold uppercase text-brand">
-          {result.existing ? "Aapka registration number" : "Registration number"}
+          {result.existing ? "Your registration number" : "Registration number"}
         </span>
         <strong className="text-5xl tracking-tight">
           #{result.registrationNumber}
@@ -46,7 +46,7 @@ export function SelfRegistrationReceipt({
           size={180}
         />
         <p className="text-center text-sm text-muted">
-          Yeh QR camp desk par dikhayein. Screenshot le lein.
+          Show this QR code at the camp desk. Take a screenshot.
         </p>
       </div>
 
@@ -56,24 +56,23 @@ export function SelfRegistrationReceipt({
           <dd className="font-semibold">
             {result.dayDate
               ? formatCampDay(result.dayDate)
-              : "Desk par confirm karein"}
+              : "Confirm at desk"}
           </dd>
         </div>
         <div>
           <dt className="text-muted">Venue</dt>
           <dd className="font-semibold">
-            {venue || "Desk par confirm karein"}
+            {venue || "Confirm at desk"}
           </dd>
         </div>
       </dl>
 
       <p className="text-sm text-muted">
-        Camp ke din apne venue par jaayein — desk par aapki parchi print hogi.
+        Please visit your venue on the camp day — your prescription slip will be printed at the desk.
       </p>
 
       <p className="rounded-xl border border-border p-3 text-sm text-muted">
-        SMS nahi aayega. Camp din parchi desk par print hogi. Number aur QR
-        save kar lein.
+        SMS confirmation is not sent. Prescription slip will be printed at the camp desk. Please save your number and QR code.
       </p>
     </section>
   );

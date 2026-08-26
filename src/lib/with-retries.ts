@@ -6,21 +6,21 @@ export type RetryDelays = {
 
 /** Volunteer-facing copy after automatic retries are exhausted (#47 / #32 / #61). */
 export const RETRY_EXHAUSTED_COPY = {
-  register: "Save nahi ho paya. Internet check karke Try Again dabayein.",
+  register: "Could not save. Check your connection and click Try Again.",
   lookup:
-    "Patient lookup nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not look up patient. Check your connection and click Try Again.",
   markSeen:
-    "Dekha hua nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not mark as seen. Check your connection and click Try Again.",
   undo:
-    "Undo nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not undo seen status. Check your connection and click Try Again.",
   changeDay:
-    "Din change nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not change camp day. Check your connection and click Try Again.",
   printPrescription:
-    "Parchi print nahi ho payi. Internet check karke Try Again dabayein.",
+    "Could not print prescription. Check your connection and click Try Again.",
   search:
-    "Naam search nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not search by name. Check your connection and click Try Again.",
   prescription:
-    "Prescription submit nahi ho paya. Internet check karke Try Again dabayein.",
+    "Could not submit prescription. Check your connection and click Try Again.",
 } as const;
 
 export async function withRetries<T>(

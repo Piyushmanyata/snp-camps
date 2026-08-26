@@ -10,8 +10,8 @@ import type { StaffPerson } from "@/components/staff-detail";
 import type { CampDayStats } from "@/lib/types";
 import type { StaffKpiRow } from "@/lib/section-reads";
 
-const SECTION_FAIL = "Ye hissa load nahi hua.";
-const SECTION_RETRY = "Dobara koshish karein";
+const SECTION_FAIL = "This section failed to load.";
+const SECTION_RETRY = "Try again";
 
 const TeamLeadPanel = dynamic(
   () =>
@@ -22,7 +22,7 @@ const TeamLeadPanel = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Team load ho rahi hai…
+        Loading team…
       </p>
     ),
   },
@@ -37,7 +37,7 @@ const SeatBoard = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Seats load ho rahi hain…
+        Loading seats…
       </p>
     ),
   },
@@ -52,7 +52,7 @@ const VolunteerKpisSection = dynamic(
     ssr: false,
     loading: () => (
       <p role="status" className="py-4 text-xs text-muted">
-        Points load ho rahe hain…
+        Loading points…
       </p>
     ),
   },
@@ -183,7 +183,7 @@ function MoreIslands({
     return (
       <p role="status" className="inline-flex items-center gap-1.5 py-4 text-xs text-muted">
         <Spinner className="h-3.5 w-3.5" />
-        Load ho raha hai…
+        Loading…
       </p>
     );
   }
@@ -193,7 +193,7 @@ function MoreIslands({
       {campId ? (
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-            Aaj ke camp ke numbers
+            Today&apos;s camp numbers
           </p>
           {kpisError ? (
             <SectionLoadError
@@ -259,7 +259,7 @@ export function VolunteerDeskMore({
   hasActiveCamp: boolean;
 }) {
   return (
-    <OpenOnToggle title="Aur dekhein — points, seats, team">
+    <OpenOnToggle title="More — points, seats, team">
       {(ready) =>
         ready ? (
           <MoreIslands
@@ -270,7 +270,7 @@ export function VolunteerDeskMore({
           />
         ) : (
           <p role="status" className="py-4 text-xs text-muted">
-            Points, seats, team load karne ke liye kholen…
+            Open to load points, seats, and team…
           </p>
         )
       }

@@ -44,11 +44,11 @@ export function queueLabel(status: string) {
   return "Registered";
 }
 
-/** Field surfaces read Hinglish — never render the raw M/F/O column. */
+/** Field surfaces read Simple English — never render the raw M/F/O column. */
 export function genderLabel(gender: string | null | undefined) {
-  if (gender === "M") return "Purush";
-  if (gender === "F") return "Mahila";
-  if (gender === "O") return "Anya";
+  if (gender === "M") return "Male";
+  if (gender === "F") return "Female";
+  if (gender === "O") return "Other";
   return "—";
 }
 
