@@ -85,6 +85,26 @@ npx supabase db reset --yes && npm run test:db
 
 This is the only way to prove a green incremental DB is not masking migration order bugs. Do **not** run `db reset` against production.
 
+## Cron failure semantics
+
+`GET`/`POST /api/cron/reminder-sms` is the nightly registration-reminder and
+deferral dispatch. Authorize with `Authorization: Bearer $CRON_SECRET`.
+
+The JSON body always includes exact `sent`, `skipped`, `failed`, and `ambiguous`
+counts for the reminder job, plus a nested `deferral` summary with the same
+counters. Ambiguous deliveries stay non-retryable until an operator reconciles
+them; the job never blindly resends.
+
+HTTP status:
+
+- **2xx** only when both reminder and deferral summaries have `ok: true`.
+- **non-2xx** (500) when either summary is unsuccessful — any failed or
+  ambiguous delivery, a claim/ledger failure, or an unexpected exception.
+  Monitoring should alert on non-2xx.
+
+Candidate selection requires an **active Camp**. Cancelled or inactive Camps do
+not receive day-before registration reminders.
+
 ## Read-only head comparison
 
 ```bash

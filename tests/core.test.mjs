@@ -23,6 +23,7 @@ import { generateStaffPassword } from "../src/lib/staff-password-generate.ts";
 import { checkRateLimit } from "../src/lib/rate-limit-core.ts";
 import { normalizePhoneE164 } from "../src/lib/phone.ts";
 import {
+  derivedAgeYears,
   isIsoCalendarDate,
   validateRegistrationIdentity,
   validateRegistrationIds,
@@ -285,6 +286,14 @@ test("registration validation shares strict IDs, dates, identity bounds, and age
   assert.equal(isIsoCalendarDate("2024-02-29"), true);
   assert.equal(isIsoCalendarDate("2023-02-29"), false);
   assert.equal(isIsoCalendarDate("2999-01-01"), false);
+  const istMidnight = new Date("2026-08-15T18:30:00.000Z");
+  const istBeforeDawn = new Date("2026-08-15T23:59:00.000Z");
+  assert.equal(isIsoCalendarDate("2026-08-16", istMidnight), true);
+  assert.equal(isIsoCalendarDate("2026-08-16", istBeforeDawn), true);
+  assert.equal(isIsoCalendarDate("2026-08-17", istMidnight), false);
+  assert.equal(derivedAgeYears("2000-08-16", istMidnight), 26);
+  assert.equal(derivedAgeYears("2000-08-17", istMidnight), 25);
+  assert.equal(derivedAgeYears("2024-02-29", new Date("2025-02-28T18:30:00.000Z")), 1);
   assert.equal(
     validateRegistrationIdentity({
       fullName: "Ramesh Kumar",

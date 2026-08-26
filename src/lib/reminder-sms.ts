@@ -272,6 +272,8 @@ export async function runDayBeforeReminders(
       const detail = err instanceof Error ? err.message : "claim failed";
       recordSmsFailure({ template: "reminder", detail });
       summary.failed += 1;
+      summary.ok = false;
+      summary.error = detail.slice(0, 300);
       continue;
     }
     if (!claim) {
@@ -355,6 +357,8 @@ export async function runDayBeforeReminders(
         });
       } catch {}
       summary.ambiguous += 1;
+      summary.ok = false;
+      summary.error = result.detail?.slice(0, 300) || "Reminder delivery was ambiguous.";
       continue;
     }
 
@@ -367,6 +371,8 @@ export async function runDayBeforeReminders(
       });
     } catch {}
     summary.failed += 1;
+    summary.ok = false;
+    summary.error = result.detail?.slice(0, 300) || "Reminder delivery failed.";
   }
 
   if (deps.prune) {
@@ -405,11 +411,12 @@ export function createReminderJobStore(
       const { data, error } = await supabase
         .from("patients")
         .select(
-          "id, reg_no, phone, queue_status, reminder_sms_sent_at, camp_days!inner(day_date), camps!inner(venue)",
+          "id, reg_no, phone, queue_status, reminder_sms_sent_at, camp_days!inner(day_date), camps!inner(venue, is_active)",
         )
         .eq("queue_status", "registered")
         .not("phone", "is", null)
-        .eq("camp_days.day_date", tomorrow);
+        .eq("camp_days.day_date", tomorrow)
+        .eq("camps.is_active", true);
 
       if (error) throw new Error(error.message);
 

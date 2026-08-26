@@ -44,21 +44,21 @@ export function TeamLeadPanel({
   const isTeamLeadView = teamVolunteers !== undefined;
 
   return (
-    <div className="space-y-4">
+    <div lang={isTeamLeadView ? "hi-Latn" : undefined} className="space-y-4">
       {isTeamLeadView ? (
         <Card className="bg-brand-soft border-2 border-brand/20 !p-4 sm:!p-5">
-        <SectionTitle hint="Your team's live rollup">
-          Team Lead Overview
+        <SectionTitle hint="Team ka live hisaab">
+          Team lead ka hisaab
         </SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-[0.8125rem] font-semibold uppercase text-muted">{myTeamLeadRow?.metric_label ?? "Registered"}</p>
+            <p className="text-[0.8125rem] font-semibold uppercase text-muted">Alag marij</p>
             <p className="text-2xl font-extrabold text-brand tabular mt-1">
               {myTeamLeadRow?.distinct_patients ?? 0}
             </p>
           </div>
           <div className="rounded-xl border border-brand/20 bg-card p-3">
-            <p className="text-[0.8125rem] font-semibold uppercase text-muted">Team Headcount</p>
+            <p className="text-[0.8125rem] font-semibold uppercase text-muted">Team ki ginti</p>
             <p className="text-2xl font-extrabold text-foreground tabular mt-1">
               {activeTeamSize}
             </p>
@@ -66,7 +66,7 @@ export function TeamLeadPanel({
         </div>
         {!hasActiveCamp ? (
           <p className="mt-3 text-sm text-muted" role="status">
-            No active camp — patient counts stay at zero. They are not career totals.
+            Koi chalu camp nahi — ginti zero rahegi. Yeh career total nahi hai.
           </p>
         ) : null}
         </Card>
@@ -74,8 +74,8 @@ export function TeamLeadPanel({
 
       {teamVolunteers ? (
         <Card className="!p-4 sm:!p-5">
-          <SectionTitle hint="Add · reset password · deactivate">
-            My team&apos;s volunteers
+          <SectionTitle hint="Jodein · password reset karein · band karein">
+            Meri team ke volunteers
           </SectionTitle>
           <div className="mt-2">
             <AdminStaff
@@ -83,6 +83,7 @@ export function TeamLeadPanel({
               initial={teamVolunteers}
               canManage
               canViewDetail={false}
+              fieldCopy
               metricById={teamMetricById}
             />
           </div>
@@ -93,10 +94,14 @@ export function TeamLeadPanel({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            Team Lead leaderboard · outcomes
+            {isTeamLeadView
+              ? "Team lead ki ranking · natije"
+              : "Team Lead leaderboard · outcomes"}
           </h3>
           {teamLeads.length === 0 ? (
-            <p className="text-[0.8125rem] text-muted">No team leads recorded.</p>
+            <p className="text-[0.8125rem] text-muted">
+              {isTeamLeadView ? "Abhi koi team lead darj nahi." : "No team leads recorded."}
+            </p>
           ) : (
             <div className="space-y-2">
               {teamLeads.map((tl, rank) => (
@@ -114,13 +119,19 @@ export function TeamLeadPanel({
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{tl.full_name}</p>
-                      <p className="text-[0.8125rem] text-muted">{tl.team_headcount} volunteers</p>
+                      <p className="text-[0.8125rem] text-muted">
+                        {tl.team_headcount} {isTeamLeadView ? "volunteer" : "volunteers"}
+                      </p>
                     </div>
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular">
                     <span className="block text-base">{tl.distinct_patients}</span>
-                    <span className="block text-[0.8125rem]">{tl.metric_label}</span>
-                    <span className="block text-[0.8125rem] font-medium text-muted">Registered {tl.registered_count} · Seen {tl.seen_count}</span>
+                    <span className="block text-[0.8125rem]">
+                      {isTeamLeadView ? "alag marij" : tl.metric_label}
+                    </span>
+                    <span className="block text-[0.8125rem] font-medium text-muted">
+                      {isTeamLeadView ? "Register hue" : "Registered"} {tl.registered_count} · {isTeamLeadView ? "Dekhe gaye" : "Seen"} {tl.seen_count}
+                    </span>
                   </span>
                 </div>
               ))}
@@ -130,10 +141,14 @@ export function TeamLeadPanel({
 
         <Card className="!p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted mb-3">
-            Volunteer leaderboard · outcomes
+            {isTeamLeadView
+              ? "Volunteer ki ranking · natije"
+              : "Volunteer leaderboard · outcomes"}
           </h3>
           {volunteers.length === 0 ? (
-            <p className="text-[0.8125rem] text-muted">No volunteers recorded.</p>
+            <p className="text-[0.8125rem] text-muted">
+              {isTeamLeadView ? "Abhi koi volunteer darj nahi." : "No volunteers recorded."}
+            </p>
           ) : (
             <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
               {volunteers.map((vol, rank) => (
@@ -151,8 +166,12 @@ export function TeamLeadPanel({
                   </div>
                   <span className="text-right font-extrabold leading-tight tabular text-brand">
                     <span className="block text-base">{vol.distinct_patients}</span>
-                    <span className="block text-[0.8125rem]">{vol.metric_label}</span>
-                    <span className="block text-[0.8125rem] font-medium text-muted">Registered {vol.registered_count} · Seen {vol.seen_count}</span>
+                    <span className="block text-[0.8125rem]">
+                      {isTeamLeadView ? "alag marij" : vol.metric_label}
+                    </span>
+                    <span className="block text-[0.8125rem] font-medium text-muted">
+                      {isTeamLeadView ? "Register hue" : "Registered"} {vol.registered_count} · {isTeamLeadView ? "Dekhe gaye" : "Seen"} {vol.seen_count}
+                    </span>
                   </span>
                 </div>
               ))}

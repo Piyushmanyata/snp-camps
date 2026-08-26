@@ -165,7 +165,7 @@ test("admin can sign in, inspect the patient desk, and sign out", async ({
 test("volunteer can sign in and safely review a patient", async ({ page }) => {
   await loginStaff(page, "volunteer");
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
 
   await page
@@ -207,16 +207,50 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
 }) => {
   await loginStaff(page, "team_lead");
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
   // Team/leaderboard live in the collapsible "Aur dekhein" island (Phase 6).
   await page.locator("summary").filter({ hasText: /Aur dekhein/i }).click();
-  await expect(page.getByText("Team Lead Overview", { exact: true })).toBeVisible();
+  await expect(page.getByText("Team lead ka hisaab", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Team Headcount", { exact: true }),
+    page.getByText("Team ki ginti", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("My team's volunteers", { exact: true }),
+    page.getByText("Meri team ke volunteers", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Naya volunteer jodein" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Password reset karein" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Band karein" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Volunteer ka role", { exact: true }).first(),
+  ).toBeVisible();
+  await page.route("**/api/admin/staff/volunteer*", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error:
+            "Volunteer account changed during deactivation. Refresh and retry.",
+        }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Band karein" }).first().click();
+  await expect(
+    page.getByText(
+      "Volunteer ki jaankari beech mein badal gayi. Refresh karke dobara koshish karein.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(
     page.getByText("Codex E2E volunteer", { exact: true }).first(),
@@ -225,11 +259,17 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
     page
       .getByRole("listitem")
       .filter({ hasText: "Codex E2E volunteer" })
-      .getByText(/\d+ distinct patients/),
+      .getByText(/\d+ alag marij/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Team lead ki ranking · natije", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Volunteer ki ranking · natije", { exact: true }),
   ).toBeVisible();
   // Primary desk CTA (inline card; desktop Register NavLink was intentionally removed).
   await expect(
-    page.getByRole("link", { name: /Naya marij register|Register/i }).first(),
+    page.getByRole("link", { name: "Naya marij register karein" }).first(),
   ).toBeVisible();
   // Every dock link must be reachable for this role — no link may bounce them.
   await expect(page.getByRole("link", { name: /Counter/ })).toHaveCount(0);
@@ -305,7 +345,7 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
 });
 

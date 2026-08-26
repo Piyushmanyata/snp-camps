@@ -433,7 +433,7 @@ test("volunteer desk: touch targets, scanner contrast, keyboard focus", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await loginStaff(page, "volunteer");
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
 
   const openCamera = page.getByRole("button", { name: /Camera kholein/i });
@@ -538,7 +538,7 @@ test("desk at desktop width: Mark seen path meets 48×48 and focus rings", async
   await page.setViewportSize({ width: 1280, height: 800 });
   await loginStaff(page, "volunteer");
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
 
   const openCamera = page.getByRole("button", { name: /Camera kholein/i });
@@ -618,6 +618,54 @@ test("admin desk: filters and staff actions meet touch + contrast", async ({
     path: join(EVIDENCE_DIR, "admin-desktop.png"),
     fullPage: true,
   });
+});
+
+test("admin Camp Day controls are date-qualified and settings saves are announced", async ({
+  page,
+}) => {
+  await loginStaff(page, "admin");
+  await gotoReady(
+    page,
+    "/admin",
+    page.getByRole("heading", { name: "Admin", exact: true }),
+  );
+
+  await page.getByText("Camps & camp days", { exact: true }).click();
+  const campDaysHeading = page.getByText(/^Camp days — /).first();
+  await expect(campDaysHeading).toBeVisible();
+
+  const dayRows = campDaysHeading
+    .locator("..")
+    .locator("ul")
+    .first()
+    .locator(":scope > li")
+    .filter({ has: page.locator('input[type="number"]') });
+  const dayCount = await dayRows.count();
+  expect(dayCount).toBeGreaterThan(0);
+
+  for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
+    const row = dayRows.nth(dayIndex);
+    const dayName = (await row.locator("p").first().innerText()).trim();
+    const escapedDayName = dayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const controls = row.locator('input[type="number"], button');
+    await expect(controls).toHaveCount(4);
+
+    for (let controlIndex = 0; controlIndex < 4; controlIndex += 1) {
+      await expect(controls.nth(controlIndex)).toHaveAccessibleName(
+        new RegExp(escapedDayName),
+      );
+    }
+  }
+
+  const saveSettings = page.getByRole("button", { name: "Save settings" });
+  await expect(saveSettings).toBeEnabled();
+  await saveSettings.click();
+
+  const savedStatus = page.getByRole("status").filter({
+    hasText: "Admin settings updated successfully.",
+  });
+  await expect(savedStatus).toBeVisible();
+  await expect(savedStatus).toHaveAttribute("aria-live", "polite");
 });
 
 test("public register + login: touch, focus, 200% text zoom operable", async ({
@@ -781,7 +829,7 @@ test("mandatory route/state matrix: patient, roles, clinical records, and A4", a
   await page.context().clearCookies();
   await loginStaff(page, "team_lead");
   await expect(
-    page.getByRole("heading", { name: "Volunteer desk" }),
+    page.getByRole("heading", { name: "Volunteer ka desk" }),
   ).toBeVisible();
   await scanInteractiveTargets(page, "team lead volunteer desk");
 

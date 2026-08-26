@@ -1,3 +1,4 @@
+import { kolkataTodayIso } from "@/lib/patient-form-validate";
 import { validateHouseholdPhone } from "@/lib/phone";
 
 const UUID_RE =
@@ -12,7 +13,10 @@ export function isRegistrationUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value.trim());
 }
 
-export function isIsoCalendarDate(value: unknown): value is string {
+export function isIsoCalendarDate(
+  value: unknown,
+  now: Date = new Date(),
+): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
   }
@@ -25,7 +29,19 @@ export function isIsoCalendarDate(value: unknown): value is string {
   ) {
     return false;
   }
-  return value <= new Date().toISOString().slice(0, 10);
+  return value <= kolkataTodayIso(now);
+}
+
+export function derivedAgeYears(
+  dateOfBirth: string,
+  now: Date = new Date(),
+): number {
+  const today = kolkataTodayIso(now);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const [by, bm, bd] = dateOfBirth.split("-").map(Number);
+  let age = ty - by;
+  if (tm < bm || (tm === bm && td < bd)) age -= 1;
+  return age;
 }
 
 export function validateRegistrationIds(input: {
@@ -51,6 +67,7 @@ export function validateRegistrationIdentity(input: {
   email?: unknown;
   dateOfBirth?: unknown;
   selfService: boolean;
+  now?: Date;
 }): RegistrationValidation {
   const fullName = typeof input.fullName === "string" ? input.fullName.trim() : "";
   const displayName =
@@ -77,8 +94,13 @@ export function validateRegistrationIdentity(input: {
   if (email && ([...email].length > 254 || !EMAIL_RE.test(email))) {
     return { ok: false, message: "Enter a valid email address." };
   }
-  if (input.dateOfBirth !== undefined && !isIsoCalendarDate(input.dateOfBirth)) {
-    return { ok: false, message: "Date of birth must be a real, non-future date." };
+  if (input.dateOfBirth !== undefined) {
+    if (!isIsoCalendarDate(input.dateOfBirth, input.now)) {
+      return { ok: false, message: "Date of birth must be a real, non-future date." };
+    }
+    if (derivedAgeYears(input.dateOfBirth, input.now) !== Number(input.age)) {
+      return { ok: false, message: "Age must match date of birth." };
+    }
   }
   return { ok: true };
 }

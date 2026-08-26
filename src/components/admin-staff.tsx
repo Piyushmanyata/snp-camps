@@ -28,7 +28,31 @@ type CredentialShare = {
   name: string;
 };
 
-function roleCopy(role: ManageableStaffRole) {
+function roleCopy(role: ManageableStaffRole, fieldCopy: boolean) {
+  if (role === "volunteer" && fieldCopy) {
+    return {
+      intro:
+        "Naam aur email se volunteer jodein. Share karne ke liye ek temporary password sirf ek baar dikhega.",
+      empty: "Abhi koi volunteer nahi — pehla volunteer neeche jodein.",
+      addButton: "Naya volunteer jodein",
+      createSubmit: "Volunteer banayein aur password lein",
+      createOk: "Volunteer ban gaya. Temporary password neeche ek baar share karein.",
+      createFail: "Volunteer nahi ban paya. Dobara koshish karein.",
+      resetFail: "Volunteer ka password reset nahi hua. Dobara koshish karein.",
+      reactivateFail: "Volunteer dobara chalu nahi hua. Dobara koshish karein.",
+      deactivateFail: "Volunteer band nahi hua. Dobara koshish karein.",
+      credentialTitle: "SNP Camps volunteer ka login",
+      defaultName: "Volunteer",
+      formId: "volunteer-create-form",
+      credentialHeadingId: "volunteer-credential-heading",
+      detailIdPrefix: "volunteer-detail",
+      historyOnDeactivate:
+        "Login turant band ho jayega; pehle ka kaam safe rahega.",
+      namePlaceholder: "Volunteer ka naam",
+      emailPlaceholder: "volunteer@example.com",
+      emailHint: "Isi email se login hoga — ise badlein nahi",
+    };
+  }
   if (role === "clinical_operator") {
     return {
       intro: "Create a least-privilege Clinical Desk Operator account.",
@@ -105,6 +129,7 @@ export function AdminStaff({
   initial,
   canManage = true,
   canViewDetail = true,
+  fieldCopy = false,
   teamLeadOptions,
   metricById,
 }: {
@@ -112,10 +137,21 @@ export function AdminStaff({
   initial: StaffPerson[];
   canManage?: boolean;
   canViewDetail?: boolean;
+  fieldCopy?: boolean;
   teamLeadOptions?: Array<{ id: string; full_name: string | null }>;
   metricById?: Record<string, number>;
 }) {
-  const copy = roleCopy(role);
+  const copy = roleCopy(role, fieldCopy);
+  const networkError = fieldCopy
+    ? "Internet nahi mila. Connection check karke dobara koshish karein."
+    : "Network error. Check your connection and try again.";
+  const responseError = (message: string | undefined, fallback: string) => {
+    if (!fieldCopy) return message || fallback;
+    if (message && /changed during/i.test(message)) {
+      return "Volunteer ki jaankari beech mein badal gayi. Refresh karke dobara koshish karein.";
+    }
+    return fallback;
+  };
   const apiBase = `/api/admin/staff/${role}`;
   const router = useRouter();
   const [list, setList] = useState(initial);
@@ -172,7 +208,7 @@ export function AdminStaff({
         temporaryPassword?: string;
       };
       if (!res.ok || !json.staff || !json.temporaryPassword) {
-        setError(json.error || copy.createFail);
+        setError(responseError(json.error, copy.createFail));
         return;
       }
 
@@ -193,7 +229,7 @@ export function AdminStaff({
       setShowForm(false);
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(networkError);
     } finally {
       setLoading(false);
     }
@@ -201,31 +237,47 @@ export function AdminStaff({
 
   async function copyCredential() {
     if (!credential) return;
-    const text = [
-      copy.credentialTitle,
-      `Name: ${credential.name}`,
-      `Email: ${credential.email}`,
-      `Temporary password: ${credential.password}`,
-      `Sign in: ${window.location.origin}/login`,
-      "Change this password after signing in.",
-    ].join("\n");
+    const text = fieldCopy
+      ? [
+          copy.credentialTitle,
+          `Naam: ${credential.name}`,
+          `Email: ${credential.email}`,
+          `Temporary password: ${credential.password}`,
+          `Login: ${window.location.origin}/login`,
+          "Login ke baad yeh password badlein.",
+        ].join("\n")
+      : [
+          copy.credentialTitle,
+          `Name: ${credential.name}`,
+          `Email: ${credential.email}`,
+          `Temporary password: ${credential.password}`,
+          `Sign in: ${window.location.origin}/login`,
+          "Change this password after signing in.",
+        ].join("\n");
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setError(null);
-      setOk("Login details copied.");
+      setOk(fieldCopy ? "Login ki jaankari copy ho gayi." : "Login details copied.");
     } catch {
       setCopied(false);
-      setError("Could not copy — select the password manually.");
+      setError(
+        fieldCopy
+          ? "Copy nahi hua — password ko khud select karein."
+          : "Could not copy — select the password manually.",
+      );
     }
   }
 
   async function onReset(person: StaffPerson) {
     if (busy) return;
-    const label = person.full_name || person.email || `this ${role}`;
+    const label =
+      person.full_name || person.email || (fieldCopy ? "is volunteer" : `this ${role}`);
     if (
       !window.confirm(
-        `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
+        fieldCopy
+          ? `${label} ka temporary password reset karein? Abhi wala password turant band ho jayega.`
+          : `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
       )
     ) {
       return;
@@ -246,7 +298,7 @@ export function AdminStaff({
         staff?: Pick<StaffPerson, "id" | "full_name" | "email">;
       };
       if (!res.ok || !json.temporaryPassword) {
-        setError(json.error || copy.resetFail);
+        setError(responseError(json.error, copy.resetFail));
         return;
       }
 
@@ -256,9 +308,13 @@ export function AdminStaff({
         password: json.temporaryPassword,
         name: json.staff?.full_name || person.full_name || copy.defaultName,
       });
-      setOk("Temporary password reset. Share it below (shown once).");
+      setOk(
+        fieldCopy
+          ? "Temporary password reset ho gaya. Neeche ek baar share karein."
+          : "Temporary password reset. Share it below (shown once).",
+      );
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(networkError);
     } finally {
       setResettingId(null);
     }
@@ -266,9 +322,14 @@ export function AdminStaff({
 
   async function onReactivate(person: StaffPerson) {
     if (busy || !person.disabled_at) return;
-    const label = person.full_name || person.email || `this ${role}`;
+    const label =
+      person.full_name || person.email || (fieldCopy ? "is volunteer" : `this ${role}`);
     if (
-      !window.confirm(`Reactivate ${label}? They will be able to sign in again.`)
+      !window.confirm(
+        fieldCopy
+          ? `${label} ko dobara chalu karein? Woh phir se login kar payenge.`
+          : `Reactivate ${label}? They will be able to sign in again.`,
+      )
     ) {
       return;
     }
@@ -287,7 +348,7 @@ export function AdminStaff({
         staff?: StaffPerson;
       };
       if (!res.ok || !json.staff) {
-        setError(json.error || copy.reactivateFail);
+        setError(responseError(json.error, copy.reactivateFail));
         return;
       }
       setList((prev) =>
@@ -297,10 +358,10 @@ export function AdminStaff({
             : row,
         ),
       );
-      setOk(`Reactivated ${label}.`);
+      setOk(fieldCopy ? `${label} dobara chalu ho gaya.` : `Reactivated ${label}.`);
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(networkError);
     } finally {
       setReactivatingId(null);
     }
@@ -308,9 +369,14 @@ export function AdminStaff({
 
   async function onDelete(person: StaffPerson) {
     if (busy) return;
-    const label = person.full_name || person.email || `this ${role}`;
+    const label =
+      person.full_name || person.email || (fieldCopy ? "is volunteer" : `this ${role}`);
     if (
-      !window.confirm(`Deactivate ${label}? ${copy.historyOnDeactivate}`)
+      !window.confirm(
+        fieldCopy
+          ? `${label} ko band karein? ${copy.historyOnDeactivate}`
+          : `Deactivate ${label}? ${copy.historyOnDeactivate}`,
+      )
     ) {
       return;
     }
@@ -327,7 +393,7 @@ export function AdminStaff({
         disabledAt?: string;
       };
       if (!res.ok) {
-        setError(json.error || copy.deactivateFail);
+        setError(responseError(json.error, copy.deactivateFail));
         return;
       }
       setList((prev) =>
@@ -341,17 +407,17 @@ export function AdminStaff({
         ),
       );
       if (selectedId === person.id) setSelectedId(null);
-      setOk(`Deactivated ${label}.`);
+      setOk(fieldCopy ? `${label} band ho gaya.` : `Deactivated ${label}.`);
       router.refresh();
     } catch {
-      setError("Network error. Check your connection and try again.");
+      setError(networkError);
     } finally {
       setDeletingId(null);
     }
   }
 
   return (
-    <div className="space-y-3">
+    <div lang={fieldCopy ? "hi-Latn" : undefined} className="space-y-3">
       <p className="text-sm text-muted">
         {canViewDetail
           ? copy.intro
@@ -364,13 +430,13 @@ export function AdminStaff({
         aria-atomic="true"
       >
         {loading
-          ? `Creating ${role} account.`
+          ? fieldCopy ? "Volunteer ka account ban raha hai." : `Creating ${role} account.`
           : resettingId
-            ? `Resetting ${role} password.`
+            ? fieldCopy ? "Volunteer ka password reset ho raha hai." : `Resetting ${role} password.`
             : reactivatingId
-              ? `Reactivating ${role} account.`
+              ? fieldCopy ? "Volunteer ka account dobara chalu ho raha hai." : `Reactivating ${role} account.`
               : deletingId
-                ? `Deactivating ${role} account.`
+                ? fieldCopy ? "Volunteer ka account band ho raha hai." : `Deactivating ${role} account.`
                 : ""}
       </p>
       <ErrorBox message={error} />
@@ -395,12 +461,12 @@ export function AdminStaff({
                       {person.full_name || "—"}
                     </p>
                     <p className="truncate text-xs text-muted">
-                      {person.email || "no email"}
+                      {person.email || (fieldCopy ? "email nahi" : "no email")}
                       {person.disabled_at
-                        ? " · disabled"
+                        ? fieldCopy ? " · band" : " · disabled"
                         : open
-                          ? " · viewing KPIs"
-                          : " · tap for KPIs"}
+                          ? fieldCopy ? " · hisaab khula hai" : " · viewing KPIs"
+                          : fieldCopy ? " · hisaab ke liye tap karein" : " · tap for KPIs"}
                     </p>
                   </button>
                 ) : (
@@ -409,20 +475,20 @@ export function AdminStaff({
                       {person.full_name || "—"}
                     </p>
                     <p className="truncate text-xs text-muted">
-                      {person.email || "no email"}
-                      {person.disabled_at ? " · disabled" : ""}
+                      {person.email || (fieldCopy ? "email nahi" : "no email")}
+                      {person.disabled_at ? fieldCopy ? " · band" : " · disabled" : ""}
                     </p>
                   </div>
                 )}
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
                   {metricById ? (
                     <Badge>
-                      {metricById[person.id] ?? 0} distinct patients
+                      {metricById[person.id] ?? 0} {fieldCopy ? "alag marij" : "distinct patients"}
                     </Badge>
                   ) : null}
-                  <Badge tone="ok">{role}</Badge>
+                  <Badge tone="ok">{fieldCopy ? "Volunteer ka role" : role}</Badge>
                   {person.disabled_at ? (
-                    <Badge tone="danger">disabled</Badge>
+                    <Badge tone="danger">{fieldCopy ? "Band" : "disabled"}</Badge>
                   ) : null}
                   {canManage ? (
                     person.disabled_at ? (
@@ -436,8 +502,8 @@ export function AdminStaff({
                         className="pressable min-h-12 min-w-12 rounded-lg border border-brand/25 bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                       >
                         {reactivatingId === person.id
-                          ? "Reactivating…"
-                          : "Reactivate"}
+                          ? fieldCopy ? "Chalu ho raha hai…" : "Reactivating…"
+                          : fieldCopy ? "Dobara chalu karein" : "Reactivate"}
                       </button>
                     ) : (
                       <>
@@ -451,8 +517,8 @@ export function AdminStaff({
                           className="pressable min-h-12 min-w-12 rounded-lg border border-border bg-brand-soft px-3 py-2 text-sm font-semibold text-brand transition hover:bg-white disabled:opacity-50"
                         >
                           {resettingId === person.id
-                            ? "Resetting…"
-                            : "Reset password"}
+                            ? fieldCopy ? "Reset ho raha hai…" : "Resetting…"
+                            : fieldCopy ? "Password reset karein" : "Reset password"}
                         </button>
                         <button
                           type="button"
@@ -462,8 +528,8 @@ export function AdminStaff({
                           className="pressable min-h-12 min-w-12 rounded-lg border border-danger/20 bg-danger-soft px-3 py-2 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:opacity-50"
                         >
                           {deletingId === person.id
-                            ? "Deactivating…"
-                            : "Deactivate"}
+                            ? fieldCopy ? "Band ho raha hai…" : "Deactivating…"
+                            : fieldCopy ? "Band karein" : "Deactivate"}
                         </button>
                       </>
                     )
@@ -500,11 +566,14 @@ export function AdminStaff({
             tabIndex={-1}
             className="text-sm font-bold text-brand"
           >
-            Share temporary login (shown once)
+            {fieldCopy
+              ? "Temporary login share karein (sirf ek baar dikhega)"
+              : "Share temporary login (shown once)"}
           </h3>
           <p className="mt-1 text-xs text-muted">
-            Copy these details before dismissing them. The password cannot be
-            retrieved again; reset it if another copy is needed.
+            {fieldCopy
+              ? "Band karne se pehle yeh jaankari copy karein. Password dobara nahi dikhega; nayi copy ke liye use reset karein."
+              : "Copy these details before dismissing them. The password cannot be retrieved again; reset it if another copy is needed."}
           </p>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex flex-wrap justify-between gap-2">
@@ -512,7 +581,9 @@ export function AdminStaff({
               <dd className="break-all font-semibold">{credential.email}</dd>
             </div>
             <div className="flex flex-wrap justify-between gap-2">
-              <dt className="text-muted">Temporary password</dt>
+              <dt className="text-muted">
+                {fieldCopy ? "Ek-baar ka password" : "Temporary password"}
+              </dt>
               <dd className="break-all font-mono font-bold tracking-wide text-brand">
                 {credential.password}
               </dd>
@@ -525,7 +596,9 @@ export function AdminStaff({
               className="sm:w-auto"
               onClick={() => void copyCredential()}
             >
-              {copied ? "Copied" : "Copy login details"}
+              {copied
+                ? fieldCopy ? "Copy ho gaya" : "Copied"
+                : fieldCopy ? "Login ki jaankari copy karein" : "Copy login details"}
             </Button>
             <Button
               type="button"
@@ -534,7 +607,9 @@ export function AdminStaff({
               onClick={() => {
                 if (
                   window.confirm(
-                    "Have you securely saved or shared this temporary password?",
+                    fieldCopy
+                      ? "Kya aapne yeh temporary password safe rakh ya share kar diya hai?"
+                      : "Have you securely saved or shared this temporary password?",
                   )
                 ) {
                   setCredential(null);
@@ -542,7 +617,7 @@ export function AdminStaff({
                 }
               }}
             >
-              Dismiss
+              {fieldCopy ? "Band karein" : "Dismiss"}
             </Button>
           </div>
         </section>
@@ -568,11 +643,12 @@ export function AdminStaff({
           ) : (
             <form id={copy.formId} onSubmit={onSubmit} className="space-y-3">
               <p className="text-sm text-muted">
-                A secure temporary password is generated after creation and
-                shown only once. They sign in at <strong>Staff login</strong>.
+                {fieldCopy
+                  ? <>Volunteer banne ke baad safe temporary password sirf ek baar dikhega. Woh <strong>Staff login</strong> se login karenge.</>
+                  : <>A secure temporary password is generated after creation and shown only once. They sign in at <strong>Staff login</strong>.</>}
               </p>
               <Input
-                label="Full name"
+                label={fieldCopy ? "Poora naam" : "Full name"}
                 required
                 disabled={busy}
                 value={fullName}
@@ -623,7 +699,7 @@ export function AdminStaff({
                     setError(null);
                   }}
                 >
-                  Cancel
+                  {fieldCopy ? "Radd karein" : "Cancel"}
                 </Button>
               </div>
             </form>

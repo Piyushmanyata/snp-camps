@@ -23,7 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // PROBE 1: TEST HARNESS FAILURE CATCHING & ZERO-SKIP INVARIANT
 // --------------------------------------------------------------------------
 
-test("CHALLENGER PROBE 1.1: runDbTests returns exit code 1 when skipped > 0", () => {
+test("CHALLENGER PROBE 1.1: runDbTests returns exit code 1 when skipped > 0", async () => {
   let loggedError = "";
   const originalError = console.error;
   console.error = (...args) => {
@@ -31,8 +31,13 @@ test("CHALLENGER PROBE 1.1: runDbTests returns exit code 1 when skipped > 0", ()
   };
 
   try {
-    const status = runDbTests({
+    const status = await runDbTests({
       env: { SNP_TEST_DATABASE_URL: DEFAULT_TEST_DATABASE_URL },
+      queryCatalogImpl: async () => ({
+        ledger: EXPECTED_MIGRATION_HEAD,
+        probe: EXPECTED_MIGRATION_HEAD,
+        snpCatalog: true,
+      }),
       spawnSyncImpl() {
         return {
           status: 0,
@@ -53,10 +58,15 @@ test("CHALLENGER PROBE 1.1: runDbTests returns exit code 1 when skipped > 0", ()
   }
 });
 
-test("CHALLENGER PROBE 1.2: runDbTests propagates child test failure code and runner errors", () => {
-  // Test child failure exit code propagation
-  const failStatus = runDbTests({
+test("CHALLENGER PROBE 1.2: runDbTests propagates child test failure code and runner errors", async () => {
+  const catalog = {
+    ledger: EXPECTED_MIGRATION_HEAD,
+    probe: EXPECTED_MIGRATION_HEAD,
+    snpCatalog: true,
+  };
+  const failStatus = await runDbTests({
     env: { SNP_TEST_DATABASE_URL: DEFAULT_TEST_DATABASE_URL },
+    queryCatalogImpl: async () => catalog,
     spawnSyncImpl() {
       return {
         status: 1,
@@ -67,15 +77,15 @@ test("CHALLENGER PROBE 1.2: runDbTests propagates child test failure code and ru
   });
   assert.equal(failStatus, 1, "runDbTests must propagate child failure status");
 
-  // Test child spawn error
   let loggedError = "";
   const originalError = console.error;
   console.error = (...args) => {
     loggedError += args.join(" ");
   };
   try {
-    const errorStatus = runDbTests({
+    const errorStatus = await runDbTests({
       env: { SNP_TEST_DATABASE_URL: DEFAULT_TEST_DATABASE_URL },
+      queryCatalogImpl: async () => catalog,
       spawnSyncImpl() {
         return {
           error: new Error("spawn failed"),

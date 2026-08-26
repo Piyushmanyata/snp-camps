@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSessionProfile, readJsonBody } from "@/lib/auth";
-import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { derivePersonDuplicateKey } from "@/lib/person-duplicate-key";
 import { parseDateOfBirth, isNonLatinText } from "@/lib/aadhaar-text";
 import { mapDbError } from "@/lib/public-error";
@@ -28,8 +28,7 @@ export async function POST(request: Request) {
     return fail("patientId and mode are required");
   }
 
-  const supabase = createServiceRoleClient();
-  if (!supabase) return fail("Confirmation service unavailable.", 503);
+  const supabase = await createClient();
 
   const fullName = text(body.fullName);
   const gender = text(body.gender).toUpperCase();

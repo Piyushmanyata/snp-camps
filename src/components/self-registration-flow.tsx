@@ -144,6 +144,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           phone: normalizedPhone,
           card: { ...card, displayName: displayName.trim() || null },
         }),
+        signal: AbortSignal.timeout(20_000),
       });
       if (generation !== generationRef.current) return;
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -161,9 +162,16 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         registrationNumber: Number(body.registrationNumber),
         dayDate: typeof body.dayDate === "string" ? body.dayDate : null,
       });
-    } catch {
+    } catch (err) {
       if (generation !== generationRef.current) return;
-      setError("Network problem. Dobara try karein ya camp desk par milen.");
+      const timedOut =
+        err instanceof Error &&
+        (err.name === "TimeoutError" || err.name === "AbortError");
+      setError(
+        timedOut
+          ? "Request time out ho gaya. Form same hai — dobara try karein."
+          : "Network problem. Dobara try karein ya camp desk par milen.",
+      );
     } finally {
       if (generation === generationRef.current) {
         busyRef.current = false;

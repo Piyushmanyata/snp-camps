@@ -630,10 +630,60 @@ test("medicine not_available requires unavailable medicines list", async () => {
     );
     await client.query("rollback to savepoint no_meds");
     await client.query("reset role");
+    await client.query("savepoint null_med");
+    await assert.rejects(
+      asUser(
+        operator,
+        "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
+        [patientId, [null]],
+      ),
+      /unavailable medicines/i,
+    );
+    await client.query("rollback to savepoint null_med");
+    await client.query("savepoint empty_med");
+    await assert.rejects(
+      asUser(
+        operator,
+        "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
+        [patientId, [""]],
+      ),
+      /unavailable medicines/i,
+    );
+    await client.query("rollback to savepoint empty_med");
+    await client.query("savepoint blank_med");
+    await assert.rejects(
+      asUser(
+        operator,
+        "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
+        [patientId, ["   "]],
+      ),
+      /unavailable medicines/i,
+    );
+    await client.query("rollback to savepoint blank_med");
+    await client.query("savepoint long_med");
+    await assert.rejects(
+      asUser(
+        operator,
+        "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
+        [patientId, ["x".repeat(121)]],
+      ),
+      /unavailable medicines/i,
+    );
+    await client.query("rollback to savepoint long_med");
+    await client.query("savepoint too_many");
+    await assert.rejects(
+      asUser(
+        operator,
+        "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
+        [patientId, Array.from({ length: 13 }, (_, i) => `med-${i + 1}`)],
+      ),
+      /unavailable medicines/i,
+    );
+    await client.query("rollback to savepoint too_many");
     await asUser(
       operator,
       "select public.clinical_resolve_item($1,'medicine','not_available',$2::text[])",
-      [patientId, ["Lubricant", "Antibiotic"]],
+      [patientId, Array.from({ length: 12 }, (_, i) => `Medicine ${i + 1}`)],
     );
     const { rows } = await client.query(
       `select unavailable_medicines from public.fulfilment_items i
@@ -641,7 +691,10 @@ test("medicine not_available requires unavailable medicines list", async () => {
        where t.patient_id=$1 and i.kind='medicine'`,
       [patientId],
     );
-    assert.deepEqual(rows[0].unavailable_medicines, ["Lubricant", "Antibiotic"]);
+    assert.deepEqual(
+      rows[0].unavailable_medicines,
+      Array.from({ length: 12 }, (_, i) => `Medicine ${i + 1}`),
+    );
   } finally {
     await client.query("rollback");
   }

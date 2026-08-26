@@ -324,6 +324,85 @@ test("a second patient committing the same card is refused by name", async (t) =
   assert.ok(Number(inspected.surviving_reg_no) > 0);
 });
 
+test("normal and already-confirmed registrations return minimal not_required", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const actorId = await seedProfile("volunteer");
+  const { campId, dayId } = await seedCamp();
+  const scanned = await asServiceRole(async () => {
+    const { rows } = await client.query(
+      `select * from public.register_patient_idempotent(
+         $1, $2, 'Normal Patient', 'M', 40, 'Ward 1', null, null, null,
+         null, $3, $4, false, false, false, 'self_declared', null, null, null)`,
+      [randomUUID(), campId, actorId, dayId],
+    );
+    return rows[0];
+  });
+  const row = await confirm([
+    scanned.id,
+    "inspect",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    actorId,
+    null,
+  ]);
+  assert.equal(row.outcome, "not_required");
+  assert.equal(row.typed_date_of_birth, null);
+  assert.equal(row.typed_aadhaar_last4, null);
+  assert.equal(row.typed_address, null);
+  assert.equal(row.surviving_name, null);
+});
+
+test("inactive and missing registrations are denied", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const actorId = await seedProfile("volunteer");
+  const { campId, dayId } = await seedCamp();
+  const patient = await registerManualException(
+    campId,
+    dayId,
+    actorId,
+    "Inactive Confirm",
+  );
+  await client.query(`update public.camps set is_active = false where id = $1`, [
+    campId,
+  ]);
+  await assert.rejects(
+    () =>
+      confirm([
+        patient.id,
+        "inspect",
+        `k-${randomUUID()}`,
+        "Card",
+        "1971-03-04",
+        "M",
+        "4321",
+        "Addr",
+        actorId,
+        null,
+      ]),
+    /inactive camp/i,
+  );
+  await assert.rejects(
+    () =>
+      confirm([
+        randomUUID(),
+        "inspect",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        actorId,
+        null,
+      ]),
+    /Patient not found/,
+  );
+});
+
 test("a volunteer cannot override confirmation; a team lead can", async (t) => {
   if (skipIfNoDb(t)) return;
   const volunteerId = await seedProfile("volunteer");

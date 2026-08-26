@@ -108,6 +108,22 @@ test("rejects age 200 without calling RPC", async () => {
   assert.equal(rpcCalls, 0);
 });
 
+test("rejects contradictory age and date of birth without calling RPC", async () => {
+  signIn();
+  let rpcCalls = 0;
+  __setServiceRoleClient({
+    rpc() {
+      rpcCalls += 1;
+      return Promise.resolve({ data: null, error: null });
+    },
+  });
+  const res = await POST(
+    request(validBody({ age: 50, dateOfBirth: "2000-05-15" })),
+  );
+  assert.equal(res.status, 400);
+  assert.equal(rpcCalls, 0);
+});
+
 function mockRpc() {
   let rpcCalls = 0;
   let lastArgs = null;

@@ -298,6 +298,325 @@ test("set_camp_day_printing_open is admin only", async (t) => {
   assert.equal(opened.printing_open, true);
 });
 
+test("mark_seen refuses while the print window is closed", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedProfile("volunteer");
+  const adminId = await seedProfile("admin");
+  const { campId, todayDayId } = await seedCamp();
+  const opened = await asStaff(adminId, async () => {
+    const { rows } = await client.query(
+      `select printing_open from public.set_camp_day_printing_open($1, true)`,
+      [todayDayId],
+    );
+    return rows[0];
+  });
+  assert.equal(opened.printing_open, true);
+  const patient = await register(campId, todayDayId, "Seen Closed", staffId);
+  await asStaff(staffId, async () => {
+    await client.query(`select * from public.mark_patient_printed($1, null)`, [
+      patient.id,
+    ]);
+  });
+  await asStaff(adminId, async () => {
+    await client.query(
+      `select * from public.set_camp_day_printing_open($1, false)`,
+      [todayDayId],
+    );
+  });
+
+  await assert.rejects(
+    () =>
+      asStaff(staffId, async () => {
+        await client.query(`select * from public.mark_seen($1, null)`, [
+          patient.id,
+        ]);
+      }),
+    (err) => String(err.message).includes(PRINT_WINDOW_CLOSED),
+  );
+  const { rows } = await client.query(
+    `select queue_status, seen_at from public.patients where id = $1`,
+    [patient.id],
+  );
+  assert.equal(rows[0].queue_status, "registered");
+  assert.equal(rows[0].seen_at, null);
+});
+
+test("set_camp_day_printing_open refuses opening a future camp day", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const adminId = await seedProfile("admin");
+  const { futureDayId } = await seedCamp();
+
+  await assert.rejects(
+    () =>
+      asStaff(adminId, async () => {
+        await client.query(
+          `select * from public.set_camp_day_printing_open($1, true)`,
+          [futureDayId],
+        );
+      }),
+    /PRINT_WINDOW_NOT_TODAY/,
+  );
+
+  const closed = await asStaff(adminId, async () => {
+    const { rows } = await client.query(
+      `select printing_open from public.set_camp_day_printing_open($1, false)`,
+      [futureDayId],
+    );
+    return rows[0];
+  });
+  assert.equal(closed.printing_open, false);
+});
+
+test("already-seen and already-printed keep original stamps after the window closes", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedProfile("volunteer");
+  const adminId = await seedProfile("admin");
+  const { campId, todayDayId } = await seedCamp();
+  await asStaff(adminId, async () => {
+    await client.query(
+      `select * from public.set_camp_day_printing_open($1, true)`,
+      [todayDayId],
+    );
+  });
+  const patient = await register(campId, todayDayId, "Idempotent Window", staffId);
+  await asStaff(staffId, async () => {
+    await client.query(`select * from public.mark_patient_printed($1, null)`, [
+      patient.id,
+    ]);
+  });
+  const seen = await asStaff(staffId, async () => {
+    const { rows } = await client.query(`select * from public.mark_seen($1, null)`, [
+      patient.id,
+    ]);
+    return rows[0];
+  });
+  assert.equal(seen.already_seen, false);
+  const before = await client.query(
+    `select printed_at, seen_at, seen_by from public.patients where id = $1`,
+    [patient.id],
+  );
+  const printedAt = String(before.rows[0].printed_at);
+  const seenAt = String(before.rows[0].seen_at);
+  const seenBy = before.rows[0].seen_by;
+
+  await asStaff(adminId, async () => {
+    await client.query(
+      `select * from public.set_camp_day_printing_open($1, false)`,
+      [todayDayId],
+    );
+  });
+
+  const reprint = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.mark_patient_printed($1, null)`,
+      [patient.id],
+    );
+    return rows[0];
+  });
+  assert.equal(reprint.already_printed, true);
+
+  const reseen = await asStaff(staffId, async () => {
+    const { rows } = await client.query(`select * from public.mark_seen($1, null)`, [
+      patient.id,
+    ]);
+    return rows[0];
+  });
+  assert.equal(reseen.already_seen, true);
+  assert.equal(String(reseen.seen_at), seenAt);
+
+  const after = await client.query(
+    `select printed_at, seen_at, seen_by from public.patients where id = $1`,
+    [patient.id],
+  );
+  assert.equal(String(after.rows[0].printed_at), printedAt);
+  assert.equal(String(after.rows[0].seen_at), seenAt);
+  assert.equal(after.rows[0].seen_by, seenBy);
+});
+
+function newClient() {
+  return new pg.Client({ connectionString: DATABASE_URL });
+}
+
+async function setAuth(c, userId) {
+  await c.query(
+    `select set_config('request.jwt.claim.role', 'authenticated', true)`,
+  );
+  await c.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId]);
+  await c.query(`select set_config('request.jwt.claims', $1, true)`, [
+    JSON.stringify({ role: "authenticated", sub: userId }),
+  ]);
+}
+
+test("concurrent close versus presence write has one consistent winner", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedProfile("volunteer");
+  const adminId = await seedProfile("admin");
+  const { campId, todayDayId } = await seedCamp();
+  await asStaff(adminId, async () => {
+    await client.query(
+      `select * from public.set_camp_day_printing_open($1, true)`,
+      [todayDayId],
+    );
+  });
+  const patient = await register(
+    campId,
+    todayDayId,
+    "Race Presence",
+    staffId,
+  );
+
+  const closer = newClient();
+  const printer = newClient();
+  await closer.connect();
+  await printer.connect();
+  try {
+    await closer.query("begin");
+    await setAuth(closer, adminId);
+    await closer.query(
+      `select * from public.set_camp_day_printing_open($1, false)`,
+      [todayDayId],
+    );
+
+    await printer.query("begin");
+    await setAuth(printer, staffId);
+    const printPromise = printer
+      .query(`select * from public.mark_patient_printed($1, null)`, [patient.id])
+      .then((res) => ({ ok: true, row: res.rows[0] }))
+      .catch((err) => ({ ok: false, message: String(err.message || err) }));
+
+    await closer.query("commit");
+    const printed = await printPromise;
+    try {
+      if (printed.ok) await printer.query("commit");
+      else await printer.query("rollback");
+    } catch {
+      /* ignore */
+    }
+
+    const { rows: presence } = await client.query(
+      `select printed_at from public.patients where id = $1`,
+      [patient.id],
+    );
+    const { rows: day } = await client.query(
+      `select printing_open from public.camp_days where id = $1`,
+      [todayDayId],
+    );
+    const newlyPrinted = presence[0].printed_at != null;
+    const stillOpen = day[0].printing_open === true;
+    assert.equal(stillOpen, false);
+    if (newlyPrinted) {
+      assert.equal(printed.ok, true);
+    } else {
+      assert.equal(printed.ok, false);
+      assert.match(printed.message, /PRINT_WINDOW_CLOSED/);
+    }
+    assert.ok(
+      (newlyPrinted && printed.ok) || (!newlyPrinted && !printed.ok),
+      "presence write and close must not both invent a new print on a closed window",
+    );
+  } finally {
+    try {
+      await closer.query("rollback");
+    } catch {
+      /* ignore */
+    }
+    try {
+      await printer.query("rollback");
+    } catch {
+      /* ignore */
+    }
+    await closer.end();
+    await printer.end();
+  }
+});
+
+test("print-then-close vs close-then-print both leave a single winner", async (t) => {
+  if (skipIfNoDb(t)) return;
+  const staffId = await seedProfile("volunteer");
+  const adminId = await seedProfile("admin");
+  const { campId, todayDayId } = await seedCamp();
+  await asStaff(adminId, async () => {
+    await client.query(
+      `select * from public.set_camp_day_printing_open($1, true)`,
+      [todayDayId],
+    );
+  });
+  const patient = await register(campId, todayDayId, "Race All", staffId);
+
+  const printer = newClient();
+  const closer = newClient();
+  await printer.connect();
+  await closer.connect();
+  try {
+    const printRun = (async () => {
+      await printer.query("begin");
+      await setAuth(printer, staffId);
+      try {
+        const { rows } = await printer.query(
+          `select * from public.mark_patient_printed($1, null)`,
+          [patient.id],
+        );
+        await printer.query("commit");
+        return { ok: true, already: rows[0].already_printed };
+      } catch (err) {
+        await printer.query("rollback");
+        return { ok: false, message: String(err.message || err) };
+      }
+    })();
+    const closeRun = (async () => {
+      await closer.query("begin");
+      await setAuth(closer, adminId);
+      try {
+        await closer.query(
+          `select * from public.set_camp_day_printing_open($1, false)`,
+          [todayDayId],
+        );
+        await closer.query("commit");
+        return { ok: true };
+      } catch (err) {
+        await closer.query("rollback");
+        return { ok: false, message: String(err.message || err) };
+      }
+    })();
+    const [printResult, closeResult] = await Promise.all([printRun, closeRun]);
+    assert.equal(closeResult.ok, true);
+
+    const { rows: presence } = await client.query(
+      `select printed_at from public.patients where id = $1`,
+      [patient.id],
+    );
+    const { rows: day } = await client.query(
+      `select printing_open from public.camp_days where id = $1`,
+      [todayDayId],
+    );
+    const newlyPrinted = presence[0].printed_at != null;
+    const open = day[0].printing_open === true;
+    assert.ok(
+      (newlyPrinted && printResult.ok) ||
+        (!newlyPrinted &&
+          !printResult.ok &&
+          /PRINT_WINDOW_CLOSED/.test(printResult.message || "") &&
+          open === false),
+    );
+    if (!newlyPrinted) {
+      assert.equal(open, false);
+    }
+  } finally {
+    try {
+      await printer.query("rollback");
+    } catch {
+      /* ignore */
+    }
+    try {
+      await closer.query("rollback");
+    } catch {
+      /* ignore */
+    }
+    await printer.end();
+    await closer.end();
+  }
+});
+
 test("upsert_camp_day still refuses a seat limit below assigned", async (t) => {
   if (skipIfNoDb(t)) return;
   const adminId = await seedProfile("admin");

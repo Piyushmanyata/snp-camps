@@ -23,7 +23,7 @@
     "capture:evidence": "node scripts/capture-evidence.mjs",
     "validate:evidence": "node scripts/validate-evidence.mjs",
     "test:evidence": "node --no-warnings --import ./tests/route-loader.mjs --test tests/evidence-tooling.test.mjs",
-    "verify": "npm run lint && npx tsc --noEmit && npm run compare:migrations -- --skip-linked && npm test && npm run test:db && npm run build && npm run check:js-budget && npm run test:e2e && npm run check:env",
+    "verify": "npm run lint && npx tsc --noEmit && npm run compare:migrations -- --require-local --skip-linked && npm test && npm run test:db && npm run build && npm run check:js-budget && npm run test:e2e && npm run check:env",
     "load:smoke": "node scripts/load-test.mjs",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
   },

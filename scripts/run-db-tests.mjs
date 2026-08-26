@@ -1,10 +1,17 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  isLocalConnectionError,
+  redact,
+  repoHeads,
+} from "./compare-migration-heads.mjs";
 
 export const DEFAULT_TEST_DATABASE_URL =
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function resolveTestDatabaseUrl(value = process.env.SNP_TEST_DATABASE_URL) {
   const raw = value || DEFAULT_TEST_DATABASE_URL;
@@ -21,30 +28,207 @@ export function resolveTestDatabaseUrl(value = process.env.SNP_TEST_DATABASE_URL
   return url.toString();
 }
 
+export function readConfiguredProjectId({
+  readFileImpl = fs.readFileSync,
+  configPath = path.join(root, "supabase", "config.toml"),
+} = {}) {
+  const text = readFileImpl(configPath, "utf8");
+  const m = text.match(/^\s*project_id\s*=\s*"([^"]+)"/m);
+  if (!m) throw new Error("supabase/config.toml is missing project_id");
+  return m[1];
+}
+
+export function expectedRepoHead() {
+  return repoHeads().head;
+}
+
 function describeDatabaseTarget(raw) {
   try {
     const url = new URL(raw);
     return {
       host: url.hostname || "<empty>",
       database: url.pathname.replace(/^\/+/, "") || "<empty>",
+      port: url.port || "<default>",
     };
   } catch {
-    return { host: "<invalid>", database: "<invalid>" };
+    return { host: "<invalid>", database: "<invalid>", port: "<invalid>" };
   }
 }
 
-export function runDbTests({ spawnSyncImpl = spawnSync, env = process.env } = {}) {
+function blocker(reason) {
+  console.error(`BLOCKER[UNSAFE-DB-TARGET]: ${reason}`);
+  return 1;
+}
+
+export function inspectOwningDbProject({
+  configuredProjectId,
+  commandImpl = (file, args) =>
+    execFileSync(file, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim(),
+} = {}) {
+  let namesText;
+  try {
+    namesText = commandImpl("docker", [
+      "ps",
+      "--filter",
+      "name=supabase_db_",
+      "--format",
+      "{{.Names}}",
+    ]);
+  } catch (err) {
+    const wrapped = new Error(
+      `docker inspect failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    wrapped.code = "INSPECT_FAILED";
+    throw wrapped;
+  }
+  const names = String(namesText || "")
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const name = names.find(
+    (containerName) => containerName === `supabase_db_${configuredProjectId}`,
+  );
+  if (!name) return null;
+
+  let portText = "";
+  try {
+    portText = commandImpl("docker", ["port", name, "5432"]);
+  } catch {
+    return null;
+  }
+  const mapped = Number(String(portText).match(/:(\d+)/)?.[1]);
+  if (!mapped) return null;
+  return {
+    projectId: configuredProjectId,
+    containerName: name,
+    hostPort: mapped,
+  };
+}
+
+export async function querySnpCatalog(databaseUrl) {
+  let pg;
+  try {
+    pg = (await import("pg")).default;
+  } catch (err) {
+    const wrapped = new Error(
+      `pg unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    wrapped.snpPhase = "connect";
+    throw wrapped;
+  }
+  const client = new pg.Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: 3_000,
+    query_timeout: 3_000,
+  });
+  try {
+    await client.connect();
+  } catch (err) {
+    if (err && typeof err === "object") err.snpPhase = "connect";
+    throw err;
+  }
+  try {
+    const ledgerRes = await client.query(
+      `select version from supabase_migrations.schema_migrations
+       order by version desc limit 1`,
+    );
+    const probeRes = await client.query(
+      `select public.latest_applied_migration() as version`,
+    );
+    const snpRes = await client.query(
+      `select (
+          to_regclass('public.patients') is not null
+          and to_regclass('public.ot_schedule_days') is not null
+          and exists (
+            select 1 from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'patients'
+              and column_name = 'printed_at'
+          )
+        ) as ok`,
+    );
+    return {
+      ledger: ledgerRes.rows[0]?.version ?? null,
+      probe: probeRes.rows[0]?.version ?? null,
+      snpCatalog: snpRes.rows[0]?.ok === true,
+    };
+  } catch (err) {
+    if (err && typeof err === "object") err.snpPhase = "query";
+    throw err;
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export async function runDbTests({
+  spawnSyncImpl = spawnSync,
+  env = process.env,
+  inspectProjectImpl = inspectOwningDbProject,
+  queryCatalogImpl = querySnpCatalog,
+  cleanupImpl,
+  configuredProjectId = readConfiguredProjectId(),
+  expectedHead = expectedRepoHead(),
+} = {}) {
+  const explicit = Boolean(env.SNP_TEST_DATABASE_URL);
   const requested = env.SNP_TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL;
   let databaseUrl;
   try {
     databaseUrl = resolveTestDatabaseUrl(env.SNP_TEST_DATABASE_URL);
   } catch {
     const { host, database } = describeDatabaseTarget(requested);
-    console.error(
-      `BLOCKER[UNSAFE-DB-TARGET]: host=${host} database=${database}; ` +
-        "DB tests require a loopback SNP_TEST_DATABASE_URL.",
+    return blocker(
+      `host=${host} database=${database}; DB tests require a loopback SNP_TEST_DATABASE_URL.`,
     );
-    return 1;
+  }
+
+  if (!explicit) {
+    let owner;
+    try {
+      owner = inspectProjectImpl({ configuredProjectId });
+    } catch (err) {
+      return blocker(
+        `inspect failed: ${redact(err instanceof Error ? err.message : String(err))}`,
+      );
+    }
+    if (!owner || owner.projectId !== configuredProjectId) {
+      return blocker(
+        `project mismatch: owning=${owner?.projectId ?? "(none)"} expected=${configuredProjectId}`,
+      );
+    }
+    const discovered = new URL(databaseUrl);
+    discovered.port = String(owner.hostPort);
+    databaseUrl = discovered.toString();
+  }
+
+  let catalog;
+  try {
+    catalog = await queryCatalogImpl(databaseUrl);
+  } catch (err) {
+    const phase =
+      err?.snpPhase === "query" || !isLocalConnectionError(err)
+        ? "schema query"
+        : "connection";
+    return blocker(
+      `${phase} failed: ${redact(err instanceof Error ? err.message : String(err))}`,
+    );
+  }
+
+  if (!catalog?.snpCatalog) {
+    return blocker("foreign schema: SNP catalog invariant failed");
+  }
+  if (!catalog.probe) {
+    return blocker("missing probe: latest_applied_migration() returned empty");
+  }
+  if (catalog.ledger !== expectedHead || catalog.probe !== expectedHead) {
+    return blocker(
+      `stale head: ledger=${catalog.ledger} probe=${catalog.probe} expected=${expectedHead}`,
+    );
   }
 
   const dbTestFiles = fs
@@ -74,6 +258,7 @@ export function runDbTests({ spawnSyncImpl = spawnSync, env = process.env } = {}
 
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   process.stdout.write(output);
+  if (cleanupImpl) await cleanupImpl(databaseUrl);
 
   const metric = (name) =>
     Number(output.match(new RegExp(`^ℹ ${name} (\\d+)$`, "m"))?.[1] ?? 0);
@@ -118,15 +303,15 @@ export function runDbTests({ spawnSyncImpl = spawnSync, env = process.env } = {}
  * Doing this once here also covers any future test that inserts a user without
  * the columns, which fixing today's call sites one by one would not.
  */
-async function repairSeededAuthUsers() {
+async function repairSeededAuthUsers(databaseUrl) {
   let pg;
   try {
     pg = (await import("pg")).default;
   } catch {
-    return; // pg is a devDependency; nothing to repair without it.
+    return;
   }
   const client = new pg.Client({
-    connectionString: resolveTestDatabaseUrl(),
+    connectionString: databaseUrl,
     connectionTimeoutMillis: 3_000,
   });
   try {
@@ -167,6 +352,5 @@ async function repairSeededAuthUsers() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  process.exitCode = runDbTests();
-  await repairSeededAuthUsers();
+  process.exitCode = await runDbTests({ cleanupImpl: repairSeededAuthUsers });
 }
