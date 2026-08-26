@@ -163,7 +163,8 @@ test("mobile photo fallback reads Aadhaar locally and fills the shared desk form
     "",
   );
   await expect(page.getByLabel(/^Age/i)).toHaveValue(/[0-9]+/);
-  await expect(photoInput).toHaveValue("");
+  await expect(page.getByTestId("aadhaar-scanned-banner")).toBeVisible();
+  await expect(photoInput).toHaveCount(0);
   const width = await page.evaluate(() => ({
     client: document.documentElement.clientWidth,
     scroll: document.documentElement.scrollWidth,

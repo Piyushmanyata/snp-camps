@@ -233,6 +233,41 @@ export function PatientForm({
     setManualEntry(false);
     setManualReason("");
   }
+
+  function rescanCard() {
+    setProvenance("self_declared");
+    setScannedIdentity(null);
+    setCardProvided({
+      fullName: false,
+      age: false,
+      gender: false,
+      aadhaarLast4: false,
+      address: false,
+    });
+    setFullName("");
+    setDisplayName("");
+    setAge("");
+    setGender("");
+    setAddress("");
+    setAadhaar("");
+    setScannedBanner(null);
+    setLegacyQrWarning(null);
+    setPartialScanDiagnostic(null);
+    clearScanError();
+    resetScanAttempts();
+  }
+
+  function cancelManualEntry() {
+    setManualEntry(false);
+    setManualReason("");
+    setFullName("");
+    setDisplayName("");
+    setAge("");
+    setGender("");
+    setAddress("");
+    setAadhaar("");
+  }
+
   const scanner = useAadhaarScanner(onCardScanned, onFailedScan);
   const { clearError: clearScanError } = scanner;
   const scanDiagnostic = scanner.scanDiagnostic ?? partialScanDiagnostic;
@@ -692,58 +727,109 @@ export function PatientForm({
       />
 
       {phoneValidation.ok ? (
-      <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
-        <div>
-          <p className="text-sm font-semibold text-brand">
-            Aadhaar se form bharein
-          </p>
-          <p className="text-xs text-muted">
-            Aadhaar card ka QR scan karein — details apne aap bhar jaayengi. Sirf
-            mobile number type karna hai.
-          </p>
-        </div>
+        !isCardScanned && !manualEntry ? (
+          <div className="rounded-xl border border-brand/20 bg-brand-soft/30 p-3.5 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-brand">
+                Aadhaar se form bharein
+              </p>
+              <p className="text-xs text-muted">
+                Aadhaar card ka QR scan karein — details apne aap bhar jaayengi. Sirf
+                mobile number type karna hai.
+              </p>
+            </div>
 
-        <AadhaarCapture
-          scanner={scanner}
-          tone="desk"
-          diagnostic={scanDiagnostic}
-        />
-        <AadhaarUsbInput scanner={scanner} />
+            <AadhaarCapture
+              scanner={scanner}
+              tone="desk"
+              diagnostic={scanDiagnostic}
+            />
+            <AadhaarUsbInput scanner={scanner} />
 
-        {scannedBanner ? (
-          <div
-            role="status"
-            data-testid="aadhaar-scanned-banner"
-            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-semibold text-blue-950"
-          >
-            {scannedBanner}
+            {partialScanDiagnostic && scannedBanner ? (
+              <div
+                role="status"
+                data-testid="aadhaar-scanned-banner"
+                className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-950"
+              >
+                {scannedBanner}
+              </div>
+            ) : null}
+
+            {legacyQrWarning ? (
+              <div
+                role="status"
+                data-testid="aadhaar-legacy-qr-warning"
+                className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900"
+              >
+                ⚠️ {legacyQrWarning}
+              </div>
+            ) : null}
+
+            {manualExceptionUnlocked(failedScanAttempts) ? (
+              <button
+                type="button"
+                data-testid="desk-manual-entry-escape"
+                className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
+                onClick={() => setManualEntry(true)}
+              >
+                Manual entry (audit hoti hai)
+              </button>
+            ) : null}
+            <p className="text-xs font-semibold text-muted">
+              Fail scan: {failedScanAttempts}/{MANUAL_EXCEPTION_ATTEMPT_THRESHOLD}
+            </p>
           </div>
-        ) : null}
-
-        {legacyQrWarning ? (
-          <div
-            role="status"
-            data-testid="aadhaar-legacy-qr-warning"
-            className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900"
-          >
-            &#9888;&#65039; {legacyQrWarning}
+        ) : isCardScanned ? (
+          <div className="space-y-2">
+            {scannedBanner ? (
+              <div
+                role="status"
+                data-testid="aadhaar-scanned-banner"
+                className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3.5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-blue-950">
+                    {scannedBanner}
+                  </p>
+                  {legacyQrWarning ? (
+                    <p
+                      role="status"
+                      data-testid="aadhaar-legacy-qr-warning"
+                      className="mt-1 text-xs font-semibold text-amber-900"
+                    >
+                      ⚠️ {legacyQrWarning}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="sm:w-auto shrink-0"
+                  onClick={rescanCard}
+                >
+                  Dobara scan karein
+                </Button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
-
-        {!identityVisible && manualExceptionUnlocked(failedScanAttempts) ? (
-          <button
-            type="button"
-            data-testid="desk-manual-entry-escape"
-            className="min-h-12 w-full rounded-xl border border-border bg-white px-3 text-sm font-semibold text-brand"
-            onClick={() => setManualEntry(true)}
-          >
-            Manual entry (audit hoti hai)
-          </button>
-        ) : null}
-        <p className="text-xs font-semibold text-muted">
-          Fail scan: {failedScanAttempts}/{MANUAL_EXCEPTION_ATTEMPT_THRESHOLD}
-        </p>
-      </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-xl border border-brand/20 bg-brand-soft/30 p-3">
+            <span className="text-xs font-semibold text-brand">
+              Manual entry mode (audit hoti hai)
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="sm:w-auto"
+              onClick={cancelManualEntry}
+            >
+              Aadhaar scan karein
+            </Button>
+          </div>
+        )
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           Pehle sahi mobile number daalein, tab Aadhaar scanner khulega.
