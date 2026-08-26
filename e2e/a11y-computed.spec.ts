@@ -628,7 +628,11 @@ test("admin Camp Day controls are date-qualified and settings saves are announce
   const adminPage = page
     .getByRole("main")
     .filter({ hasText: "Camps & camp days" });
-  await expect(adminPage).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(() => page.getByRole("main").allInnerTexts(), { timeout: 30_000 })
+    .toEqual(
+      expect.arrayContaining([expect.stringContaining("Camps & camp days")]),
+    );
   const campControls = adminPage.getByText("Camps & camp days", { exact: true });
   await campControls.click();
   const campDaysHeading = page.getByText(/^Camp days — /).first();
