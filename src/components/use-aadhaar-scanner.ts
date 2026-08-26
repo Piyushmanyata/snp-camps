@@ -93,6 +93,12 @@ export function useAadhaarScanner(
     onFailedScanRef.current = onFailedScan;
   }, [onFailedScan]);
 
+  useEffect(() => {
+    if (hasConsent) {
+      void loadDecodeClient().then((client) => client.warmUpDecoder());
+    }
+  }, [hasConsent]);
+
   const recordFailure = useCallback((token: number) => {
     if (failureTokenRef.current === token) return;
     failureTokenRef.current = token;
@@ -481,17 +487,22 @@ export function useAadhaarScanner(
       setIsReadingUsb(true);
       try {
         const client = await loadDecodeClient();
-        if (!sessionRef.current.isCurrent(token)) return;
         const outcome = await attemptAadhaarDecode({
           nativeText: payload,
           client,
         });
-        if (!sessionRef.current.isCurrent(token)) return;
+        if (!sessionRef.current.isCurrent(token)) {
+          if (outcome.status === "rejected" || outcome.status === "malformed") {
+            recordFailure(token);
+          }
+          return;
+        }
         await handleOutcome(outcome, token);
       } catch {
-        if (!sessionRef.current.isCurrent(token)) return;
-        setScanError("USB scanner payload could not be read. Scan the card again.");
         recordFailure(token);
+        if (sessionRef.current.isCurrent(token)) {
+          setScanError("USB scanner payload could not be read. Scan the card again.");
+        }
       } finally {
         if (sessionRef.current.isCurrent(token)) setIsReadingUsb(false);
       }
