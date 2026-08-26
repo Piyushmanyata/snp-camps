@@ -135,7 +135,7 @@ test.describe("throttled primary desk action", () => {
 
     const startedAt = performance.now();
     try {
-      await page.getByLabel(/Ghar ka mobile number/i).fill("9876543210");
+      await page.getByLabel(/Household mobile number|Ghar ka mobile number/i).fill("9876543210");
       await page.getByTestId("aadhaar-consent").check();
       await page.getByTestId("scan-aadhaar-qr-button").click();
       await expect(page.getByTestId("aadhaar-scanned-banner")).toBeVisible({

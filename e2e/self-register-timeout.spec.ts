@@ -67,7 +67,7 @@ test("stalled self-registration times out, keeps entered data, and reuses the re
   }
   await page
     .getByRole("checkbox", {
-      name: /I consent to sharing my Aadhaar card details/,
+      name: /I consent to extracting details from my Aadhaar card/,
     })
     .check();
   const photo = page.getByTestId("aadhaar-gallery-input");

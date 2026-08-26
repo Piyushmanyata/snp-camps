@@ -230,7 +230,7 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
     page.getByRole("button", { name: "Reset password" }).first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Disable" }).first(),
+    page.getByRole("button", { name: "Deactivate" }).first(),
   ).toBeVisible();
   await expect(
     page.getByText("Volunteer", { exact: true }).first(),
@@ -250,7 +250,7 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
     await route.continue();
   });
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Disable" }).first().click();
+  await page.getByRole("button", { name: "Deactivate" }).first().click();
   await expect(
     page.getByText(
       "Volunteer account changed during deactivation. Refresh and retry.",
@@ -319,7 +319,9 @@ test("desk exact-lookup tolerates long/garbage name search gracefully", async ({
     .fill("Ramesh " + "x".repeat(300));
   await page.getByRole("button", { name: "Search" }).click();
   await expect(
-    page.getByText("No patient found with this name in the active camp."),
+    page
+      .getByText("No patient found with this name in the active camp.")
+      .first(),
   ).toBeVisible({ timeout: 15_000 });
 });
 

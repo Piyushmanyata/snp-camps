@@ -470,6 +470,8 @@ export function writeRouteChunkArtifact(measurements, outPath, nextDir) {
       }
       // Light scan UI without library body still useful for network asserts.
       if (
+        text.includes("Open camera") ||
+        text.includes("Opening camera") ||
         text.includes("Camera kholein") ||
         text.includes("Camera khul raha hai")
       ) {

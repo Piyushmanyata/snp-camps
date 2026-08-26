@@ -669,7 +669,7 @@ test("public register + login: touch, focus, 200% text zoom operable", async ({
   await loginStaff(page, "volunteer");
   await applyTextZoom200(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  const lookUp = page.getByRole("button", { name: "Dhundein" });
+  const lookUp = page.getByRole("button", { name: "Search" });
   await expect(lookUp).toBeVisible();
   await assertNoTwoAxisScroll(page, "volunteer @200% text");
   // Critical action still in viewport or scrollable on primary axis only
@@ -755,10 +755,10 @@ test("mandatory route/state matrix: patient, roles, clinical records, and A4", a
     page.getByRole("heading", { name: "Self-registration" }),
   );
   const consent = page.getByRole("checkbox", {
-    name: /I consent to sharing my Aadhaar card details/,
+    name: /I consent to extracting details from my Aadhaar card/,
   });
   await expect(consent).toHaveAccessibleName(
-    /I consent to sharing my Aadhaar card details/,
+    /I consent to extracting details from my Aadhaar card/,
   );
   await assertTouchTarget(
     consent.locator("xpath=ancestor::label"),

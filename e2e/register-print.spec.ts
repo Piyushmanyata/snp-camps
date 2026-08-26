@@ -118,7 +118,7 @@ async function mockRegisterSuccess(
 
 async function fillMinimalRegistration(page: Page, _fullName: string) {
   void _fullName;
-  const phone = page.getByLabel(/Ghar ka mobile number/i);
+  const phone = page.getByLabel(/Household mobile number|Ghar ka mobile number/i);
   await expect(async () => {
     await phone.fill("9876543210");
     await page.waitForTimeout(250);
@@ -146,7 +146,7 @@ test("mobile photo fallback reads Aadhaar locally and fills the shared desk form
   await loginStaff(page, "volunteer");
   await gotoHydrated(page, "/register");
 
-  await page.getByLabel(/Ghar ka mobile number/i).fill("9876543210");
+  await page.getByLabel(/Household mobile number|Ghar ka mobile number/i).fill("9876543210");
   const photoInput = page.getByTestId("aadhaar-photo-input");
   await expect(photoInput).toBeDisabled();
   await page.getByTestId("aadhaar-consent").check();
