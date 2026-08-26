@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui";
 import type { AadhaarScanner } from "@/components/use-aadhaar-scanner";
 
@@ -12,6 +12,12 @@ export function AadhaarUsbInput({
   requireConsent?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const consentMissing = requireConsent && !scanner.hasConsent;
+
+  useEffect(() => {
+    if (!consentMissing) inputRef.current?.focus();
+  }, [consentMissing]);
+
   const read = () => {
     const payload = inputRef.current?.value ?? "";
     if (inputRef.current) inputRef.current.value = "";
@@ -37,9 +43,8 @@ export function AadhaarUsbInput({
           type="password"
           autoComplete="off"
           inputMode="none"
-          disabled={
-            (requireConsent && !scanner.hasConsent) || scanner.isReadingUsb
-          }
+          disabled={consentMissing}
+          readOnly={scanner.isReadingUsb}
           className="min-h-12 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 font-mono"
           aria-label="USB Aadhaar scanner input"
           onKeyDown={(event) => {
@@ -51,9 +56,7 @@ export function AadhaarUsbInput({
         <Button
           type="button"
           size="sm"
-          disabled={
-            (requireConsent && !scanner.hasConsent) || scanner.isReadingUsb
-          }
+          disabled={consentMissing || scanner.isReadingUsb}
           loading={scanner.isReadingUsb}
           onClick={read}
         >

@@ -13,7 +13,8 @@ Sources: [Dcode DC7121 product page](https://www.dcodeinternational.in/DC7121.ph
 and [official DC7121 specification sheet, page 1](https://www.dcodeinternational.in/images/DC7121.pdf#page=1).
 
 The current app needs keyboard-wedge behavior: the scanner types the complete
-payload into a focused password input, and `Enter` submits and clears it
+payload into the password input focused after consent, and `Enter` submits and
+clears it
 ([`aadhaar-usb-input.tsx`](../../src/components/aadhaar-usb-input.tsx#L15-L49)).
 Leading and trailing whitespace is removed before decoding
 ([`aadhaar-attempt.ts`](../../src/lib/aadhaar-attempt.ts#L20-L29)). USB payloads
@@ -45,8 +46,9 @@ manual** or these exact configuration barcodes from Dcode support.
 2. With English (US) selected, scan a current Aadhaar Secure QR into a local
    scratch editor. It must type one uninterrupted payload and submit exactly
    once with `Enter`; do not retain the payload.
-3. In the registration UI, record consent, focus **USB Aadhaar scanner**, and
-   scan the same card. Acceptance requires a successful decode of the physical
+3. In the registration UI, record consent and scan the same card. Confirm that
+   **USB Aadhaar scanner** receives focus automatically and keeps it after a
+   failed read. Acceptance requires a successful decode of the physical
    card, not merely a scanner beep or generic QR success.
 4. Verify the decoded legal name, date of birth, gender, Aadhaar last four, and
    address against the card, then discard the scratch capture. On every

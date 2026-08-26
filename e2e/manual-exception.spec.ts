@@ -65,12 +65,15 @@ test("volunteer reaches manual entry after two failed scans", async ({
 
   await page.getByTestId("aadhaar-consent").check();
   const usb = page.getByLabel("USB Aadhaar scanner input");
-  await expect(usb).toBeEnabled();
+  await expect(usb).toBeEditable();
+  await expect(usb).toBeFocused();
 
-  await usb.fill("not-an-aadhaar-qr");
-  await usb.press("Enter");
-  await usb.fill("still-not-an-aadhaar-qr");
-  await usb.press("Enter");
+  await page.keyboard.insertText("not-an-aadhaar-qr");
+  await page.keyboard.press("Enter");
+  await expect(usb).toBeEditable();
+  await expect(usb).toBeFocused();
+  await page.keyboard.insertText("still-not-an-aadhaar-qr");
+  await page.keyboard.press("Enter");
 
   await expect(page.getByTestId("desk-manual-entry-escape")).toBeVisible({
     timeout: 15_000,
