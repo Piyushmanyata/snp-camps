@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/ui";
 import type { AadhaarScanner } from "@/components/use-aadhaar-scanner";
 
@@ -13,13 +13,16 @@ export function AadhaarUsbInput({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isReceiving, setIsReceiving] = useState(false);
   const consentMissing = requireConsent && !scanner.hasConsent;
+  const isLoading = scanner.isReadingUsb || isReceiving;
 
   const triggerRead = useCallback(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
+    setIsReceiving(false);
     const payload = inputRef.current?.value ?? "";
     if (inputRef.current) inputRef.current.value = "";
     if (payload.trim()) {
@@ -28,6 +31,7 @@ export function AadhaarUsbInput({
   }, [scanner]);
 
   const scheduleRead = useCallback(() => {
+    setIsReceiving(true);
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
@@ -61,23 +65,23 @@ export function AadhaarUsbInput({
       <p className="mt-1 text-xs text-muted">
         Neeche wale box par click karke card scan karein — scan apne aap load ho jaayega. Raw data turant mit jaata hai.
       </p>
-      <div className="mt-2 flex items-center gap-2">
+      <div
+        className="relative mt-2 flex min-h-12 items-center rounded-xl border border-border bg-white cursor-pointer"
+        onClick={() => {
+          if (!consentMissing) inputRef.current?.focus();
+        }}
+      >
         <input
           ref={inputRef}
           id="aadhaar-usb-payload"
-          type="password"
+          type="text"
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
           inputMode="none"
           disabled={consentMissing}
-          readOnly={scanner.isReadingUsb}
-          className="min-h-12 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 font-mono text-sm placeholder:text-muted focus-visible:ring-2 focus-visible:ring-brand/40"
-          placeholder={
-            consentMissing
-              ? "Pehle consent dein"
-              : scanner.isReadingUsb
-                ? "Scan padh rahe hain…"
-                : "Yahan scan karein…"
-          }
+          className="absolute inset-0 h-full w-full rounded-xl bg-transparent px-3 text-transparent caret-transparent selection:bg-transparent focus-visible:ring-2 focus-visible:ring-brand/40"
           aria-label="USB Aadhaar scanner input"
           onInput={scheduleRead}
           onKeyDown={(event) => {
@@ -86,16 +90,28 @@ export function AadhaarUsbInput({
             triggerRead();
           }}
         />
-        {scanner.isReadingUsb ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-soft px-3.5 text-xs font-bold text-brand"
-          >
-            <Spinner className="h-4 w-4" />
-            <span>Padh rahe hain…</span>
-          </div>
-        ) : null}
+        <div
+          className="pointer-events-none flex h-full w-full items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold"
+          aria-hidden="true"
+        >
+          {isLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 text-brand"
+            >
+              <Spinner className="h-5 w-5" />
+              <span>Card padh rahe hain…</span>
+            </div>
+          ) : consentMissing ? (
+            <span className="text-muted">Pehle consent dein</span>
+          ) : (
+            <span className="flex items-center gap-2 text-muted">
+              <span className="inline-block size-2 rounded-full bg-emerald-500 animate-pulse" />
+              Card scan karein…
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
