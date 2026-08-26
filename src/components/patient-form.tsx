@@ -1186,7 +1186,6 @@ export function PatientForm({
       <div className="sticky-submit flex flex-col gap-2 sm:flex-row">
         <Button
           type="submit"
-          variant="secondary"
           disabled={
             loading ||
             lookupState === "loading" ||
@@ -1197,35 +1196,19 @@ export function PatientForm({
             likelyDuplicateRegNo != null
           }
           loading={loading && likelyDuplicateRegNo == null}
-          data-testid="desk-register-only"
-          data-phase={phase}
-          onClick={() => {
-            wantPrintRef.current = false;
-          }}
-        >
-          {loading && likelyDuplicateRegNo == null ? "Saving…" : "Register only"}
-        </Button>
-        <Button
-          type="submit"
-          disabled={
-            loading ||
-            lookupState === "loading" ||
-            !campDayId ||
-            !identityVisible ||
-            !phoneValidation.ok ||
-            (manualEntry && !manualReason.trim()) ||
-            likelyDuplicateRegNo != null
+          data-testid={
+            printWindowOpen ? "desk-register-submit" : "desk-register-only"
           }
-          loading={loading && likelyDuplicateRegNo == null}
-          data-testid="desk-register-submit"
           data-phase={phase}
           onClick={() => {
-            wantPrintRef.current = true;
+            wantPrintRef.current = printWindowOpen;
           }}
         >
           {loading && likelyDuplicateRegNo == null
             ? "Saving…"
-            : "Register + Print"}
+            : printWindowOpen
+              ? "Register + Print"
+              : "Register"}
         </Button>
       </div>
     </form>
