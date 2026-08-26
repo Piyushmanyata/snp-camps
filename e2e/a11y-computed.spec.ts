@@ -624,13 +624,9 @@ test("admin Camp Day controls are date-qualified and settings saves are announce
   page,
 }) => {
   await loginStaff(page, "admin");
-  await gotoReady(
-    page,
-    "/admin",
-    page.getByRole("heading", { name: "Admin", exact: true }),
-  );
-
-  await page.getByText("Camps & camp days", { exact: true }).click();
+  const campControls = page.getByText("Camps & camp days", { exact: true });
+  await expect(campControls).toBeVisible();
+  await campControls.click();
   const campDaysHeading = page.getByText(/^Camp days — /).first();
   await expect(campDaysHeading).toBeVisible();
 
