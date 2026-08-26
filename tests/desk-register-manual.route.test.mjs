@@ -72,7 +72,7 @@ test("rejects non-UUID campDayId without calling RPC", async () => {
   const res = await POST(request(validBody({ campDayId: "not-a-uuid" })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session galat hai/);
+  assert.match(body.error.message, /Invalid registration session/i);
   assert.equal(rpcCalls, 0);
 });
 
@@ -88,7 +88,7 @@ test("rejects invalid gender without calling RPC", async () => {
   const res = await POST(request(validBody({ gender: "X" })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session galat hai/);
+  assert.match(body.error.message, /Invalid registration session/i);
   assert.equal(rpcCalls, 0);
 });
 
@@ -104,7 +104,7 @@ test("rejects age 200 without calling RPC", async () => {
   const res = await POST(request(validBody({ age: 200 })));
   const body = await res.json();
   assert.equal(res.status, 400);
-  assert.match(body.error.message, /Registration session galat hai/);
+  assert.match(body.error.message, /Invalid registration session/i);
   assert.equal(rpcCalls, 0);
 });
 
@@ -175,5 +175,5 @@ test("refuses a single failed scan", async () => {
   const body = await res.json();
   assert.equal(res.status, 400);
   assert.equal(rpc.calls, 0);
-  assert.match(body.error.message, /Do baar scan fail/i);
+  assert.match(body.error.message, /Two failed scan attempts/i);
 });

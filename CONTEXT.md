@@ -104,19 +104,16 @@ prescription remains the prescribing source of truth. See
 * **Leaderboard**: Two separate active-camp rankings — one of Team Leads and one of individual volunteers. Before the first Camp Day they rank by Pre-camp registration count. From the first Camp Day onward they rank by Leaderboard points and retain Registered as a secondary column. Manual registration exceptions are excluded from both competitive metrics. The Team Lead board shows team headcount beside each row, because absolute throughput naturally favours larger teams. Visible in full to Registration Staff; exposes aggregate counts only, never patient PII.
 * **Seat caps**: Enforced for **pre-registration only**. A walk-in physically standing at the desk is never turned away because a day is notionally full.
 * **Aadhaar last-4 + name uniqueness**: Within one Camp, the pair *(Aadhaar last 4 digits, normalised full name)* is unique for non-overridden registrations. Two different people can share a common name and the same last four digits; a hard block at the desk is unacceptable. On conflict the system names the **conflicting registration number**. Staff may take an explicit, one-shot **override**; the new registration records who overrode and when. Override is never sticky, never automatic, never available outside desk registration.
-* **Likely-duplicate soft warn** (not a hard unique): At desk submit, within the **active Camp only**, if another patient matches **normalised name + age**, the RPC raises `LIKELY_DUPLICATE:reg=N`. The form shows one Hinglish sentence and two actions: **Print for them instead** (primary — abandons the new registration and prints the existing one) or **Register anyway** (one-shot override with audit columns). Phone-only matches never warn because a Household contact phone is deliberately shared. Never blocks; never as-you-type. Aadhaar uniqueness is separate and still hard.
+* **Likely-duplicate soft warn** (not a hard unique): At desk submit, within the **active Camp only**, if another patient matches **normalised name + age**, the RPC raises `LIKELY_DUPLICATE:reg=N`. The form shows one sentence and two actions: **Print for them instead** (primary — abandons the new registration and prints the existing one) or **Register anyway** (one-shot override with audit columns). Phone-only matches never warn because a Household contact phone is deliberately shared. Never blocks; never as-you-type. Aadhaar uniqueness is separate and still hard.
 
 ## Language
 
-A deliberate split, and leaks in either direction are bugs:
-
-* **Patients and field staff read Hinglish or Hindi** — the self-registration flow, SMS (Devanagari), the public home page, and every field desk surface: register, volunteer desk, clinical desk, scanner, print actions.
-* **Admin reads English** — `/admin/**`, staff management, exports, and every admin-facing banner.
-* Mixing the two inside one surface is a bug. Where a string's meaning would have to be guessed, keep it English rather than invent Hinglish.
+* **Patients, field staff, and admin read Simple English** — the self-registration flow, the public home page, and every field desk surface: register, volunteer desk, clinical desk, scanner, print actions, admin dashboards, and staff management.
+* **SMS is Devanagari Hindi** — outbound DLT registration, reminder, and deferral SMS templates.
 * **Never render a raw database enum.** `queue_status`, `gender`, and `user_role` are storage values, not copy. Field surfaces map them through a labeller (`genderLabel` in `src/lib/types.ts`); admin surfaces use `queueLabel`.
-* The document is `lang="en"`. A Hinglish subtree carries its own `lang="hi-Latn"` so screen readers do not read it with English phonetics (WCAG 3.1.2). `/self-register` sets it on `<main>`; shared surfaces set it on the Hinglish block.
+* The document is `lang="en"`.
 
-No i18n framework. There are exactly two audiences and they never share a screen.
+No i18n framework. Simple, clear English across all surfaces with Devanagari Hindi SMS.
 
 ## System-Wide Design & UX Goals
 

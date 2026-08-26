@@ -15,7 +15,7 @@ async function gotoReady(page: Page, path: string, ready: Locator) {
 
 async function loginStaff(
   page: Page,
-  role: "admin" | "team_lead" | "volunteer",
+  role: "admin" | "team_lead" | "volunteer" | "clinical_operator",
 ) {
   const emailInput = page.locator("form").getByLabel("Email");
   await gotoReady(page, "/login", emailInput);
@@ -25,7 +25,12 @@ async function loginStaff(
     .getByLabel("Password")
     .fill(env(`E2E_${role.toUpperCase()}_PASSWORD`));
   await page.getByRole("button", { name: "Sign in" }).click();
-  const landing = role === "team_lead" ? "volunteer" : role;
+  const landing =
+    role === "team_lead"
+      ? "volunteer"
+      : role === "clinical_operator"
+        ? "clinical"
+        : role;
   await expect(page).toHaveURL(new RegExp(`/${landing}$`));
 }
 
@@ -165,13 +170,13 @@ test("admin can sign in, inspect the patient desk, and sign out", async ({
 test("volunteer can sign in and safely review a patient", async ({ page }) => {
   await loginStaff(page, "volunteer");
   await expect(
-    page.getByRole("heading", { name: "Volunteer ka desk" }),
+    page.getByRole("heading", { name: "Volunteer desk" }),
   ).toBeVisible();
 
   await page
-    .getByLabel("Registration number ya naam")
+    .getByLabel("Registration number or name")
     .fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
   const review = page.getByRole("region", {
     name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
   });
@@ -186,11 +191,11 @@ test("volunteer can sign in and safely review a patient", async ({ page }) => {
   const firstLabel = await review.getByTestId("print-prescription").innerText();
   const firstHadMarkSeen = await review.getByTestId("mark-seen").count();
 
-  await page.getByRole("button", { name: "Galat patient" }).click();
+  await page.getByRole("button", { name: "Wrong patient" }).click();
   await page
-    .getByLabel("Registration number ya naam")
+    .getByLabel("Registration number or name")
     .fill(env("E2E_PATIENT_REG_NO"));
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
   await expect(review).toBeVisible();
 
   expect(await review.getByTestId("print-prescription").innerText()).toBe(
@@ -207,28 +212,28 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
 }) => {
   await loginStaff(page, "team_lead");
   await expect(
-    page.getByRole("heading", { name: "Volunteer ka desk" }),
+    page.getByRole("heading", { name: "Volunteer desk" }),
   ).toBeVisible();
-  // Team/leaderboard live in the collapsible "Aur dekhein" island (Phase 6).
-  await page.locator("summary").filter({ hasText: /Aur dekhein/i }).click();
-  await expect(page.getByText("Team lead ka hisaab", { exact: true })).toBeVisible();
+  // Team/leaderboard live in the collapsible "More" island (Phase 6).
+  await page.locator("summary").filter({ hasText: /More/i }).click();
+  await expect(page.getByText("Team lead summary", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Team ki ginti", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Meri team ke volunteers", { exact: true }),
+    page.getByText("Team size", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Naya volunteer jodein" }),
+    page.getByText("My team volunteers", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Password reset karein" }).first(),
+    page.getByRole("button", { name: "Register new volunteer" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Band karein" }).first(),
+    page.getByRole("button", { name: "Reset password" }).first(),
   ).toBeVisible();
   await expect(
-    page.getByText("Volunteer ka role", { exact: true }).first(),
+    page.getByRole("button", { name: "Deactivate" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Volunteer", { exact: true }).first(),
   ).toBeVisible();
   await page.route("**/api/admin/staff/volunteer*", async (route) => {
     if (route.request().method() === "DELETE") {
@@ -245,10 +250,10 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
     await route.continue();
   });
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Band karein" }).first().click();
+  await page.getByRole("button", { name: "Deactivate" }).first().click();
   await expect(
     page.getByText(
-      "Volunteer ki jaankari beech mein badal gayi. Refresh karke dobara koshish karein.",
+      "Volunteer account changed during deactivation. Refresh and retry.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -259,17 +264,17 @@ test("Team Lead receives the full volunteer desk and own-team overview", async (
     page
       .getByRole("listitem")
       .filter({ hasText: "Codex E2E volunteer" })
-      .getByText(/\d+ alag marij/),
+      .getByText(/\d+ distinct patients/),
   ).toBeVisible();
   await expect(
-    page.getByText("Team lead ki ranking · natije", { exact: true }),
+    page.getByText("Team Lead leaderboard · outcomes", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Volunteer ki ranking · natije", { exact: true }),
+    page.getByText("Volunteer leaderboard · outcomes", { exact: true }),
   ).toBeVisible();
   // Primary desk CTA (inline card; desktop Register NavLink was intentionally removed).
   await expect(
-    page.getByRole("link", { name: "Naya marij register karein" }).first(),
+    page.getByRole("link", { name: "Register new patient" }).first(),
   ).toBeVisible();
   // Every dock link must be reachable for this role — no link may bounce them.
   await expect(page.getByRole("link", { name: /Counter/ })).toHaveCount(0);
@@ -283,14 +288,56 @@ test("admin volunteer creation offers optional Team Lead assignment", async ({
   await page.getByRole("button", { name: "Register new volunteer" }).click();
   const picker = page.getByLabel("Team Lead");
   await expect(picker).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("clinical operator has no access to volunteer staff actions", async ({
+  page,
+}) => {
+  await loginStaff(page, "clinical_operator");
+  await page.goto("/volunteer");
   await expect(
-    picker.getByRole("option", { name: "Unassigned" }),
-  ).toHaveCount(1);
+    page.getByRole("button", { name: "Register new volunteer" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Team lead summary")).toHaveCount(0);
+  await expect(page.getByText("Team size")).toHaveCount(0);
+  await expect(page.getByText("My team volunteers")).toHaveCount(0);
   await expect(
-    picker.getByRole("option", { name: "Codex E2E team_lead" }),
-  ).toHaveCount(1);
-  await picker.selectOption({ label: "Codex E2E team_lead" });
-  await expect(picker).not.toHaveValue("");
+    page.getByText("Team Lead leaderboard · outcomes"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Volunteer leaderboard · outcomes"),
+  ).toHaveCount(0);
+});
+
+test("desk exact-lookup tolerates long/garbage name search gracefully", async ({
+  page,
+}) => {
+  await loginStaff(page, "volunteer");
+  await page
+    .getByLabel("Registration number or name")
+    .fill("Ramesh " + "x".repeat(300));
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(
+    page
+      .getByText("No patient found with this name in the active camp.")
+      .first(),
+  ).toBeVisible({ timeout: 15_000 });
+});
+
+test("duplicate print button click does not double-post or break UI", async ({
+  page,
+}) => {
+  await loginStaff(page, "volunteer");
+  await page
+    .getByLabel("Registration number or name")
+    .fill(env("E2E_PATIENT_REG_NO"));
+  await page.getByRole("button", { name: "Search" }).click();
+  const review = page.getByRole("region", {
+    name: `#${env("E2E_PATIENT_REG_NO")} ${env("E2E_PATIENT_NAME")}`,
+  });
+  await expect(review).toBeVisible();
+  await expect(review.getByTestId("print-prescription")).toBeVisible();
 });
 
 test("staff-scan QR never logs a public visitor in", async ({ page }) => {
@@ -335,9 +382,9 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
 }) => {
   await loginStaff(page, "volunteer");
   await page
-    .getByLabel("Registration number ya naam")
+    .getByLabel("Registration number or name")
     .fill("not-a-patient!!!!!" + "x".repeat(200));
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
   // Desk stays usable; review panel for the e2e patient must not appear
   await expect(
     page.getByRole("region", {
@@ -345,7 +392,7 @@ test("garbage reg/QR text fails closed without crashing desk", async ({
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Volunteer ka desk" }),
+    page.getByRole("heading", { name: "Volunteer desk" }),
   ).toBeVisible();
 });
 
@@ -361,8 +408,8 @@ test("volunteer marks a printed-for patient seen, and a re-scan is refused", asy
   const name = env("E2E_SECOND_PATIENT_NAME");
 
   await loginStaff(page, "volunteer");
-  await page.getByLabel("Registration number ya naam").fill(reg);
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByLabel("Registration number or name").fill(reg);
+  await page.getByRole("button", { name: "Search" }).click();
 
   const review = page.getByRole("region", { name: `#${reg} ${name}` });
   await expect(review).toBeVisible({ timeout: 15_000 });
@@ -373,21 +420,21 @@ test("volunteer marks a printed-for patient seen, and a re-scan is refused", asy
   const result = page.getByTestId("seen-result");
   await expect(result).toBeVisible();
   await expect(result.getByText(`#${reg}`)).toBeVisible();
-  await expect(page.getByLabel("Registration number ya naam")).toBeEnabled();
-  await expect(page.getByLabel("Registration number ya naam")).toHaveValue("");
+  await expect(page.getByLabel("Registration number or name")).toBeEnabled();
+  await expect(page.getByLabel("Registration number or name")).toHaveValue("");
 
   // A mis-scan is recoverable within the server-side window (D25).
   await expect(
-    result.getByRole("button", { name: /Wapas registered karein/i }),
+    result.getByRole("button", { name: /Undo seen/i }),
   ).toBeVisible();
 
   // Re-scan is refused, says so, and offers no second Mark seen.
-  await page.getByRole("button", { name: "Agla scan karein" }).click();
-  await page.getByLabel("Registration number ya naam").fill(reg);
-  await page.getByRole("button", { name: "Dhundein" }).click();
+  await page.getByRole("button", { name: "Scan next" }).click();
+  await page.getByLabel("Registration number or name").fill(reg);
+  await page.getByRole("button", { name: "Search" }).click();
   const again = page.getByRole("region", { name: `#${reg} ${name}` });
   await expect(again).toBeVisible({ timeout: 15_000 });
-  await expect(again.getByText(/Pehle se dekha hua/)).toBeVisible();
+  await expect(again.getByText(/Already seen/)).toBeVisible();
   await expect(again.getByTestId("mark-seen")).toHaveCount(0);
   // Paper is still reprintable for a seen patient — that must not be blocked.
   await expect(again.getByTestId("print-prescription")).toBeVisible();

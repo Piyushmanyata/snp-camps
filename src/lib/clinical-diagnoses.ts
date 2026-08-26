@@ -68,9 +68,8 @@ export function diagnosesEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(flattenDiagnoses(a)) === JSON.stringify(flattenDiagnoses(b));
 }
 
-// Clinical Desk is Hinglish-only, and this validator is its only caller.
 const UNAVAILABLE_REQUIRED =
-  "Pehle unavailable dawaiyan likhein, phir Available nahi save karein.";
+  "Enter unavailable medicines before saving as Not Available.";
 const MAX_UNAVAILABLE = 12;
 const MAX_UNAVAILABLE_LEN = 120;
 
@@ -86,7 +85,7 @@ export function validateUnavailableMedicines(
   if (list.length < 1 || list.length > MAX_UNAVAILABLE) {
     return {
       ok: false,
-      message: `1 se ${MAX_UNAVAILABLE} tak unavailable dawaiyan likhein.`,
+      message: `Enter between 1 and ${MAX_UNAVAILABLE} unavailable medicines.`,
     };
   }
   const medicines: string[] = [];
@@ -98,7 +97,7 @@ export function validateUnavailableMedicines(
     if (trimmed.length < 1 || trimmed.length > MAX_UNAVAILABLE_LEN) {
       return {
         ok: false,
-        message: `Har dawai ka naam 1 se ${MAX_UNAVAILABLE_LEN} akshar tak rakhein.`,
+        message: `Each medicine name must be between 1 and ${MAX_UNAVAILABLE_LEN} characters.`,
       };
     }
     medicines.push(trimmed);

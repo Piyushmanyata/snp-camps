@@ -57,7 +57,7 @@ test("volunteer reaches manual entry after two failed scans", async ({
   await loginVolunteer(page);
   await gotoHydrated(page, "/register");
 
-  const phone = page.getByLabel(/Ghar ka mobile number/i);
+  const phone = page.getByLabel(/Household mobile number|Ghar ka mobile number/i);
   await expect(async () => {
     await phone.fill("9876543210");
     await expect(phone).toHaveValue("9876543210");

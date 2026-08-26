@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   const rate = checkRateLimit(request, SELF_REGISTRATION_IP_RATE_LIMIT);
   if (!rate.allowed) {
     return NextResponse.json(
-      { ok: false, error: "Bahut zyada koshish. Thodi der baad try karein." },
+      { ok: false, error: "Too many attempts. Please try again later." },
       { status: 429, headers: rate.headers },
     );
   }
@@ -96,21 +96,21 @@ export async function POST(request: Request) {
   });
   if (!identityValidation.ok || !validateAadhaarLast4(aadhaarLast4)) {
     return errorResponse(
-      "Aadhaar card poora scan nahi hua. Kripya dobara scan karein ya camp desk par register karayein.",
+      "Aadhaar card was not fully scanned. Please scan again or register at the camp desk.",
     );
   }
   if (!phoneResult.ok) {
     return errorResponse(
-      "10-digit mobile number daalein (6–9 se shuru). Dummy numbers (jaise 0000000000) nahi chalenge.",
+      "Enter a 10-digit mobile number starting with 6–9. Repeated digits (such as 0000000000) are not allowed.",
     );
   }
 
   const displayName = str(card.displayName);
   if (isNonLatinText(fullName) && !displayName) {
-    return errorResponse("Apna naam English letters mein bhi likhein.");
+    return errorResponse("Please enter your name in English letters as well.");
   }
   if (displayName && isNonLatinText(displayName)) {
-    return errorResponse("English spelling sirf English letters mein likhein.");
+    return errorResponse("English spelling must contain English letters only.");
   }
 
   let duplicateKey: string;
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[self-registration] person key failed", err);
     return errorResponse(
-      "Self-registration abhi available nahi hai. Kripya camp desk par register karayein.",
+      "Self-registration is currently unavailable. Please register at the camp desk.",
       503,
     );
   }
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
   const supabase = createServiceRoleClient();
   if (!supabase) {
     return errorResponse(
-      "Self-registration abhi available nahi hai. Kripya camp desk par register karayein.",
+      "Self-registration is currently unavailable. Please register at the camp desk.",
       503,
     );
   }
@@ -147,8 +147,8 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: durableIpRate.unavailable
-          ? "Self-registration abhi available nahi hai. Kripya camp desk par register karayein."
-          : "Bahut zyada koshish. Thodi der baad try karein.",
+          ? "Self-registration is currently unavailable. Please register at the camp desk."
+          : "Too many attempts. Please try again later.",
       },
       {
         status: durableIpRate.unavailable ? 503 : 429,
@@ -166,8 +166,8 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: durableSubjectRate.unavailable
-          ? "Self-registration abhi available nahi hai. Kripya camp desk par register karayein."
-          : "Bahut zyada koshish. Thodi der baad try karein.",
+          ? "Self-registration is currently unavailable. Please register at the camp desk."
+          : "Too many attempts. Please try again later.",
       },
       {
         status: durableSubjectRate.unavailable ? 503 : 429,
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
         ok: false,
         deskReferral: true,
         registrationNumber: dupRegNo,
-        error: `Aapki details se milta-julta reg #${dupRegNo} mila hai. Kripya camp desk par check karwayen.`,
+        error: `A matching registration (#${dupRegNo}) was found with your details. Please check at the camp desk.`,
       });
     }
     if (likelyDup?.regNo != null) {
@@ -248,14 +248,14 @@ export async function POST(request: Request) {
         ok: false,
         deskReferral: true,
         registrationNumber: likelyDup.regNo,
-        error: `Aapki details se milta-julta reg #${likelyDup.regNo} mila hai. Kripya camp desk par check karwayen.`,
+        error: `A matching registration (#${likelyDup.regNo}) was found with your details. Please check at the camp desk.`,
       });
     }
     if (/full|seat/i.test(message)) {
-      return errorResponse("Yeh Camp Day full hai. Doosra din chunen.");
+      return errorResponse("This camp day is full. Please choose another day.");
     }
     console.error("[self-registration] rpc failed", message);
-    return errorResponse("Registration nahi ho paaya. Camp desk par madad lein.", 409);
+    return errorResponse("Registration could not be completed. Please ask for assistance at the camp desk.", 409);
   }
 
   const row = (Array.isArray(data) ? data[0] : data) as {
@@ -265,7 +265,7 @@ export async function POST(request: Request) {
     day_date?: string;
   } | null;
   if (!row?.id || row.reg_no == null) {
-    return errorResponse("Registration adhoora raha. Kripya camp desk par milen.", 502);
+    return errorResponse("Registration was incomplete. Please visit the camp desk.", 502);
   }
 
   const stored = await supabase

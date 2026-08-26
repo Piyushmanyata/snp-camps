@@ -26,15 +26,15 @@ export function VolunteerDeskActions({
     <>
       <ActionCard
         href="/register"
-        title="Naya marij register karein"
+        title="Register new patient"
         description={
           windowOpen
-            ? "Naam, phone, Aadhaar — phir parchi print"
-            : "Naam, phone, Aadhaar. Print band hai."
+            ? "Name, phone, Aadhaar — then print prescription"
+            : "Name, phone, Aadhaar. Printing is closed."
         }
         variant="primary"
         disabled={!campId}
-        disabledReason="Koi active camp nahi. Admin se camp chalu karwayein."
+        disabledReason="No active camp. Ask admin to activate a camp."
       />
       {windowOpen ? (
         <div data-testid="desk-print-window-open">
@@ -47,10 +47,9 @@ export function VolunteerDeskActions({
       ) : (
         <p
           data-testid="desk-print-window-closed"
-          lang="hi-Latn"
           className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
         >
-          Print aur Mark seen band hain. Admin se print window khulwaein.
+          Print and Mark seen are closed. Ask admin to open print window.
         </p>
       )}
     </>

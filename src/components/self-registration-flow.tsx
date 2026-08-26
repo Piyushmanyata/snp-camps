@@ -109,15 +109,15 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
     const nextFieldErrors: FieldErrors = {};
     if (!dayId) {
-      nextFieldErrors.dayId = "Camp ka din chunna zaroori hai.";
+      nextFieldErrors.dayId = "Please select a camp day.";
     }
     const phoneCheck = validateHouseholdPhone(phone);
     if (!phoneCheck.ok) {
       nextFieldErrors.phone =
-        "10-digit mobile number daalein (6–9 se shuru). Dummy numbers nahi chalenge.";
+        "Enter a valid 10-digit mobile number (starts with 6–9).";
     }
     if (needsLatinName && !displayName.trim()) {
-      nextFieldErrors.displayName = "Naam English letters mein likhna zaroori hai.";
+      nextFieldErrors.displayName = "Name in English letters is required.";
     }
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
@@ -153,7 +153,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         setError(
           typeof body.error === "string"
             ? body.error
-            : "Registration nahi ho paaya. Camp desk par madad lein.",
+            : "Could not complete registration. Please ask for help at the camp desk.",
         );
         return;
       }
@@ -170,8 +170,8 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         (err.name === "TimeoutError" || err.name === "AbortError");
       setError(
         timedOut
-          ? "Request time out ho gaya. Form same hai — dobara try karein."
-          : "Network problem. Dobara try karein ya camp desk par milen.",
+          ? "Request timed out. Please try again."
+          : "Network issue. Please try again or ask for help at the camp desk.",
       );
     } finally {
       if (generation === generationRef.current) {
@@ -195,7 +195,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
   if (result) {
     return (
-      <Suspense fallback={<p role="status">Receipt taiyaar ho rahi hai…</p>}>
+      <Suspense fallback={<p role="status">Preparing receipt…</p>}>
         <SelfRegistrationReceipt result={result} venue={venue} />
       </Suspense>
     );
@@ -209,7 +209,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
         tabIndex={-1}
         className="text-lg font-bold outline-none"
       >
-        {card ? "Details confirm karein" : "Aadhaar card scan karein"}
+        {card ? "Confirm details" : "Scan Aadhaar card"}
       </h2>
 
       {error ? (
@@ -217,7 +217,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           <ErrorBox message={error} />
           {deskReferral ? (
             <p className="mt-2 text-sm text-muted">
-              Camp desk par volunteer aapki madad karega.
+              A volunteer at the camp desk will help you.
             </p>
           ) : null}
         </>
@@ -226,18 +226,19 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
       {!card ? (
         <>
           <p className="text-sm text-muted">
-            Aadhaar card ka QR camera ke saamne rakhein — details apne aap bhar
-            jaayengi. Agar card paas nahin hai, registration desk se madad lein.
+            Hold Aadhaar card QR in front of camera — details will fill
+            automatically. If you do not have your card, please ask for help at
+            the registration desk.
           </p>
           <WarningBox>
-            Mobile number Aadhaar QR mein nahi hota — wo aapko khud type karna hoga.
+            Mobile number is not stored in the Aadhaar QR — you will need to type it.
           </WarningBox>
 
           <AadhaarCapture scanner={scanner} tone="patient" />
 
           <p className="rounded-xl border border-border p-4 text-sm text-muted">
-            Card scan nahi ho raha? Koi baat nahi — camp desk par volunteer aapko manually
-            register kar dega.
+            Card not scanning? Don&apos;t worry — a volunteer at the camp desk can register
+            you manually.
           </p>
         </>
       ) : (
@@ -253,10 +254,10 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           <dl className="space-y-3 rounded-xl border border-border p-4 text-sm">
             {(
               [
-                ["Naam", card.fullName],
-                ["Umar", String(card.age)],
-                ["Ling", genderLabel(card.gender)],
-                ["Pata", card.address],
+                ["Name", card.fullName],
+                ["Age", String(card.age)],
+                ["Gender", genderLabel(card.gender)],
+                ["Address", card.address],
                 ["Aadhaar", `xxxx xxxx ${card.aadhaarLast4}`],
               ] as const
             ).map(([label, value]) => (
@@ -267,15 +268,15 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
             ))}
           </dl>
           <p className="text-sm text-muted">
-            Yeh details Aadhaar card se aayi hain aur edit nahi ho sakti. Galti ho to camp
-            desk par correction karayein.
+            These details were read from your Aadhaar card and cannot be edited directly. If
+            there is an error, please ask for a correction at the camp desk.
           </p>
 
           {needsLatinName ? (
             <Input
               id="display-name"
-              label="Naam English letters mein"
-              hint="Card par naam English mein nahi hai. Slip aur naam-search ke liye English spelling chahiye."
+              label="Name in English letters"
+              hint="Name on card is not in English. English spelling is required for printed slips and search."
               error={fieldErrors.displayName}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
@@ -285,8 +286,8 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
 
           <Input
             id="phone"
-            label="Mobile number daalein"
-            hint="Aadhaar QR mein number nahi hota, isliye khud daalein."
+            label="Enter mobile number"
+            hint="Aadhaar QR does not contain a phone number, so please enter it manually."
             error={fieldErrors.phone}
             inputMode="numeric"
             autoComplete="tel"
@@ -305,14 +306,14 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
                 .filter(Boolean)
                 .join(" ") || undefined
             }
-            label="Camp ka din"
-            hint={`Camp: ${venue || "jagah baad mein batayi jaayegi"}.`}
+            label="Camp day"
+            hint={`Camp venue: ${venue || "to be announced"}.`}
             value={dayId}
             onChange={(event) => setDayId(event.target.value)}
           >
             {openDays.map((day) => (
               <option key={day.id} value={day.id}>
-                {formatCampDay(day.day_date)} · {day.seats_left} seat baaki
+                {formatCampDay(day.day_date)} · {day.seats_left} seats left
               </option>
             ))}
           </Select>
@@ -327,7 +328,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
           ) : null}
 
           <Button type="submit" disabled={busy}>
-            {busy ? "Registration ho rahi hai…" : "Registration pakki karein"}
+            {busy ? "Registering…" : "Complete registration"}
           </Button>
 
           <Button
@@ -336,7 +337,7 @@ export function SelfRegistrationFlow({ campId, venue, days }: Props) {
             disabled={busy}
             onClick={rescan}
           >
-            Dobara scan karein
+            Scan again
           </Button>
         </form>
       )}

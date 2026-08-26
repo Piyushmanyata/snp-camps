@@ -55,7 +55,7 @@ export function AadhaarUsbInput({
   }, [consentMissing]);
 
   return (
-    <div lang="hi-Latn" className="rounded-xl border border-border bg-card p-3">
+    <div className="rounded-xl border border-border bg-card p-3">
       <label
         htmlFor="aadhaar-usb-payload"
         className="text-sm font-semibold text-foreground"
@@ -63,7 +63,7 @@ export function AadhaarUsbInput({
         USB Aadhaar scanner
       </label>
       <p className="mt-1 text-xs text-muted">
-        Neeche wale box par click karke card scan karein — scan apne aap load ho jaayega. Raw data turant mit jaata hai.
+        Click the box below and scan the card — data loads automatically. Raw scan data is cleared immediately.
       </p>
       <div
         className="relative mt-2 flex min-h-12 items-center rounded-xl border border-border bg-white cursor-pointer"
@@ -101,14 +101,14 @@ export function AadhaarUsbInput({
               className="flex items-center gap-2 text-brand"
             >
               <Spinner className="h-5 w-5" />
-              <span>Card padh rahe hain…</span>
+              <span>Reading card…</span>
             </div>
           ) : consentMissing ? (
-            <span className="text-muted">Pehle consent dein</span>
+            <span className="text-muted">Provide consent first</span>
           ) : (
             <span className="flex items-center gap-2 text-muted">
               <span className="inline-block size-2 rounded-full bg-emerald-500 animate-pulse" />
-              Card scan karein…
+              Scan card…
             </span>
           )}
         </div>

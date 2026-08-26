@@ -504,9 +504,9 @@ test("status labels and tones cover the two-state lifecycle", () => {
 });
 
 test("gender never reaches a field surface as a raw M/F/O column", () => {
-  assert.equal(genderLabel("M"), "Purush");
-  assert.equal(genderLabel("F"), "Mahila");
-  assert.equal(genderLabel("O"), "Anya");
+  assert.equal(genderLabel("M"), "Male");
+  assert.equal(genderLabel("F"), "Female");
+  assert.equal(genderLabel("O"), "Other");
   // Unset and unexpected values render as an em dash, never the raw value.
   assert.equal(genderLabel(null), "—");
   assert.equal(genderLabel(undefined), "—");

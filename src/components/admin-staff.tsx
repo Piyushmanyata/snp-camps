@@ -28,161 +28,75 @@ type CredentialShare = {
   name: string;
 };
 
-function roleCopy(role: ManageableStaffRole, fieldCopy: boolean) {
-  const localized = role === "volunteer" && fieldCopy;
-  const surface = localized
-    ? {
-        lang: "hi-Latn",
-        networkError:
-          "Internet nahi mila. Connection check karke dobara koshish karein.",
-        responseError: (message: string | undefined, fallback: string) =>
-          message && /changed during/i.test(message)
-            ? "Volunteer ki jaankari beech mein badal gayi. Refresh karke dobara koshish karein."
-            : fallback,
-        credentialText: (
-          credential: CredentialShare,
-          origin: string,
-          title: string,
-        ) =>
-          [
-            title,
-            `Naam: ${credential.name}`,
-            `Email: ${credential.email}`,
-            `Temporary password: ${credential.password}`,
-            `Login: ${origin}/login`,
-            "Login ke baad yeh password badlein.",
-          ].join("\n"),
-        credentialCopied: "Login ki jaankari copy ho gayi.",
-        credentialCopyFail: "Copy nahi hua — password ko khud select karein.",
-        fallbackLabel: "is volunteer",
-        resetPrompt: (label: string) =>
-          `${label} ka temporary password reset karein? Abhi wala password turant band ho jayega.`,
-        resetOk:
-          "Temporary password reset ho gaya. Neeche ek baar share karein.",
-        reactivatePrompt: (label: string) =>
-          `${label} ko dobara chalu karein? Woh phir se login kar payenge.`,
-        reactivateOk: (label: string) => `${label} dobara chalu ho gaya.`,
-        deactivatePrompt: (label: string, history: string) =>
-          `${label} ko band karein? ${history}`,
-        deactivateOk: (label: string) => `${label} band ho gaya.`,
-        creatingStatus: "Volunteer ka account ban raha hai.",
-        resettingStatus: "Volunteer ka password reset ho raha hai.",
-        reactivatingStatus: "Volunteer ka account dobara chalu ho raha hai.",
-        deactivatingStatus: "Volunteer ka account band ho raha hai.",
-        noEmail: "email nahi",
-        disabledSuffix: " · band",
-        viewingSuffix: " · hisaab khula hai",
-        tapSuffix: " · hisaab ke liye tap karein",
-        metricLabel: "alag marij",
-        roleBadge: "Volunteer ka role",
-        disabledBadge: "Band",
-        reactivating: "Chalu ho raha hai…",
-        reactivate: "Dobara chalu karein",
-        resetting: "Reset ho raha hai…",
-        reset: "Password reset karein",
-        deactivating: "Band ho raha hai…",
-        deactivate: "Band karein",
-        credentialHeading: "Temporary login share karein (sirf ek baar dikhega)",
-        credentialHelp:
-          "Band karne se pehle yeh jaankari copy karein. Password dobara nahi dikhega; nayi copy ke liye use reset karein.",
-        passwordLabel: "Ek-baar ka password",
-        copied: "Copy ho gaya",
-        copyLogin: "Login ki jaankari copy karein",
-        dismissPrompt:
-          "Kya aapne yeh temporary password safe rakh ya share kar diya hai?",
-        dismiss: "Band karein",
-        createHelp:
-          "Volunteer banne ke baad safe temporary password sirf ek baar dikhega. Woh Staff login se login karenge.",
-        fullNameLabel: "Poora naam",
-        cancel: "Radd karein",
-      }
-    : {
-        lang: undefined,
-        networkError: "Network error. Check your connection and try again.",
-        responseError: (message: string | undefined, fallback: string) =>
-          message || fallback,
-        credentialText: (
-          credential: CredentialShare,
-          origin: string,
-          title: string,
-        ) =>
-          [
-            title,
-            `Name: ${credential.name}`,
-            `Email: ${credential.email}`,
-            `Temporary password: ${credential.password}`,
-            `Sign in: ${origin}/login`,
-            "Change this password after signing in.",
-          ].join("\n"),
-        credentialCopied: "Login details copied.",
-        credentialCopyFail: "Could not copy — select the password manually.",
-        fallbackLabel: `this ${role}`,
-        resetPrompt: (label: string) =>
-          `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
-        resetOk: "Temporary password reset. Share it below (shown once).",
-        reactivatePrompt: (label: string) =>
-          `Reactivate ${label}? They will be able to sign in again.`,
-        reactivateOk: (label: string) => `Reactivated ${label}.`,
-        deactivatePrompt: (label: string, history: string) =>
-          `Deactivate ${label}? ${history}`,
-        deactivateOk: (label: string) => `Deactivated ${label}.`,
-        creatingStatus: `Creating ${role} account.`,
-        resettingStatus: `Resetting ${role} password.`,
-        reactivatingStatus: `Reactivating ${role} account.`,
-        deactivatingStatus: `Deactivating ${role} account.`,
-        noEmail: "no email",
-        disabledSuffix: " · disabled",
-        viewingSuffix: " · viewing KPIs",
-        tapSuffix: " · tap for KPIs",
-        metricLabel: "distinct patients",
-        roleBadge: role,
-        disabledBadge: "disabled",
-        reactivating: "Reactivating…",
-        reactivate: "Reactivate",
-        resetting: "Resetting…",
-        reset: "Reset password",
-        deactivating: "Deactivating…",
-        deactivate: "Deactivate",
-        credentialHeading: "Share temporary login (shown once)",
-        credentialHelp:
-          "Copy these details before dismissing them. The password cannot be retrieved again; reset it if another copy is needed.",
-        passwordLabel: "Temporary password",
-        copied: "Copied",
-        copyLogin: "Copy login details",
-        dismissPrompt:
-          "Have you securely saved or shared this temporary password?",
-        dismiss: "Dismiss",
-        createHelp:
-          "A secure temporary password is generated after creation and shown only once. They sign in at Staff login.",
-        fullNameLabel: "Full name",
-        cancel: "Cancel",
-      };
+function roleCopy(role: ManageableStaffRole) {
+  const surface = {
+    networkError: "Network error. Check your connection and try again.",
+    responseError: (message: string | undefined, fallback: string) =>
+      message && /changed during/i.test(message)
+        ? "Volunteer account changed during deactivation. Refresh and retry."
+        : message || fallback,
+    credentialText: (
+      credential: CredentialShare,
+      origin: string,
+      title: string,
+    ) =>
+      [
+        title,
+        `Name: ${credential.name}`,
+        `Email: ${credential.email}`,
+        `Temporary password: ${credential.password}`,
+        `Sign in: ${origin}/login`,
+        "Change this password after signing in.",
+      ].join("\n"),
+    credentialCopied: "Login details copied.",
+    credentialCopyFail: "Could not copy — select the password manually.",
+    fallbackLabel: `this ${role}`,
+    resetPrompt: (label: string) =>
+      `Reset the temporary password for ${label}? Their current password will stop working immediately.`,
+    resetOk: "Temporary password reset. Share it below (shown once).",
+    reactivatePrompt: (label: string) =>
+      `Reactivate ${label}? They will be able to sign in again.`,
+    reactivateOk: (label: string) => `Reactivated ${label}.`,
+    deactivatePrompt: (label: string, history: string) =>
+      `Deactivate ${label}? ${history}`,
+    deactivateOk: (label: string) => `Deactivated ${label}.`,
+    creatingStatus: `Creating ${role} account.`,
+    resettingStatus: `Resetting ${role} password.`,
+    reactivatingStatus: `Reactivating ${role} account.`,
+    deactivatingStatus: `Deactivating ${role} account.`,
+    noEmail: "no email",
+    disabledSuffix: " · disabled",
+    viewingSuffix: " · viewing KPIs",
+    tapSuffix: " · tap for KPIs",
+    metricLabel: "distinct patients",
+    roleBadge:
+      role === "volunteer"
+        ? "Volunteer"
+        : role === "team_lead"
+          ? "Team Lead"
+          : "Clinical Operator",
+    disabledBadge: "disabled",
+    reactivating: "Reactivating…",
+    reactivate: "Reactivate",
+    resetting: "Resetting…",
+    reset: "Reset password",
+    deactivating: "Deactivating…",
+    deactivate: "Deactivate",
+    credentialHeading: "Share temporary login (shown once)",
+    credentialHelp:
+      "Copy these details before dismissing them. The password cannot be retrieved again; reset it if another copy is needed.",
+    passwordLabel: "Temporary password",
+    copied: "Copied",
+    copyLogin: "Copy login details",
+    dismissPrompt:
+      "Have you securely saved or shared this temporary password?",
+    dismiss: "Dismiss",
+    createHelp:
+      "A secure temporary password is generated after creation and shown only once. They sign in at Staff login.",
+    fullNameLabel: "Full name",
+    cancel: "Cancel",
+  };
 
-  if (localized) {
-    return {
-      ...surface,
-      intro:
-        "Naam aur email se volunteer jodein. Share karne ke liye ek temporary password sirf ek baar dikhega.",
-      empty: "Abhi koi volunteer nahi — pehla volunteer neeche jodein.",
-      addButton: "Naya volunteer jodein",
-      createSubmit: "Volunteer banayein aur password lein",
-      createOk: "Volunteer ban gaya. Temporary password neeche ek baar share karein.",
-      createFail: "Volunteer nahi ban paya. Dobara koshish karein.",
-      resetFail: "Volunteer ka password reset nahi hua. Dobara koshish karein.",
-      reactivateFail: "Volunteer dobara chalu nahi hua. Dobara koshish karein.",
-      deactivateFail: "Volunteer band nahi hua. Dobara koshish karein.",
-      credentialTitle: "SNP Camps volunteer ka login",
-      defaultName: "Volunteer",
-      formId: "volunteer-create-form",
-      credentialHeadingId: "volunteer-credential-heading",
-      detailIdPrefix: "volunteer-detail",
-      historyOnDeactivate:
-        "Login turant band ho jayega; pehle ka kaam safe rahega.",
-      namePlaceholder: "Volunteer ka naam",
-      emailPlaceholder: "volunteer@example.com",
-      emailHint: "Isi email se login hoga — ise badlein nahi",
-    };
-  }
   if (role === "clinical_operator") {
     return {
       ...surface,
@@ -262,7 +176,6 @@ export function AdminStaff({
   initial,
   canManage = true,
   canViewDetail = true,
-  fieldCopy = false,
   teamLeadOptions,
   metricById,
 }: {
@@ -270,11 +183,10 @@ export function AdminStaff({
   initial: StaffPerson[];
   canManage?: boolean;
   canViewDetail?: boolean;
-  fieldCopy?: boolean;
   teamLeadOptions?: Array<{ id: string; full_name: string | null }>;
   metricById?: Record<string, number>;
 }) {
-  const copy = roleCopy(role, fieldCopy);
+  const copy = roleCopy(role);
   const apiBase = `/api/admin/staff/${role}`;
   const router = useRouter();
   const [list, setList] = useState(initial);
@@ -499,7 +411,7 @@ export function AdminStaff({
   }
 
   return (
-    <div lang={copy.lang} className="space-y-3">
+    <div className="space-y-3">
       <p className="text-sm text-muted">
         {canViewDetail
           ? copy.intro

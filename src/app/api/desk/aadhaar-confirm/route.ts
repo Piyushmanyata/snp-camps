@@ -68,19 +68,19 @@ export async function POST(request: Request) {
   if (error) {
     const message = error.message || "";
     if (message.includes("VOLUNTEER_OVERRIDE_FORBIDDEN")) {
-      return fail("Team lead ya admin hi confirmation skip kar sakte hain.", 403);
+      return fail("Only a team lead or admin can skip confirmation.", 403);
     }
     if (/PERSON_ALREADY_REGISTERED:reg=(\d+)/.test(message)) {
       const reg = message.match(/PERSON_ALREADY_REGISTERED:reg=(\d+)/)?.[1];
       return fail(
-        `Yeh card pehle se register hai (reg ${reg}). Usi number se print karein.`,
+        `This card is already registered (reg ${reg}). Print using that number instead.`,
         409,
       );
     }
     return fail(
       mapDbError(error, {
         context: "aadhaar-confirm",
-        fallback: "Confirm nahi hua. Dobara scan karein.",
+        fallback: "Confirmation failed. Please scan again.",
       }),
       409,
     );

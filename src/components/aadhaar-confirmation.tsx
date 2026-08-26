@@ -21,11 +21,11 @@ type ConfirmRow = {
 };
 
 const DIFF_FIELDS = [
-  ["fullName", "Naam"],
-  ["dateOfBirth", "Janm tareekh"],
-  ["gender", "Ling"],
+  ["fullName", "Full name"],
+  ["dateOfBirth", "Date of birth"],
+  ["gender", "Gender"],
   ["aadhaarLast4", "Aadhaar last-4"],
-  ["address", "Pata"],
+  ["address", "Address"],
 ] as const;
 
 export function AadhaarConfirmation({
@@ -68,13 +68,13 @@ export function AadhaarConfirmation({
         error: { message: string } | null;
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message || "Card padha nahi gaya. Dobara scan karein.");
+        setError(json.error?.message || "Could not read card. Please scan again.");
         return false;
       }
       setInspect(json.data);
       return true;
     } catch {
-      setError("Network nahi mila. Internet check karke dobara scan karein.");
+      setError("Network issue. Check your connection and try again.");
       return false;
     } finally {
       setBusy(false);
@@ -104,12 +104,12 @@ export function AadhaarConfirmation({
         error: { message: string } | null;
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message || "Confirm nahi hua. Dobara try karein.");
+        setError(json.error?.message || "Could not confirm. Please try again.");
         return;
       }
       onConfirmed(json.data.surviving_reg_no);
     } catch {
-      setError("Network nahi mila. Internet check karke dobara try karein.");
+      setError("Network issue. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -133,12 +133,12 @@ export function AadhaarConfirmation({
         error: { message: string } | null;
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message || "Skip nahi hua. Dobara try karein.");
+        setError(json.error?.message || "Could not skip confirmation. Please try again.");
         return;
       }
       onConfirmed(json.data.surviving_reg_no);
     } catch {
-      setError("Network nahi mila. Internet check karke dobara try karein.");
+      setError("Network issue. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -166,7 +166,7 @@ export function AadhaarConfirmation({
       data-testid="aadhaar-confirmation"
     >
       <p className="text-sm font-semibold text-amber-950">
-        Manual exception — pehle Aadhaar card scan karein
+        Manual exception — scan Aadhaar card first
       </p>
       {!inspect ? (
         <AadhaarUsbInput scanner={scanner} requireConsent={false} />
@@ -179,7 +179,7 @@ export function AadhaarConfirmation({
                 Field
               </th>
               <th scope="col" className="text-left font-normal">
-                Likha hua
+                Entered
               </th>
               <th scope="col" className="text-left font-normal">
                 Card
@@ -203,10 +203,10 @@ export function AadhaarConfirmation({
       ) : null}
       {inspect?.outcome === "collision" ? (
         <p className="text-sm font-medium text-amber-950">
-          Yeh card pehle se reg #{inspect.surviving_reg_no}{" "}
+          This card is already linked to reg #{inspect.surviving_reg_no}{" "}
           {inspect.surviving_name} · {inspect.surviving_age} ·{" "}
-          {inspect.surviving_gender} se juda hai. Wahi insaan hai? Haan to niche
-          accept karein.
+          {inspect.surviving_gender}. Is this the same person? If yes, accept
+          below.
         </p>
       ) : null}
       <ErrorBox message={error} />
@@ -218,13 +218,13 @@ export function AadhaarConfirmation({
           data-testid="aadhaar-confirmation-accept"
           onClick={() => void commit()}
         >
-          Card ke hisaab se theek karein aur print karein
+          Update from card and print
         </Button>
       ) : null}
       {canOverride ? (
         <div className="space-y-2">
           <Input
-            label="Skip karne ka kaaran"
+            label="Reason for skipping confirmation"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
@@ -235,16 +235,16 @@ export function AadhaarConfirmation({
             data-testid="aadhaar-confirmation-override"
             onClick={() => void override()}
           >
-            Confirmation skip karein
+            Skip confirmation
           </Button>
         </div>
       ) : (
         <p className="text-xs text-amber-900">
-          Volunteer confirmation skip nahi kar sakte.
+          Volunteers cannot skip confirmation.
         </p>
       )}
       <Button type="button" variant="ghost" onClick={onCancel}>
-        Wapas jaayein
+        Go back
       </Button>
     </div>
   );

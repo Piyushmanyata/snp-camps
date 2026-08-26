@@ -6,8 +6,8 @@ type PrintRunOutcome = {
   text: string;
 };
 
-const RECORDED = "Parchi record ho gayi. Print dialog khul gaya hai.";
-const FAILED = "Parchi print nahi ho payi. Dobara try karein.";
+const RECORDED = "Prescription recorded. Print dialog opened.";
+const FAILED = "Could not print prescription. Please try again.";
 
 export function resolvePrintRun(
   results: readonly PrintRunResult[],

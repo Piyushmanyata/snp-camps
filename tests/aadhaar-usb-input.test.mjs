@@ -19,7 +19,7 @@ test("AadhaarUsbInput includes an accessible loading status indicator", () => {
   assert.match(src, /role="status"/);
   assert.match(src, /aria-live="polite"/);
   assert.match(src, /Spinner/);
-  assert.match(src, /padh rahe hain…/i);
+  assert.match(src, /Reading card…/i);
 });
 
 test("AadhaarUsbInput visually masks typed characters so raw numbers do not appear", () => {

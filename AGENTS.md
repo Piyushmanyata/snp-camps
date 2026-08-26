@@ -251,8 +251,7 @@ A spec under `docs/specs/` is a work order, not a governing document. An accepte
 ## Visual & Design System
 
 * UI must meet WCAG 2.2 AA for field legibility under bright outdoor light: high contrast, 44×44 minimum touch targets, visible focus rings, text scaling, tactile press scaling (`scale(0.98)`), clear solid status badges, and `prefers-reduced-motion` compliance.
-* Retired visual guidance (glow typography, glassmorphism, glowing status badges) is removed and superseded by the design-system rules in `CONTEXT.md`.
-* Patients and field staff read Hinglish; admin reads English. Mixing the two inside one surface is a bug.
+* Patients, field staff, and admin read Simple English. Outbound SMS is Devanagari Hindi.
 
 ## Testing & Evidence Governance
 

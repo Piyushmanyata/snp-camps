@@ -139,7 +139,7 @@ export default async function VolunteerPage() {
   if (campError) {
     campErrorMsg = mapDbError(campError, {
       context: "volunteer-page.active-camp",
-      fallback: "Chalu camp load nahi hua. Refresh karke dobara try karein.",
+      fallback: "Active camp could not be loaded. Please refresh and try again.",
     });
   }
 
@@ -149,7 +149,7 @@ export default async function VolunteerPage() {
   if (rosterResult) {
     if (rosterResult.error) {
       mapDbError(rosterResult.error, { context: "volunteer-page.team-roster" });
-      rosterError = "Team list load nahi hui. Refresh karke dobara try karein.";
+      rosterError = "Team list could not be loaded. Please refresh and try again.";
     } else {
       teamVolunteers = rosterResult.data ?? [];
     }
@@ -157,40 +157,40 @@ export default async function VolunteerPage() {
 
   return (
     <Shell
-      title="Volunteer ka desk"
+      title="Volunteer desk"
       subtitle={
         profile?.full_name
           ? `${profile.full_name} · ${
-              teamLead ? "Team lead ka desk" : printWindowOpen
-                ? "Register karein · Print karein · Scan karein"
-                : "Register karein"
+              teamLead ? "Team Lead desk" : printWindowOpen
+                ? "Register · Print prescription · Scan"
+                : "Register"
             }`
           : printWindowOpen
-            ? "Register karein · Print karein · Scan karein"
-            : "Register karein"
+            ? "Register · Print prescription · Scan"
+            : "Register"
       }
       width="xl"
-      roleLabel={teamLead ? "Team lead ka desk" : "Volunteer ka desk"}
+      roleLabel={teamLead ? "Team Lead" : "Volunteer"}
       actions={<SignOutButton place="header" />}
       dock={
         printWindowOpen
           ? [
-              { href: "/register", label: "Naya marij register karein", primary: true },
-              { href: "#scan", label: "Marij scan karein" },
+              { href: "/register", label: "Register patient", primary: true },
+              { href: "#scan", label: "Scan patient" },
             ]
-          : [{ href: "/register", label: "Naya marij register karein", primary: true }]
+          : [{ href: "/register", label: "Register patient", primary: true }]
       }
     >
-      <div lang="hi-Latn" className="space-y-3 sm:space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {campErrorMsg ? <ErrorBox message={campErrorMsg} /> : null}
         {rosterError ? <ErrorBox message={rosterError} /> : null}
 
         <Card className="bg-brand-soft !p-4 sm:!p-5">
           <p className="text-[0.6875rem] font-bold uppercase tracking-wide text-brand sm:text-xs">
-            Chalu camp
+            Active camp
           </p>
           <p className="text-lg font-bold tracking-tight sm:text-2xl">
-            {camp?.name || "Koi nahi"}
+            {camp?.name || "None"}
           </p>
           {camp?.venue ? (
             <p className="text-sm text-muted sm:text-[0.9375rem]">{camp.venue}</p>
@@ -204,7 +204,7 @@ export default async function VolunteerPage() {
           noCampReason={
             camp
               ? undefined
-              : "Koi chalu camp nahi. Admin se camp chalu karwayein."
+              : "No active camp. Ask admin to activate a camp."
           }
         />
 

@@ -48,16 +48,13 @@ export default async function RegisterPage() {
       >
         <Card>
           <EmptyState>
-            <span lang="hi-Latn">
-            Registration desk par hoti hai. Patient khud register karna chahein to{" "}
+            Registration is done at the desk. If you want to self-register, open{" "}
             <Link
               href="/self-register"
               className="font-semibold text-brand underline decoration-brand/30 underline-offset-2"
             >
               self-registration
-            </Link>{" "}
-            kholen.
-            </span>
+            </Link>.
           </EmptyState>
           <Link
             href="/"
@@ -76,7 +73,7 @@ export default async function RegisterPage() {
   return (
     <Shell
       title="Register"
-      subtitle="Desk · poora naam + umar zaroori · baaki optional"
+      subtitle="Desk · Full name + age required · other details optional"
       backHref={deskHref}
       width="lg"
       roleLabel={role === "admin" ? "Admin" : role === "team_lead" ? "Team Lead" : "Volunteer"}
@@ -101,11 +98,10 @@ export default async function RegisterPage() {
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-5 lg:items-start">
           <Card className="order-1 !p-4 sm:!p-5 lg:order-2 lg:col-span-3">
             <p
-              lang="hi-Latn"
               className="prose-help mb-3 text-sm text-muted sm:mb-4"
             >
-              Ek patient, ek din. Sirf naam aur umar zaroori. Register karein
-              aur parchi print karein.
+              One patient, one day. Only name and age are required. Register
+              and print prescription slip.
             </p>
             <PatientForm
               campId={camp.id}

@@ -110,13 +110,13 @@ test("desk print window follows today's flagged day only", () => {
   assert.equal(deskPrintWindowOpen([], now), false);
 });
 
-test("PRINT_WINDOW_CLOSED is a new greppable identifier mapped to Hinglish", () => {
+test("PRINT_WINDOW_CLOSED is a new greppable identifier mapped to English", () => {
   assert.equal(PRINT_WINDOW_CLOSED, "PRINT_WINDOW_CLOSED");
   const classified = classifyOperationError(
     { message: "PRINT_WINDOW_CLOSED" },
     { log: false },
   );
-  assert.match(classified.publicMessage, /Admin se print window khulwaein/i);
+  assert.match(classified.publicMessage, /Ask an admin to open the print window/i);
   assert.equal(classified.retryable, false);
 });
 
