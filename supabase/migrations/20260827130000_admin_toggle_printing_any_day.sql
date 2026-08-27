@@ -48,7 +48,7 @@ ALTER FUNCTION public.mark_seen(uuid, integer) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.mark_seen(uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.mark_seen(uuid, integer) TO authenticated, service_role;
 
-REVOKE SELECT ON TABLE public.patients FROM authenticated;
+GRANT SELECT ON TABLE public.patients TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.latest_applied_migration()
 RETURNS text

@@ -362,7 +362,7 @@ test("widened staff grant → 503 on rpc_grants", async () => {
   const facts = goodCatalogFacts();
   facts.grants = {
     ...facts.grants,
-    patients_authenticated_select: true,
+    mark_seen_anon_execute: true,
   };
   __setServiceRoleClient(mockServiceRole({ catalogFacts: facts }));
   const res = await GET(
