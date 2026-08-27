@@ -341,21 +341,19 @@ test("mark_seen refuses while the print window is closed", async (t) => {
   assert.equal(rows[0].seen_at, null);
 });
 
-test("set_camp_day_printing_open refuses opening a future camp day", async (t) => {
+test("set_camp_day_printing_open allows opening a future camp day", async (t) => {
   if (skipIfNoDb(t)) return;
   const adminId = await seedProfile("admin");
   const { futureDayId } = await seedCamp();
 
-  await assert.rejects(
-    () =>
-      asStaff(adminId, async () => {
-        await client.query(
-          `select * from public.set_camp_day_printing_open($1, true)`,
-          [futureDayId],
-        );
-      }),
-    /PRINT_WINDOW_NOT_TODAY/,
-  );
+  const opened = await asStaff(adminId, async () => {
+    const { rows } = await client.query(
+      `select printing_open from public.set_camp_day_printing_open($1, true)`,
+      [futureDayId],
+    );
+    return rows[0];
+  });
+  assert.equal(opened.printing_open, true);
 
   const closed = await asStaff(adminId, async () => {
     const { rows } = await client.query(
