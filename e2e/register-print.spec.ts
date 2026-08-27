@@ -7,6 +7,7 @@
  * Failure paths abort/fulfill the same RPC to prove retry + Try Again UX.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -277,6 +278,21 @@ function livePayload(printingOpen: boolean) {
   };
 }
 
+async function setPrintingOpen(printingOpen: boolean) {
+  const admin = createClient(
+    env("E2E_SUPABASE_URL"),
+    env("E2E_SUPABASE_SERVICE_ROLE_KEY"),
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const updated = await admin
+    .from("camp_days")
+    .update({ printing_open: printingOpen })
+    .eq("id", env("E2E_CAMP_DAY_ID"));
+  if (updated.error) {
+    throw new Error(`printing_open update failed: ${updated.error.message}`);
+  }
+}
+
 async function mockDeskLive(page: Page, printingOpen: boolean) {
   await page.route("**/api/desk/live**", async (route) => {
     await route.fulfill({
@@ -289,47 +305,52 @@ async function mockDeskLive(page: Page, printingOpen: boolean) {
 
 /** #107 — Register-only saves without opening a print window. */
 test("register-only saves with no print window", async ({ page }) => {
-  await page.addInitScript(() => {
-    const w = window as Window & {
-      __deskOpenArgs?: unknown[][];
-      __deskOpenOrig?: typeof window.open;
-    };
-    w.__deskOpenArgs = [];
-    w.__deskOpenOrig = window.open.bind(window);
-    window.open = ((...args: Parameters<typeof window.open>) => {
-      w.__deskOpenArgs!.push(args);
-      return w.__deskOpenOrig!(...args);
-    }) as typeof window.open;
-  });
+  await setPrintingOpen(false);
+  try {
+    await page.addInitScript(() => {
+      const w = window as Window & {
+        __deskOpenArgs?: unknown[][];
+        __deskOpenOrig?: typeof window.open;
+      };
+      w.__deskOpenArgs = [];
+      w.__deskOpenOrig = window.open.bind(window);
+      window.open = ((...args: Parameters<typeof window.open>) => {
+        w.__deskOpenArgs!.push(args);
+        return w.__deskOpenOrig!(...args);
+      }) as typeof window.open;
+    });
 
-  await mockDeskLive(page, false);
-  const mock = await mockRegisterSuccess(page);
-  await loginStaff(page, "admin");
-  await gotoHydrated(page, "/register");
+    await mockDeskLive(page, false);
+    const mock = await mockRegisterSuccess(page);
+    await loginStaff(page, "admin");
+    await gotoHydrated(page, "/register");
 
-  const name = `Codex E2E Patient Register Only ${Date.now()}`;
-  await fillMinimalRegistration(page, name);
+    const name = `Codex E2E Patient Register Only ${Date.now()}`;
+    await fillMinimalRegistration(page, name);
 
-  await expect(page.getByTestId("desk-register-only")).toBeVisible();
-  await expect(page.getByTestId("desk-register-submit")).toHaveCount(0);
+    await expect(page.getByTestId("desk-register-only")).toBeVisible();
+    await expect(page.getByTestId("desk-register-submit")).toHaveCount(0);
 
-  await page.getByTestId("desk-register-only").click();
+    await page.getByTestId("desk-register-only").click();
 
-  await expect(page.getByTestId("desk-register-flash")).toContainText(
-    /register ho gaya|registered|Print later/i,
-    { timeout: 15_000 },
-  );
-  expect(mock.getCalls()).toBe(1);
+    await expect(page.getByTestId("desk-register-flash")).toContainText(
+      /register ho gaya|registered|Print later/i,
+      { timeout: 15_000 },
+    );
+    expect(mock.getCalls()).toBe(1);
 
-  const openArgs = (await page.evaluate(
-    () =>
-      (window as Window & { __deskOpenArgs?: unknown[][] }).__deskOpenArgs ||
-      [],
-  )) as unknown[][];
-  expect(openArgs.length).toBe(0);
-  // Saved and reset: the desk goes back to scan-first for the next patient.
-  await expect(page.getByTestId("aadhaar-consent")).toHaveCount(0);
-  await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
+    const openArgs = (await page.evaluate(
+      () =>
+        (window as Window & { __deskOpenArgs?: unknown[][] }).__deskOpenArgs ||
+        [],
+    )) as unknown[][];
+    expect(openArgs.length).toBe(0);
+    // Saved and reset: the desk goes back to scan-first for the next patient.
+    await expect(page.getByTestId("aadhaar-consent")).toHaveCount(0);
+    await expect(page.getByLabel(/Full name/i)).toHaveCount(0);
+  } finally {
+    await setPrintingOpen(true);
+  }
 });
 
 test("blocked popup: one registration, recovery Print, never claims window opened", async ({

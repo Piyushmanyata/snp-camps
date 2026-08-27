@@ -1,7 +1,7 @@
 
 export const READINESS_CONTRACT_VERSION = 10;
 
-export const EXPECTED_MIGRATION_HEAD = "20260826120000";
+export const EXPECTED_MIGRATION_HEAD = "20260827130000";
 
 export const READINESS_PROBE_TIMEOUT_MS = 2_500;
 
@@ -242,7 +242,7 @@ export const GRANT_EXPECTATIONS: Readonly<Record<string, boolean>> = {
   latest_applied_migration_service_role_execute: true,
   persons_authenticated_select: false,
   persons_authenticated_write: false,
-  patients_authenticated_select: false,
+  patients_authenticated_select: true,
   prescription_transcriptions_authenticated_write: false,
   prescription_corrections_authenticated_write: false,
   fulfilment_items_authenticated_write: false,
