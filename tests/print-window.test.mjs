@@ -8,106 +8,47 @@ import {
 } from "../src/lib/print-window.ts";
 import { classifyOperationError } from "../src/lib/public-error.ts";
 
-test("print window is closed when the flag is off on today's date", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
+test("print window is closed when the flag is off", () => {
   assert.equal(
     isPrintWindowOpen({
-      dayDate: "2026-08-16",
       printingOpen: false,
-      now,
     }),
     false,
   );
 });
 
-test("print window is open when the flag is on and the day is today in Asia/Kolkata", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
+test("print window is open when the flag is on", () => {
   assert.equal(
     isPrintWindowOpen({
-      dayDate: "2026-08-16",
       printingOpen: true,
-      now,
     }),
     true,
   );
 });
 
-test("print window is closed when the flag is on for yesterday in Asia/Kolkata", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
+test("desk print window is open when any day has printing enabled", () => {
   assert.equal(
-    isPrintWindowOpen({
-      dayDate: "2026-08-15",
-      printingOpen: true,
-      now,
-    }),
+    deskPrintWindowOpen([
+      { day_date: "2026-08-15", printing_open: false },
+      { day_date: "2026-08-16", printing_open: false },
+    ]),
     false,
   );
-});
-
-test("print window is closed when the flag is on for tomorrow in Asia/Kolkata", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
   assert.equal(
-    isPrintWindowOpen({
-      dayDate: "2026-08-17",
-      printingOpen: true,
-      now,
-    }),
-    false,
-  );
-});
-
-test("Asia/Kolkata midnight: the previous IST calendar day closes at 18:30Z", () => {
-  const justBefore = new Date("2026-08-15T18:29:59.999Z");
-  const justAfter = new Date("2026-08-15T18:30:00.000Z");
-  assert.equal(
-    isPrintWindowOpen({
-      dayDate: "2026-08-15",
-      printingOpen: true,
-      now: justBefore,
-    }),
+    deskPrintWindowOpen([
+      { day_date: "2026-08-15", printing_open: true },
+      { day_date: "2026-08-16", printing_open: false },
+    ]),
     true,
   );
   assert.equal(
-    isPrintWindowOpen({
-      dayDate: "2026-08-15",
-      printingOpen: true,
-      now: justAfter,
-    }),
-    false,
-  );
-  assert.equal(
-    isPrintWindowOpen({
-      dayDate: "2026-08-16",
-      printingOpen: true,
-      now: justAfter,
-    }),
+    deskPrintWindowOpen([
+      { day_date: "2026-08-15", printing_open: false },
+      { day_date: "2026-08-16", printing_open: true },
+    ]),
     true,
   );
-});
-
-test("desk print window follows today's flagged day only", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
-  assert.equal(
-    deskPrintWindowOpen(
-      [
-        { day_date: "2026-08-15", printing_open: true },
-        { day_date: "2026-08-16", printing_open: false },
-      ],
-      now,
-    ),
-    false,
-  );
-  assert.equal(
-    deskPrintWindowOpen(
-      [
-        { day_date: "2026-08-15", printing_open: true },
-        { day_date: "2026-08-16", printing_open: true },
-      ],
-      now,
-    ),
-    true,
-  );
-  assert.equal(deskPrintWindowOpen([], now), false);
+  assert.equal(deskPrintWindowOpen([]), false);
 });
 
 test("PRINT_WINDOW_CLOSED is a new greppable identifier mapped to English", () => {

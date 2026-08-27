@@ -204,7 +204,7 @@ test("mark_patient_printed refuses while the print window is closed", async (t) 
   assert.equal(rows[0].printed_at, null);
 });
 
-test("mark_patient_printed refuses when the flag is on for a future day", async (t) => {
+test("mark_patient_printed succeeds when the flag is on for a future day", async (t) => {
   if (skipIfNoDb(t)) return;
   const staffId = await seedProfile("volunteer");
   const { campId, futureDayId } = await seedCamp();
@@ -212,17 +212,17 @@ test("mark_patient_printed refuses when the flag is on for a future day", async 
     `update public.camp_days set printing_open = true where id = $1`,
     [futureDayId],
   );
-  const patient = await register(campId, futureDayId, "Wrong Day", staffId);
+  const patient = await register(campId, futureDayId, "Future Day Open", staffId);
 
-  await assert.rejects(
-    () =>
-      asStaff(staffId, async () => {
-        await client.query(`select * from public.mark_patient_printed($1, null)`, [
-          patient.id,
-        ]);
-      }),
-    (err) => String(err.message).includes(PRINT_WINDOW_CLOSED),
-  );
+  const printed = await asStaff(staffId, async () => {
+    const { rows } = await client.query(
+      `select * from public.mark_patient_printed($1, null)`,
+      [patient.id],
+    );
+    return rows[0];
+  });
+  assert.equal(printed.already_printed, false);
+  assert.equal(printed.queue_status, "registered");
 });
 
 test("mark_patient_printed succeeds when open and writes presence once", async (t) => {
