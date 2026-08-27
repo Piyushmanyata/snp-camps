@@ -40,6 +40,16 @@ ALTER FUNCTION public.set_camp_day_printing_open(uuid, boolean) OWNER TO postgre
 REVOKE ALL ON FUNCTION public.set_camp_day_printing_open(uuid, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_camp_day_printing_open(uuid, boolean) TO authenticated, service_role;
 
+ALTER FUNCTION public.mark_patient_printed(uuid, integer) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.mark_patient_printed(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.mark_patient_printed(uuid, integer) TO authenticated, service_role;
+
+ALTER FUNCTION public.mark_seen(uuid, integer) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.mark_seen(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.mark_seen(uuid, integer) TO authenticated, service_role;
+
+REVOKE SELECT ON TABLE public.patients FROM authenticated;
+
 CREATE OR REPLACE FUNCTION public.latest_applied_migration()
 RETURNS text
 LANGUAGE sql
