@@ -7,7 +7,6 @@ import { pickEarliestFreeOtDay } from "../src/lib/ot-day-select.ts";
 import { lineDecisions } from "../src/lib/clinical-line-map.ts";
 
 test("fresh consumer gets real return values from shipped modules", () => {
-  const now = new Date("2026-08-15T18:30:00.000Z");
   assert.equal(
     isPrintWindowOpen({
       printingOpen: true,
