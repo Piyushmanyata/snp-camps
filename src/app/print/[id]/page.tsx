@@ -116,7 +116,6 @@ export default async function PrintPage({
 
   if (
     !isPrintWindowOpen({
-      dayDate: record.campDayDate,
       printingOpen: campDay?.printing_open === true,
     })
   ) {

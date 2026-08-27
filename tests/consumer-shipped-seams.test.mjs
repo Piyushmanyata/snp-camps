@@ -10,9 +10,7 @@ test("fresh consumer gets real return values from shipped modules", () => {
   const now = new Date("2026-08-15T18:30:00.000Z");
   assert.equal(
     isPrintWindowOpen({
-      dayDate: "2026-08-16",
       printingOpen: true,
-      now,
     }),
     true,
   );
